@@ -21,7 +21,8 @@ module Cataract
     # Add a block of CSS with optional auto-fixing
     # Options:
     #   - fix_braces: Auto-close missing braces (default: false)
-    def add_block!(css_string, fix_braces: false)
+    #   - media_types: Force all rules to have specific media types (default: nil - use parsed media types)
+    def add_block!(css_string, fix_braces: false, media_types: nil)
       css_to_parse = css_string
 
       if fix_braces
@@ -33,7 +34,21 @@ module Cataract
         end
       end
 
+      # Track how many rules we had before parsing
+      rules_before = @raw_rules.length
+
       parse(css_to_parse)
+
+      # If media_types specified, update all just-added rules
+      if media_types
+        media_types_array = Array(media_types).map(&:to_sym)
+        # Update only the newly added rules
+        @raw_rules[rules_before..-1].each do |raw_rule|
+          raw_rule[:media_types] = media_types_array
+        end
+      end
+
+      self
     end
 
     alias_method :load_string!, :add_block!
@@ -157,12 +172,13 @@ module Cataract
     end
     
     # CSS-parser gem compatible API
+    # Yields: selector, declarations, specificity, media_types
     def each_selector(media_types = :all)
       return enum_for(:each_selector, media_types) unless block_given?
 
       rules.each do |rule|
         next unless rule.applies_to_media?(media_types)
-        yield rule.selector, rule.declarations.to_s, rule.specificity
+        yield rule.selector, rule.declarations.to_s, rule.specificity, rule.media_types
       end
     end
 
@@ -225,30 +241,48 @@ module Cataract
       rule_sets
     end
 
-    def to_s(media_types = :all)
-      output = []
-      
-      # Group by media type
-      by_media = rules.group_by { |rule| rule.media_types }
-      
-      by_media.each do |media_list, media_rules|
-        # Filter rules by requested media types
-        filtered_rules = media_rules.select { |rule| rule.applies_to_media?(media_types) }
-        next if filtered_rules.empty?
-        
-        if media_list == [:all]
-          # No @media wrapper needed
-          filtered_rules.each { |rule| output << rule.to_s }
-        else
-          # Wrap in @media
-          media_query = media_list.join(', ')
-          output << "@media #{media_query} {"
-          filtered_rules.each { |rule| output << "  #{rule.to_s}" }
-          output << "}"
+    # Output CSS rules as a stylesheet
+    #
+    # Note: When which_media is :all (default), this outputs ALL rules regardless of their
+    # media type. This differs from find_by_selector(:all) which only returns non-media-specific
+    # rules. This matches css_parser gem behavior but can be confusing.
+    #
+    # The semantic difference:
+    # - to_s(:all) / each_selector(:all) -> iterate ALL rules (for output/inspection)
+    # - find_by_selector(selector, :all) -> find non-media-specific rules (for querying)
+    def to_s(which_media = :all)
+      out = []
+      styles_by_media_types = {}
+
+      # Special case: :all means iterate through ALL rules for output
+      # We iterate manually instead of using each_selector to avoid filtering
+      rules.each do |rule|
+        # Skip filtering when which_media is :all
+        next unless which_media == :all || rule.applies_to_media?(which_media)
+
+        rule.media_types.each do |media_type|
+          styles_by_media_types[media_type] ||= []
+          styles_by_media_types[media_type] << [rule.selector, rule.declarations.to_s]
         end
       end
-      
-      output.join("\n")
+
+      styles_by_media_types.each_pair do |media_type, media_styles|
+        media_block = (media_type != :all)
+        out << "@media #{media_type} {" if media_block
+
+        media_styles.each do |media_style|
+          if media_block
+            out.push("  #{media_style[0]} { #{media_style[1]} }")
+          else
+            out.push("#{media_style[0]} { #{media_style[1]} }")
+          end
+        end
+
+        out << '}' if media_block
+      end
+
+      out << ''
+      out.join("\n")
     end
     
     # Utility methods

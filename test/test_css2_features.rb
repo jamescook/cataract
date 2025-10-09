@@ -75,11 +75,11 @@ class TestCSS2Features < Minitest::Test
 
     assert_equal 3, @parser.rules_count
 
-    # Non-media rules should apply to :all
-    assert_equal ["margin: 10px"], @parser.find_by_selector("body", :all)
+    # :all matches ALL rules regardless of media type (css_parser behavior)
+    assert_equal ["margin: 10px", "margin: 0"], @parser.find_by_selector("body", :all)
     assert_equal ["color: blue"], @parser.find_by_selector(".header", :all)
 
-    # Media-specific rule
+    # Media-specific query only returns that media's rules
     assert_equal ["margin: 0"], @parser.find_by_selector("body", :print)
   end
 
