@@ -166,4 +166,85 @@ class TestCssParserCompat < Minitest::Test
       assert_includes @parser.selectors, ".footer"
     end
   end
+
+  # ============================================================================
+  # find_by_selector - css_parser gem API examples
+  # ============================================================================
+
+  def test_find_by_selector_basic
+    @parser.load_string! "#content { font-size: 13px; line-height: 1.2 }"
+
+    result = @parser.find_by_selector('#content')
+
+    assert_equal ['font-size: 13px; line-height: 1.2'], result
+  end
+
+  def test_find_by_selector_with_media_types_array
+    css = %{
+      @media screen, handheld {
+        #content { font-size: 13px; line-height: 1.2 }
+      }
+    }
+    @parser.load_string!(css)
+
+    result = @parser.find_by_selector('#content', [:screen, :handheld])
+
+    assert_equal ['font-size: 13px; line-height: 1.2'], result
+  end
+
+  def test_find_by_selector_with_media_type_symbol
+    css = %{
+      @media print {
+        #content { font-size: 11pt; line-height: 1.2 }
+      }
+    }
+    @parser.load_string!(css)
+
+    result = @parser.find_by_selector('#content', :print)
+
+    assert_equal ['font-size: 11pt; line-height: 1.2'], result
+  end
+
+  def test_find_by_selector_multiple_rules_same_selector
+    css = %{
+      #content { font-size: 13px }
+      #content { line-height: 1.2 }
+    }
+    @parser.load_string!(css)
+
+    result = @parser.find_by_selector('#content')
+
+    assert_equal ['font-size: 13px', 'line-height: 1.2'], result
+  end
+
+  def test_find_by_selector_bracket_alias
+    @parser.load_string! ".header { color: blue }"
+
+    # Test [] alias
+    result = @parser['.header']
+
+    assert_equal ['color: blue'], result
+  end
+
+  def test_find_by_selector_no_match
+    @parser.load_string! "body { margin: 0 }"
+
+    result = @parser.find_by_selector('#nonexistent')
+
+    assert_equal [], result
+  end
+
+  def test_find_by_selector_wrong_media_type
+    css = %{
+      @media print {
+        body { margin: 0 }
+      }
+    }
+    @parser.load_string!(css)
+
+    # Query for screen media type when rule is print-only
+    result = @parser.find_by_selector('body', :screen)
+
+    assert_equal [], result
+  end
 end
