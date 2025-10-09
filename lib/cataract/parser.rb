@@ -18,8 +18,25 @@ module Cataract
       self
     end
 
-    alias_method :add_block!, :parse
-    alias_method :load_string!, :parse
+    # Add a block of CSS with optional auto-fixing
+    # Options:
+    #   - fix_braces: Auto-close missing braces (default: false)
+    def add_block!(css_string, fix_braces: false)
+      css_to_parse = css_string
+
+      if fix_braces
+        # Count braces - if unbalanced, add missing closing braces
+        open_braces = css_string.count('{')
+        close_braces = css_string.count('}')
+        if open_braces > close_braces
+          css_to_parse = css_string + (' }' * (open_braces - close_braces))
+        end
+      end
+
+      parse(css_to_parse)
+    end
+
+    alias_method :load_string!, :add_block!
 
     # Load CSS from a URI (http://, https://, or file://)
     # Options:
@@ -105,6 +122,26 @@ module Cataract
       }
 
       new_rule
+    end
+
+    # Add a RuleSet directly
+    def add_rule_set!(rule_set)
+      @raw_rules << {
+        selector: rule_set.selector,
+        declarations: rule_set.declarations.to_h,
+        media_types: rule_set.media_types
+      }
+      self
+    end
+
+    # Remove a RuleSet
+    def remove_rule_set!(rule_set)
+      @raw_rules.reject! do |raw_rule|
+        raw_rule[:selector] == rule_set.selector &&
+          raw_rule[:declarations] == rule_set.declarations.to_h &&
+          raw_rule[:media_types] == rule_set.media_types
+      end
+      self
     end
 
     # Remove rules matching criteria
@@ -228,12 +265,29 @@ module Cataract
     def to_css
       to_s
     end
-    
+
+    # Convert to nested hash structure
+    # Returns: { 'media_type' => { 'selector' => { 'property' => 'value' } } }
+    def to_h
+      result = {}
+
+      rules.each do |rule|
+        rule.media_types.each do |media_type|
+          media_key = media_type.to_s
+          result[media_key] ||= {}
+          result[media_key][rule.selector] ||= {}
+          result[media_key][rule.selector].merge!(rule.declarations.to_h)
+        end
+      end
+
+      result
+    end
+
     # Check if parser has any rules
     def empty?
       rules_count == 0
     end
-    
+
     # Clear all rules
     def clear!
       @raw_rules = []
