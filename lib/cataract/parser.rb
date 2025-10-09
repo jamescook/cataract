@@ -122,19 +122,36 @@ module Cataract
     # CSS-parser gem compatible API
     def each_selector(media_types = :all)
       return enum_for(:each_selector, media_types) unless block_given?
-      
+
       rules.each do |rule|
         next unless rule.applies_to_media?(media_types)
         yield rule.selector, rule.declarations.to_s, rule.specificity
       end
     end
-    
+
+    # Get declarations by selector.
+    #
+    # +media_types+ are optional, and can be a symbol or an array of symbols.
+    # The default value is <tt>:all</tt>.
+    #
+    # ==== Examples
+    #  find_by_selector('#content')
+    #  => ['font-size: 13px', 'line-height: 1.2']
+    #
+    #  find_by_selector('#content', [:screen, :handheld])
+    #  => ['font-size: 13px', 'line-height: 1.2']
+    #
+    #  find_by_selector('#content', :print)
+    #  => ['font-size: 11pt', 'line-height: 1.2']
+    #
+    # Returns an array of declaration strings.
     def find_by_selector(selector, media_types = :all)
       matching_rules = rules.select do |rule|
         rule.selector == selector && rule.applies_to_media?(media_types)
       end
       matching_rules.map { |rule| rule.declarations.to_s }
     end
+    alias [] find_by_selector
     
     def to_s(media_types = :all)
       output = []
