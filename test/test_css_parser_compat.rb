@@ -247,4 +247,112 @@ class TestCssParserCompat < Minitest::Test
 
     assert_equal [], result
   end
+
+  # ============================================================================
+  # each_rule_set - Iterate through RuleSets
+  # ============================================================================
+
+  def test_each_rule_set_basic
+    @parser.load_string! "body { margin: 0 } .header { color: blue }"
+
+    rule_sets = []
+    @parser.each_rule_set do |rule_set, media_types|
+      rule_sets << rule_set
+    end
+
+    assert_equal 2, rule_sets.length
+    assert_equal ["body", ".header"], rule_sets.map(&:selector)
+  end
+
+  def test_each_rule_set_with_media_filter
+    css = %{
+      body { margin: 0 }
+      @media print {
+        body { margin: 1in }
+      }
+    }
+    @parser.load_string!(css)
+
+    rule_sets = []
+    @parser.each_rule_set(:print) do |rule_set, media_types|
+      rule_sets << rule_set
+    end
+
+    assert_equal 1, rule_sets.length
+    assert_equal "body", rule_sets.first.selector
+    assert_equal [:print], rule_sets.first.media_types
+  end
+
+  def test_each_rule_set_returns_enumerator
+    @parser.load_string! "a { color: red }"
+
+    enum = @parser.each_rule_set
+    assert_kind_of Enumerator, enum
+    assert_equal 1, enum.count
+  end
+
+  # ============================================================================
+  # find_rule_sets - Find RuleSets by selectors
+  # ============================================================================
+
+  def test_find_rule_sets_single_selector
+    @parser.load_string! "body { margin: 0 } .header { color: blue }"
+
+    rule_sets = @parser.find_rule_sets(['body'])
+
+    assert_equal 1, rule_sets.length
+    assert_equal "body", rule_sets.first.selector
+  end
+
+  def test_find_rule_sets_multiple_selectors
+    @parser.load_string! "body { margin: 0 } .header { color: blue } .footer { padding: 10px }"
+
+    rule_sets = @parser.find_rule_sets(['body', '.footer'])
+
+    assert_equal 2, rule_sets.length
+    assert_equal ["body", ".footer"], rule_sets.map(&:selector)
+  end
+
+  def test_find_rule_sets_with_media_filter
+    css = %{
+      body { margin: 0 }
+      @media print {
+        body { margin: 1in }
+        .header { display: none }
+      }
+    }
+    @parser.load_string!(css)
+
+    rule_sets = @parser.find_rule_sets(['body'], :print)
+
+    assert_equal 1, rule_sets.length
+    assert_equal "body", rule_sets.first.selector
+    assert_equal [:print], rule_sets.first.media_types
+  end
+
+  def test_find_rule_sets_normalizes_whitespace
+    @parser.load_string! "div   p { color: red }"
+
+    # Should normalize whitespace in selector search
+    rule_sets = @parser.find_rule_sets(['div p'])
+
+    assert_equal 1, rule_sets.length
+  end
+
+  def test_find_rule_sets_no_duplicates
+    @parser.load_string! "body { margin: 0 }"
+
+    # Asking for same selector multiple times shouldn't duplicate
+    rule_sets = @parser.find_rule_sets(['body', 'body'])
+
+    assert_equal 1, rule_sets.length
+  end
+
+  def test_find_rule_sets_no_matches
+    @parser.load_string! "body { margin: 0 }"
+
+    rule_sets = @parser.find_rule_sets(['.nonexistent'])
+
+    assert_equal [], rule_sets
+  end
 end

@@ -152,7 +152,42 @@ module Cataract
       matching_rules.map { |rule| rule.declarations.to_s }
     end
     alias [] find_by_selector
-    
+
+    # Iterate through RuleSet objects.
+    #
+    # +media_types+ can be a symbol or an array of symbols.
+    # Yields each rule set along with its media types.
+    def each_rule_set(media_types = :all) # :yields: rule_set, media_types
+      return enum_for(:each_rule_set, media_types) unless block_given?
+
+      rules.each do |rule|
+        next unless rule.applies_to_media?(media_types)
+        yield rule, rule.media_types
+      end
+    end
+
+    # Finds the rule sets that match the given selectors.
+    #
+    # +selectors+ is an array of selector strings.
+    # +media_types+ can be a symbol or an array of symbols.
+    #
+    # Returns an array of RuleSet objects that match any of the given selectors.
+    def find_rule_sets(selectors, media_types = :all)
+      rule_sets = []
+      # Normalize selectors for comparison
+      normalized_selectors = Array(selectors).map { |s| s.gsub(/\s+/, ' ').strip }
+
+      each_rule_set(media_types) do |rule_set, _media_types|
+        # Normalize the rule set's selector for comparison
+        normalized_rule_selector = rule_set.selector.gsub(/\s+/, ' ').strip
+        if normalized_selectors.include?(normalized_rule_selector) && !rule_sets.include?(rule_set)
+          rule_sets << rule_set
+        end
+      end
+
+      rule_sets
+    end
+
     def to_s(media_types = :all)
       output = []
       
