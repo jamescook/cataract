@@ -178,6 +178,9 @@
   id_sel = ('#' ident) >mark_start %capture_selector;
   type_sel = ident >mark_start %capture_selector;
 
+  # CSS2 Universal Selector
+  universal_sel = '*' >mark_start %capture_selector;
+
   # CSS2 Attribute Selectors
   # CSS2: [attr], [attr=value], [attr~=value], [attr|=value]
   # CSS3: TODO - Add ^=, $=, *= operators
@@ -185,10 +188,11 @@
   attr_sel = ('[' ws* ident ws* (attr_operator ws* (ident | string) ws*)? ']') >mark_start %capture_selector;
 
   # CSS1 Selector Lists (comma-separated)
-  simple_selector = attr_sel | class_sel | id_sel | type_sel;
+  simple_selector = attr_sel | class_sel | id_sel | universal_sel | type_sel;
   selector_list = simple_selector (ws* ',' ws* simple_selector)*;
 
   # CSS1: TODO - Add pseudo-classes (:link, :visited, :active)
+  # CSS2: ✓ Universal selector (*) - IMPLEMENTED
   # CSS2: TODO - Add combinators (>, +, descendant space)
   # CSS2: TODO - Add pseudo-classes (:hover, :focus, :first-child, :lang())
   # CSS2: TODO - Add pseudo-elements (::before, ::after, ::first-line, ::first-letter)
