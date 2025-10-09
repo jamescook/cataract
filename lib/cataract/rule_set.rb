@@ -31,8 +31,18 @@ module Cataract
     # Check if rule applies to given media types
     def applies_to_media?(media_types)
       target_media = Array(media_types).map(&:to_sym)
-      target_media.include?(:all) || @media_types.include?(:all) || 
-        !(@media_types & target_media).empty?
+
+      # If querying for :all, only match rules that apply to all media types (non-media-specific rules)
+      if target_media.include?(:all)
+        return @media_types.include?(:all)
+      end
+
+      # If querying for specific media type(s), don't match :all rules
+      # (those are for non-media-specific styles, not for specific media queries)
+      return false if @media_types.include?(:all)
+
+      # Check for intersection between rule's media types and query
+      !(@media_types & target_media).empty?
     end
     
     # Property access delegation

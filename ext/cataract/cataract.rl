@@ -163,9 +163,11 @@
   # VALUES (CSS1)
   # ============================================================================
   # Simple value that captures everything until ; or }
+  # This is intentionally permissive - we don't validate value syntax
   value = (any - [;}])+;
 
-  # TODO: Add support for CSS2+ value types (colors, lengths, percentages, etc.)
+  # CSS1/2/3: Value syntax is validated by browsers, not by this parser
+  # We capture the raw string and let the browser handle validation
 
   # ============================================================================
   # SELECTORS
@@ -177,20 +179,22 @@
   type_sel = ident >mark_start %capture_selector;
 
   # CSS2 Attribute Selectors
-  # Supports: [attr], [attr=value], [attr="value"], [attr='value']
-  # TODO CSS2: Add ~=, |= attribute operators
-  # TODO CSS3: Add ^=, $=, *= attribute operators
-  attr_sel = ('[' ws* ident ws* ('=' ws* (ident | string) ws*)? ']') >mark_start %capture_selector;
+  # CSS2: [attr], [attr=value], [attr~=value], [attr|=value]
+  # CSS3: TODO - Add ^=, $=, *= operators
+  attr_operator = '=' | '~=' | '|=';
+  attr_sel = ('[' ws* ident ws* (attr_operator ws* (ident | string) ws*)? ']') >mark_start %capture_selector;
 
   # CSS1 Selector Lists (comma-separated)
   simple_selector = attr_sel | class_sel | id_sel | type_sel;
   selector_list = simple_selector (ws* ',' ws* simple_selector)*;
 
-  # TODO CSS1: Add pseudo-classes (:link, :visited, :active)
-  # TODO CSS2: Add combinators (>, +, descendant space)
-  # TODO CSS2: Add pseudo-elements (::before, ::after)
-  # TODO CSS2: Add :hover, :focus, :first-child
-  # TODO CSS3: Add :nth-child(), :not(), etc.
+  # CSS1: TODO - Add pseudo-classes (:link, :visited, :active)
+  # CSS2: TODO - Add combinators (>, +, descendant space)
+  # CSS2: TODO - Add pseudo-classes (:hover, :focus, :first-child, :lang())
+  # CSS2: TODO - Add pseudo-elements (::before, ::after, ::first-line, ::first-letter)
+  # CSS3: TODO - Add structural pseudo-classes (:nth-child(), :nth-of-type(), etc.)
+  # CSS3: TODO - Add UI pseudo-classes (:enabled, :disabled, :checked)
+  # CSS3: TODO - Add negation pseudo-class (:not())
 
   # ============================================================================
   # DECLARATIONS (CSS1)
@@ -199,7 +203,7 @@
   declaration = property ws* ':' ws* (value >mark_val %capture_value) %finish_declaration;
   declaration_list = declaration (ws* ';' ws* declaration)* (ws* ';')?;
 
-  # TODO CSS2: Add !important flag parsing
+  # CSS2: TODO - Add !important flag parsing (currently handled in Ruby layer)
 
   # ============================================================================
   # RULES (CSS1)
@@ -277,9 +281,11 @@
   media_block = [@] 'media' ws+ media_list >start_media_block ws* '{' $init_depth
                 media_content;
 
-  # TODO CSS2: Add @import rules
-  # TODO CSS3: Add @keyframes, @supports, @font-face, etc.
-  # TODO CSS3: Add media queries with features: @media screen and (min-width: 500px)
+  # CSS2: TODO - Add @import rules
+  # CSS2: TODO - Add media query features: @media screen and (min-width: 500px)
+  # CSS3: TODO - Add @keyframes for animations
+  # CSS3: TODO - Add @font-face for custom fonts
+  # CSS3: TODO - Add @supports for feature queries
 
   # ============================================================================
   # STYLESHEET (CSS1)
