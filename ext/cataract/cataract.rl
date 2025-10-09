@@ -225,13 +225,21 @@
   attr_operator = '=' | '~=' | '|=';
   attr_part = '[' ws* ident ws* (attr_operator ws* (ident | string) ws*)? ']';
 
-  # Simple selector sequence: optional type/universal, followed by class/id/attr modifiers
-  # Examples: div, div.class, div#id, .class, #id, [attr], *.class
+  # CSS2 Pseudo-classes and Pseudo-elements
+  # Pseudo-classes (single colon): :hover, :focus, :first-child, :link, :visited, :active, :lang()
+  # Pseudo-elements (double colon): ::before, ::after, ::first-line, ::first-letter
+  # Note: CSS2 allowed single colon for pseudo-elements for backwards compat, but we prefer double colon
+  pseudo_element_part = '::' ident ('(' (any - ')')* ')')?;
+  pseudo_class_part = ':' ident ('(' (any - ')')* ')')?;
+
+  # Simple selector sequence: optional type/universal, followed by class/id/attr/pseudo modifiers
+  # Examples: div, div.class, div#id, .class, #id, [attr], *.class, a:hover, p::before
   # The key insight: order matters in alternation (|). Put more specific patterns first.
   # Type/universal with modifiers should match before standalone modifiers
+  # Pseudo-elements must come last in the sequence (after pseudo-classes)
   simple_selector_sequence =
-    (type_part | universal_part) (class_part | id_part | attr_part)* |
-    (class_part | id_part | attr_part)+;
+    (type_part | universal_part) (class_part | id_part | attr_part | pseudo_class_part)* pseudo_element_part? |
+    (class_part | id_part | attr_part | pseudo_class_part)+ pseudo_element_part?;
 
   # CSS2 Combinators (have zero specificity)
   child_combinator = ws* '>' ws*;
@@ -261,11 +269,11 @@
   # Use @ operator on ',' and '{' to capture only when compound_selector is truly complete
   selector_list = compound_selector >start_compound_selector (ws* ',' @capture_compound_selector ws* >reset_for_next_selector compound_selector >start_compound_selector)* ws*;
 
-  # CSS1: TODO - Add pseudo-classes (:link, :visited, :active)
+  # CSS1: ✓ Basic pseudo-classes (:link, :visited, :active) - IMPLEMENTED
   # CSS2: ✓ Universal selector (*) - IMPLEMENTED
   # CSS2: ✓ Combinators (>, +, ~, descendant space) - IMPLEMENTED
-  # CSS2: TODO - Add pseudo-classes (:hover, :focus, :first-child, :lang())
-  # CSS2: TODO - Add pseudo-elements (::before, ::after, ::first-line, ::first-letter)
+  # CSS2: ✓ Pseudo-classes (:hover, :focus, :first-child, :lang()) - IMPLEMENTED
+  # CSS2: ✓ Pseudo-elements (::before, ::after, ::first-line, ::first-letter) - IMPLEMENTED
   # CSS3: TODO - Add structural pseudo-classes (:nth-child(), :nth-of-type(), etc.)
   # CSS3: TODO - Add UI pseudo-classes (:enabled, :disabled, :checked)
   # CSS3: TODO - Add negation pseudo-class (:not())
