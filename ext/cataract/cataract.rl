@@ -116,15 +116,29 @@
   }
 
   action start_media_block {
-    // Initialize media types array for this block
-    current_media_types = rb_ary_new();
     // Clear any partially-matched selectors/declarations from outer parse
     // This prevents spurious rules from being created while scanning media content
     current_selectors = Qnil;
     current_declarations = Qnil;
     // Set flag to prevent outer parse from creating rules while scanning media content
     inside_media_block = 1;
-    DEBUG_PRINTF("[@media] start_media_block: captured %ld media types\n", RARRAY_LEN(current_media_types));
+
+    // Parse the media query string to extract media types using separate machine
+    // media_mark points to start, p points to current position (before '{')
+    if (media_mark != NULL && p > media_mark) {
+      // Strip trailing whitespace
+      const char *end = p;
+      while (end > media_mark && (*(end-1) == ' ' || *(end-1) == '\t' || *(end-1) == '\n' || *(end-1) == '\r')) {
+        end--;
+      }
+      long query_len = end - media_mark;
+      DEBUG_PRINTF("[@media] start_media_block: parsing query string: '%.*s'\n", (int)query_len, media_mark);
+      current_media_types = parse_media_query(media_mark, query_len);
+      DEBUG_PRINTF("[@media] start_media_block: captured %ld media types\n", RARRAY_LEN(current_media_types));
+    } else {
+      current_media_types = rb_ary_new();
+      DEBUG_PRINTF("[@media] start_media_block: no query string\n");
+    }
   }
 
   action capture_property {
@@ -353,22 +367,12 @@
   # The inside_media_block flag prevents the outer parse from creating rules
   # while scanning through media content character-by-character.
 
-  # Media type capturing - extracts the media type (screen, print, etc.)
-  media_type = ident >mark_media %capture_media_type;
-
-  # Media query list: Permissive approach that captures media types
-  # Examples:
-  #   @media print { ... }                           -> captures: print
-  #   @media screen, print { ... }                   -> captures: screen, print
-  #   @media screen and (min-width: 768px) { ... }   -> captures: screen
-  #   @media (min-width: 768px) { ... }              -> captures: nothing
-  #
-  # Strategy: Match either media_type OR any single character (except { and alpha at word boundaries)
-  # Need to use priority operators to prefer media_type over single char matching
-  # TODO: Make this less permissive by properly parsing media query features
-  media_non_type_char = (any - [a-zA-Z{]);
-  media_query_content = media_type | media_non_type_char;
-  media_query_list = media_query_content+ >start_media_block;
+  # Media query parsing - NEW APPROACH
+  # Capture the entire query string, then parse it with a separate machine
+  # This avoids the alternation-in-Kleene-star problem
+  # Mark at the start, action fires when we finish matching (before start_media_block)
+  media_query_string = (any - '{')* >mark_media %start_media_block;
+  media_query_list = media_query_string;
 
   # Media block - use a simple character-by-character scan
   # We increment depth on '{' and decrement on '}', stopping at depth 0
@@ -462,6 +466,77 @@
 }%%
 
 %% machine specificity_counter; write data;
+
+%%{
+  # ============================================================================
+  # MEDIA QUERY PARSER MACHINE
+  # ============================================================================
+  # This machine parses media query strings to extract media types
+  # Based on W3C Media Queries spec (see summary in main machine comments)
+  #
+  # Input: "screen and (min-width: 768px)" or "print" or "screen, print"
+  # Output: Array of media type symbols (e.g., [:screen] or [:screen, :print])
+  #
+  # Strategy: Match identifiers, skip keywords (and, or, not, only)
+
+  machine media_query_parser;
+
+  # Reuse basic token definitions
+  ws = [ \t\n\r];
+  ident = alpha (alpha | digit | '-')*;
+
+  # Action to capture media type
+  action capture_mq_type {
+    // Check if this is a keyword we should skip
+    int len = p - mq_mark;
+    int is_keyword = (len == 3 && (strncmp(mq_mark, "and", 3) == 0 || strncmp(mq_mark, "not", 3) == 0)) ||
+                     (len == 2 && strncmp(mq_mark, "or", 2) == 0) ||
+                     (len == 4 && strncmp(mq_mark, "only", 4) == 0);
+
+    if (!is_keyword) {
+      ID media_id = rb_intern2(mq_mark, len);
+      VALUE media_sym = ID2SYM(media_id);
+      rb_ary_push(mq_types, media_sym);
+      DEBUG_PRINTF("[mq_parser] captured media type: %.*s\n", len, mq_mark);
+    } else {
+      DEBUG_PRINTF("[mq_parser] skipped keyword: %.*s\n", len, mq_mark);
+    }
+  }
+
+  # Media type - an identifier that's not inside parens
+  # We'll match all identifiers and filter keywords in the action
+  media_type_token = ident >{ mq_mark = p; } %capture_mq_type;
+
+  # Non-identifier characters (spaces, parens, operators, numbers, etc.)
+  media_other = (any - [a-zA-Z0-9\-])+;
+
+  # Main pattern: use LONGEST-MATCH KLEENE STAR (**) to force matching complete idents!
+  # This prioritizes staying in the machine vs wrapping around
+  main := (media_type_token | media_other)**;
+}%%
+
+%% machine media_query_parser; write data;
+
+// Parse media query string and return array of media types
+// Example: "screen and (min-width: 768px)" -> [:screen]
+// Example: "screen, print" -> [:screen, :print]
+static VALUE parse_media_query(const char *query_str, long query_len) {
+    // Ragel variables for media query parser
+    char *p, *pe, *eof;
+    char *mq_mark = NULL;
+    int cs;
+    VALUE mq_types = rb_ary_new();
+
+    // Setup input
+    p = (char *)query_str;
+    pe = p + query_len;
+    eof = pe;
+
+    %% machine media_query_parser; write init;
+    %% machine media_query_parser; write exec;
+
+    return mq_types;
+}
 
 static VALUE parse_css(VALUE self, VALUE css_string) {
     // Ragel state variables
