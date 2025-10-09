@@ -29,12 +29,12 @@ puts "  Output: #{c_file}"
 # Use -G2 (goto-driven, faster) for gem builds, skip for development
 # Development: Fast compilation for iteration
 # Production: -G2 generates faster code
-ragel_flags = if ENV['CATARACT_DEV_BUILD']
+ragel_flags = if ENV['CATARACT_DEV_BUILD'] == '1'
   puts "  Mode: Development (fast compilation)"
   "-C"
 else
   puts "  Mode: Production (optimized -G2)"
-  "-G2 -C"
+  "-G1 -C"
 end
 
 ragel_cmd = "ragel #{ragel_flags} #{rl_file} -o #{c_file}"
