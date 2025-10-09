@@ -49,7 +49,9 @@
     current_declarations = Qnil;
   }
   
-  # Grammar tokens
+  # ============================================================================
+  # BASIC TOKENS (CSS1)
+  # ============================================================================
   ws = [ \t\n\r];
   comment = '/*' any* '*/';
   ident = alpha (alpha | digit | '-')*;
@@ -57,31 +59,61 @@
   dstring = '"' (any - '"')* '"';
   sstring = "'" (any - "'")* "'";
   string = dstring | sstring;
-  
+
+  # ============================================================================
+  # VALUES (CSS1)
+  # ============================================================================
   # Simple value that captures everything until ; or }
+  # TODO: Add support for CSS2+ value types (colors, lengths, percentages, etc.)
   value = (any - [;}])+;
-  
-  # Selectors with attribute support
+
+  # ============================================================================
+  # SELECTORS
+  # ============================================================================
+
+  # CSS1 Simple Selectors
   class_sel = ('.' ident) >mark_start %capture_selector;
   id_sel = ('#' ident) >mark_start %capture_selector;
   type_sel = ident >mark_start %capture_selector;
-  
-  # Attribute selectors with optional values
+
+  # CSS2 Attribute Selectors
+  # Supports: [attr], [attr=value], [attr="value"], [attr='value']
+  # TODO CSS2: Add ~=, |= attribute operators
+  # TODO CSS3: Add ^=, $=, *= attribute operators
   attr_sel = ('[' ws* ident ws* ('=' ws* (ident | string) ws*)? ']') >mark_start %capture_selector;
-  
+
+  # CSS1 Selector Lists (comma-separated)
   simple_selector = attr_sel | class_sel | id_sel | type_sel;
   selector_list = simple_selector (ws* ',' ws* simple_selector)*;
-  
-  # Declarations with multiple declaration support
+
+  # TODO CSS1: Add pseudo-classes (:link, :visited, :active)
+  # TODO CSS2: Add combinators (>, +, descendant space)
+  # TODO CSS2: Add pseudo-elements (::before, ::after)
+  # TODO CSS2: Add :hover, :focus, :first-child
+  # TODO CSS3: Add :nth-child(), :not(), etc.
+
+  # ============================================================================
+  # DECLARATIONS (CSS1)
+  # ============================================================================
   property = ident >mark_prop %capture_property;
   declaration = property ws* ':' ws* (value >mark_val %capture_value) %finish_declaration;
   declaration_list = declaration (ws* ';' ws* declaration)* (ws* ';')?;
-  
-  # Rules
+
+  # TODO CSS2: Add !important flag parsing
+
+  # ============================================================================
+  # RULES (CSS1)
+  # ============================================================================
   rule_body = '{' ws* declaration_list ws* '}' %finish_rule;
   rule = selector_list ws* rule_body;
-  
-  # Main stylesheet
+
+  # TODO CSS2: Add @media rules
+  # TODO CSS2: Add @import rules
+  # TODO CSS3: Add @keyframes, @supports, etc.
+
+  # ============================================================================
+  # STYLESHEET (CSS1)
+  # ============================================================================
   stylesheet = (rule | comment | ws)*;
   main := stylesheet;
 }%%
