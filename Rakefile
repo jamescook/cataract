@@ -4,13 +4,17 @@ require "rake/testtask"
 # Only load extension task if rake-compiler is available
 begin
   require "rake/extensiontask"
-  
+
   # Configure the extension
   Rake::ExtensionTask.new("cataract") do |ext|
     ext.lib_dir = "lib/cataract"
     ext.ext_dir = "ext/cataract"
+
+    # Use fast compilation for local development
+    # Gem builds will use -G2 automatically (see extconf.rb)
+    ENV['CATARACT_DEV_BUILD'] = '1'
   end
-  
+
   EXTENSION_AVAILABLE = true
 rescue LoadError
   EXTENSION_AVAILABLE = false
