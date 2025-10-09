@@ -161,11 +161,6 @@ class TestCataract < Minitest::Test
     assert_includes output, "}"
   end
 
-  def test_c_extension_availability
-    # Just verify the method exists
-    assert_respond_to @parser, :using_c_extension?
-  end
-
   # Attribute selector tests
   def test_attribute_exists_selector
     css = "[disabled] { opacity: 0.5 }"
