@@ -235,8 +235,8 @@
 
   # CSS2 Attribute Selectors
   # CSS2: [attr], [attr=value], [attr~=value], [attr|=value]
-  # CSS3: TODO - Add ^=, $=, *= operators
-  attr_operator = '=' | '~=' | '|=';
+  # CSS3: [attr^=value], [attr$=value], [attr*=value]
+  attr_operator = '^=' | '$=' | '*=' | '~=' | '|=' | '=';
   attr_part = '[' ws* ident ws* (attr_operator ws* (ident | string) ws*)? ']';
 
   # CSS2 Pseudo-classes and Pseudo-elements
