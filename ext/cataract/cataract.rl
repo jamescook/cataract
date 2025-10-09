@@ -294,7 +294,78 @@
   main := stylesheet;
 }%%
 
-%% write data;
+%% machine css_parser; write data;
+
+%%{
+  # ============================================================================
+  # SPECIFICITY COUNTER MACHINE
+  # ============================================================================
+  # This machine counts selector components to calculate CSS specificity.
+  # It reuses the same pattern definitions as the css_parser machine but
+  # attaches counting actions instead of capturing actions.
+  #
+  # W3C Specificity Rules:
+  # - ID selectors (#id): 100 points each
+  # - Class selectors (.class), attribute selectors ([attr]), pseudo-classes (:hover): 10 points each
+  # - Element selectors (div), pseudo-elements (::before): 1 point each
+  # - Universal selector (*): 0 points
+  # - Combinators (>, +, ~, space): 0 points
+
+  machine specificity_counter;
+
+  # Reuse basic token definitions
+  ws = [ \t\n\r];
+  ident = alpha (alpha | digit | '-')*;
+  dstring = '"' (any - '"')* '"';
+  sstring = "'" (any - "'")* "'";
+  string = dstring | sstring;
+
+  # Counting actions (increment counters instead of capturing)
+  action count_id { id_count++; }
+  action count_class { class_count++; }
+  action count_attr { attr_count++; }
+  action count_pseudo_class { pseudo_class_count++; }
+  action count_pseudo_element { pseudo_element_count++; }
+  action count_element { element_count++; }
+
+  # Selector patterns with counting actions
+  # Attribute operators
+  attr_operator = '=' | '~=' | '|=';
+
+  # Pattern definitions without actions
+  class_sel_pattern = '.' ident;
+  id_sel_pattern = '#' ident;
+  type_sel_pattern = ident;
+  universal_sel_pattern = '*';
+  attr_sel_pattern = '[' ws* ident ws* (attr_operator ws* (ident | string) ws*)? ']';
+  pseudo_element_pattern = '::' ident ('(' (any - ')')* ')')?;
+  pseudo_class_pattern = ':' ident ('(' (any - ')')* ')')?;
+
+  # Apply actions to complete patterns
+  class_sel = class_sel_pattern %count_class;
+  id_sel = id_sel_pattern %count_id;
+  type_sel = type_sel_pattern %count_element;
+  universal_sel = universal_sel_pattern;  # Universal selector has specificity 0, so no action needed
+  attr_sel = attr_sel_pattern %count_attr;
+  pseudo_element = pseudo_element_pattern %count_pseudo_element;
+  pseudo_class = pseudo_class_pattern %count_pseudo_class;
+
+  # Simple selector (can have multiple components)
+  # First component can be universal or type, followed by optional class/id/attr/pseudo
+  simple_selector_sequence = (universal_sel | type_sel)? (class_sel | id_sel | attr_sel | pseudo_element | pseudo_class)*;
+  simple_selector = simple_selector_sequence;
+
+  # Combinators (have no specificity value)
+  combinator = ws+ | (ws* '>' ws*) | (ws* '+' ws*) | (ws* '~' ws*);
+
+  # Compound selector (simple selectors separated by combinators)
+  compound_selector = simple_selector (combinator simple_selector)*;
+
+  # Allow optional whitespace before/after
+  main := ws* compound_selector ws*;
+}%%
+
+%% machine specificity_counter; write data;
 
 static VALUE parse_css(VALUE self, VALUE css_string) {
     // Ragel state variables
@@ -320,8 +391,8 @@ static VALUE parse_css(VALUE self, VALUE css_string) {
     current_declarations = Qnil;
     current_media_types = Qnil;
 
-    %% write init;
-    %% write exec;
+    %% machine css_parser; write init;
+    %% machine css_parser; write exec;
 
     if (cs >= css_parser_first_final) {
         return rules_array;
@@ -330,8 +401,42 @@ static VALUE parse_css(VALUE self, VALUE css_string) {
     }
 }
 
+// Calculate CSS specificity for a selector string
+// Uses the specificity_counter Ragel machine to count selector components
+static VALUE calculate_specificity(VALUE self, VALUE selector_string) {
+    // Counters for selector components
+    int id_count = 0;
+    int class_count = 0;
+    int attr_count = 0;
+    int pseudo_class_count = 0;
+    int pseudo_element_count = 0;
+    int element_count = 0;
+
+    // Ragel state variables
+    char *p, *pe, *eof;
+    int cs;
+
+    // Setup input
+    Check_Type(selector_string, T_STRING);
+    p = RSTRING_PTR(selector_string);
+    pe = p + RSTRING_LEN(selector_string);
+    eof = pe;
+
+    %% machine specificity_counter; write init;
+    %% machine specificity_counter; write exec;
+
+    // Calculate specificity using W3C formula:
+    // IDs * 100 + (classes + attributes + pseudo-classes) * 10 + (elements + pseudo-elements) * 1
+    int specificity = (id_count * 100) +
+                      ((class_count + attr_count + pseudo_class_count) * 10) +
+                      ((element_count + pseudo_element_count) * 1);
+
+    return INT2NUM(specificity);
+}
+
 // Ruby extension initialization
 void Init_cataract() {
     VALUE module = rb_define_module("Cataract");
     rb_define_module_function(module, "parse_css", parse_css, 1);
+    rb_define_module_function(module, "calculate_specificity", calculate_specificity, 1);
 }
