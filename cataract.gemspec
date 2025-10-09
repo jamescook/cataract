@@ -18,7 +18,7 @@ Gem::Specification.new do |spec|
 
   # Specify which files should be added to the gem when it is released.
   spec.files = Dir.chdir(File.expand_path('..', __FILE__)) do
-    `git ls-files -z`.split("\x0").reject { |f| f.match(%r{^(test|spec|features)/}) }
+    `git ls-files -z`.split("\x0").reject { |f| f.match(%r{^(test|spec|features)/}) || f.match(%r{^test_.*\.rb$}) }
   end
 
   spec.bindir        = "exe"
@@ -33,8 +33,6 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency "rake", "~> 13.0"
   spec.add_development_dependency "rake-compiler", "~> 1.0"
   spec.add_development_dependency "minitest", "~> 5.0"
-  spec.add_development_dependency "benchmark-ips", "~> 2.0"
-  spec.add_development_dependency "css_parser", "~> 1.0" # for benchmarking
 
   # Runtime dependencies (none for now)
 end

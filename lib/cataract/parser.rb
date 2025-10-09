@@ -12,20 +12,73 @@ module Cataract
     end
 
     def parse(css_string)
-      @css_source = css_string.dup.freeze
-
-      if CATARACT_C_EXT
-        @raw_rules = Cataract.parse_css(css_string)
-      else
-        raise
-        parser = Cataract::PureRubyParser.new
-        @raw_rules = parser.parse(css_string)
-      end
-
+      new_rules = Cataract.parse_css(css_string)
+      # Append new rules to existing ones
+      @raw_rules.concat(new_rules)
       self
     end
 
     alias_method :add_block!, :parse
+    alias_method :load_string!, :parse
+
+    # Load CSS from a URI (http://, https://, or file://)
+    # Options:
+    #   - base_uri: Base URI for resolving relative imports
+    #   - media_types: Array of media types (e.g., [:screen, :print])
+    def load_uri!(uri, options = {})
+      require 'uri'
+      require 'net/http'
+
+      uri_obj = URI(uri)
+      css_content = nil
+
+      case uri_obj.scheme
+      when 'http', 'https'
+        response = Net::HTTP.get_response(uri_obj)
+        unless response.is_a?(Net::HTTPSuccess)
+          raise IOError, "Failed to load URI: #{uri} (#{response.code} #{response.message})"
+        end
+        css_content = response.body
+      when 'file', nil
+        # file:// URI or relative path
+        path = uri_obj.scheme == 'file' ? uri_obj.path : uri
+        # Handle base_uri if provided
+        if options[:base_uri]
+          base = URI(options[:base_uri])
+          path = File.join(base.path, path) if base.scheme == 'file' || base.scheme.nil?
+        end
+        css_content = File.read(File.expand_path(path))
+      else
+        raise ArgumentError, "Unsupported URI scheme: #{uri_obj.scheme}"
+      end
+
+      parse(css_content)
+      self
+    rescue Errno::ENOENT => e
+      raise IOError, "File not found: #{uri}" if @options[:io_exceptions]
+      self
+    rescue => e
+      raise IOError, "Error loading URI: #{uri} - #{e.message}" if @options[:io_exceptions]
+      self
+    end
+
+    # Load CSS from a local file
+    # Arguments:
+    #   - filename: Path to CSS file
+    #   - base_dir: Base directory for resolving relative paths (default: current directory)
+    #   - media_types: Media type symbol or array (not yet implemented for filtering)
+    def load_file!(filename, base_dir = '.', media_types = :all)
+      file_path = File.expand_path(filename, base_dir)
+      css_content = File.read(file_path)
+      parse(css_content)
+      self
+    rescue Errno::ENOENT => e
+      raise IOError, "File not found: #{file_path}" if @options[:io_exceptions]
+      self
+    rescue => e
+      raise IOError, "Error loading file: #{file_path} - #{e.message}" if @options[:io_exceptions]
+      self
+    end
 
     # Lazy map over raw rules, converting to RuleSet objects on demand
     def rules
@@ -118,11 +171,7 @@ module Cataract
       rules.select { |rule| rule.applies_to_media?(media_types) }
            .map(&:selector)
     end
-    
-    def using_c_extension?
-      CATARACT_C_EXT
-    end
-    
+
     # Export back to CSS source
     def to_css
       to_s
