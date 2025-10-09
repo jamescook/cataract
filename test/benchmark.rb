@@ -143,6 +143,40 @@ module Benchmark
         background: white
       }
 
+      /* CSS2 Pseudo-classes and Pseudo-elements */
+      a:link {
+        color: #0066cc;
+        text-decoration: none
+      }
+
+      a:visited {
+        color: #551a8b
+      }
+
+      a:hover {
+        color: #003d7a;
+        text-decoration: underline
+      }
+
+      input:focus {
+        border-color: #4a90e2;
+        outline: none
+      }
+
+      p:first-child {
+        margin-top: 0
+      }
+
+      .quote::before {
+        content: '"';
+        font-size: 1.5em
+      }
+
+      .quote::after {
+        content: '"';
+        font-size: 1.5em
+      }
+
       /* Print styles */
       @media print {
         body {
@@ -312,9 +346,13 @@ module Benchmark
 
       # Show a sample of what we parsed
       puts "\nSample Cataract output:"
-      fast_parser.each_selector.first(5) do |selector, declarations, specificity|
+      fast_parser.each_selector.first(5).each do |selector, declarations, specificity|
         puts "  #{selector}: #{declarations} (spec: #{specificity})"
       end
+
+      # Note: Cataract may find more rules than css_parser when selectors appear
+      # in multiple contexts (e.g., .container as base style + @media override).
+      # This is correct behavior - they are distinct rules with different declarations.
     end
     
     puts "\n" + "="*60
