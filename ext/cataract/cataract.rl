@@ -77,8 +77,11 @@
       }
 
       // Add all inner rules to the main rules array
-      // TODO: Consider avoiding rb_funcall for performance - could manually iterate and rb_ary_push
-      rb_funcall(rules_array, rb_intern("concat"), 1, inner_rules);
+      // Manual iteration is faster than rb_funcall(concat)
+      long inner_len = RARRAY_LEN(inner_rules);
+      for (long i = 0; i < inner_len; i++) {
+        rb_ary_push(rules_array, RARRAY_AREF(inner_rules, i));
+      }
 
       current_media_types = Qnil;
       inside_media_block = 0;  // Clear flag when done with media block
