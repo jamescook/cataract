@@ -7,3 +7,5 @@ gemspec
 gem "benchmark-ips", "~> 2.0"
 gem "css_parser", "~> 1.0" # for benchmarking against
 gem "webmock", "~> 3.0" # for testing URL loading
+gem 'minitest'
+gem 'minitest-spec'
