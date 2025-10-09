@@ -8,7 +8,7 @@ Gem::Specification.new do |spec|
 
   spec.summary       = %q{CSS parser built with Ragel state machines}
   spec.description   = %q{A high-performance CSS parser using Ragel finite state machines for accurate parsing of complex CSS structures}
-  spec.homepage      = "https://github.com/yourusername/cataract"
+  spec.homepage      = "https://github.com/jamescook/cataract"
   spec.license       = "MIT"
   spec.required_ruby_version = Gem::Requirement.new(">= 2.7.0")
 
