@@ -140,24 +140,9 @@ module Cataract
       declarations
     end
     
-    # Calculate CSS specificity
+    # Calculate CSS specificity using C extension
     def calculate_specificity(selector)
-      specificity = 0
-      
-      # ID selectors = 100 each
-      specificity += selector.scan(/#[\w-]+/).length * 100
-      
-      # Class selectors and attribute selectors = 10 each  
-      specificity += selector.scan(/\.[\w-]+/).length * 10
-      specificity += selector.scan(/\[[^\]]+\]/).length * 10
-      
-      # Element selectors = 1 each
-      # Simple heuristic: if no other selectors found, assume it's an element
-      if specificity == 0
-        specificity = 1
-      end
-      
-      specificity
+      Cataract.calculate_specificity(selector)
     end
   end
 end

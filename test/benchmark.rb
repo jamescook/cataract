@@ -285,6 +285,74 @@ module Benchmark
     end
     
     puts "\n" + "="*60
+    puts "BENCHMARK: Specificity Calculation"
+    puts "="*60
+
+    # Test complex specificity selectors
+    complex_selectors = [
+      "div",                                                      # 1
+      "div.container",                                            # 11
+      "#header",                                                  # 100
+      "div.container#main",                                       # 111
+      "div.container > p.intro",                                  # 22
+      "ul#nav li.active a:hover",                                # 122
+      "div.wrapper > article#main > section.content > p:first-child",  # 123
+      "[data-theme='dark'] body.admin #dashboard .widget:nth-child(2n) a[href^='http']::before"  # 143
+    ]
+
+    if CSS_PARSER_AVAILABLE
+      # Verify correctness first
+      puts "\nVerifying specificity calculation matches css_parser:"
+      complex_selectors.each do |selector|
+        cataract_spec = Cataract.calculate_specificity(selector)
+
+        # css_parser calculates specificity differently - it uses CssParser::RuleSet
+        css_parser_parser = CssParser::Parser.new
+        css_parser_parser.add_block!("#{selector} { color: red }")
+        css_parser_spec = nil
+        css_parser_parser.each_selector do |sel, decs, spec|
+          css_parser_spec = spec if sel == selector
+        end
+
+        match = cataract_spec == css_parser_spec ? "✓" : "✗"
+        puts "  #{match} #{selector.ljust(80)} Cataract: #{cataract_spec.to_s.rjust(3)}, css_parser: #{css_parser_spec.to_s.rjust(3)}"
+      end
+
+      puts "\nBenchmarking specificity calculation:"
+      Benchmark.ips do |x|
+        x.config(time: 3, warmup: 1)
+
+        x.report("css_parser") do
+          complex_selectors.each do |selector|
+            parser = CssParser::Parser.new
+            parser.add_block!("#{selector} { color: red }")
+            parser.each_selector { |s, d, spec| spec }
+          end
+        end
+
+        x.report("cataract") do
+          complex_selectors.each do |selector|
+            Cataract.calculate_specificity(selector)
+          end
+        end
+
+        x.compare!
+      end
+    else
+      puts "Install css_parser gem for comparison"
+
+      Benchmark.ips do |x|
+        x.config(time: 3, warmup: 1)
+
+        x.report("cataract") do
+          complex_selectors.each do |selector|
+            Cataract.calculate_specificity(selector)
+          end
+        end
+      end
+    end
+
+    puts "\n" + "="*60
     puts "EXTENSION INFO"
     puts "="*60
     
