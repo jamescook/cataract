@@ -20,8 +20,8 @@ module Benchmark
     puts "="*60
     puts "Loading from: #{File.expand_path('../lib/cataract.rb', __dir__)}"
     
-    # Enhanced test CSS with new features
-    test_css = %{
+    # CSS1 test CSS
+    test_css_css1 = %{
       /* Main layout with enhanced features */
       .header, .main-header {
         color: #3366cc;
@@ -31,7 +31,7 @@ module Benchmark
         border-radius: 4px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1)
       }
-      
+
       .main-content, .content-wrapper {
         font-size: 16px;
         line-height: 1.5em;
@@ -40,7 +40,7 @@ module Benchmark
         padding: 20px;
         margin: 0 auto
       }
-      
+
       #navigation, #main-nav {
         background: #f8f9fa;
         border: 1px solid #dee2e6;
@@ -48,122 +48,238 @@ module Benchmark
         top: 0;
         z-index: 1000
       }
-      
+
       body {
         margin: 0;
         padding: 0;
         font-family: Arial;
         background-color: #f5f5f5
       }
-      
+
       .footer-links, .footer .links {
         text-decoration: none;
         color: #6c757d;
         font-size: 14px;
         padding: 5px 10px
       }
-      
+
       /* Utility classes with various units */
       .text-large, .big-text {
         font-size: 1.25rem;
         font-weight: 600
       }
-      
+
       .bg-dark, .dark-background {
         background-color: #343a40;
         color: #ffffff
       }
-      
+
       #sidebar, .sidebar {
         width: 250px;
         height: 100vh;
         overflow-y: auto;
         padding: 1rem
       }
-      
+
       .container, .wrapper, .content {
         max-width: 1140px;
         margin: 0 auto;
         padding: 0 15px
       }
     }
-    
-    puts "CSS: #{test_css.lines.count} lines, #{test_css.length} chars"
-    
+
+    # CSS2 test CSS with @media queries
+    test_css_css2 = %{
+      /* Base styles */
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: Arial, sans-serif;
+        background-color: #ffffff
+      }
+
+      .header {
+        color: #333;
+        padding: 20px;
+        background: #f8f9fa
+      }
+
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 0 15px
+      }
+
+      /* Print styles */
+      @media print {
+        body {
+          margin: 0;
+          color: #000;
+          background: #fff
+        }
+
+        .header {
+          padding: 10px;
+          border-bottom: 1px solid #000
+        }
+
+        .no-print {
+          display: none
+        }
+      }
+
+      /* Mobile styles */
+      @media screen {
+        .mobile-menu {
+          display: block;
+          padding: 10px
+        }
+
+        .container {
+          padding: 0 10px
+        }
+      }
+
+      /* Multiple media types */
+      @media screen, print {
+        .universal {
+          font-size: 14px;
+          line-height: 1.5
+        }
+
+        #footer {
+          margin-top: 20px;
+          padding: 10px
+        }
+      }
+
+      /* More base styles after media queries */
+      .sidebar {
+        width: 250px;
+        float: left
+      }
+
+      #content {
+        margin-left: 260px
+      }
+    }
+
     fast_parser = Cataract::Parser.new
-    
+
     if fast_parser.using_c_extension?
       puts "Cataract: Using C extension ⚡"
     else
       puts "Cataract: Using pure Ruby fallback 🐌"
     end
-    
-    # Verify it works before benchmarking
+
+    # Verify both test cases work before benchmarking
+    puts "\nVerifying CSS1 test case..."
     begin
-      result = fast_parser.parse(test_css)
-      puts "Cataract parsed rules successfully"
+      fast_parser.parse(test_css_css1)
+      puts "  ✅ CSS1 parsed successfully (#{fast_parser.rules_count} rules)"
     rescue => e
-      puts "ERROR: Cataract failed to parse test CSS: #{e.message}"
-      puts "Make sure you've run 'rake compile' first"
+      puts "  ❌ ERROR: Failed to parse CSS1: #{e.message}"
       return
     end
-    
+
+    puts "Verifying CSS2 test case with @media queries..."
+    begin
+      fast_parser.parse(test_css_css2)
+      puts "  ✅ CSS2 parsed successfully (#{fast_parser.rules_count} rules)"
+    rescue => e
+      puts "  ❌ ERROR: Failed to parse CSS2: #{e.message}"
+      return
+    end
+
     puts "="*60
-    
+    puts "BENCHMARK: CSS1 (#{test_css_css1.lines.count} lines, #{test_css_css1.length} chars)"
+    puts "="*60
+
     if CSS_PARSER_AVAILABLE
       Benchmark.ips do |x|
-        x.config(time: 10, warmup: 3)
-        
+        x.config(time: 5, warmup: 2)
+
         x.report("css_parser gem") do
           parser = CssParser::Parser.new(import: false, io_exceptions: false)
-          parser.add_block!(test_css)
+          parser.add_block!(test_css_css1)
         end
-        
+
         x.report("cataract") do
           parser = Cataract::Parser.new
-          parser.parse(test_css)
+          parser.parse(test_css_css1)
         end
-        
+
         x.compare!
       end
     else
       puts "Install css_parser gem for comparison benchmarks"
-      
+
       Benchmark.ips do |x|
         x.config(time: 5, warmup: 2)
-        
+
         x.report("cataract") do
           parser = Cataract::Parser.new
-          parser.parse(test_css)
+          parser.parse(test_css_css1)
         end
       end
     end
-    
+
     puts "\n" + "="*60
-    puts "CORRECTNESS COMPARISON"
+    puts "BENCHMARK: CSS2 with @media (#{test_css_css2.lines.count} lines, #{test_css_css2.length} chars)"
     puts "="*60
-    
-    # Test functionality
-    fast_parser.parse(test_css)
+
+    if CSS_PARSER_AVAILABLE
+      Benchmark.ips do |x|
+        x.config(time: 5, warmup: 2)
+
+        x.report("css_parser gem") do
+          parser = CssParser::Parser.new(import: false, io_exceptions: false)
+          parser.add_block!(test_css_css2)
+        end
+
+        x.report("cataract") do
+          parser = Cataract::Parser.new
+          parser.parse(test_css_css2)
+        end
+
+        x.compare!
+      end
+    else
+      Benchmark.ips do |x|
+        x.config(time: 5, warmup: 2)
+
+        x.report("cataract") do
+          parser = Cataract::Parser.new
+          parser.parse(test_css_css2)
+        end
+      end
+    end
+
+    puts "\n" + "="*60
+    puts "CORRECTNESS COMPARISON (CSS2)"
+    puts "="*60
+
+    # Test functionality on CSS2
+    fast_parser.parse(test_css_css2)
     puts "Cataract found #{fast_parser.rules_count} rules"
-    
+
     if CSS_PARSER_AVAILABLE
       css_parser = CssParser::Parser.new(import: false, io_exceptions: false)
-      css_parser.add_block!(test_css)
-      
+      css_parser.add_block!(test_css_css2)
+
       css_parser_rules = 0
       css_parser.each_selector { css_parser_rules += 1 }
       puts "css_parser found #{css_parser_rules} rules"
-      
+
       if fast_parser.rules_count == css_parser_rules
         puts "✅ Same number of rules parsed"
       else
         puts "⚠️  Different number of rules parsed"
       end
-      
+
       # Show a sample of what we parsed
       puts "\nSample Cataract output:"
-      fast_parser.each_selector.first(3) do |selector, declarations, specificity|
+      fast_parser.each_selector.first(5) do |selector, declarations, specificity|
         puts "  #{selector}: #{declarations} (spec: #{specificity})"
       end
     end

@@ -8,7 +8,6 @@ module Cataract
 
       # YJIT-friendly: define all instance variables upfront
       @raw_rules = []
-      @rich_rules = nil
       @css_source = nil
     end
 
@@ -23,46 +22,48 @@ module Cataract
         @raw_rules = parser.parse(css_string)
       end
 
-      # Reset rich rules cache
-      @rich_rules = nil
-
       self
     end
-    
+
     alias_method :add_block!, :parse
-    
-    # Lazy conversion to rich objects
+
+    # Lazy map over raw rules, converting to RuleSet objects on demand
     def rules
-      @rich_rules ||= convert_to_rich_objects(@raw_rules)
+      return enum_for(:rules) unless block_given?
+
+      @raw_rules.each do |raw_rule|
+        yield convert_raw_rule_to_rich(raw_rule)
+      end
     end
-    
-    # Add a new rule (forces rich mode)
+
+    # Add a new rule
     def add_rule!(selector:, declarations:, media_types: [:all])
-      # Ensure we're in rich mode
-      rules
-      
       new_rule = RuleSet.new(
         selector: selector,
         declarations: declarations,
         media_types: media_types
       )
-      
-      @rich_rules << new_rule
-      @raw_rules = nil # Invalidate raw cache
-      
+
+      # Add to raw rules array as a hash
+      @raw_rules << {
+        selector: new_rule.selector,
+        declarations: new_rule.declarations.to_h,
+        media_types: new_rule.media_types
+      }
+
       new_rule
     end
-    
+
     # Remove rules matching criteria
     def remove_rules!(selector: nil, media_types: nil)
-      rules.reject! do |rule|
+      @raw_rules.reject! do |raw_rule|
+        # Convert to rich object for matching
+        rule = convert_raw_rule_to_rich(raw_rule)
         match = true
         match &&= (rule.selector == selector) if selector
         match &&= rule.applies_to_media?(media_types) if media_types
         match
       end
-      
-      @raw_rules = nil # Invalidate raw cache
     end
     
     # CSS-parser gem compatible API
@@ -110,9 +111,9 @@ module Cataract
     
     # Utility methods
     def rules_count
-      rules.length
+      @raw_rules.length
     end
-    
+
     def selectors(media_types = :all)
       rules.select { |rule| rule.applies_to_media?(media_types) }
            .map(&:selector)
@@ -129,26 +130,24 @@ module Cataract
     
     # Check if parser has any rules
     def empty?
-      rules.empty?
+      rules_count == 0
     end
     
     # Clear all rules
     def clear!
       @raw_rules = []
-      @rich_rules = []
       @css_source = nil
     end
-    
+
     private
-    
-    def convert_to_rich_objects(raw_rules)
-      raw_rules.map do |raw_rule|
-        RuleSet.new(
-          selector: raw_rule[:selector],
-          declarations: raw_rule[:declarations],
-          media_types: [:all] # TODO: extract from raw_rule when we add media query support
-        )
-      end
+
+    # Convert a single raw rule to a RuleSet object
+    def convert_raw_rule_to_rich(raw_rule)
+      RuleSet.new(
+        selector: raw_rule[:selector],
+        declarations: raw_rule[:declarations],
+        media_types: raw_rule[:media_types] || [:all] # Extract from raw_rule when available
+      )
     end
   end
 end
