@@ -22,13 +22,38 @@
   action mark_val { val_mark = p; }
   action mark_media { media_mark = p; }
 
-  action capture_selector {
-    selector = rb_str_new(mark, p - mark);
-    DEBUG_PRINTF("[selector] captured: '%s' (mark=%ld p=%ld)\n", RSTRING_PTR(selector), mark - RSTRING_PTR(css_string), p - RSTRING_PTR(css_string));
-    if (NIL_P(current_selectors)) {
-      current_selectors = rb_ary_new();
+  action start_compound_selector {
+    // Mark the start of a compound selector
+    // Uses global 'mark' variable (safe since selectors don't overlap with @media content extraction)
+    mark = p;
+    DEBUG_PRINTF("[selector] start_compound_selector: mark=%ld\n", mark - RSTRING_PTR(css_string));
+  }
+
+  action capture_compound_selector {
+    // Capture the entire compound selector when we've reached the end
+    // Using @ (finishing) operator ensures this only fires when reaching specific end tokens
+    // (comma or opening brace), not in the middle of the compound selector
+    if (mark != NULL) {
+      // Strip trailing whitespace by finding the last non-whitespace character
+      const char *end = p;
+      while (end > mark && (*(end-1) == ' ' || *(end-1) == '\t' || *(end-1) == '\n' || *(end-1) == '\r')) {
+        end--;
+      }
+      selector = rb_str_new(mark, end - mark);
+      DEBUG_PRINTF("[selector] capture_compound_selector: '%s' at p=%ld\n", RSTRING_PTR(selector), p - RSTRING_PTR(css_string));
+      if (NIL_P(current_selectors)) {
+        current_selectors = rb_ary_new();
+      }
+      rb_ary_push(current_selectors, selector);
+      // Reset mark to NULL so we don't capture again on subsequent @ firings
+      mark = NULL;
     }
-    rb_ary_push(current_selectors, selector);
+  }
+
+  action reset_for_next_selector {
+    // Reset mark when starting a new selector after comma
+    mark = NULL;
+    DEBUG_PRINTF("[selector] reset_for_next_selector\n");
   }
 
   action capture_media_type {
@@ -107,8 +132,21 @@
   }
 
   action capture_value {
-    VALUE val_str = rb_str_new(val_mark, p - val_mark);
-    value = rb_funcall(val_str, rb_intern("strip"), 0);
+    // Strip leading and trailing whitespace from value at C level (avoids rb_funcall overhead)
+    const char *start = val_mark;
+    const char *end = p;
+
+    // Strip leading whitespace
+    while (start < end && (*start == ' ' || *start == '\t' || *start == '\n' || *start == '\r')) {
+      start++;
+    }
+
+    // Strip trailing whitespace
+    while (end > start && (*(end-1) == ' ' || *(end-1) == '\t' || *(end-1) == '\n' || *(end-1) == '\r')) {
+      end--;
+    }
+
+    value = rb_str_new(start, end - start);
   }
 
   action finish_declaration {
@@ -146,6 +184,8 @@
     }
     current_selectors = Qnil;
     current_declarations = Qnil;
+    // Reset mark for next rule (in case it wasn't reset by capture action)
+    mark = NULL;
   }
   
   # ============================================================================
@@ -173,27 +213,57 @@
   # SELECTORS
   # ============================================================================
 
-  # CSS1 Simple Selectors
-  class_sel = ('.' ident) >mark_start %capture_selector;
-  id_sel = ('#' ident) >mark_start %capture_selector;
-  type_sel = ident >mark_start %capture_selector;
-
-  # CSS2 Universal Selector
-  universal_sel = '*' >mark_start %capture_selector;
+  # CSS1/CSS2 Selector Components (building blocks - no actions)
+  class_part = '.' ident;
+  id_part = '#' ident;
+  type_part = ident;
+  universal_part = '*';
 
   # CSS2 Attribute Selectors
   # CSS2: [attr], [attr=value], [attr~=value], [attr|=value]
   # CSS3: TODO - Add ^=, $=, *= operators
   attr_operator = '=' | '~=' | '|=';
-  attr_sel = ('[' ws* ident ws* (attr_operator ws* (ident | string) ws*)? ']') >mark_start %capture_selector;
+  attr_part = '[' ws* ident ws* (attr_operator ws* (ident | string) ws*)? ']';
 
-  # CSS1 Selector Lists (comma-separated)
-  simple_selector = attr_sel | class_sel | id_sel | universal_sel | type_sel;
-  selector_list = simple_selector (ws* ',' ws* simple_selector)*;
+  # Simple selector sequence: optional type/universal, followed by class/id/attr modifiers
+  # Examples: div, div.class, div#id, .class, #id, [attr], *.class
+  # The key insight: order matters in alternation (|). Put more specific patterns first.
+  # Type/universal with modifiers should match before standalone modifiers
+  simple_selector_sequence =
+    (type_part | universal_part) (class_part | id_part | attr_part)* |
+    (class_part | id_part | attr_part)+;
+
+  # CSS2 Combinators (have zero specificity)
+  child_combinator = ws* '>' ws*;
+  adjacent_sibling_combinator = ws* '+' ws*;
+  general_sibling_combinator = ws* '~' ws*;
+  descendant_combinator = ws+;
+  combinator = child_combinator | adjacent_sibling_combinator | general_sibling_combinator | descendant_combinator;
+
+  # Compound selector: simple selectors connected by combinators
+  # Examples: div p, div > p, h1 + p, div.container > p.intro
+  #
+  # CRITICAL: Capturing compound selectors requires careful action placement
+  # Problem: The leaving operator (%) fires on EVERY leaving transition in the pattern,
+  #          not just once at the end. For "div > p", % fires when leaving "div" AND when leaving "p".
+  #
+  # Solution: Use @ (finishing) operator which fires ONLY on transitions to final states:
+  #   1. Mark start with > (entering) operator when entering compound_selector
+  #   2. Capture with @ (finishing) operator on tokens that END a selector (comma ',' or opening brace '{')
+  #   3. Strip trailing whitespace from captured selectors (occurs before '{')
+  #   4. Reset mark after comma to prepare for next selector in list
+  #
+  # This ensures "div > p" is captured as one string after the entire pattern matches,
+  # not as "div" and "p" separately.
+  compound_selector = simple_selector_sequence (combinator simple_selector_sequence)*;
+
+  # CSS1 Selector Lists (comma-separated compound selectors)
+  # Use @ operator on ',' and '{' to capture only when compound_selector is truly complete
+  selector_list = compound_selector >start_compound_selector (ws* ',' @capture_compound_selector ws* >reset_for_next_selector compound_selector >start_compound_selector)* ws*;
 
   # CSS1: TODO - Add pseudo-classes (:link, :visited, :active)
   # CSS2: ✓ Universal selector (*) - IMPLEMENTED
-  # CSS2: TODO - Add combinators (>, +, descendant space)
+  # CSS2: ✓ Combinators (>, +, ~, descendant space) - IMPLEMENTED
   # CSS2: TODO - Add pseudo-classes (:hover, :focus, :first-child, :lang())
   # CSS2: TODO - Add pseudo-elements (::before, ::after, ::first-line, ::first-letter)
   # CSS3: TODO - Add structural pseudo-classes (:nth-child(), :nth-of-type(), etc.)
@@ -212,8 +282,8 @@
   # ============================================================================
   # RULES (CSS1)
   # ============================================================================
-  rule_body = '{' ws* declaration_list ws* '}' %finish_rule;
-  rule = selector_list ws* rule_body;
+  rule_body = '{' @capture_compound_selector ws* declaration_list ws* '}' %finish_rule;
+  rule = selector_list rule_body;
 
   # ============================================================================
   # AT-RULES (CSS2)

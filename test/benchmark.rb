@@ -88,7 +88,7 @@ module Benchmark
       }
     }
 
-    # CSS2 test CSS with @media queries
+    # CSS2 test CSS with @media queries and combinators
     test_css_css2 = %{
       /* Base styles */
       body {
@@ -108,6 +108,39 @@ module Benchmark
         max-width: 1200px;
         margin: 0 auto;
         padding: 0 15px
+      }
+
+      /* CSS2 Combinators */
+      div p {
+        line-height: 1.6
+      }
+
+      .container > .item {
+        margin-bottom: 20px
+      }
+
+      h1 + p {
+        margin-top: 0;
+        font-size: 1.2em
+      }
+
+      .nav > ul > li {
+        display: inline-block;
+        padding: 0 15px
+      }
+
+      article > header > h1 {
+        color: #2c3e50;
+        font-size: 2rem
+      }
+
+      .sidebar ~ .content {
+        margin-left: 260px
+      }
+
+      div.wrapper > article#main {
+        padding: 20px;
+        background: white
       }
 
       /* Print styles */
