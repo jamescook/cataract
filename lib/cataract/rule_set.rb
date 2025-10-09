@@ -29,16 +29,17 @@ module Cataract
     end
     
     # Check if rule applies to given media types
+    #
+    # Note: :all has special meaning - it matches ALL rules regardless of their media type.
+    # This matches css_parser gem behavior.
     def applies_to_media?(media_types)
       target_media = Array(media_types).map(&:to_sym)
 
-      # If querying for :all, only match rules that apply to all media types (non-media-specific rules)
-      if target_media.include?(:all)
-        return @media_types.include?(:all)
-      end
+      # If querying for :all, match ALL rules (css_parser behavior)
+      return true if target_media.include?(:all)
 
       # If querying for specific media type(s), don't match :all rules
-      # (those are for non-media-specific styles, not for specific media queries)
+      # (non-media-specific rules don't match specific media queries in css_parser)
       return false if @media_types.include?(:all)
 
       # Check for intersection between rule's media types and query
