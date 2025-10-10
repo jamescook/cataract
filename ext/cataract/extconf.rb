@@ -26,16 +26,13 @@ puts "Generating C parser from Ragel grammar..."
 puts "  Input: #{rl_file}"
 puts "  Output: #{c_file}"
 
-# Use -G2 (goto-driven, faster) for gem builds, skip for development
-# Development: Fast compilation for iteration
-# Production: -G2 generates faster code
-ragel_flags = if ENV['CATARACT_DEV_BUILD'] == '1'
-  puts "  Mode: Development (fast compilation)"
-  "-C"
-else
-  puts "  Mode: Production (optimized -G2)"
-  "-G1 -C"
-end
+# Ragel code generation style
+# Defaults to -T0 (table driven, balances speed and compile time)
+# Override with RAGEL_STYLE environment variable to test other styles
+# Available: -T0, -T1, -F0, -F1, -G0, -G1, -G2 (see ragel --help)
+ragel_style = ENV['RAGEL_STYLE'] || '-T0'
+puts "  Style: #{ragel_style}"
+ragel_flags = "#{ragel_style} -C"
 
 ragel_cmd = "ragel #{ragel_flags} #{rl_file} -o #{c_file}"
 unless system(ragel_cmd)
@@ -50,5 +47,11 @@ unless File.exist?(c_file)
 end
 
 puts "C parser generated successfully"
+
+# Suppress warnings from Ragel-generated code
+# The generated C code has some harmless warnings we can't fix
+$CFLAGS << " -Wno-unused-const-variable" if RUBY_PLATFORM =~ /darwin|linux/
+$CFLAGS << " -Wno-shorten-64-to-32" if RUBY_PLATFORM =~ /darwin/
+$CFLAGS << " -Wno-unused-variable"
 
 create_makefile('cataract/cataract')
