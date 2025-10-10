@@ -34,6 +34,8 @@ gem install cataract
 
 ## Usage
 
+### Basic Parsing
+
 ```ruby
 require 'cataract'
 
@@ -55,11 +57,11 @@ parser.selectors
 
 # Find declarations by selector
 parser.find_by_selector("body")
-# => ["margin: 0", "padding: 0"]
+# => ["margin: 0;", "padding: 0;"]
 
 # Filter by media type
 parser.find_by_selector(".container", :screen)
-# => ["width: 750px"]
+# => ["width: 750px;"]
 
 # Get specificity
 parser.each_selector do |selector, declarations, specificity|
@@ -73,6 +75,38 @@ end
 parser.rules_count
 # => 3
 ```
+
+### css_parser Compatibility
+
+Cataract provides a compatible API with the popular [css_parser](https://github.com/premailer/css_parser) gem, making it easy to switch between implementations:
+
+```ruby
+parser = Cataract::Parser.new
+
+# Load CSS from various sources
+parser.add_block!('body { color: red }')
+parser.load_string!('p { margin: 0 }')
+parser.load_file!('/path/to/styles.css')
+parser.load_uri!('https://example.com/styles.css')
+
+# Lenient parsing with automatic brace closing
+parser.add_block!('p { color: red', fix_braces: true)
+# Automatically closes the missing brace
+
+# Add rules with media types
+parser.add_block!('body { font-size: 12px }', media_types: [:screen])
+parser.add_rule!(selector: '.mobile', declarations: 'width: 100%', media_types: :handheld)
+
+# Access rules
+parser.each_selector do |selector, declarations, specificity, media_types|
+  # Process each selector
+end
+
+parser.find_rule_sets(['.header', '.footer'])
+# => [array of matching RuleSet objects]
+```
+
+**Note on `fix_braces`:** This option is `false` by default for performance. Enable it only when parsing untrusted or malformed CSS that may have missing closing braces.
 
 ## Supported CSS Features
 
@@ -90,6 +124,11 @@ parser.rules_count
 
 ### CSS3
 - Attribute substring selectors: `[attr^="value"]`, `[attr$="value"]`, `[attr*="value"]`
+
+### Special Features
+- **Data URI support**: Correctly handles semicolons in data URIs (e.g., `url(data:image/png;base64,...)`)
+- **URL functions**: Parses `url()`, `calc()`, and other CSS functions with parentheses
+- **Lenient parsing**: Optional `fix_braces` mode for auto-closing missing braces
 
 ## Development
 
