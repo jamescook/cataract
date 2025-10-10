@@ -233,12 +233,6 @@ module Benchmark
 
     fast_parser = Cataract::Parser.new
 
-    if fast_parser.using_c_extension?
-      puts "Cataract: Using C extension ⚡"
-    else
-      puts "Cataract: Using pure Ruby fallback 🐌"
-    end
-
     # Verify both test cases work before benchmarking
     puts "\nVerifying CSS1 test case..."
     begin
@@ -427,16 +421,11 @@ module Benchmark
     puts "EXTENSION INFO"
     puts "="*60
     
-    if CATARACT_C_EXT
-      puts "✅ C extension loaded successfully"
       
-      # Check where the extension was loaded from
-      extension_path = $LOADED_FEATURES.find { |f| f.include?('cataract') && f.end_with?('.bundle') }
-      if extension_path
-        puts "Extension path: #{extension_path}"
-      end
-    else
-      puts "⚠️  Using Ruby fallback (C extension not available)"
+    # Check where the extension was loaded from
+    extension_path = $LOADED_FEATURES.find { |f| f.include?('cataract') && f.end_with?('.bundle') }
+    if extension_path
+      puts "Extension path: #{extension_path}"
     end
     
     puts "Ruby version: #{RUBY_VERSION}"

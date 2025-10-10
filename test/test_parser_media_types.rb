@@ -22,8 +22,8 @@ class TestParserMediaTypes < Minitest::Test
       }
     CSS
 
-    assert_equal 'font-size: 10pt line-height: 1.2', @parser.find_by_selector('body', :print).join(' ')
-    assert_equal 'font-size: 13px line-height: 1.2', @parser.find_by_selector('body', :screen).join(' ')
+    assert_equal 'font-size: 10pt; line-height: 1.2;', @parser.find_by_selector('body', :print).join(' ')
+    assert_equal 'font-size: 13px; line-height: 1.2;', @parser.find_by_selector('body', :screen).join(' ')
   end
 
   def test_with_parenthesized_media_features
@@ -35,8 +35,8 @@ class TestParserMediaTypes < Minitest::Test
     CSS
 
     # :all returns ALL rules (css_parser behavior)
-    assert_equal 'color: black color: red', @parser.find_by_selector('body', :all).join(' ')
-    assert_equal 'color: red', @parser.find_by_selector('body', :screen).join(' ')
+    assert_equal 'color: black; color: red;', @parser.find_by_selector('body', :all).join(' ')
+    assert_equal 'color: red;', @parser.find_by_selector('body', :screen).join(' ')
   end
 
   def test_finding_by_multiple_media_types
@@ -54,8 +54,8 @@ class TestParserMediaTypes < Minitest::Test
 
     # Query with array of media types
     results = @parser.find_by_selector('body', [:screen, :handheld])
-    assert_includes results.join(' '), 'font-size: 13px'
-    assert_includes results.join(' '), 'line-height: 1.2'
+    assert_includes results.join(' '), 'font-size: 13px;'
+    assert_includes results.join(' '), 'line-height: 1.2;'
   end
 
   def test_adding_block_with_media_types
@@ -63,7 +63,7 @@ class TestParserMediaTypes < Minitest::Test
       body { font-size: 10pt }
     CSS
 
-    assert_equal 'font-size: 10pt', @parser.find_by_selector('body', :screen).join(' ')
+    assert_equal 'font-size: 10pt;', @parser.find_by_selector('body', :screen).join(' ')
     assert @parser.find_by_selector('body', :handheld).empty?
   end
 
@@ -82,7 +82,7 @@ class TestParserMediaTypes < Minitest::Test
   def test_adding_rule_set_with_media_type
     @parser.add_rule!(selector: 'body', declarations: 'color: black', media_types: [:handheld, :tty])
     @parser.add_rule!(selector: 'body', declarations: 'color: blue', media_types: :screen)
-    assert_equal 'color: black', @parser.find_by_selector('body', :handheld).join(' ')
+    assert_equal 'color: black;', @parser.find_by_selector('body', :handheld).join(' ')
   end
 
   def test_selecting_with_all_media_types

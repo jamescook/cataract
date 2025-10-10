@@ -11,23 +11,34 @@ module Cataract
     end
     
     # Property access
+    # Returns value with trailing semicolon (css_parser compatibility)
     def [](property)
-      @properties[normalize_property(property)]
+      prop = normalize_property(property)
+      value = @properties[prop]
+      return nil if value.nil?
+
+      # css_parser includes trailing semicolon in values
+      is_important = @important_flags[prop]
+      suffix = is_important ? ' !important' : ''
+      "#{value}#{suffix};"
     end
     
     def []=(property, value)
       prop = normalize_property(property)
-      
-      # Parse !important
-      value_str = value.to_s
+
+      # Parse !important and strip trailing semicolons (css_parser compatibility)
+      value_str = value.to_s.strip
+      # Remove trailing semicolons
+      value_str = value_str.sub(/;+$/, '')
+
       is_important = value_str.end_with?('!important')
       clean_value = is_important ? value_str.sub(/\s*!important\s*$/, '').strip : value_str.strip
-      
+
       # Store property
       unless @properties.key?(prop)
         @property_order << prop
       end
-      
+
       @properties[prop] = clean_value
       @important_flags[prop] = is_important
     end
@@ -74,13 +85,15 @@ module Cataract
     end
     
     # Convert to CSS string
+    # css_parser format: includes trailing semicolon
     def to_s
+      return "" if empty?
       declarations = []
       each do |property, value, is_important|
         suffix = is_important ? ' !important' : ''
         declarations << "#{property}: #{value}#{suffix}"
       end
-      declarations.join('; ')
+      declarations.join('; ') + ';'
     end
     
     # Convert to hash (for compatibility)
