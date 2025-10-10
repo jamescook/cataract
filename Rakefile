@@ -9,10 +9,6 @@ begin
   Rake::ExtensionTask.new("cataract") do |ext|
     ext.lib_dir = "lib/cataract"
     ext.ext_dir = "ext/cataract"
-
-    # Use fast compilation for local development
-    # Gem builds will use -G2 automatically (see extconf.rb)
-    ENV['CATARACT_DEV_BUILD'] = '1' if ENV['CATARACT_DEV_BUILD'].nil?
   end
 end
 
@@ -26,9 +22,19 @@ end
 
 task :benchmark do
   Rake::Task[:compile].invoke
-  
+
   puts "Running benchmark with development version..."
   ruby "test/benchmark.rb"
+end
+
+namespace :benchmark do
+  desc "Benchmark different Ragel code generation styles"
+  task :styles do
+    puts "Benchmarking Ragel code generation styles..."
+    puts "This will compile the extension multiple times with different styles."
+    puts ""
+    ruby "test/benchmark_ragel_styles.rb"
+  end
 end
 
 # Clean task FIXME if this is chained onto compile it fails???
