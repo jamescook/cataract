@@ -36,7 +36,7 @@ class TestCataract < Minitest::Test
     selectors = []
     @parser.each_selector do |selector, declarations, specificity|
       selectors << selector
-      assert_equal "color: red", declarations
+      assert_equal "color: red;", declarations
       assert_equal 10, specificity # class selector = 10
     end
 
@@ -52,7 +52,7 @@ class TestCataract < Minitest::Test
     @parser.parse(css)
 
     header_rules = @parser.find_by_selector(".header")
-    assert_equal ["color: blue"], header_rules
+    assert_equal ["color: blue;"], header_rules
 
     missing_rules = @parser.find_by_selector(".nonexistent")
     assert_equal [], missing_rules
@@ -79,9 +79,9 @@ class TestCataract < Minitest::Test
 
     @parser.each_selector do |selector, declarations, specificity|
       assert_equal ".multi", selector
-      assert_includes declarations, "color: red"
-      assert_includes declarations, "background: blue"
-      assert_includes declarations, "margin: 10px"
+      assert_includes declarations, "color: red;"
+      assert_includes declarations, "background: blue;"
+      assert_includes declarations, "margin: 10px;"
     end
   end
 
@@ -100,7 +100,7 @@ class TestCataract < Minitest::Test
     # Each should have the same declarations
     [".header", ".footer", "#nav"].each do |selector|
       rules = @parser.find_by_selector(selector)
-      assert_equal ["color: blue"], rules
+      assert_equal ["color: blue;"], rules
     end
   end
 
@@ -113,9 +113,9 @@ class TestCataract < Minitest::Test
 
     [".btn", ".button"].each do |selector|
       rules = @parser.find_by_selector(selector).first
-      assert_includes rules, "color: white"
-      assert_includes rules, "background: blue"
-      assert_includes rules, "padding: 10px"
+      assert_includes rules, "color: white;"
+      assert_includes rules, "background: blue;"
+      assert_includes rules, "padding: 10px;"
     end
   end
 
@@ -127,7 +127,7 @@ class TestCataract < Minitest::Test
     assert_includes @parser.selectors, ".main-header"
 
     @parser.each_selector do |selector, declarations, specificity|
-      assert_equal "background-color: white", declarations
+      assert_equal "background-color: white;", declarations
     end
   end
 
@@ -171,7 +171,7 @@ class TestCataract < Minitest::Test
 
     @parser.each_selector do |selector, declarations, specificity|
       assert_equal "[disabled]", selector
-      assert_equal "opacity: 0.5", declarations
+      assert_equal "opacity: 0.5;", declarations
       assert_equal 10, specificity # attribute selector = 10
     end
   end
@@ -213,7 +213,7 @@ class TestCataract < Minitest::Test
     # Each should have the same declarations
     ["[required]", "[disabled]"].each do |selector|
       rules = @parser.find_by_selector(selector)
-      assert_equal ["border: 2px solid red"], rules
+      assert_equal ["border: 2px solid red;"], rules
     end
   end
 
@@ -239,13 +239,13 @@ class TestCataract < Minitest::Test
   def test_attribute_equals_unquoted_value
     css = "[type=submit] { background: blue }"
     @parser.parse(css)
-    
+
     assert_equal 1, @parser.rules_count
     assert_includes @parser.selectors, "[type=submit]"
-    
+
     @parser.each_selector do |selector, declarations, specificity|
       assert_equal "[type=submit]", selector
-      assert_equal "background: blue", declarations
+      assert_equal "background: blue;", declarations
       assert_equal 10, specificity # attribute selector = 10
     end
   end
@@ -258,7 +258,7 @@ class TestCataract < Minitest::Test
     assert_includes @parser.selectors, '[data-role="button"]'
     
     rules = @parser.find_by_selector('[data-role="button"]')
-    assert_equal ["padding: 10px"], rules
+    assert_equal ["padding: 10px;"], rules
   end
 
   def test_attribute_equals_single_quoted_value
@@ -314,7 +314,7 @@ class TestCataract < Minitest::Test
     # Each should have the same declarations
     ["[required]", "[type=email]"].each do |selector|
       rules = @parser.find_by_selector(selector)
-      assert_equal ["border: 2px solid red"], rules
+      assert_equal ["border: 2px solid red;"], rules
     end
   end
 
@@ -325,16 +325,16 @@ class TestCataract < Minitest::Test
       [type=text] { color: green }
       #special { color: red }
     }
-    
+
     @parser.parse(css)
-    
+
     specificities = {}
     @parser.each_selector do |selector, declarations, specificity|
       specificities[selector] = specificity
     end
-    
+
     assert_equal 1, specificities["input"]      # element = 1
-    assert_equal 10, specificities["[type]"]    # attribute = 10  
+    assert_equal 10, specificities["[type]"]    # attribute = 10
     assert_equal 10, specificities["[type=text]"] # attribute with value = 10
     assert_equal 100, specificities["#special"] # id = 100
   end

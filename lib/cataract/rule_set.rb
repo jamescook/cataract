@@ -1,25 +1,33 @@
 module Cataract
   class RuleSet
     attr_reader :selector, :declarations, :media_types
-    
+
     # YJIT-friendly: define all instance variables upfront
-    def initialize(selector:, declarations: nil, media_types: [:all])
-      @selector = selector.to_s.strip
+    # Accepts both :selector and :selectors, both :declarations and :block for css_parser compatibility
+    def initialize(selector: nil, selectors: nil, declarations: nil, block: nil, media_types: [:all], specificity: nil)
+      # Handle both selector and selectors parameters (css_parser compatibility)
+      selector_str = selector || selectors
+      raise ArgumentError, "Must provide selector or selectors" if selector_str.nil?
+
+      @selector = selector_str.to_s.strip
       @media_types = Array(media_types).map(&:to_sym)
-      @specificity = nil # Cached specificity
-      
+      @specificity = specificity # Can be overridden, otherwise calculated
+
+      # Handle both declarations and block parameters (css_parser compatibility)
+      decl_input = declarations || block
+
       # Handle different declaration input types
-      @declarations = case declarations
+      @declarations = case decl_input
                      when Declarations
-                       declarations.dup
+                       decl_input.dup
                      when Hash
-                       Declarations.new(declarations)
+                       Declarations.new(decl_input)
                      when String
-                       parse_declaration_string(declarations)
+                       parse_declaration_string(decl_input)
                      when nil
                        Declarations.new
                      else
-                       raise ArgumentError, "Invalid declarations type: #{declarations.class}"
+                       raise ArgumentError, "Invalid declarations type: #{decl_input.class}"
                      end
     end
     
@@ -119,26 +127,69 @@ module Cataract
     def merge(other)
       dup.merge!(other)
     end
-    
+
+    # css_parser compatibility: return array of individual selectors
+    # "h1, h2, h3" => ["h1", "h2", "h3"]
+    def selectors
+      @selector.split(',').map(&:strip)
+    end
+
+    # css_parser compatibility: iterate over each individual selector with its declarations
+    # For "h1, h2" with "color: red", yields:
+    #   - ["h1", "color: red;", specificity_of_h1]
+    #   - ["h2", "color: red;", specificity_of_h2]
+    def each_selector
+      return enum_for(:each_selector) unless block_given?
+
+      selectors.each do |sel|
+        spec = @specificity || calculate_specificity(sel)
+        yield sel, @declarations.to_s, spec
+      end
+    end
+
+    # css_parser compatibility: iterate over each declaration
+    # Yields: property, value, is_important
+    def each_declaration
+      return enum_for(:each_declaration) unless block_given?
+
+      @declarations.each do |property, value|
+        is_important = @declarations.important?(property)
+        yield property, value, is_important
+      end
+    end
+
+    # css_parser compatibility: return declarations as string
+    def declarations_to_s
+      @declarations.to_s
+    end
+
     private
     
     # Parse "color: red; background: blue" into Declarations
+    # Also handles css_parser format with braces: "{ color: red }"
+    # Uses Ragel parser for robustness (handles data URIs, escaping, etc.)
     def parse_declaration_string(str)
-      declarations = Declarations.new
-      
-      # Simple parsing - split on semicolons, then on first colon
-      str.split(';').each do |decl|
-        next if decl.strip.empty?
-        
-        parts = decl.split(':', 2)
-        next unless parts.length == 2
-        
-        property = parts[0].strip
-        value = parts[1].strip
-        declarations[property] = value
+      # Strip outer braces if present (css_parser compatibility)
+      clean_str = str.strip
+      if clean_str.start_with?('{') && clean_str.end_with?('}')
+        clean_str = clean_str[1..-2].strip
       end
-      
-      declarations
+
+      # Use Ragel parser by wrapping in a dummy selector
+      # This handles all edge cases (data URIs, escaped strings, comments, etc.)
+      dummy_css = ".x { #{clean_str} }"
+
+      begin
+        parsed = Cataract.parse_css(dummy_css)
+        return Declarations.new if parsed.empty?
+
+        # Extract declarations from the parsed rule
+        raw_declarations = parsed[0][:declarations]
+        return Declarations.new(raw_declarations)
+      rescue
+        # If parsing fails, return empty declarations (css_parser behavior for malformed CSS)
+        return Declarations.new
+      end
     end
     
     # Calculate CSS specificity using C extension

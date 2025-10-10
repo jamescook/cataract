@@ -25,7 +25,7 @@ class TestCSS2Features < Minitest::Test
 
     # Should have media type :print
     body_rules = @parser.find_by_selector("body", :print)
-    assert_equal ["margin: 0"], body_rules
+    assert_equal ["margin: 0;"], body_rules
 
     # Should not match :screen
     screen_rules = @parser.find_by_selector("body", :screen)
@@ -42,8 +42,8 @@ class TestCSS2Features < Minitest::Test
     @parser.parse(css)
 
     # Should match both media types
-    assert_equal ["color: black"], @parser.find_by_selector(".header", :screen)
-    assert_equal ["color: black"], @parser.find_by_selector(".header", :print)
+    assert_equal ["color: black;"], @parser.find_by_selector(".header", :screen)
+    assert_equal ["color: black;"], @parser.find_by_selector(".header", :print)
   end
 
   def test_media_query_with_feature
@@ -57,7 +57,7 @@ class TestCSS2Features < Minitest::Test
 
     # For now, just check it parses and applies to screen
     assert_equal 1, @parser.rules_count
-    assert_includes @parser.find_by_selector(".container", :screen), "width: 750px"
+    assert_includes @parser.find_by_selector(".container", :screen), "width: 750px;"
   end
 
   def test_mixed_media_and_non_media_rules
@@ -76,11 +76,11 @@ class TestCSS2Features < Minitest::Test
     assert_equal 3, @parser.rules_count
 
     # :all matches ALL rules regardless of media type (css_parser behavior)
-    assert_equal ["margin: 10px", "margin: 0"], @parser.find_by_selector("body", :all)
-    assert_equal ["color: blue"], @parser.find_by_selector(".header", :all)
+    assert_equal ["margin: 10px;", "margin: 0;"], @parser.find_by_selector("body", :all)
+    assert_equal ["color: blue;"], @parser.find_by_selector(".header", :all)
 
     # Media-specific query only returns that media's rules
-    assert_equal ["margin: 0"], @parser.find_by_selector("body", :print)
+    assert_equal ["margin: 0;"], @parser.find_by_selector("body", :print)
   end
 
   # ============================================================================
@@ -256,7 +256,7 @@ class TestCSS2Features < Minitest::Test
     # This should already work based on Declarations class
     rule = @parser.rules.first
     assert rule.declarations.important?("color")
-    assert_equal "color: red !important", rule.declarations.to_s
+    assert_equal "color: red !important;", rule.declarations.to_s
   end
 
   # ============================================================================

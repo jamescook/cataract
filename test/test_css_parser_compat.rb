@@ -176,7 +176,7 @@ class TestCssParserCompat < Minitest::Test
 
     result = @parser.find_by_selector('#content')
 
-    assert_equal ['font-size: 13px; line-height: 1.2'], result
+    assert_equal ['font-size: 13px; line-height: 1.2;'], result
   end
 
   def test_find_by_selector_with_media_types_array
@@ -189,7 +189,7 @@ class TestCssParserCompat < Minitest::Test
 
     result = @parser.find_by_selector('#content', [:screen, :handheld])
 
-    assert_equal ['font-size: 13px; line-height: 1.2'], result
+    assert_equal ['font-size: 13px; line-height: 1.2;'], result
   end
 
   def test_find_by_selector_with_media_type_symbol
@@ -202,7 +202,7 @@ class TestCssParserCompat < Minitest::Test
 
     result = @parser.find_by_selector('#content', :print)
 
-    assert_equal ['font-size: 11pt; line-height: 1.2'], result
+    assert_equal ['font-size: 11pt; line-height: 1.2;'], result
   end
 
   def test_find_by_selector_multiple_rules_same_selector
@@ -214,7 +214,7 @@ class TestCssParserCompat < Minitest::Test
 
     result = @parser.find_by_selector('#content')
 
-    assert_equal ['font-size: 13px', 'line-height: 1.2'], result
+    assert_equal ['font-size: 13px;', 'line-height: 1.2;'], result
   end
 
   def test_find_by_selector_bracket_alias
@@ -223,7 +223,7 @@ class TestCssParserCompat < Minitest::Test
     # Test [] alias
     result = @parser['.header']
 
-    assert_equal ['color: blue'], result
+    assert_equal ['color: blue;'], result
   end
 
   def test_find_by_selector_no_match
