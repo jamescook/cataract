@@ -216,9 +216,26 @@
   # ============================================================================
   # VALUES (CSS1)
   # ============================================================================
-  # Simple value that captures everything until ; or }
-  # This is intentionally permissive - we don't validate value syntax
-  value = (any - [;}])+;
+  # CSS value parsing with special handling for parentheses
+  # Key insight: Semicolons inside parentheses (like in data URIs) should NOT end the declaration
+  # Example: url(data:image/png;base64,ABC) - the semicolon is part of the value
+  #
+  # Strategy: Simple one-level parenthesis matching
+  # - Inside ( ... ), allow any characters including semicolons
+  # - Outside parens, semicolons end the declaration
+  # This handles the common case of url(...) and other CSS functions
+
+  # Content inside parentheses - can include semicolons
+  # We don't allow nested parens to keep the state machine small
+  paren_content = (any - [()])*;
+  paren_group = '(' paren_content ')';
+
+  # Regular value characters (outside parens) - no semicolons, braces, or open parens
+  value_char = (any - [;{}(]);
+
+  # Complete value: combination of regular chars and paren groups
+  # This allows: "10px", "url(data:...;...)", "calc(100% - 10px)", etc.
+  value = (value_char | paren_group)+;
 
   # CSS1/2/3: Value syntax is validated by browsers, not by this parser
   # We capture the raw string and let the browser handle validation

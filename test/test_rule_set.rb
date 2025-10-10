@@ -66,8 +66,6 @@ class TestRuleSet < Minitest::Test
   end
 
   def test_each_declaration_containing_semicolons
-    # TODO: Ragel parser doesn't handle semicolons in data URIs yet
-    skip "Parser doesn't support semicolons in data URIs"
     rs = Cataract::RuleSet.new(selectors: 'div', block: "background-image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAiCAMAAAB7);" \
                             "background-repeat: no-repeat")
     assert_equal 'url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAiCAMAAAB7);', rs['background-image']
@@ -149,8 +147,6 @@ class TestRuleSet < Minitest::Test
   end
 
   def test_content_with_data
-    # TODO: Ragel parser doesn't handle semicolons in data URIs yet
-    skip "Parser doesn't support semicolons in data URIs"
     # Data URIs with embedded content should work
     rule = Cataract::RuleSet.new(selectors: 'div', block: '{content: url(data:image/png;base64,LOTSOFSTUFF)}')
     assert_includes rule.to_s, "image/png;base64,LOTSOFSTUFF"
