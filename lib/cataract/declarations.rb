@@ -34,6 +34,10 @@ module Cataract
       is_important = value_str.end_with?('!important')
       clean_value = is_important ? value_str.sub(/\s*!important\s*$/, '').strip : value_str.strip
 
+      # Reject malformed declarations with no value (e.g., "color: !important")
+      # css_parser silently ignores these
+      return if clean_value.empty?
+
       # Store property
       unless @properties.key?(prop)
         @property_order << prop

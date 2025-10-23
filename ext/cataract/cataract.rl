@@ -163,11 +163,28 @@
     value = rb_str_new(start, end - start);
   }
 
+  action mark_important {
+    is_important = 1;
+  }
+
   action finish_declaration {
     if (NIL_P(current_declarations)) {
       current_declarations = rb_hash_new();
     }
-    rb_hash_aset(current_declarations, property, value);
+
+    // Append !important to value if flag is set (maintains hash-based API)
+    // Grammar now parses !important properly, we just assemble it back into the value string
+    // This keeps the fast C-level hash operations without needing rb_funcall
+    VALUE final_value = value;
+    if (is_important) {
+      final_value = rb_str_dup(value);
+      rb_str_cat2(final_value, " !important");
+    }
+
+    rb_hash_aset(current_declarations, property, final_value);
+
+    // Reset important flag for next declaration
+    is_important = 0;
   }
 
   action finish_rule {
@@ -230,8 +247,10 @@
   paren_content = (any - [()])*;
   paren_group = '(' paren_content ')';
 
-  # Regular value characters (outside parens) - no semicolons, braces, or open parens
-  value_char = (any - [;{}(]);
+  # Regular value characters (outside parens) - no semicolons, braces, open parens, or exclamation marks
+  # Exclamation mark is excluded because it's only valid in CSS as part of "!important"
+  # which is handled separately by the important_flag pattern
+  value_char = (any - [;{}(!]);
 
   # Complete value: combination of regular chars and paren groups
   # This allows: "10px", "url(data:...;...)", "calc(100% - 10px)", etc.
@@ -313,10 +332,23 @@
   # DECLARATIONS (CSS1)
   # ============================================================================
   property = ident >mark_prop %capture_property;
-  declaration = property ws* ':' ws* (value >mark_val %capture_value) %finish_declaration;
-  declaration_list = declaration (ws* ';' ws* declaration)* (ws* ';')?;
 
-  # CSS2: TODO - Add !important flag parsing (currently handled in Ruby layer)
+  # CSS2: !important flag
+  # Design decision: Parse !important in grammar, but assemble back into value string
+  # - Grammar parses !important as separate token (architecturally correct)
+  # - C code appends " !important" to value string if flag is set
+  # - Ruby Declarations class also handles !important for manual assignment (rs['color'] = 'red !important')
+  # - This keeps fast C-level hash operations without needing rb_funcall for Data objects
+  # Alternative considered: Ruby Data.define with property/value/important fields
+  #   Rejected because: Data.new requires rb_funcall (slow), hash operations are pure C (fast)
+  important_flag = ws* '!' ws* 'important' >mark_important;
+
+  declaration = property ws* ':' ws* (value >mark_val %capture_value) important_flag? %finish_declaration;
+  # Allow multiple consecutive semicolons (css_parser compatibility)
+  # (ws* ';')+ matches one or more semicolons (with optional whitespace before each)
+  # This makes ";;" equivalent to ";" for separator purposes
+  semicolon_sep = (ws* ';')+ ws*;
+  declaration_list = declaration (semicolon_sep declaration)* semicolon_sep?;
 
   # ============================================================================
   # RULES (CSS1)
@@ -441,7 +473,40 @@
   action count_id { id_count++; }
   action count_class { class_count++; }
   action count_attr { attr_count++; }
-  action count_pseudo_class { pseudo_class_count++; }
+
+  action mark_pseudo_start { pseudo_mark = p; }
+  action mark_pseudo_end { pseudo_end = p; }
+
+  action count_pseudo_class {
+    // Check if this is a legacy pseudo-element with single-colon syntax
+    // CSS2.1 allows :before, :after, :first-line, :first-letter, :selection
+    // These should count as pseudo-elements (1 point), not pseudo-classes (10 points)
+    //
+    // W3C Spec: "The negation pseudo-class itself does not count as a pseudo-class"
+    // So :not() contributes 0 to specificity (but selectors inside it do count)
+    int len = pseudo_end - pseudo_mark;
+    int is_legacy_pseudo_element =
+      (len == 6 && strncmp(pseudo_mark, "before", 6) == 0) ||
+      (len == 5 && strncmp(pseudo_mark, "after", 5) == 0) ||
+      (len == 10 && strncmp(pseudo_mark, "first-line", 10) == 0) ||
+      (len == 12 && strncmp(pseudo_mark, "first-letter", 12) == 0) ||
+      (len == 9 && strncmp(pseudo_mark, "selection", 9) == 0);
+
+    int is_not_pseudo_class = (len == 3 && strncmp(pseudo_mark, "not", 3) == 0);
+
+    if (is_legacy_pseudo_element) {
+      pseudo_element_count++;
+    } else if (!is_not_pseudo_class) {
+      // Only count if it's not :not()
+      pseudo_class_count++;
+    } else {
+      // For :not(), mark that we need to process its content
+      // The pattern already consumed :not(...)
+      // We need to find the parentheses and extract the content
+      not_pseudo_mark = pseudo_mark;  // Save position for later processing
+    }
+  }
+
   action count_pseudo_element { pseudo_element_count++; }
   action count_element { element_count++; }
 
@@ -456,7 +521,7 @@
   universal_sel_pattern = '*';
   attr_sel_pattern = '[' ws* ident ws* (attr_operator ws* (ident | string) ws*)? ']';
   pseudo_element_pattern = '::' ident ('(' (any - ')')* ')')?;
-  pseudo_class_pattern = ':' ident ('(' (any - ')')* ')')?;
+  pseudo_class_pattern = ':' ident >mark_pseudo_start %mark_pseudo_end ('(' (any - ')')* ')')?;
 
   # Apply actions to complete patterns
   class_sel = class_sel_pattern %count_class;
@@ -562,6 +627,7 @@ static VALUE parse_css(VALUE self, VALUE css_string) {
     int cs;
     int brace_depth = 0;  // Track brace nesting for @media blocks
     int inside_media_block = 0;  // Flag to prevent creating rules while scanning media content
+    int is_important = 0;  // Track !important flag for current declaration
 
     // Ruby variables for building result
     VALUE rules_array, current_selectors, current_declarations, current_media_types;
@@ -602,6 +668,9 @@ static VALUE calculate_specificity(VALUE self, VALUE selector_string) {
 
     // Ragel state variables
     char *p, *pe, *eof;
+    char *pseudo_mark = NULL;  // Mark start of pseudo-class/element name
+    char *pseudo_end = NULL;   // Mark end of pseudo-class/element name
+    char *not_pseudo_mark = NULL;  // Mark position of :not() for content extraction
     int cs;
 
     // Setup input
@@ -612,6 +681,48 @@ static VALUE calculate_specificity(VALUE self, VALUE selector_string) {
 
     %% machine specificity_counter; write init;
     %% machine specificity_counter; write exec;
+
+    // Handle :not() pseudo-class (CSS Selectors Level 3)
+    // W3C Spec: "The negation pseudo-class itself does not count as a pseudo-class"
+    // But the simple selector inside :not() does count toward specificity
+    //
+    // CSS Selectors Level 3: :not() accepts only simple selectors (no nesting, no combinators)
+    // CSS Selectors Level 4: :not() accepts selector lists and complex selectors
+    // This implementation supports Level 3 (simple selectors only)
+    if (not_pseudo_mark != NULL) {
+        // Find the opening paren after :not
+        const char *paren_start = not_pseudo_mark + 3;  // Skip "not"
+        while (paren_start < pe && *paren_start != '(') paren_start++;
+
+        if (paren_start < pe && *paren_start == '(') {
+            // Find matching closing paren
+            const char *paren_end = paren_start + 1;
+            int paren_depth = 1;
+            while (paren_end < pe && paren_depth > 0) {
+                if (*paren_end == '(') paren_depth++;
+                else if (*paren_end == ')') paren_depth--;
+                paren_end++;
+            }
+
+            // Extract content between parens and recursively calculate its specificity
+            long content_len = paren_end - paren_start - 2;  // -2 to skip the parens themselves
+            if (content_len > 0) {
+                VALUE not_content = rb_str_new(paren_start + 1, content_len);
+                VALUE not_spec = calculate_specificity(self, not_content);
+                int not_content_specificity = NUM2INT(not_spec);
+
+                // Break down the specificity and add to our counters
+                // Specificity is calculated as: a*100 + b*10 + c*1
+                int additional_a = not_content_specificity / 100;
+                int additional_b = (not_content_specificity % 100) / 10;
+                int additional_c = not_content_specificity % 10;
+
+                id_count += additional_a;
+                class_count += additional_b;
+                element_count += additional_c;
+            }
+        }
+    }
 
     // Calculate specificity using W3C formula:
     // IDs * 100 + (classes + attributes + pseudo-classes) * 10 + (elements + pseudo-elements) * 1

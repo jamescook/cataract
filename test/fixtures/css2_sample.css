@@ -1,0 +1,139 @@
+/* Base styles */
+body {
+  margin: 0;
+  padding: 0;
+  font-family: Arial, sans-serif;
+  background-color: #ffffff
+}
+
+.header {
+  color: #333;
+  padding: 20px;
+  background: #f8f9fa
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 15px
+}
+
+/* CSS2 Combinators */
+div p {
+  line-height: 1.6
+}
+
+.container > .item {
+  margin-bottom: 20px
+}
+
+h1 + p {
+  margin-top: 0;
+  font-size: 1.2em
+}
+
+.nav > ul > li {
+  display: inline-block;
+  padding: 0 15px
+}
+
+article > header > h1 {
+  color: #2c3e50;
+  font-size: 2rem
+}
+
+.sidebar ~ .content {
+  margin-left: 260px
+}
+
+div.wrapper > article#main {
+  padding: 20px;
+  background: white
+}
+
+/* CSS2 Pseudo-classes and Pseudo-elements */
+a:link {
+  color: #0066cc;
+  text-decoration: none
+}
+
+a:visited {
+  color: #551a8b
+}
+
+a:hover {
+  color: #003d7a;
+  text-decoration: underline
+}
+
+input:focus {
+  border-color: #4a90e2;
+  outline: none
+}
+
+p:first-child {
+  margin-top: 0
+}
+
+.quote::before {
+  content: '"';
+  font-size: 1.5em
+}
+
+.quote::after {
+  content: '"';
+  font-size: 1.5em
+}
+
+/* Print styles */
+@media print {
+  body {
+    margin: 0;
+    color: #000;
+    background: #fff
+  }
+
+  .header {
+    padding: 10px;
+    border-bottom: 1px solid #000
+  }
+
+  .no-print {
+    display: none
+  }
+}
+
+/* Mobile styles */
+@media screen {
+  .mobile-menu {
+    display: block;
+    padding: 10px
+  }
+
+  .container {
+    padding: 0 10px
+  }
+}
+
+/* Multiple media types */
+@media screen, print {
+  .universal {
+    font-size: 14px;
+    line-height: 1.5
+  }
+
+  #footer {
+    margin-top: 20px;
+    padding: 10px
+  }
+}
+
+/* More base styles after media queries */
+.sidebar {
+  width: 250px;
+  float: left
+}
+
+#content {
+  margin-left: 260px
+}
