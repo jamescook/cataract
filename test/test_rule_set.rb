@@ -73,8 +73,6 @@ class TestRuleSet < Minitest::Test
   end
 
   def test_each_declaration_with_newlines
-    # TODO: Ragel parser doesn't handle excessive newlines and multiple semicolons well
-    skip "Parser doesn't handle excessive newlines/semicolons in declarations"
     expected = Set[
       {property: 'background-image', value: 'url(foo;bar)', is_important: false},
       {property: 'font-weight', value: 'bold', is_important: true},
@@ -121,8 +119,6 @@ class TestRuleSet < Minitest::Test
   end
 
   def test_important_without_value
-    # TODO: Ragel parser doesn't reject malformed "color: !important" declarations
-    skip "Parser doesn't reject malformed !important declarations"
     declarations = 'color: !important; background-color: #fff'
     rs = Cataract::RuleSet.new(selectors: '#content p, a', block: declarations)
     # Malformed "color: !important" should be ignored, only background-color remains
