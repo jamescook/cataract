@@ -483,9 +483,9 @@
   # CSS2: ✓ Combinators (>, +, ~, descendant space) - IMPLEMENTED
   # CSS2: ✓ Pseudo-classes (:hover, :focus, :first-child, :lang()) - IMPLEMENTED
   # CSS2: ✓ Pseudo-elements (::before, ::after, ::first-line, ::first-letter) - IMPLEMENTED
-  # CSS3: TODO - Add structural pseudo-classes (:nth-child(), :nth-of-type(), etc.)
+  # CSS3: ✓ Negation pseudo-class (:not()) - IMPLEMENTED
+  # CSS3: ✓ Structural pseudo-classes (:nth-child(), :nth-of-type(), :first-of-type, :last-child, etc.) - IMPLEMENTED
   # CSS3: TODO - Add UI pseudo-classes (:enabled, :disabled, :checked)
-  # CSS3: TODO - Add negation pseudo-class (:not())
 
   # ============================================================================
   # DECLARATIONS (CSS1)
