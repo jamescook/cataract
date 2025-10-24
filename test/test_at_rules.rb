@@ -115,6 +115,82 @@ class TestAtRules < Minitest::Test
     assert_equal 1, @parser.rules_count
   end
 
+  def test_keyframes_webkit_from_bootstrap
+    # Real pattern from Bootstrap CSS
+    @parser.parse(<<~CSS)
+      @-webkit-keyframes spinner-grow {
+        0% {
+          transform: scale(0);
+        }
+        50% {
+          opacity: 1;
+          transform: none;
+        }
+      }
+
+      @keyframes spinner-border {
+        to {
+          transform: rotate(360deg) /* rtl:ignore */;
+        }
+      }
+    CSS
+
+    assert_equal 2, @parser.rules_count
+  end
+
+  def test_webkit_animation_property
+    # Bootstrap pattern that fails: -webkit-animation property
+    @parser.parse(<<~CSS)
+      @-webkit-keyframes spinner-border {
+        to {
+          transform: rotate(360deg) /* rtl:ignore */;
+        }
+      }
+
+      @keyframes spinner-border {
+        to {
+          transform: rotate(360deg) /* rtl:ignore */;
+        }
+      }
+      .spinner-border {
+        display: inline-block;
+        width: 2rem;
+        height: 2rem;
+        vertical-align: -0.125em;
+        border: 0.25em solid currentColor;
+        border-right-color: transparent;
+        border-radius: 50%;
+        -webkit-animation: 0.75s linear infinite spinner-border;
+        animation: 0.75s linear infinite spinner-border;
+      }
+    CSS
+
+    assert_equal 3, @parser.rules_count
+  end
+
+  def test_css_custom_properties
+    # Bootstrap pattern: CSS custom properties (CSS variables) with -- prefix
+    @parser.parse(<<~CSS)
+      .ratio-1x1 {
+        --bs-aspect-ratio: 100%;
+      }
+
+      .ratio-4x3 {
+        --bs-aspect-ratio: calc(3 / 4 * 100%);
+      }
+
+      .ratio-16x9 {
+        --bs-aspect-ratio: calc(9 / 16 * 100%);
+      }
+
+      .ratio-21x9 {
+        --bs-aspect-ratio: calc(9 / 21 * 100%);
+      }
+    CSS
+
+    assert_equal 4, @parser.rules_count
+  end
+
   # @supports tests
   def test_supports_basic
     @parser.parse(<<~CSS)
@@ -213,5 +289,14 @@ class TestAtRules < Minitest::Test
     CSS
 
     assert_equal 5, @parser.rules_count
+  end
+
+  def test_bootstrap_css
+    # Real-world CSS from Bootstrap 5
+    css = File.read(File.expand_path('fixtures/bootstrap.css', __dir__))
+    @parser.parse(css)
+
+    # Bootstrap has thousands of rules - just verify it parses without error
+    assert @parser.rules_count > 0, "Should parse Bootstrap CSS successfully"
   end
 end
