@@ -1,6 +1,19 @@
 #include <ruby.h>
 #include <stdio.h>
 
+// Forward declarations
+VALUE cataract_split_value(VALUE self, VALUE value);
+VALUE cataract_expand_margin(VALUE self, VALUE value);
+VALUE cataract_expand_padding(VALUE self, VALUE value);
+VALUE cataract_expand_border_color(VALUE self, VALUE value);
+VALUE cataract_expand_border_style(VALUE self, VALUE value);
+VALUE cataract_expand_border_width(VALUE self, VALUE value);
+VALUE cataract_expand_border(VALUE self, VALUE value);
+VALUE cataract_expand_border_side(VALUE self, VALUE side, VALUE value);
+VALUE cataract_expand_font(VALUE self, VALUE value);
+VALUE cataract_expand_list_style(VALUE self, VALUE value);
+VALUE cataract_expand_background(VALUE self, VALUE value);
+
 // Uncomment to enable debug output (adds overhead, use only for development)
 // #define CATARACT_DEBUG 1
 
@@ -954,6 +967,17 @@ void Init_cataract() {
     VALUE module = rb_define_module("Cataract");
     rb_define_module_function(module, "parse_css", parse_css, 1);
     rb_define_module_function(module, "calculate_specificity", calculate_specificity, 1);
+    rb_define_module_function(module, "split_value", cataract_split_value, 1);
+    rb_define_module_function(module, "expand_margin", cataract_expand_margin, 1);
+    rb_define_module_function(module, "expand_padding", cataract_expand_padding, 1);
+    rb_define_module_function(module, "expand_border_color", cataract_expand_border_color, 1);
+    rb_define_module_function(module, "expand_border_style", cataract_expand_border_style, 1);
+    rb_define_module_function(module, "expand_border_width", cataract_expand_border_width, 1);
+    rb_define_module_function(module, "expand_border", cataract_expand_border, 1);
+    rb_define_module_function(module, "expand_border_side", cataract_expand_border_side, 2);
+    rb_define_module_function(module, "expand_font", cataract_expand_font, 1);
+    rb_define_module_function(module, "expand_list_style", cataract_expand_list_style, 1);
+    rb_define_module_function(module, "expand_background", cataract_expand_background, 1);
 
     // Export string allocation mode as a constant for verification in benchmarks
     #ifdef DISABLE_STR_BUF_OPTIMIZATION
@@ -962,3 +986,7 @@ void Init_cataract() {
         rb_define_const(module, "STRING_ALLOC_MODE", ID2SYM(rb_intern("buffer")));
     #endif
 }
+
+// Include shorthand_expander implementation
+#include "shorthand_expander.c"
+

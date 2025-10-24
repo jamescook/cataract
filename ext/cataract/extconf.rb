@@ -11,42 +11,54 @@ else
   exit 1
 end
 
-# Get the correct path to the .rl file
+# Get the correct path to the .rl files
 ext_dir = File.dirname(__FILE__)
-rl_file = File.join(ext_dir, "cataract.rl")
-c_file = File.join(ext_dir, "cataract.c")
-
-unless File.exist?(rl_file)
-  puts "ERROR: Ragel grammar file not found: #{rl_file}"
-  exit 1
-end
-
-# Generate C code from Ragel grammar
-puts "Generating C parser from Ragel grammar..."
-puts "  Input: #{rl_file}"
-puts "  Output: #{c_file}"
 
 # Ragel code generation style
 # Defaults to -T0 (table driven, balances speed and compile time)
 # Override with RAGEL_STYLE environment variable to test other styles
 # Available: -T0, -T1, -F0, -F1, -G0, -G1, -G2 (see ragel --help)
 ragel_style = ENV['RAGEL_STYLE'] || '-T0'
-puts "  Style: #{ragel_style}"
 ragel_flags = "#{ragel_style} -C"
 
-ragel_cmd = "ragel #{ragel_flags} #{rl_file} -o #{c_file}"
-unless system(ragel_cmd)
-  puts "ERROR: Failed to generate C code from Ragel grammar"
-  puts "Command: #{ragel_cmd}"
-  exit 1
+# Generate C code from all Ragel grammars
+# Note: shorthand_expander.c is included in cataract.c, not compiled separately
+ragel_files = [
+  ['cataract.rl', 'cataract.c'],
+  ['shorthand_expander.rl', 'shorthand_expander.c']
+]
+
+ragel_files.each do |rl_name, c_name|
+  rl_file = File.join(ext_dir, rl_name)
+  c_file = File.join(ext_dir, c_name)
+
+  unless File.exist?(rl_file)
+    puts "ERROR: Ragel grammar file not found: #{rl_file}"
+    exit 1
+  end
+
+  puts "Generating C code from Ragel grammar..."
+  puts "  Input: #{rl_file}"
+  puts "  Output: #{c_file}"
+  puts "  Style: #{ragel_style}"
+
+  ragel_cmd = "ragel #{ragel_flags} #{rl_file} -o #{c_file}"
+  unless system(ragel_cmd)
+    puts "ERROR: Failed to generate C code from Ragel grammar"
+    puts "Command: #{ragel_cmd}"
+    exit 1
+  end
+
+  unless File.exist?(c_file)
+    puts "ERROR: Generated C file not found: #{c_file}"
+    exit 1
+  end
+
+  puts "Generated #{c_name} successfully"
 end
 
-unless File.exist?(c_file)
-  puts "ERROR: Generated C file not found: #{c_file}"
-  exit 1
-end
-
-puts "C parser generated successfully"
+# Only compile cataract.c (it includes value_splitter.c)
+$objs = ['cataract.o']
 
 # String buffer optimization (enabled by default, disable for benchmarking)
 # Check both env var (for development) and command-line flag (for gem install)
