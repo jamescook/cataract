@@ -27,7 +27,7 @@ gem install cataract
 
 ### Requirements
 
-- Ruby >= 2.7.0
+- Ruby >= 3.1.0
 - Ragel (for development/building from source)
   - macOS: `brew install ragel`
   - Ubuntu: `sudo apt-get install ragel`
