@@ -485,7 +485,7 @@
   # CSS2: ✓ Pseudo-elements (::before, ::after, ::first-line, ::first-letter) - IMPLEMENTED
   # CSS3: ✓ Negation pseudo-class (:not()) - IMPLEMENTED
   # CSS3: ✓ Structural pseudo-classes (:nth-child(), :nth-of-type(), :first-of-type, :last-child, etc.) - IMPLEMENTED
-  # CSS3: TODO - Add UI pseudo-classes (:enabled, :disabled, :checked)
+  # CSS3: ✓ UI pseudo-classes (:enabled, :disabled, :checked) - IMPLEMENTED
 
   # ============================================================================
   # DECLARATIONS (CSS1)

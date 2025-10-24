@@ -129,4 +129,30 @@ class TestStructuralPseudoClasses < Minitest::Test
   def test_first_of_type_specificity
     assert_equal 11, Cataract.calculate_specificity("p:first-of-type")  # element(1) + pseudo-class(10)
   end
+
+  # UI pseudo-classes (CSS3)
+  def test_enabled
+    @parser.parse("input:enabled { background: white; }")
+    assert_equal 1, @parser.rules_count
+    assert_includes @parser.selectors, "input:enabled"
+  end
+
+  def test_disabled
+    @parser.parse("input:disabled { opacity: 0.5; }")
+    assert_equal 1, @parser.rules_count
+    assert_includes @parser.selectors, "input:disabled"
+  end
+
+  def test_checked
+    @parser.parse("input:checked { background: blue; }")
+    assert_equal 1, @parser.rules_count
+    assert_includes @parser.selectors, "input:checked"
+  end
+
+  def test_ui_pseudo_class_specificity
+    # UI pseudo-classes count as class selectors (10 points)
+    assert_equal 11, Cataract.calculate_specificity("input:enabled")  # element(1) + pseudo-class(10)
+    assert_equal 11, Cataract.calculate_specificity("input:disabled")  # element(1) + pseudo-class(10)
+    assert_equal 11, Cataract.calculate_specificity("input:checked")  # element(1) + pseudo-class(10)
+  end
 end
