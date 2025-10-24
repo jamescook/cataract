@@ -19,7 +19,7 @@ rescue LoadError
 end
 
 # State file for benchmark-ips to compare across runs
-RESULTS_FILE = File.join(Dir.tmpdir, 'cataract_yjit_benchmark.json')
+RESULTS_FILE = File.join(File.expand_path('../.benchmark_results', __dir__), 'yjit_benchmark.json')
 
 # Sample CSS for parsing
 SAMPLE_CSS = <<~CSS
