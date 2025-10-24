@@ -20,8 +20,6 @@
   }
   action mark_prop { prop_mark = p; }
   action mark_val { val_mark = p; }
-  action mark_media { media_mark = p; }
-
   action start_compound_selector {
     // Mark the start of a compound selector
     // Uses global 'mark' variable (safe since selectors don't overlap with @media content extraction)
@@ -54,104 +52,6 @@
     // Reset mark when starting a new selector after comma
     mark = NULL;
     DEBUG_PRINTF("[selector] reset_for_next_selector\n");
-  }
-
-  action capture_media_type {
-    // Convert media type string directly to symbol
-    ID media_id = rb_intern2(media_mark, p - media_mark);
-    VALUE media_sym = ID2SYM(media_id);
-    rb_ary_push(current_media_types, media_sym);
-    DEBUG_PRINTF("[@media] captured media type: %.*s\n", (int)(p - media_mark), media_mark);
-  }
-
-  action init_depth {
-    brace_depth = 1;  // We just entered the opening brace
-    // Save the position of the opening '{' for @media content extraction
-    // Since this is a $ (all transition) action, p is at the '{'
-    media_content_start = p;
-    DEBUG_PRINTF("[@media] init_depth: depth=%d at pos=%ld, media_content_start=%ld char='%c'\n", brace_depth, p - RSTRING_PTR(css_string), media_content_start - RSTRING_PTR(css_string), *p);
-  }
-
-  action inc_depth {
-    brace_depth++;
-    DEBUG_PRINTF("[@media] inc_depth: depth=%d at pos=%ld char='%c'\n", brace_depth, p - RSTRING_PTR(css_string), *p);
-  }
-
-  action dec_depth {
-    brace_depth--;
-    DEBUG_PRINTF("[@media] dec_depth: depth=%d at pos=%ld char='%c'\n", brace_depth, p - RSTRING_PTR(css_string), *p);
-    if (brace_depth == 0) {
-      // We've found the matching closing brace
-      // Extract content between the braces (media_content_start points to '{', p points to '}')
-      DEBUG_PRINTF("[@media] Matched closing brace at media_content_start=%ld p=%ld\n", media_content_start - RSTRING_PTR(css_string), p - RSTRING_PTR(css_string));
-
-      VALUE media_content_str = rb_str_new(media_content_start + 1, p - media_content_start - 1);
-      DEBUG_PRINTF("[@media] Content to parse: %s\n", RSTRING_PTR(media_content_str));
-
-      // Recursively parse the content
-      VALUE inner_rules = parse_css(Qnil, media_content_str);
-      DEBUG_PRINTF("[@media] Parsed %ld inner rules\n", RARRAY_LEN(inner_rules));
-
-      // Add media types to all inner rules
-      if (!NIL_P(current_media_types) && RARRAY_LEN(current_media_types) > 0) {
-        long len = RARRAY_LEN(inner_rules);
-        for (long i = 0; i < len; i++) {
-          VALUE rule = RARRAY_AREF(inner_rules, i);
-          rb_hash_aset(rule, ID2SYM(rb_intern("media_types")), rb_ary_dup(current_media_types));
-        }
-      }
-
-      // Add all inner rules to the main rules array
-      // Manual iteration is faster than rb_funcall(concat)
-      long inner_len = RARRAY_LEN(inner_rules);
-      for (long i = 0; i < inner_len; i++) {
-        rb_ary_push(rules_array, RARRAY_AREF(inner_rules, i));
-      }
-
-      current_media_types = Qnil;
-      inside_media_block = 0;  // Clear flag when done with media block
-      // Use fgoto to jump back to main state and continue parsing
-      fgoto main;
-    }
-  }
-
-  action start_media_block {
-    // Clear any partially-matched selectors/declarations from outer parse
-    // This prevents spurious rules from being created while scanning media content
-    current_selectors = Qnil;
-    current_declarations = Qnil;
-    // Set flag to prevent outer parse from creating rules while scanning media content
-    inside_media_block = 1;
-
-    // Parse the media query string to extract media types using separate machine
-    // media_mark points to start, p points to current position (before '{')
-    if (media_mark != NULL && p > media_mark) {
-      // Strip trailing whitespace
-      const char *end = p;
-      while (end > media_mark && (*(end-1) == ' ' || *(end-1) == '\t' || *(end-1) == '\n' || *(end-1) == '\r')) {
-        end--;
-      }
-      long query_len = end - media_mark;
-      DEBUG_PRINTF("[@media] start_media_block: parsing query string: '%.*s'\n", (int)query_len, media_mark);
-      current_media_types = parse_media_query(media_mark, query_len);
-      DEBUG_PRINTF("[@media] start_media_block: captured %ld media types\n", RARRAY_LEN(current_media_types));
-    } else {
-      current_media_types = rb_ary_new();
-      DEBUG_PRINTF("[@media] start_media_block: no query string\n");
-    }
-  }
-
-  action finish_font_face {
-    // @font-face is treated as a special selector with declarations
-    VALUE selector = rb_str_new_cstr("@font-face");
-    VALUE rule = rb_hash_new();
-    rb_hash_aset(rule, ID2SYM(rb_intern("selector")), selector);
-    rb_hash_aset(rule, ID2SYM(rb_intern("declarations")), rb_hash_dup(current_declarations));
-    rb_hash_aset(rule, ID2SYM(rb_intern("media_types")), rb_ary_new3(1, ID2SYM(rb_intern("all"))));
-    rb_ary_push(rules_array, rule);
-
-    // Reset for next rule
-    current_declarations = rb_hash_new();
   }
 
   action handle_eof {
@@ -302,7 +202,10 @@
             rb_hash_aset(rule, ID2SYM(rb_intern("declarations")), rb_hash_new());
             rb_hash_aset(rule, ID2SYM(rb_intern("media_types")), rb_ary_new3(1, ID2SYM(rb_intern("all"))));
             rb_ary_push(rules_array, rule);
-          } else if (strcmp(name_cstr, "font-face") == 0) {
+          } else if (strcmp(name_cstr, "font-face") == 0 || strcmp(name_cstr, "property") == 0 ||
+                     strcmp(name_cstr, "page") == 0 || strcmp(name_cstr, "counter-style") == 0) {
+            // Descriptor-based at-rules: @font-face, @property, @page, @counter-style
+            // These contain descriptors (not rules), so parse as dummy selector to extract declarations
             VALUE block_content = rb_str_new(at_rule_block_start + 1, p - at_rule_block_start - 1);
             VALUE wrapped = rb_str_new_cstr("* { ");
             rb_str_append(wrapped, block_content);
@@ -311,11 +214,39 @@
             VALUE dummy_rules = parse_css(Qnil, wrapped);
             if (!NIL_P(dummy_rules) && RARRAY_LEN(dummy_rules) > 0) {
               VALUE declarations = rb_hash_aref(RARRAY_AREF(dummy_rules, 0), ID2SYM(rb_intern("declarations")));
+
+              // Build selector with prelude if present (e.g., "@property --my-color")
+              VALUE selector = rb_str_new_cstr("@");
+              rb_str_cat2(selector, name_cstr);
+
+              // Add prelude if non-empty (for @property --name, @page :first, etc.)
+              const char *prelude_end = media_content_start;
+              while (prelude_end > at_rule_prelude_start && (*(prelude_end-1) == ' ' || *(prelude_end-1) == '\t')) {
+                prelude_end--;
+              }
+              long prelude_len = prelude_end - at_rule_prelude_start;
+              if (prelude_len > 0) {
+                VALUE prelude_val = rb_str_new(at_rule_prelude_start, prelude_len);
+                prelude_val = rb_funcall(prelude_val, rb_intern("strip"), 0);
+                if (RSTRING_LEN(prelude_val) > 0) {
+                  rb_str_cat2(selector, " ");
+                  rb_str_append(selector, prelude_val);
+                }
+              }
+
               VALUE rule = rb_hash_new();
-              rb_hash_aset(rule, ID2SYM(rb_intern("selector")), rb_str_new_cstr("@font-face"));
+              rb_hash_aset(rule, ID2SYM(rb_intern("selector")), selector);
               rb_hash_aset(rule, ID2SYM(rb_intern("declarations")), declarations);
               rb_hash_aset(rule, ID2SYM(rb_intern("media_types")), rb_ary_new3(1, ID2SYM(rb_intern("all"))));
               rb_ary_push(rules_array, rule);
+            }
+          } else {
+            // Default: treat as conditional group rule (like @supports, @layer, @container, @scope, etc.)
+            // Recursively parse block content
+            VALUE block_content = rb_str_new(at_rule_block_start + 1, p - at_rule_block_start - 1);
+            VALUE inner_rules = parse_css(Qnil, block_content);
+            for (long i = 0; i < RARRAY_LEN(inner_rules); i++) {
+              rb_ary_push(rules_array, RARRAY_AREF(inner_rules, i));
             }
           }
 
@@ -332,135 +263,9 @@
     }
   }
 
-  action finish_at_rule {
-    // Extract at-rule name and process
-    if (mark == NULL || media_mark == NULL) {
-      DEBUG_PRINTF("[@at-rule] finish_at_rule: missing markers, skipping\n");
-    } else {
-      // Get at-rule name (between mark and media_mark, skipping whitespace)
-      const char *name_end = media_mark;
-      while (name_end > mark && (*(name_end-1) == ' ' || *(name_end-1) == '\t')) {
-        name_end--;
-      }
-      VALUE at_name = rb_str_new(mark, name_end - mark);
-      const char *name_cstr = StringValueCStr(at_name);
-
-      DEBUG_PRINTF("[@at-rule] finish_at_rule: name='%s'\n", name_cstr);
-
-      if (strcmp(name_cstr, "media") == 0 && at_rule_block_start != NULL) {
-        // Parse media query from prelude (between media_mark and media_content_start)
-        const char *prelude_end = media_content_start;
-        while (prelude_end > media_mark && (*(prelude_end-1) == ' ' || *(prelude_end-1) == '\t')) {
-          prelude_end--;
-        }
-        long query_len = prelude_end - media_mark;
-        DEBUG_PRINTF("[@at-rule] @media query: '%.*s'\n", (int)query_len, media_mark);
-        VALUE media_types = parse_media_query(media_mark, query_len);
-
-        // Extract block content (between at_rule_block_start '{' and at_rule_block_end '}')
-        DEBUG_PRINTF("[@at-rule] block_start=%ld block_end=%ld\n",
-                     at_rule_block_start - RSTRING_PTR(css_string),
-                     at_rule_block_end - RSTRING_PTR(css_string));
-        if (at_rule_block_end == NULL || at_rule_block_end <= at_rule_block_start) {
-          DEBUG_PRINTF("[@at-rule] ERROR: invalid block pointers\n");
-        } else {
-          VALUE media_content_str = rb_str_new(at_rule_block_start + 1, at_rule_block_end - at_rule_block_start - 1);
-          DEBUG_PRINTF("[@at-rule] @media content: '%s'\n", RSTRING_PTR(media_content_str));
-
-          // Recursively parse
-          VALUE inner_rules = parse_css(Qnil, media_content_str);
-          DEBUG_PRINTF("[@at-rule] @media parsed %ld inner rules\n", RARRAY_LEN(inner_rules));
-
-          // Add media types to inner rules
-          if (!NIL_P(media_types) && RARRAY_LEN(media_types) > 0) {
-            for (long i = 0; i < RARRAY_LEN(inner_rules); i++) {
-              VALUE rule = RARRAY_AREF(inner_rules, i);
-              rb_hash_aset(rule, ID2SYM(rb_intern("media_types")), rb_ary_dup(media_types));
-            }
-          }
-
-          // Add to main rules array
-          for (long i = 0; i < RARRAY_LEN(inner_rules); i++) {
-            rb_ary_push(rules_array, RARRAY_AREF(inner_rules, i));
-          }
-        }
-      } else if (strcmp(name_cstr, "font-face") == 0) {
-        DEBUG_PRINTF("[@at-rule] @font-face (not implemented yet)\n");
-      }
-    }
-
-    // Reset markers
-    mark = NULL;
-    media_mark = NULL;
-    media_content_start = NULL;
-    at_rule_block_start = NULL;
-    at_rule_block_end = NULL;
-  }
-
-  action mark_keyframes_name {
-    mark = p;
-  }
-
-  action finish_keyframes {
-    // @keyframes is stored as a rule with selector "@keyframes <name>"
-    // Content is stored in declarations as a single "content" property
-    if (mark != NULL && media_content_start != NULL) {
-      VALUE keyframes_name = rb_str_new(mark, media_content_start - mark);
-      // Strip whitespace from name
-      keyframes_name = rb_funcall(keyframes_name, rb_intern("strip"), 0);
-
-      VALUE selector = rb_str_new_cstr("@keyframes ");
-      rb_str_append(selector, keyframes_name);
-
-      // Extract content between braces
-      VALUE content = rb_str_new(media_content_start + 1, p - media_content_start - 1);
-
-      VALUE rule = rb_hash_new();
-      rb_hash_aset(rule, ID2SYM(rb_intern("selector")), selector);
-
-      // Store keyframes content as a "content" declaration
-      VALUE declarations = rb_hash_new();
-      rb_hash_aset(declarations, rb_str_new_cstr("content"), content);
-      rb_hash_aset(rule, ID2SYM(rb_intern("declarations")), declarations);
-      rb_hash_aset(rule, ID2SYM(rb_intern("media_types")), rb_ary_new3(1, ID2SYM(rb_intern("all"))));
-
-      rb_ary_push(rules_array, rule);
-    }
-
-    // Reset state
-    inside_media_block = 0;
-    mark = NULL;
-    media_content_start = NULL;
-  }
-
-  action mark_supports {
-    mark = p;
-  }
 
   action finish_parse {
     // No-op: EOF reached, parsing complete
-  }
-
-  action finish_supports {
-    // @supports is similar to @media - recursively parse content
-    if (mark != NULL && media_content_start != NULL) {
-      // Extract content between braces
-      VALUE supports_content = rb_str_new(media_content_start + 1, p - media_content_start - 1);
-
-      // Recursively parse the content
-      VALUE inner_rules = parse_css(Qnil, supports_content);
-
-      // Add all inner rules to our rules array
-      // Inner rules don't get special media types - @supports doesn't affect cascade
-      for (long i = 0; i < RARRAY_LEN(inner_rules); i++) {
-        rb_ary_push(rules_array, RARRAY_AREF(inner_rules, i));
-      }
-    }
-
-    // Reset state
-    inside_media_block = 0;
-    mark = NULL;
-    media_content_start = NULL;
   }
 
   action capture_property {
@@ -787,9 +592,10 @@
 
   # CSS2: TODO - Add @import rules
   # CSS2: ✓ Media query features (and, min-width, max-width, etc.) - IMPLEMENTED
-  # CSS3: TODO - Add @keyframes for animations
+  # CSS3: ✓ @keyframes for animations - IMPLEMENTED
   # CSS3: ✓ @font-face for custom fonts - IMPLEMENTED
-  # CSS3: TODO - Add @supports for feature queries
+  # CSS3: ✓ @supports for feature queries - IMPLEMENTED
+  # CSS3: ✓ Negation pseudo-class (:not()) - IMPLEMENTED
 
   # ============================================================================
   # STYLESHEET (CSS1)
@@ -1112,7 +918,6 @@ static VALUE calculate_specificity(VALUE self, VALUE selector_string) {
     return INT2NUM(specificity);
 }
 
-// Ruby extension initialization
 void Init_cataract() {
     VALUE module = rb_define_module("Cataract");
     rb_define_module_function(module, "parse_css", parse_css, 1);
