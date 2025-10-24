@@ -48,6 +48,15 @@ end
 
 puts "C parser generated successfully"
 
+# String buffer optimization (enabled by default, disable for benchmarking)
+# Check both env var (for development) and command-line flag (for gem install)
+if ENV['DISABLE_STR_BUF_OPTIMIZATION'] || arg_config('--disable-str-buf-optimization')
+  puts "Disabling string buffer pre-allocation optimization (baseline mode for benchmarking)"
+  $CFLAGS << " -DDISABLE_STR_BUF_OPTIMIZATION"
+else
+  puts "Using string buffer pre-allocation optimization (rb_str_buf_new)"
+end
+
 # Suppress warnings from Ragel-generated code
 # The generated C code has some harmless warnings we can't fix
 $CFLAGS << " -Wno-unused-const-variable" if RUBY_PLATFORM =~ /darwin|linux/

@@ -10,6 +10,22 @@
   #define DEBUG_PRINTF(...) ((void)0)
 #endif
 
+// String allocation optimization (enabled by default)
+// Uses rb_str_buf_new for pre-allocation when building selector strings
+//
+// Disable for benchmarking baseline:
+//   Development: DISABLE_STR_BUF_OPTIMIZATION=1 rake compile
+//   Gem install: gem install cataract -- --disable-str-buf-optimization
+//
+//
+#ifndef DISABLE_STR_BUF_OPTIMIZATION
+  #define STR_NEW_WITH_CAPACITY(capacity) rb_str_buf_new(capacity)
+  #define STR_NEW_CSTR(str) rb_str_new_cstr(str)
+#else
+  #define STR_NEW_WITH_CAPACITY(capacity) rb_str_new_cstr("")
+  #define STR_NEW_CSTR(str) rb_str_new_cstr(str)
+#endif
+
 %%{
   machine css_parser;
   
@@ -192,10 +208,10 @@
             VALUE animation_name = rb_str_new(at_rule_prelude_start, prelude_end - at_rule_prelude_start);
             animation_name = rb_funcall(animation_name, rb_intern("strip"), 0);
 
-            // Pre-allocate selector: "@" + name + " " + animation_name
+            // Build selector: "@" + name + " " + animation_name
             long name_len = strlen(name_cstr);
             long anim_len = RSTRING_LEN(animation_name);
-            VALUE selector = rb_str_buf_new(1 + name_len + 1 + anim_len);
+            VALUE selector = STR_NEW_WITH_CAPACITY(1 + name_len + 1 + anim_len);
             rb_str_cat2(selector, "@");
             rb_str_cat2(selector, name_cstr);
             rb_str_cat2(selector, " ");
@@ -212,9 +228,9 @@
             // These contain descriptors (not rules), so parse as dummy selector to extract declarations
             VALUE block_content = rb_str_new(at_rule_block_start + 1, p - at_rule_block_start - 1);
 
-            // Pre-allocate string with known capacity to avoid realloc: "* { " + content + " }"
+            // Wrap content for parsing: "* { " + content + " }"
             long content_len = RSTRING_LEN(block_content);
-            VALUE wrapped = rb_str_buf_new(4 + content_len + 2);  // "* { " (4) + content + " }" (2)
+            VALUE wrapped = STR_NEW_WITH_CAPACITY(4 + content_len + 2);  // "* { " (4) + content + " }" (2)
             rb_str_cat2(wrapped, "* { ");
             rb_str_append(wrapped, block_content);
             rb_str_cat2(wrapped, " }");
@@ -237,10 +253,10 @@
                 stripped_prelude_len = RSTRING_LEN(prelude_val);
               }
 
-              // Build selector with pre-allocation: "@" + name + [" " + prelude]
+              // Build selector: "@" + name + [" " + prelude]
               long name_len = strlen(name_cstr);
               long total_capacity = 1 + name_len + (stripped_prelude_len > 0 ? 1 + stripped_prelude_len : 0);
-              VALUE selector = rb_str_buf_new(total_capacity);
+              VALUE selector = STR_NEW_WITH_CAPACITY(total_capacity);
               rb_str_cat2(selector, "@");
               rb_str_cat2(selector, name_cstr);
 
@@ -367,7 +383,7 @@
   # ============================================================================
   ws = [ \t\n\r];
   comment = '/*' any* '*/';
-  ident = alpha (alpha | digit | '-')*;
+  ident = ('-'? '-'? alpha (alpha | digit | '-')*);  # Allow vendor prefixes (-webkit) and custom properties (--)
   number = digit+ ('.' digit+)?;
   dstring = '"' (any - '"')* '"';
   sstring = "'" (any - "'")* "'";
@@ -643,7 +659,7 @@
 
   # Reuse basic token definitions
   ws = [ \t\n\r];
-  ident = alpha (alpha | digit | '-')*;
+  ident = ('-'? '-'? alpha (alpha | digit | '-')*);  # Allow vendor prefixes and custom properties
   dstring = '"' (any - '"')* '"';
   sstring = "'" (any - "'")* "'";
   string = dstring | sstring;
@@ -744,7 +760,7 @@
 
   # Reuse basic token definitions
   ws = [ \t\n\r];
-  ident = alpha (alpha | digit | '-')*;
+  ident = ('-'? '-'? alpha (alpha | digit | '-')*);  # Allow vendor prefixes and custom properties
 
   # Action to capture media type
   action capture_mq_type {
@@ -938,4 +954,11 @@ void Init_cataract() {
     VALUE module = rb_define_module("Cataract");
     rb_define_module_function(module, "parse_css", parse_css, 1);
     rb_define_module_function(module, "calculate_specificity", calculate_specificity, 1);
+
+    // Export string allocation mode as a constant for verification in benchmarks
+    #ifdef DISABLE_STR_BUF_OPTIMIZATION
+        rb_define_const(module, "STRING_ALLOC_MODE", ID2SYM(rb_intern("dynamic")));
+    #else
+        rb_define_const(module, "STRING_ALLOC_MODE", ID2SYM(rb_intern("buffer")));
+    #endif
 }

@@ -63,6 +63,34 @@ namespace :benchmark do
     puts "=" * 80
     system({'RUBY_YJIT_ENABLE' => '1'}, RbConfig.ruby, "test/benchmarks/benchmark_yjit.rb")
   end
+
+  desc "Benchmark string allocation optimization (buffer vs dynamic)"
+  task :string_allocation do
+    # Clean up any existing benchmark results
+    results_files = [
+      'test/benchmark_string_allocation_parse.json',
+      'test/benchmark_string_allocation_iterate.json',
+      'test/benchmark_string_allocation_10x.json'
+    ]
+    results_files.each do |file|
+      if File.exist?(file)
+        puts "Removing old benchmark results: #{file}"
+        FileUtils.rm_f(file)
+      end
+    end
+
+    puts "\n" + "=" * 80
+    puts "Compiling with DYNAMIC allocation (rb_str_new_cstr)"
+    puts "=" * 80
+    system({'DISABLE_STR_BUF_OPTIMIZATION' => '1'}, 'rake', 'compile')
+    system({}, RbConfig.ruby, "test/benchmarks/benchmark_string_allocation.rb")
+
+    puts "\n\n" + "=" * 80
+    puts "Compiling with BUFFER allocation (rb_str_buf_new, production default)"
+    puts "=" * 80
+    system({}, 'rake', 'compile')
+    system({}, RbConfig.ruby, "test/benchmarks/benchmark_string_allocation.rb")
+  end
 end
 
 # Clean task FIXME if this is chained onto compile it fails???
