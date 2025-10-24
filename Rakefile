@@ -67,13 +67,9 @@ namespace :benchmark do
   desc "Benchmark string allocation optimization (buffer vs dynamic)"
   task :string_allocation do
     # Clean up any existing benchmark results
-    results_files = [
-      'test/benchmark_string_allocation_parse.json',
-      'test/benchmark_string_allocation_iterate.json',
-      'test/benchmark_string_allocation_10x.json'
-    ]
-    results_files.each do |file|
-      if File.exist?(file)
+    results_dir = 'test/.benchmark_results'
+    if Dir.exist?(results_dir)
+      Dir.glob(File.join(results_dir, 'string_allocation_*.json')).each do |file|
         puts "Removing old benchmark results: #{file}"
         FileUtils.rm_f(file)
       end
