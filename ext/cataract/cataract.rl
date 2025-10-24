@@ -141,6 +141,328 @@
     }
   }
 
+  action finish_font_face {
+    // @font-face is treated as a special selector with declarations
+    VALUE selector = rb_str_new_cstr("@font-face");
+    VALUE rule = rb_hash_new();
+    rb_hash_aset(rule, ID2SYM(rb_intern("selector")), selector);
+    rb_hash_aset(rule, ID2SYM(rb_intern("declarations")), rb_hash_dup(current_declarations));
+    rb_hash_aset(rule, ID2SYM(rb_intern("media_types")), rb_ary_new3(1, ID2SYM(rb_intern("all"))));
+    rb_ary_push(rules_array, rule);
+
+    // Reset for next rule
+    current_declarations = rb_hash_new();
+  }
+
+  action handle_eof {
+    // Accept EOF in non-final states - this allows ** to terminate gracefully
+    DEBUG_PRINTF("[@eof] Reached end of input, accepting\n");
+  }
+
+  action mark_at_rule_name {
+    // Only mark if we're not already inside an at-rule block
+    // (prevents nested at-rules from overwriting outer markers)
+    if (brace_depth == 0 && at_rule_depth == 0) {
+      at_rule_name_start = p;
+      DEBUG_PRINTF("[@at-rule] mark_at_rule_name at pos=%ld\n", p - RSTRING_PTR(css_string));
+    } else {
+      DEBUG_PRINTF("[@at-rule] mark_at_rule_name SKIPPED (inside block, brace=%d at=%d)\n", brace_depth, at_rule_depth);
+    }
+  }
+
+  action mark_prelude_start {
+    // Only mark if we're not already inside an at-rule block
+    if (brace_depth == 0 && at_rule_depth == 0) {
+      at_rule_prelude_start = p;
+      DEBUG_PRINTF("[@at-rule] mark_prelude_start at pos=%ld\n", p - RSTRING_PTR(css_string));
+    } else {
+      DEBUG_PRINTF("[@at-rule] mark_prelude_start SKIPPED (inside block)\n");
+    }
+  }
+
+  action mark_prelude_end {
+    // Only mark if we're not already inside an at-rule block
+    if (brace_depth == 0 && at_rule_depth == 0) {
+      media_content_start = p;  // Mark end of prelude (start of block)
+      DEBUG_PRINTF("[@at-rule] mark_prelude_end at pos=%ld\n", p - RSTRING_PTR(css_string));
+    } else {
+      DEBUG_PRINTF("[@at-rule] mark_prelude_end SKIPPED (inside block)\n");
+    }
+  }
+
+  action at_rule_init_depth {
+    // Check if this is @media by examining the at-rule name
+    const char *name_end = at_rule_prelude_start;
+    while (name_end > at_rule_name_start && (*(name_end-1) == ' ' || *(name_end-1) == '\t' || *(name_end-1) == '\n')) {
+      name_end--;
+    }
+    int is_media = (name_end - at_rule_name_start == 5 && strncmp(at_rule_name_start, "media", 5) == 0);
+
+    if (is_media) {
+      // @media: use brace_depth
+      // Only initialize if we're not already inside a media block (top-level @media only)
+      if (brace_depth == 0) {
+        brace_depth = 1;
+        media_content_start = p;
+        inside_at_rule_block = 1;
+        DEBUG_PRINTF("[@media] init_depth: depth=1, content_start=%ld\n", p - RSTRING_PTR(css_string));
+      } else {
+        // Nested @media - shouldn't happen in same parse, will be handled in recursive parse
+        DEBUG_PRINTF("[@media] init_depth: SKIPPED (already inside media, depth=%d)\n", brace_depth);
+      }
+    } else {
+      // Other at-rules: use at_rule_depth
+      // Only initialize if not inside any at-rule block
+      if (at_rule_depth == 0 && brace_depth == 0) {
+        at_rule_depth = 1;
+        at_rule_block_start = p;
+        inside_at_rule_block = 1;
+        DEBUG_PRINTF("[@at-rule] init_depth: depth=1\n");
+      } else {
+        DEBUG_PRINTF("[@at-rule] init_depth: SKIPPED (already inside block, at_depth=%d brace_depth=%d)\n", at_rule_depth, brace_depth);
+      }
+    }
+  }
+
+  action at_rule_inc_depth {
+    // Branch based on which depth counter is active
+    if (brace_depth > 0) {
+      brace_depth++;
+      DEBUG_PRINTF("[@media] inc_depth: depth=%d\n", brace_depth);
+    } else {
+      at_rule_depth++;
+      DEBUG_PRINTF("[@at-rule] inc_depth: depth=%d\n", at_rule_depth);
+    }
+  }
+
+  action at_rule_dec_depth {
+    // Branch based on which depth counter is active
+    if (brace_depth > 0) {
+      brace_depth--;
+      DEBUG_PRINTF("[@media] dec_depth: depth=%d\n", brace_depth);
+
+      if (brace_depth == 0) {
+        // @media block closed - recursively parse content
+        const char *prelude_end = media_content_start;
+        while (prelude_end > at_rule_prelude_start && (*(prelude_end-1) == ' ' || *(prelude_end-1) == '\t')) {
+          prelude_end--;
+        }
+        VALUE media_types = parse_media_query(at_rule_prelude_start, prelude_end - at_rule_prelude_start);
+        VALUE media_content_str = rb_str_new(media_content_start + 1, p - media_content_start - 1);
+        VALUE inner_rules = parse_css(Qnil, media_content_str);
+
+        if (!NIL_P(media_types) && RARRAY_LEN(media_types) > 0) {
+          for (long i = 0; i < RARRAY_LEN(inner_rules); i++) {
+            rb_hash_aset(RARRAY_AREF(inner_rules, i), ID2SYM(rb_intern("media_types")), rb_ary_dup(media_types));
+          }
+        }
+        for (long i = 0; i < RARRAY_LEN(inner_rules); i++) {
+          rb_ary_push(rules_array, RARRAY_AREF(inner_rules, i));
+        }
+
+        inside_at_rule_block = 0;
+        // p++;  // Advance past the closing }
+        fgoto main;  // Jump back to main state and continue parsing
+      }
+    } else {
+      at_rule_depth--;
+      DEBUG_PRINTF("[@at-rule] dec_depth: depth=%d\n", at_rule_depth);
+
+      if (at_rule_depth == 0) {
+        // Other at-rule block closed - process it
+        if (at_rule_name_start != NULL && at_rule_prelude_start != NULL && at_rule_block_start != NULL) {
+          const char *name_end = at_rule_prelude_start;
+          while (name_end > at_rule_name_start && (*(name_end-1) == ' ' || *(name_end-1) == '\t')) {
+            name_end--;
+          }
+          VALUE at_name = rb_str_new(at_rule_name_start, name_end - at_rule_name_start);
+          const char *name_cstr = StringValueCStr(at_name);
+
+          if (strcmp(name_cstr, "supports") == 0) {
+            VALUE block_content = rb_str_new(at_rule_block_start + 1, p - at_rule_block_start - 1);
+            VALUE inner_rules = parse_css(Qnil, block_content);
+            for (long i = 0; i < RARRAY_LEN(inner_rules); i++) {
+              rb_ary_push(rules_array, RARRAY_AREF(inner_rules, i));
+            }
+          } else if (strncmp(name_cstr, "keyframes", 9) == 0 || strstr(name_cstr, "-keyframes") != NULL) {
+            const char *prelude_end = media_content_start;
+            while (prelude_end > at_rule_prelude_start && (*(prelude_end-1) == ' ' || *(prelude_end-1) == '\t')) {
+              prelude_end--;
+            }
+            VALUE animation_name = rb_str_new(at_rule_prelude_start, prelude_end - at_rule_prelude_start);
+            animation_name = rb_funcall(animation_name, rb_intern("strip"), 0);
+
+            VALUE selector = rb_str_new_cstr("@");
+            rb_str_cat2(selector, name_cstr);
+            rb_str_cat2(selector, " ");
+            rb_str_append(selector, animation_name);
+
+            VALUE rule = rb_hash_new();
+            rb_hash_aset(rule, ID2SYM(rb_intern("selector")), selector);
+            rb_hash_aset(rule, ID2SYM(rb_intern("declarations")), rb_hash_new());
+            rb_hash_aset(rule, ID2SYM(rb_intern("media_types")), rb_ary_new3(1, ID2SYM(rb_intern("all"))));
+            rb_ary_push(rules_array, rule);
+          } else if (strcmp(name_cstr, "font-face") == 0) {
+            VALUE block_content = rb_str_new(at_rule_block_start + 1, p - at_rule_block_start - 1);
+            VALUE wrapped = rb_str_new_cstr("* { ");
+            rb_str_append(wrapped, block_content);
+            rb_str_cat2(wrapped, " }");
+
+            VALUE dummy_rules = parse_css(Qnil, wrapped);
+            if (!NIL_P(dummy_rules) && RARRAY_LEN(dummy_rules) > 0) {
+              VALUE declarations = rb_hash_aref(RARRAY_AREF(dummy_rules, 0), ID2SYM(rb_intern("declarations")));
+              VALUE rule = rb_hash_new();
+              rb_hash_aset(rule, ID2SYM(rb_intern("selector")), rb_str_new_cstr("@font-face"));
+              rb_hash_aset(rule, ID2SYM(rb_intern("declarations")), declarations);
+              rb_hash_aset(rule, ID2SYM(rb_intern("media_types")), rb_ary_new3(1, ID2SYM(rb_intern("all"))));
+              rb_ary_push(rules_array, rule);
+            }
+          }
+
+          at_rule_name_start = NULL;
+          at_rule_prelude_start = NULL;
+          media_content_start = NULL;
+          at_rule_block_start = NULL;
+        }
+
+        inside_at_rule_block = 0;
+        p++;
+        fgoto main;
+      }
+    }
+  }
+
+  action finish_at_rule {
+    // Extract at-rule name and process
+    if (mark == NULL || media_mark == NULL) {
+      DEBUG_PRINTF("[@at-rule] finish_at_rule: missing markers, skipping\n");
+    } else {
+      // Get at-rule name (between mark and media_mark, skipping whitespace)
+      const char *name_end = media_mark;
+      while (name_end > mark && (*(name_end-1) == ' ' || *(name_end-1) == '\t')) {
+        name_end--;
+      }
+      VALUE at_name = rb_str_new(mark, name_end - mark);
+      const char *name_cstr = StringValueCStr(at_name);
+
+      DEBUG_PRINTF("[@at-rule] finish_at_rule: name='%s'\n", name_cstr);
+
+      if (strcmp(name_cstr, "media") == 0 && at_rule_block_start != NULL) {
+        // Parse media query from prelude (between media_mark and media_content_start)
+        const char *prelude_end = media_content_start;
+        while (prelude_end > media_mark && (*(prelude_end-1) == ' ' || *(prelude_end-1) == '\t')) {
+          prelude_end--;
+        }
+        long query_len = prelude_end - media_mark;
+        DEBUG_PRINTF("[@at-rule] @media query: '%.*s'\n", (int)query_len, media_mark);
+        VALUE media_types = parse_media_query(media_mark, query_len);
+
+        // Extract block content (between at_rule_block_start '{' and at_rule_block_end '}')
+        DEBUG_PRINTF("[@at-rule] block_start=%ld block_end=%ld\n",
+                     at_rule_block_start - RSTRING_PTR(css_string),
+                     at_rule_block_end - RSTRING_PTR(css_string));
+        if (at_rule_block_end == NULL || at_rule_block_end <= at_rule_block_start) {
+          DEBUG_PRINTF("[@at-rule] ERROR: invalid block pointers\n");
+        } else {
+          VALUE media_content_str = rb_str_new(at_rule_block_start + 1, at_rule_block_end - at_rule_block_start - 1);
+          DEBUG_PRINTF("[@at-rule] @media content: '%s'\n", RSTRING_PTR(media_content_str));
+
+          // Recursively parse
+          VALUE inner_rules = parse_css(Qnil, media_content_str);
+          DEBUG_PRINTF("[@at-rule] @media parsed %ld inner rules\n", RARRAY_LEN(inner_rules));
+
+          // Add media types to inner rules
+          if (!NIL_P(media_types) && RARRAY_LEN(media_types) > 0) {
+            for (long i = 0; i < RARRAY_LEN(inner_rules); i++) {
+              VALUE rule = RARRAY_AREF(inner_rules, i);
+              rb_hash_aset(rule, ID2SYM(rb_intern("media_types")), rb_ary_dup(media_types));
+            }
+          }
+
+          // Add to main rules array
+          for (long i = 0; i < RARRAY_LEN(inner_rules); i++) {
+            rb_ary_push(rules_array, RARRAY_AREF(inner_rules, i));
+          }
+        }
+      } else if (strcmp(name_cstr, "font-face") == 0) {
+        DEBUG_PRINTF("[@at-rule] @font-face (not implemented yet)\n");
+      }
+    }
+
+    // Reset markers
+    mark = NULL;
+    media_mark = NULL;
+    media_content_start = NULL;
+    at_rule_block_start = NULL;
+    at_rule_block_end = NULL;
+  }
+
+  action mark_keyframes_name {
+    mark = p;
+  }
+
+  action finish_keyframes {
+    // @keyframes is stored as a rule with selector "@keyframes <name>"
+    // Content is stored in declarations as a single "content" property
+    if (mark != NULL && media_content_start != NULL) {
+      VALUE keyframes_name = rb_str_new(mark, media_content_start - mark);
+      // Strip whitespace from name
+      keyframes_name = rb_funcall(keyframes_name, rb_intern("strip"), 0);
+
+      VALUE selector = rb_str_new_cstr("@keyframes ");
+      rb_str_append(selector, keyframes_name);
+
+      // Extract content between braces
+      VALUE content = rb_str_new(media_content_start + 1, p - media_content_start - 1);
+
+      VALUE rule = rb_hash_new();
+      rb_hash_aset(rule, ID2SYM(rb_intern("selector")), selector);
+
+      // Store keyframes content as a "content" declaration
+      VALUE declarations = rb_hash_new();
+      rb_hash_aset(declarations, rb_str_new_cstr("content"), content);
+      rb_hash_aset(rule, ID2SYM(rb_intern("declarations")), declarations);
+      rb_hash_aset(rule, ID2SYM(rb_intern("media_types")), rb_ary_new3(1, ID2SYM(rb_intern("all"))));
+
+      rb_ary_push(rules_array, rule);
+    }
+
+    // Reset state
+    inside_media_block = 0;
+    mark = NULL;
+    media_content_start = NULL;
+  }
+
+  action mark_supports {
+    mark = p;
+  }
+
+  action finish_parse {
+    // No-op: EOF reached, parsing complete
+  }
+
+  action finish_supports {
+    // @supports is similar to @media - recursively parse content
+    if (mark != NULL && media_content_start != NULL) {
+      // Extract content between braces
+      VALUE supports_content = rb_str_new(media_content_start + 1, p - media_content_start - 1);
+
+      // Recursively parse the content
+      VALUE inner_rules = parse_css(Qnil, supports_content);
+
+      // Add all inner rules to our rules array
+      // Inner rules don't get special media types - @supports doesn't affect cascade
+      for (long i = 0; i < RARRAY_LEN(inner_rules); i++) {
+        rb_ary_push(rules_array, RARRAY_AREF(inner_rules, i));
+      }
+    }
+
+    // Reset state
+    inside_media_block = 0;
+    mark = NULL;
+    media_content_start = NULL;
+  }
+
   action capture_property {
     property = rb_str_new(prop_mark, p - prop_mark);
   }
@@ -188,8 +510,8 @@
   }
 
   action finish_rule {
-    // Skip if we're scanning media block content (will be parsed recursively)
-    if (!inside_media_block) {
+    // Skip if we're scanning at-rule block content (will be parsed recursively)
+    if (!inside_at_rule_block) {
       // Create one rule for each selector in the list
       if (!NIL_P(current_selectors) && !NIL_P(current_declarations)) {
         long len = RARRAY_LEN(current_selectors);
@@ -416,30 +738,65 @@
   # The inside_media_block flag prevents the outer parse from creating rules
   # while scanning through media content character-by-character.
 
-  # Media query parsing - NEW APPROACH
-  # Capture the entire query string, then parse it with a separate machine
-  # This avoids the alternation-in-Kleene-star problem
-  # Mark at the start, action fires when we finish matching (before start_media_block)
-  media_query_string = (any - '{')* >mark_media %start_media_block;
-  media_query_list = media_query_string;
+  # ============================================================================
+  # AT-RULES (W3C CSS Syntax Module Level 3)
+  # ============================================================================
+  # Per spec: @<name> <prelude> { <block> } or @<name> <prelude> ;
+  # Universal pattern handles @media, @font-face, @keyframes, @supports, etc.
+  #
+  # NESTED @MEDIA TRACE (test_nested_media_complex):
+  # Input:
+  #   @media screen {
+  #     .outer { color: blue; }
+  #
+  #     @media (min-width: 768px) {
+  #       .inner { color: red; }
+  #     }
+  #   }
+  #
+  # Expected flow:
+  # Line                                  | p   | brace_depth | at_rule_depth | inside_at_rule_block | Action
+  # --------------------------------------|-----|-------------|---------------|----------------------|------------------
+  # @media screen {                       | 14  | 0→1         | 0             | 0→1                  | init: set depth=1, mark content_start=14
+  #   (whitespace/newline)                | 15  | 1           | 0             | 1                    |
+  #   .outer { color: blue; }             | ... | 1→2→1       | 0             | 1                    | inc on {, dec on }, skip finish_rule
+  #   @media (min-width: 768px) {         | 71  | 1 (skip!)   | 0             | 1                    | init SKIPPED (already depth=1)
+  #   (opening {)                          | 72  | 1→2         | 0             | 1                    | inc: depth 2
+  #     .inner { color: red; }            | ... | 2→3→2       | 0             | 1                    | inc on {, dec on }, skip finish_rule
+  #   }                                   | 98  | 2→1         | 0             | 1                    | dec: depth 1, continue
+  # }                                     | 105 | 1→0         | 0             | 1→0                  | dec: depth 0, PROCESS!
+  #                                       |     |             |               |                      | Extract content[14+1..105-1]
+  #                                       |     |             |               |                      | Recursive parse finds .outer AND nested @media
+  #                                       |     |             |               |                      | Nested @media recursively parses and finds .inner
+  #                                       |     |             |               |                      | Returns 2 rules total
+  #
+  # KEY INSIGHT: The nested @media's init is SKIPPED because brace_depth > 0.
+  # So the nested media's { and } just increment/decrement the same brace_depth counter.
+  # Only when brace_depth reaches 0 (outer media closes) do we extract and recursively parse.
 
-  # Media block - use a simple character-by-character scan
-  # We increment depth on '{' and decrement on '}', stopping at depth 0
-  media_char = ( any - [{}] ) | ( '{' $inc_depth ) | ( '}' $dec_depth );
-  media_content = media_char*;
-  media_block = [@] 'media' ws+ media_query_list ws* '{' $init_depth
-                media_content;
+  # At-rule name (ident after @, can start with - for vendor prefixes)
+  at_rule_name = ('-'? alpha (alpha | digit | '-')*) >mark_at_rule_name;
+
+  # Prelude is everything before '{' or ';'
+  at_rule_prelude = (any - [{};])* >mark_prelude_start %mark_prelude_end;
+
+  # Single unified at-rule pattern - actions check if it's @media and branch accordingly
+  at_rule_char = ( any - [{}] ) | ( '{' $at_rule_inc_depth ) | ( '}' $at_rule_dec_depth );
+  at_rule_block = '{' $at_rule_init_depth at_rule_char*;
+  at_rule = [@] at_rule_name ws* at_rule_prelude ws* (at_rule_block | ';');
 
   # CSS2: TODO - Add @import rules
   # CSS2: ✓ Media query features (and, min-width, max-width, etc.) - IMPLEMENTED
   # CSS3: TODO - Add @keyframes for animations
-  # CSS3: TODO - Add @font-face for custom fonts
+  # CSS3: ✓ @font-face for custom fonts - IMPLEMENTED
   # CSS3: TODO - Add @supports for feature queries
 
   # ============================================================================
   # STYLESHEET (CSS1)
   # ============================================================================
-  stylesheet = (media_block | rule | comment | ws)*;
+  # Single at_rule pattern - actions detect @media and use appropriate depth tracking
+  stylesheet_item = at_rule | rule | comment | ws;
+  stylesheet = stylesheet_item*;
   main := stylesheet;
 }%%
 
@@ -624,10 +981,15 @@ static VALUE parse_css(VALUE self, VALUE css_string) {
     // Ragel state variables
     char *p, *pe, *eof;
     char *mark = NULL, *prop_mark = NULL, *val_mark = NULL, *media_mark = NULL, *media_content_start = NULL;
+    char *at_rule_name_start = NULL;   // Track start of at-rule name
+    char *at_rule_prelude_start = NULL; // Track start of at-rule prelude
+    char *at_rule_block_start = NULL;  // Track start of at-rule block content
+    char *at_rule_block_end = NULL;    // Track end of at-rule block content
     int cs;
     int brace_depth = 0;  // Track brace nesting for @media blocks
-    int inside_media_block = 0;  // Flag to prevent creating rules while scanning media content
+    int inside_at_rule_block = 0;  // Flag to prevent creating rules while scanning at-rule content
     int is_important = 0;  // Track !important flag for current declaration
+    int at_rule_depth = 0;  // Track brace nesting for generic at-rules
 
     // Ruby variables for building result
     VALUE rules_array, current_selectors, current_declarations, current_media_types;
@@ -648,10 +1010,27 @@ static VALUE parse_css(VALUE self, VALUE css_string) {
     %% machine css_parser; write init;
     %% machine css_parser; write exec;
 
+    // GC Guard: Prevent compiler from optimizing away VALUE variables before function returns
+    // Ruby's conservative GC scans the C stack, but compiler optimizations might remove
+    // variables after their last "use". RB_GC_GUARD ensures they stay on stack until return.
+    // Critical for: css_string (we only use its pointer), and incrementally-built objects
+    RB_GC_GUARD(css_string);
+    RB_GC_GUARD(rules_array);
+    RB_GC_GUARD(current_selectors);
+    RB_GC_GUARD(current_declarations);
+    RB_GC_GUARD(current_media_types);
+
     if (cs >= css_parser_first_final) {
         return rules_array;
     } else {
-        rb_raise(rb_eRuntimeError, "Parse error at position %ld", p - RSTRING_PTR(css_string));
+        long pos = p - RSTRING_PTR(css_string);
+        long len = RSTRING_LEN(css_string);
+        const char *context_start = (pos >= 20) ? (p - 20) : RSTRING_PTR(css_string);
+        long context_len = (pos >= 20) ? 20 : pos;
+
+        rb_raise(rb_eRuntimeError,
+                 "Parse error at position %ld (length %ld, state %d). Context: ...%.*s<<<HERE",
+                 pos, len, cs, (int)context_len, context_start);
     }
 }
 
