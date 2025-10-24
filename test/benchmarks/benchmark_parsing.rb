@@ -114,8 +114,10 @@ module BenchmarkParsing
     puts "="*60
 
     # Test functionality on CSS2
-    fast_parser.parse(test_css_css2)
-    puts "Cataract found #{fast_parser.rules_count} rules"
+    # Use fresh parser to avoid accumulating rules from previous parses
+    fresh_parser = Cataract::Parser.new
+    fresh_parser.parse(test_css_css2)
+    puts "Cataract found #{fresh_parser.rules_count} rules"
 
     if CSS_PARSER_AVAILABLE
       css_parser = CssParser::Parser.new(import: false, io_exceptions: false)
@@ -125,15 +127,17 @@ module BenchmarkParsing
       css_parser.each_selector { css_parser_rules += 1 }
       puts "css_parser found #{css_parser_rules} rules"
 
-      if fast_parser.rules_count == css_parser_rules
+      if fresh_parser.rules_count == css_parser_rules
         puts "✅ Same number of rules parsed"
       else
         puts "⚠️  Different number of rules parsed"
+        puts "    Note: css_parser has a known bug with ::after pseudo-elements"
+        puts "    (it concatenates them with previous rules instead of parsing separately)"
       end
 
       # Show a sample of what we parsed
       puts "\nSample Cataract output:"
-      fast_parser.each_selector.first(5).each do |selector, declarations, specificity|
+      fresh_parser.each_selector.first(5).each do |selector, declarations, specificity|
         puts "  #{selector}: #{declarations} (spec: #{specificity})"
       end
     end

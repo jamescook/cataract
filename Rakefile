@@ -49,6 +49,20 @@ namespace :benchmark do
     puts ""
     ruby "test/benchmark_ragel_styles.rb"
   end
+
+  desc "Benchmark Ruby-side operations with YJIT on vs off"
+  task :yjit do
+    Rake::Task[:compile].invoke
+    puts "\n" + "=" * 80
+    puts "Running with YJIT OFF"
+    puts "=" * 80
+    system({'RUBY_YJIT_ENABLE' => '0'}, RbConfig.ruby, "test/benchmarks/benchmark_yjit.rb")
+
+    puts "\n\n" + "=" * 80
+    puts "Running with YJIT ON"
+    puts "=" * 80
+    system({'RUBY_YJIT_ENABLE' => '1'}, RbConfig.ruby, "test/benchmarks/benchmark_yjit.rb")
+  end
 end
 
 # Clean task FIXME if this is chained onto compile it fails???

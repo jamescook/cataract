@@ -1,18 +1,17 @@
 module Cataract
   class Declarations
-    # YJIT-friendly: define all instance variables upfront
     def initialize(properties = {})
       @properties = {}
       @property_order = []
       @important_flags = {}
-      
+
       # Add properties if provided
       properties.each { |prop, value| self[prop] = value } if properties
     end
-    
+
     # Property access
     # Returns value with trailing semicolon (css_parser compatibility)
-    def [](property)
+    def get_property(property)
       prop = normalize_property(property)
       value = @properties[prop]
       return nil if value.nil?
@@ -22,14 +21,15 @@ module Cataract
       suffix = is_important ? ' !important' : ''
       "#{value}#{suffix};"
     end
-    
-    def []=(property, value)
+    alias_method :[], :get_property
+
+    def set_property(property, value)
       prop = normalize_property(property)
 
       # Parse !important and strip trailing semicolons (css_parser compatibility)
       value_str = value.to_s.strip
-      # Remove trailing semicolons
-      value_str = value_str.sub(/;+$/, '')
+      # Remove trailing semicolons (guard to avoid allocation when no semicolon present)
+      value_str = value_str.sub(/;+$/, '') if value_str.end_with?(';')
 
       is_important = value_str.end_with?('!important')
       clean_value = is_important ? value_str.sub(/\s*!important\s*$/, '').strip : value_str.strip
@@ -46,19 +46,17 @@ module Cataract
       @properties[prop] = clean_value
       @important_flags[prop] = is_important
     end
-    
-    # Check if property exists
+    alias_method :[]=, :set_property
+
     def key?(property)
       @properties.key?(normalize_property(property))
     end
     alias_method :has_property?, :key?
     
-    # Important flag check
     def important?(property)
       @important_flags[normalize_property(property)] || false
     end
     
-    # Remove property
     def delete(property)
       prop = normalize_property(property)
       @property_order.delete(prop)
@@ -76,18 +74,17 @@ module Cataract
         yield prop, value, is_important
       end
     end
-    
+
     # Get property count
     def size
       @properties.size
     end
     alias_method :length, :size
-    
-    # Check if empty
+
     def empty?
       @properties.empty?
     end
-    
+
     # Convert to CSS string
     # css_parser format: includes trailing semicolon
     def to_s
@@ -99,8 +96,7 @@ module Cataract
       end
       declarations.join('; ') + ';'
     end
-    
-    # Convert to hash (for compatibility)
+
     def to_h
       result = {}
       each do |property, value, is_important|
@@ -109,8 +105,7 @@ module Cataract
       end
       result
     end
-    
-    # Merge with another Declarations object
+
     def merge!(other)
       case other
       when Declarations
@@ -122,19 +117,17 @@ module Cataract
       end
       self
     end
-    
+
     def merge(other)
       dup.merge!(other)
     end
-    
-    # Duplicate
+
     def dup
       new_decl = self.class.new
       each { |prop, value, important| new_decl[prop] = important ? "#{value} !important" : value }
       new_decl
     end
-    
-    # Equality
+
     def ==(other)
       return false unless other.is_a?(Declarations)
       @properties == other.instance_variable_get(:@properties) &&
