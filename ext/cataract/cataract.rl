@@ -192,7 +192,11 @@
             VALUE animation_name = rb_str_new(at_rule_prelude_start, prelude_end - at_rule_prelude_start);
             animation_name = rb_funcall(animation_name, rb_intern("strip"), 0);
 
-            VALUE selector = rb_str_new_cstr("@");
+            // Pre-allocate selector: "@" + name + " " + animation_name
+            long name_len = strlen(name_cstr);
+            long anim_len = RSTRING_LEN(animation_name);
+            VALUE selector = rb_str_buf_new(1 + name_len + 1 + anim_len);
+            rb_str_cat2(selector, "@");
             rb_str_cat2(selector, name_cstr);
             rb_str_cat2(selector, " ");
             rb_str_append(selector, animation_name);
@@ -207,7 +211,11 @@
             // Descriptor-based at-rules: @font-face, @property, @page, @counter-style
             // These contain descriptors (not rules), so parse as dummy selector to extract declarations
             VALUE block_content = rb_str_new(at_rule_block_start + 1, p - at_rule_block_start - 1);
-            VALUE wrapped = rb_str_new_cstr("* { ");
+
+            // Pre-allocate string with known capacity to avoid realloc: "* { " + content + " }"
+            long content_len = RSTRING_LEN(block_content);
+            VALUE wrapped = rb_str_buf_new(4 + content_len + 2);  // "* { " (4) + content + " }" (2)
+            rb_str_cat2(wrapped, "* { ");
             rb_str_append(wrapped, block_content);
             rb_str_cat2(wrapped, " }");
 
@@ -215,23 +223,31 @@
             if (!NIL_P(dummy_rules) && RARRAY_LEN(dummy_rules) > 0) {
               VALUE declarations = rb_hash_aref(RARRAY_AREF(dummy_rules, 0), ID2SYM(rb_intern("declarations")));
 
-              // Build selector with prelude if present (e.g., "@property --my-color")
-              VALUE selector = rb_str_new_cstr("@");
-              rb_str_cat2(selector, name_cstr);
-
-              // Add prelude if non-empty (for @property --name, @page :first, etc.)
+              // Compute prelude first to know total size for pre-allocation
               const char *prelude_end = media_content_start;
               while (prelude_end > at_rule_prelude_start && (*(prelude_end-1) == ' ' || *(prelude_end-1) == '\t')) {
                 prelude_end--;
               }
               long prelude_len = prelude_end - at_rule_prelude_start;
+              VALUE prelude_val = Qnil;
+              long stripped_prelude_len = 0;
               if (prelude_len > 0) {
-                VALUE prelude_val = rb_str_new(at_rule_prelude_start, prelude_len);
+                prelude_val = rb_str_new(at_rule_prelude_start, prelude_len);
                 prelude_val = rb_funcall(prelude_val, rb_intern("strip"), 0);
-                if (RSTRING_LEN(prelude_val) > 0) {
-                  rb_str_cat2(selector, " ");
-                  rb_str_append(selector, prelude_val);
-                }
+                stripped_prelude_len = RSTRING_LEN(prelude_val);
+              }
+
+              // Build selector with pre-allocation: "@" + name + [" " + prelude]
+              long name_len = strlen(name_cstr);
+              long total_capacity = 1 + name_len + (stripped_prelude_len > 0 ? 1 + stripped_prelude_len : 0);
+              VALUE selector = rb_str_buf_new(total_capacity);
+              rb_str_cat2(selector, "@");
+              rb_str_cat2(selector, name_cstr);
+
+              // Add prelude if present (e.g., "@property --my-color", "@page :first")
+              if (stripped_prelude_len > 0) {
+                rb_str_cat2(selector, " ");
+                rb_str_append(selector, prelude_val);
               }
 
               VALUE rule = rb_hash_new();
