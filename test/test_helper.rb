@@ -1,6 +1,9 @@
 # Load SimpleCov for code coverage when COVERAGE env var is set
 if ENV['COVERAGE']
   require 'simplecov'
+  require 'simplecov-cobertura'
+
+  SimpleCov.formatter = SimpleCov::Formatter::CoberturaFormatter
 
   SimpleCov.start do
     add_filter '/test/'

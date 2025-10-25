@@ -10,3 +10,4 @@ gem "webmock", "~> 3.0" # for testing URL loading
 gem 'minitest'
 gem 'minitest-spec'
 gem 'simplecov', require: false
+gem 'simplecov-cobertura', require: false

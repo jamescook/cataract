@@ -8,3 +8,5 @@ jobs:
     uses: ./.github/workflows/test.yml
     with:
       os: macos-latest
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
