@@ -36,7 +36,8 @@ jobs:
     - name: Install Ragel (Ubuntu)
       if: runner.os == 'Linux' && steps.cache-ragel-ubuntu.outputs.cache-hit != 'true'
       run: |
-        sudo apt-get update && sudo apt-get install -y ragel
+        sudo apt-get update
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ragel
         mkdir -p ~/ragel-cache
         cp /usr/bin/ragel ~/ragel-cache/ragel
 
