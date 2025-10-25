@@ -11,3 +11,5 @@ jobs:
     uses: ./.github/workflows/test.yml
     with:
       os: ubuntu-latest
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

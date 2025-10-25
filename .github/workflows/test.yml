@@ -7,6 +7,10 @@ on:
         required: true
         type: string
         description: 'Operating system to run tests on'
+    secrets:
+      CODECOV_TOKEN:
+        required: false
+        description: 'Codecov upload token'
 
 jobs:
   test:
