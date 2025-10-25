@@ -75,3 +75,13 @@ jobs:
 
     - name: Run tests
       run: bundle exec rake test
+      env:
+        COVERAGE: 1
+
+    - name: Upload coverage report
+      if: runner.os == 'Linux' && matrix.ruby == '3.4'
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: coverage/
+        retention-days: 30
