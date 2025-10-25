@@ -248,7 +248,6 @@ class TestShorthandExpansion < Minitest::Test
   end
 
   def test_mixed_shorthand_and_longhand
-    skip "Shorthand expansion not yet implemented"
     @parser.parse("div { margin: 10px; margin-top: 20px; }")
     declarations = @parser.expand_shorthand(@parser.each_selector.first[1])
 

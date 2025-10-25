@@ -88,10 +88,7 @@ class TestParserMediaTypes < Minitest::Test
   def test_selecting_with_all_media_types
     @parser.add_rule!(selector: 'body', declarations: 'color: black', media_types: [:handheld, :tty])
     # :all should match all media-specific rules
-    results = @parser.find_by_selector('body', :all)
-    # With our implementation, :all only matches non-media-specific rules
-    # So this test needs adjustment - skip for now or modify
-    skip "Our :all implementation differs - it matches non-media-specific rules only"
+    assert_equal 'color: black;', @parser.find_by_selector('body', :all).join(' ')
   end
 
   def test_to_s_includes_media_queries
