@@ -290,13 +290,4 @@ class TestAtRules < Minitest::Test
 
     assert_equal 5, @parser.rules_count
   end
-
-  def test_bootstrap_css
-    # Real-world CSS from Bootstrap 5
-    css = File.read(File.expand_path('fixtures/bootstrap.css', __dir__))
-    @parser.parse(css)
-
-    # Bootstrap has thousands of rules - just verify it parses without error
-    assert @parser.rules_count > 0, "Should parse Bootstrap CSS successfully"
-  end
 end

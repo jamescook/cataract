@@ -21,6 +21,10 @@ module Cataract
                      when Declarations
                        decl_input.dup
                      when Hash
+                       # User-provided hash: {'color' => 'red', 'background' => 'blue'}
+                       Declarations.new(decl_input)
+                     when Array
+                       # Array of Cataract::Declarations::Value structs from C parser
                        Declarations.new(decl_input)
                      when String
                        parse_declaration_string(decl_input)

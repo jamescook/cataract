@@ -1,6 +1,9 @@
 #include <ruby.h>
 #include <stdio.h>
 
+// Global reference to Declarations::Value struct class
+static VALUE cDeclarationsValue;
+
 // Forward declarations
 VALUE cataract_split_value(VALUE self, VALUE value);
 VALUE cataract_expand_margin(VALUE self, VALUE value);
@@ -47,8 +50,11 @@ VALUE cataract_expand_background(VALUE self, VALUE value);
     mark = p;
     DEBUG_PRINTF("[@media] mark_start: mark set to %ld\n", mark - RSTRING_PTR(css_string));
   }
-  action mark_prop { prop_mark = p; }
-  action mark_val { val_mark = p; }
+  action mark_decl_start {
+    // Mark the start of declaration block content (after opening brace)
+    decl_start = p;
+    DEBUG_PRINTF("[mark_decl_start] Marked at position %ld\n", p - RSTRING_PTR(css_string));
+  }
   action start_compound_selector {
     // Mark the start of a compound selector
     // Uses global 'mark' variable (safe since selectors don't overlap with @media content extraction)
@@ -313,50 +319,136 @@ VALUE cataract_expand_background(VALUE self, VALUE value);
     // No-op: EOF reached, parsing complete
   }
 
-  action capture_property {
-    property = rb_str_new(prop_mark, p - prop_mark);
-  }
+  action capture_declarations {
+    // Guard against multiple firings - only process if decl_start is set
+    if (decl_start != NULL) {
+      // Parse declaration block content in C
+      // Input: "color: red; background: blue !important"
+      // Output: Array of Declarations::Value structs
+      if (NIL_P(current_declarations)) {
+        current_declarations = rb_ary_new();
+      }
 
-  action capture_value {
-    // Strip leading and trailing whitespace from value at C level (avoids rb_funcall overhead)
-    const char *start = val_mark;
-    const char *end = p;
+      const char *start = decl_start;
+      const char *end = p;
 
-    // Strip leading whitespace
-    while (start < end && (*start == ' ' || *start == '\t' || *start == '\n' || *start == '\r')) {
-      start++;
+      DEBUG_PRINTF("[capture_declarations] Parsing declarations from %ld to %ld: '%.*s'\n",
+                   decl_start - RSTRING_PTR(css_string), p - RSTRING_PTR(css_string),
+                   (int)(end - start), start);
+
+      // Simple C-level parser for declarations
+      const char *pos = start;
+      while (pos < end) {
+        // Skip whitespace and semicolons
+        while (pos < end && (*pos == ' ' || *pos == '\t' || *pos == '\n' || *pos == '\r' || *pos == ';')) {
+          pos++;
+        }
+        if (pos >= end) break;
+
+        // Find property (up to colon)
+        const char *prop_start = pos;
+        while (pos < end && *pos != ':') pos++;
+        if (pos >= end) break;  // No colon found
+
+        const char *prop_end = pos;
+        // Trim trailing whitespace and newlines from property
+        while (prop_end > prop_start && (*(prop_end-1) == ' ' || *(prop_end-1) == '\t' || *(prop_end-1) == '\n' || *(prop_end-1) == '\r')) {
+          prop_end--;
+        }
+        // Trim leading whitespace and newlines from property
+        while (prop_start < prop_end && (*prop_start == ' ' || *prop_start == '\t' || *prop_start == '\n' || *prop_start == '\r')) {
+          prop_start++;
+        }
+
+        pos++;  // Skip colon
+
+        // Skip whitespace after colon
+        while (pos < end && (*pos == ' ' || *pos == '\t' || *pos == '\n' || *pos == '\r')) {
+          pos++;
+        }
+
+        // Find value (up to semicolon or end)
+        // Handle parentheses: semicolons inside () don't terminate the value
+        const char *val_start = pos;
+        int paren_depth = 0;
+        while (pos < end) {
+          if (*pos == '(') {
+            paren_depth++;
+          } else if (*pos == ')') {
+            paren_depth--;
+          } else if (*pos == ';' && paren_depth == 0) {
+            break;  // Found terminating semicolon
+          }
+          pos++;
+        }
+        const char *val_end = pos;
+
+        // Trim trailing whitespace from value
+        while (val_end > val_start && (*(val_end-1) == ' ' || *(val_end-1) == '\t' || *(val_end-1) == '\n' || *(val_end-1) == '\r')) {
+          val_end--;
+        }
+
+        // Check for !important
+        int is_important = 0;
+        const char *important_pos = val_end;
+        // Look backwards for "!important"
+        if (val_end - val_start >= 10) {  // strlen("!important") = 10
+          const char *check = val_end - 10;
+          while (check < val_end && (*check == ' ' || *check == '\t' || *check == '\n' || *check == '\r')) check++;
+          if (check < val_end && *check == '!') {
+            check++;
+            while (check < val_end && (*check == ' ' || *check == '\t' || *check == '\n' || *check == '\r')) check++;
+            if ((val_end - check) >= 9 && strncmp(check, "important", 9) == 0) {
+              is_important = 1;
+              important_pos = check - 1;
+              while (important_pos > val_start && (*(important_pos-1) == ' ' || *(important_pos-1) == '\t' || *(important_pos-1) == '\n' || *(important_pos-1) == '\r' || *(important_pos-1) == '!')) {
+                important_pos--;
+              }
+              val_end = important_pos;
+            }
+          }
+        }
+
+        // Final trim of trailing whitespace/newlines from value (after !important removal)
+        while (val_end > val_start && (*(val_end-1) == ' ' || *(val_end-1) == '\t' || *(val_end-1) == '\n' || *(val_end-1) == '\r')) {
+          val_end--;
+        }
+
+        // Skip if value is empty (e.g., "color: !important" with no actual value)
+        if (val_end > val_start) {
+          // Create property string and lowercase it in C
+          long prop_len = prop_end - prop_start;
+          char *prop_lower = alloca(prop_len);
+          for (long i = 0; i < prop_len; i++) {
+            char c = prop_start[i];
+            prop_lower[i] = (c >= 'A' && c <= 'Z') ? (c + 32) : c;
+          }
+          VALUE property = rb_str_new(prop_lower, prop_len);
+          VALUE value = rb_str_new(val_start, val_end - val_start);
+
+          DEBUG_PRINTF("[capture_declarations] Found: property='%s' value='%s' important=%d\n",
+                       RSTRING_PTR(property), RSTRING_PTR(value), is_important);
+
+          // Create Declarations::Value struct
+          VALUE decl = rb_struct_new(
+            cDeclarationsValue,
+            property,
+            value,
+            is_important ? Qtrue : Qfalse
+          );
+
+          rb_ary_push(current_declarations, decl);
+        } else {
+          DEBUG_PRINTF("[capture_declarations] Skipping empty value for property at pos %ld\n", prop_start - RSTRING_PTR(css_string));
+        }
+
+        if (pos < end && *pos == ';') pos++;  // Skip semicolon if present
+      }
+
+      decl_start = NULL;  // Reset for next rule
+    } else {
+      DEBUG_PRINTF("[capture_declarations] SKIPPED: decl_start is NULL\n");
     }
-
-    // Strip trailing whitespace
-    while (end > start && (*(end-1) == ' ' || *(end-1) == '\t' || *(end-1) == '\n' || *(end-1) == '\r')) {
-      end--;
-    }
-
-    value = rb_str_new(start, end - start);
-  }
-
-  action mark_important {
-    is_important = 1;
-  }
-
-  action finish_declaration {
-    if (NIL_P(current_declarations)) {
-      current_declarations = rb_hash_new();
-    }
-
-    // Append !important to value if flag is set (maintains hash-based API)
-    // Grammar now parses !important properly, we just assemble it back into the value string
-    // This keeps the fast C-level hash operations without needing rb_funcall
-    VALUE final_value = value;
-    if (is_important) {
-      final_value = rb_str_dup(value);
-      rb_str_cat2(final_value, " !important");
-    }
-
-    rb_hash_aset(current_declarations, property, final_value);
-
-    // Reset important flag for next declaration
-    is_important = 0;
   }
 
   action finish_rule {
@@ -371,7 +463,7 @@ VALUE cataract_expand_background(VALUE self, VALUE value);
           DEBUG_PRINTF("[finish_rule] Rule %ld: selector='%s'\n", i, RSTRING_PTR(sel));
           VALUE rule = rb_hash_new();
           rb_hash_aset(rule, ID2SYM(rb_intern("selector")), sel);
-          rb_hash_aset(rule, ID2SYM(rb_intern("declarations")), rb_hash_dup(current_declarations));
+          rb_hash_aset(rule, ID2SYM(rb_intern("declarations")), rb_ary_dup(current_declarations));
 
           // Add media types if we're inside a @media block
           if (!NIL_P(current_media_types) && RARRAY_LEN(current_media_types) > 0) {
@@ -424,9 +516,10 @@ VALUE cataract_expand_background(VALUE self, VALUE value);
   # which is handled separately by the important_flag pattern
   value_char = (any - [;{}(!]);
 
-  # Complete value: combination of regular chars and paren groups
-  # This allows: "10px", "url(data:...;...)", "calc(100% - 10px)", etc.
-  value = (value_char | paren_group)+;
+  # Complete value: just grab everything that's NOT a terminator
+  # Terminators are: semicolon, closing brace, or exclamation (for !important)
+  # Use + (one or more) instead of ** to avoid multiple action firings
+  value = [^;{}!]+;
 
   # CSS1/2/3: Value syntax is validated by browsers, not by this parser
   # We capture the raw string and let the browser handle validation
@@ -455,13 +548,15 @@ VALUE cataract_expand_background(VALUE self, VALUE value);
   pseudo_class_part = ':' ident ('(' (any - ')')* ')')?;
 
   # Simple selector sequence: optional type/universal, followed by class/id/attr/pseudo modifiers
-  # Examples: div, div.class, div#id, .class, #id, [attr], *.class, a:hover, p::before
+  # Examples: div, div.class, div#id, .class, #id, [attr], *.class, a:hover, p::before, ::before
+  # Also: .form-range::-webkit-slider-thumb:active (pseudo-class AFTER pseudo-element)
   # The key insight: order matters in alternation (|). Put more specific patterns first.
   # Type/universal with modifiers should match before standalone modifiers
-  # Pseudo-elements must come last in the sequence (after pseudo-classes)
+  # Note: Some browsers allow pseudo-classes after pseudo-elements (e.g., ::before:hover)
   simple_selector_sequence =
-    (type_part | universal_part) (class_part | id_part | attr_part | pseudo_class_part)* pseudo_element_part? |
-    (class_part | id_part | attr_part | pseudo_class_part)+ pseudo_element_part?;
+    (type_part | universal_part) (class_part | id_part | attr_part | pseudo_class_part | pseudo_element_part)* |
+    (class_part | id_part | attr_part | pseudo_class_part | pseudo_element_part)+ |
+    pseudo_element_part (pseudo_class_part)*;
 
   # CSS2 Combinators (have zero specificity)
   child_combinator = ws* '>' ws*;
@@ -503,29 +598,14 @@ VALUE cataract_expand_background(VALUE self, VALUE value);
   # ============================================================================
   # DECLARATIONS (CSS1)
   # ============================================================================
-  property = ident >mark_prop %capture_property;
-
-  # CSS2: !important flag
-  # Design decision: Parse !important in grammar, but assemble back into value string
-  # - Grammar parses !important as separate token (architecturally correct)
-  # - C code appends " !important" to value string if flag is set
-  # - Ruby Declarations class also handles !important for manual assignment (rs['color'] = 'red !important')
-  # - This keeps fast C-level hash operations without needing rb_funcall for Data objects
-  # Alternative considered: Ruby Data.define with property/value/important fields
-  #   Rejected because: Data.new requires rb_funcall (slow), hash operations are pure C (fast)
-  important_flag = ws* '!' ws* 'important' >mark_important;
-
-  declaration = property ws* ':' ws* (value >mark_val %capture_value) important_flag? %finish_declaration;
-  # Allow multiple consecutive semicolons (css_parser compatibility)
-  # (ws* ';')+ matches one or more semicolons (with optional whitespace before each)
-  # This makes ";;" equivalent to ";" for separator purposes
-  semicolon_sep = (ws* ';')+ ws*;
-  declaration_list = declaration (semicolon_sep declaration)* semicolon_sep?;
+  # Simplified: Just capture everything between braces and parse in C
+  # This handles all edge cases: !important, shorthand properties, data URIs, etc.
+  # No need for complex Ragel patterns with tricky operator semantics
 
   # ============================================================================
   # RULES (CSS1)
   # ============================================================================
-  rule_body = '{' @capture_compound_selector ws* declaration_list ws* '}' %finish_rule;
+  rule_body = '{' @capture_compound_selector %mark_decl_start (any - '}')* ('}' >capture_declarations) %finish_rule;
   rule = selector_list rule_body;
 
   # ============================================================================
@@ -831,7 +911,8 @@ static VALUE parse_media_query(const char *query_str, long query_len) {
 static VALUE parse_css(VALUE self, VALUE css_string) {
     // Ragel state variables
     char *p, *pe, *eof;
-    char *mark = NULL, *prop_mark = NULL, *val_mark = NULL, *media_mark = NULL, *media_content_start = NULL;
+    char *mark = NULL, *media_content_start = NULL;
+    char *decl_start = NULL;  // Track start of declaration block content
     char *at_rule_name_start = NULL;   // Track start of at-rule name
     char *at_rule_prelude_start = NULL; // Track start of at-rule prelude
     char *at_rule_block_start = NULL;  // Track start of at-rule block content
@@ -839,12 +920,11 @@ static VALUE parse_css(VALUE self, VALUE css_string) {
     int cs;
     int brace_depth = 0;  // Track brace nesting for @media blocks
     int inside_at_rule_block = 0;  // Flag to prevent creating rules while scanning at-rule content
-    int is_important = 0;  // Track !important flag for current declaration
     int at_rule_depth = 0;  // Track brace nesting for generic at-rules
 
     // Ruby variables for building result
     VALUE rules_array, current_selectors, current_declarations, current_media_types;
-    VALUE selector, property, value;
+    VALUE selector;
 
     // Setup input
     Check_Type(css_string, T_STRING);
@@ -965,6 +1045,20 @@ static VALUE calculate_specificity(VALUE self, VALUE selector_string) {
 
 void Init_cataract() {
     VALUE module = rb_define_module("Cataract");
+
+    // Define Cataract::Declarations class (Ruby side will add methods)
+    VALUE cDeclarations = rb_define_class_under(module, "Declarations", rb_cObject);
+
+    // Define Cataract::Declarations::Value = Struct.new(:property, :value, :important)
+    cDeclarationsValue = rb_struct_define_under(
+        cDeclarations,
+        "Value",
+        "property",
+        "value",
+        "important",
+        NULL
+    );
+
     rb_define_module_function(module, "parse_css", parse_css, 1);
     rb_define_module_function(module, "calculate_specificity", calculate_specificity, 1);
     rb_define_module_function(module, "split_value", cataract_split_value, 1);

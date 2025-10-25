@@ -34,6 +34,36 @@ gem install cataract
 
 ## Usage
 
+### Shorthand Property Expansion
+
+```ruby
+require 'cataract'
+
+# Expand margin shorthand
+Cataract.expand_margin("10px 20px")
+# => {"margin-top"=>"10px", "margin-right"=>"20px", "margin-bottom"=>"10px", "margin-left"=>"20px"}
+
+# Handles calc() and other CSS functions
+Cataract.expand_margin("10px calc(100% - 20px)")
+# => {"margin-top"=>"10px", "margin-right"=>"calc(100% - 20px)", ...}
+
+# Preserves !important flag (per W3C spec)
+Cataract.expand_margin("10px !important")
+# => {"margin-top"=>"10px !important", "margin-right"=>"10px !important", ...}
+
+# Border shorthand
+Cataract.expand_border("1px solid red")
+# => {"border-top-width"=>"1px", "border-top-style"=>"solid", "border-top-color"=>"red", ...}
+
+# Font shorthand
+Cataract.expand_font("bold 14px/1.5 Arial, sans-serif")
+# => {"font-weight"=>"bold", "font-size"=>"14px", "line-height"=>"1.5", ...}
+
+# Also available: expand_padding, expand_border_color, expand_border_style,
+#                 expand_border_width, expand_border_side, expand_background,
+#                 expand_list_style
+```
+
 ### Basic Parsing
 
 ```ruby

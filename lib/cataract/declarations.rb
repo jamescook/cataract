@@ -1,25 +1,29 @@
 module Cataract
   class Declarations
     def initialize(properties = {})
-      @properties = {}
-      @property_order = []
-      @important_flags = {}
-
-      # Add properties if provided
-      properties.each { |prop, value| self[prop] = value } if properties
+      case properties
+      when Array
+        # Array of Declarations::Value structs from C parser - store directly
+        @values = properties
+      when Hash
+        # Hash from user - convert to internal storage
+        @values = []
+        properties.each { |prop, value| self[prop] = value }
+      else
+        @values = []
+      end
     end
 
     # Property access
     # Returns value with trailing semicolon (css_parser compatibility)
     def get_property(property)
       prop = normalize_property(property)
-      value = @properties[prop]
-      return nil if value.nil?
+      val = find_value(prop)
+      return nil if val.nil?
 
       # css_parser includes trailing semicolon in values
-      is_important = @important_flags[prop]
-      suffix = is_important ? ' !important' : ''
-      "#{value}#{suffix};"
+      suffix = val.important ? ' !important' : ''
+      "#{val.value}#{suffix};"
     end
     alias_method :[], :get_property
 
@@ -38,51 +42,53 @@ module Cataract
       # css_parser silently ignores these
       return if clean_value.empty?
 
-      # Store property
-      unless @properties.key?(prop)
-        @property_order << prop
-      end
+      # Find existing value or create new one
+      # Properties from C parser are already normalized, so direct comparison
+      existing_index = @values.find_index { |v| v.property == prop }
 
-      @properties[prop] = clean_value
-      @important_flags[prop] = is_important
+      # Create a new Value struct
+      new_val = Declarations::Value.new(prop, clean_value, is_important)
+
+      if existing_index
+        @values[existing_index] = new_val
+      else
+        @values << new_val
+      end
     end
     alias_method :[]=, :set_property
 
     def key?(property)
-      @properties.key?(normalize_property(property))
+      !find_value(normalize_property(property)).nil?
     end
     alias_method :has_property?, :key?
-    
+
     def important?(property)
-      @important_flags[normalize_property(property)] || false
+      val = find_value(normalize_property(property))
+      val ? val.important : false
     end
-    
+
     def delete(property)
       prop = normalize_property(property)
-      @property_order.delete(prop)
-      @important_flags.delete(prop)
-      @properties.delete(prop)
+      @values.delete_if { |v| v.property == prop }
     end
-    
+
     # Iterate through properties in order
     def each
       return enum_for(:each) unless block_given?
-      
-      @property_order.each do |prop|
-        value = @properties[prop]
-        is_important = @important_flags[prop]
-        yield prop, value, is_important
+
+      @values.each do |val|
+        yield val.property, val.value, val.important
       end
     end
 
     # Get property count
     def size
-      @properties.size
+      @values.size
     end
     alias_method :length, :size
 
     def empty?
-      @properties.empty?
+      @values.empty?
     end
 
     # Convert to CSS string
@@ -130,14 +136,20 @@ module Cataract
 
     def ==(other)
       return false unless other.is_a?(Declarations)
-      @properties == other.instance_variable_get(:@properties) &&
-        @important_flags == other.instance_variable_get(:@important_flags)
+      @values == other.instance_variable_get(:@values)
     end
-    
+
     private
-    
+
+    # Normalize user-provided property names for case-insensitive lookup
+    # Note: Properties from C parser are already normalized
     def normalize_property(property)
-      property.to_s.downcase.strip
+      property.to_s.strip.downcase
+    end
+
+    # Find a Value struct by normalized property name
+    def find_value(normalized_property)
+      @values.find { |v| v.property == normalized_property }
     end
   end
 end

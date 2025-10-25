@@ -18,8 +18,8 @@ class TestParserBasic < Minitest::Test
     @parser.add_block!(@css)
     assert_equal 'margin: 0px;', @parser.find_by_selector('body').join(' ')
     assert_equal 'margin: 0px; padding: 0px;', @parser.find_by_selector('p').join(' ')
-    assert_equal 'font: 12px/normal sans-serif;', @parser.find_by_selector('#content').join(' ')
     assert_equal 'color: red;', @parser.find_by_selector('.content').join(' ')
+    assert_equal 'font: 12px/normal sans-serif;', @parser.find_by_selector('#content').join(' ')
   end
 
   def test_adding_block
