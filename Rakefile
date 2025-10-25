@@ -16,6 +16,8 @@ end
 Rake::TestTask.new(:test) do |t|
   t.libs << "test"
   t.libs << "lib"
+  # Load test_helper before running tests (handles SimpleCov setup)
+  t.ruby_opts << "-rtest_helper"
   # Exclude css_parser_compat directory (reference tests only, not run)
   t.test_files = FileList["test/**/test_*.rb"].exclude("test/css_parser_compat/**/*")
 end
