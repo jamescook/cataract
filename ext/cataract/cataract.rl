@@ -418,7 +418,7 @@ VALUE cataract_expand_background(VALUE self, VALUE value);
         if (val_end > val_start) {
           // Create property string and lowercase it in C
           long prop_len = prop_end - prop_start;
-          char *prop_lower = alloca(prop_len);
+          char prop_lower[prop_len];
           for (long i = 0; i < prop_len; i++) {
             char c = prop_start[i];
             prop_lower[i] = (c >= 'A' && c <= 'Z') ? (c + 32) : c;
