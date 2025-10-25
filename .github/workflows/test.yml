@@ -78,7 +78,17 @@ jobs:
       env:
         COVERAGE: 1
 
-    - name: Upload coverage report
+    - name: Upload coverage to Codecov
+      if: runner.os == 'Linux' && matrix.ruby == '3.4'
+      uses: codecov/codecov-action@v4
+      with:
+        files: ./coverage/.resultset.json
+        fail_ci_if_error: false
+        verbose: true
+      env:
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+    - name: Upload coverage report artifact
       if: runner.os == 'Linux' && matrix.ruby == '3.4'
       uses: actions/upload-artifact@v4
       with:
