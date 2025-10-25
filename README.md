@@ -2,6 +2,8 @@
 
 A high-performance CSS parser built with Ragel state machines for accurate parsing of complex CSS structures.
 
+[![codecov](https://codecov.io/github/jamescook/cataract/graph/badge.svg?token=1PTVV1QTV5)](https://codecov.io/github/jamescook/cataract)
+
 ## Features
 
 - **Fast**: Built with Ragel finite state machines compiled to C
