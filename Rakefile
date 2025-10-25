@@ -94,7 +94,6 @@ task :clean do
   puts "Cleaning build artifacts..."
   
   files_to_clean = [
-    "lib/cataract/cataract.so",
     "ext/cataract/*.c",
     "ext/cataract/Makefile",
     "ext/cataract/*.o"

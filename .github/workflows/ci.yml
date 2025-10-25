@@ -1,0 +1,13 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-ubuntu:
+    uses: ./.github/workflows/test.yml
+    with:
+      os: ubuntu-latest
