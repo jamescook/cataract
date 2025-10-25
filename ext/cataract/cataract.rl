@@ -799,15 +799,20 @@ VALUE cataract_expand_background(VALUE self, VALUE value);
   action count_element { element_count++; }
 
   # Selector patterns with counting actions
-  # Attribute operators
-  attr_operator = '=' | '~=' | '|=';
+  # Attribute operators (CSS2 and CSS3)
+  attr_operator = '^=' | '$=' | '*=' | '~=' | '|=' | '=';
+
+  # Attribute value can be an identifier, string, or number
+  # CSS allows unquoted values that start with digits (e.g., [data-id=123])
+  number = digit+ ('.' digit+)?;
+  attr_value = ident | string | number;
 
   # Pattern definitions without actions
   class_sel_pattern = '.' ident;
   id_sel_pattern = '#' ident;
   type_sel_pattern = ident;
   universal_sel_pattern = '*';
-  attr_sel_pattern = '[' ws* ident ws* (attr_operator ws* (ident | string) ws*)? ']';
+  attr_sel_pattern = '[' ws* ident ws* (attr_operator ws* attr_value ws*)? ']';
   pseudo_element_pattern = '::' ident ('(' (any - ')')* ')')?;
   pseudo_class_pattern = ':' ident >mark_pseudo_start %mark_pseudo_end ('(' (any - ')')* ')')?;
 
