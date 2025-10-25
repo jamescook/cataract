@@ -1,5 +1,6 @@
 require "bundler/gem_tasks"
 require "rake/testtask"
+require "rake/clean"
 
 # Only load extension task if rake-compiler is available
 begin
@@ -11,6 +12,12 @@ begin
     ext.ext_dir = "ext/cataract"
   end
 end
+
+# Configure CLEAN to run before compilation
+# rake-compiler already adds: tmp/, lib/**/*.{so,bundle}, etc.
+# We add .c files, Makefile, and object files for a clean build
+# The .c files will be regenerated from .rl during compilation and persist after
+CLEAN.include("ext/**/*.c", "ext/**/Makefile", "ext/**/*.o")
 
 # Test task
 Rake::TestTask.new(:test) do |t|
@@ -91,32 +98,40 @@ namespace :benchmark do
   end
 end
 
-# Clean task FIXME if this is chained onto compile it fails???
-task :clean do
-  puts "Cleaning build artifacts..."
-  
-  files_to_clean = [
-    "ext/cataract/*.c",
-    "ext/cataract/Makefile",
-    "ext/cataract/*.o"
-  ]
-  
-  files_to_clean.each do |pattern|
-    Dir.glob(pattern).each do |file|
-      puts "  Removing #{file}"
-      FileUtils.rm_f(file)
-    end
-  end
-  
-  if Dir.exist?("tmp/")
-    puts "  Removing tmp/"
-    FileUtils.rm_rf("tmp/")
-  end
-  
-  puts "Clean complete"
-end
-
 task compile: :clean
 task test: :compile
 
 task default: :test
+
+namespace :compile do
+  # Generate C code from Ragel grammars
+  desc "Generate C code from Ragel (.rl) files"
+  task :ragel do
+    require_relative 'ext/cataract/ragel_generator'
+    RagelGenerator.generate_c_from_ragel
+  end
+end
+
+# Lint task - runs cppcheck on generated C code
+desc "Run cppcheck on generated C code"
+task lint: 'compile:ragel' do
+  # Check if cppcheck is installed
+  unless system("which cppcheck > /dev/null 2>&1")
+    abort("cppcheck not installed. Install with: brew install cppcheck (macOS) or apt-get install cppcheck (Ubuntu)")
+  end
+
+  puts "Running cppcheck on generated C code..."
+
+  # Run cppcheck on generated C files
+  # Focus on serious issues, skip style noise from Ragel-generated code
+  # --enable=warning,performance,portability: serious issues only (skip 'style')
+  # --suppress=missingIncludeSystem: ignore system header issues
+  # --suppress=normalCheckLevelMaxBranches: skip exhaustive analysis suggestion (too slow for generated code)
+  # --inline-suppr: allow inline suppressions in code
+  # --error-exitcode=1: exit with 1 if errors found
+  # -q: quiet mode, less verbose
+  system("cppcheck --enable=warning,performance,portability --suppress=missingIncludeSystem --suppress=normalCheckLevelMaxBranches --inline-suppr -q ext/cataract/*.c") ||
+    abort("cppcheck found issues!")
+
+  puts "✓ cppcheck passed (warnings/errors only, style checks skipped)"
+end
