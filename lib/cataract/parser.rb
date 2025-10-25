@@ -328,6 +328,77 @@ module Cataract
       @css_source = nil
     end
 
+    # Expand shorthand properties in a declarations string
+    # Returns a hash of longhand properties
+    #
+    # Example:
+    #   expand_shorthand("margin: 10px; margin-top: 20px;")
+    #   => {"margin-top" => "20px", "margin-right" => "10px", "margin-bottom" => "10px", "margin-left" => "10px"}
+    def expand_shorthand(declarations_string)
+      # Parse the declarations string into a Declarations object
+      # We use a dummy selector to parse the declarations
+      dummy_css = "* { #{declarations_string} }"
+      parsed = Cataract.parse_css(dummy_css)
+      return {} if parsed.empty?
+
+      declarations = Declarations.new(parsed[0][:declarations])
+      result = {}
+
+      # Process declarations in order
+      # For shorthands, expand them; for longhands, keep as-is
+      # Later declarations override earlier ones (CSS cascade)
+      declarations.each do |property, value, is_important|
+        suffix = is_important ? ' !important' : ''
+        full_value = "#{value}#{suffix}"
+
+        # Map shorthand properties to their expansion methods
+        expanded = case property
+        when 'margin'
+          Cataract.expand_margin(value)
+        when 'padding'
+          Cataract.expand_padding(value)
+        when 'border'
+          Cataract.expand_border(value)
+        when 'border-top'
+          Cataract.expand_border_side('top', value)
+        when 'border-right'
+          Cataract.expand_border_side('right', value)
+        when 'border-bottom'
+          Cataract.expand_border_side('bottom', value)
+        when 'border-left'
+          Cataract.expand_border_side('left', value)
+        when 'border-color'
+          Cataract.expand_border_color(value)
+        when 'border-style'
+          Cataract.expand_border_style(value)
+        when 'border-width'
+          Cataract.expand_border_width(value)
+        when 'font'
+          Cataract.expand_font(value)
+        when 'list-style'
+          Cataract.expand_list_style(value)
+        when 'background'
+          Cataract.expand_background(value)
+        else
+          # Not a shorthand - just set the property directly
+          nil
+        end
+
+        if expanded
+          # This was a shorthand - merge all expanded properties
+          expanded.each do |exp_prop, exp_value|
+            exp_suffix = is_important ? ' !important' : ''
+            result[exp_prop] = "#{exp_value}#{exp_suffix}"
+          end
+        else
+          # This was a longhand - set it directly (overriding any previous value)
+          result[property] = full_value
+        end
+      end
+
+      result
+    end
+
     private
 
     # Convert a single raw rule to a RuleSet object
