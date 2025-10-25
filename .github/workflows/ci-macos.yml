@@ -1,0 +1,10 @@
+name: CI - macOS (Manual)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-macos:
+    uses: ./.github/workflows/test.yml
+    with:
+      os: macos-latest
