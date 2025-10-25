@@ -21,25 +21,21 @@ jobs:
 
     - name: Cache Ragel (Ubuntu)
       if: runner.os == 'Linux'
-      id: cache-ragel-ubuntu-zzz
+      id: cache-ragel-deb
       uses: actions/cache@v4
       with:
-        path: ~/ragel-cache
-        key: ${{ runner.os }}-ragel-6.10
+        path: ~/ragel.deb
+        key: ${{ runner.os }}-ragel-deb-6.10-4
 
-    - name: Restore Ragel from cache (Ubuntu)
-      if: runner.os == 'Linux' && steps.cache-ragel-ubuntu.outputs.cache-hit == 'true'
-      run: |
-        sudo cp ~/ragel-cache/ragel /usr/bin/ragel
-        sudo chmod +x /usr/bin/ragel
+    - name: Install Ragel from cache (Ubuntu)
+      if: runner.os == 'Linux' && steps.cache-ragel-deb.outputs.cache-hit == 'true'
+      run: sudo dpkg -i ~/ragel.deb
 
-    - name: Install Ragel (Ubuntu)
-      if: runner.os == 'Linux' && steps.cache-ragel-ubuntu.outputs.cache-hit != 'true'
+    - name: Download and install Ragel (Ubuntu)
+      if: runner.os == 'Linux' && steps.cache-ragel-deb.outputs.cache-hit != 'true'
       run: |
-        sudo apt-get update
-        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ragel
-        mkdir -p ~/ragel-cache
-        cp /usr/bin/ragel ~/ragel-cache/ragel
+        wget -O ~/ragel.deb https://archive.ubuntu.com/ubuntu/pool/universe/r/ragel/ragel_6.10-4_amd64.deb
+        sudo dpkg -i ~/ragel.deb
 
     - name: Cache Ragel (macOS)
       if: runner.os == 'macOS'
