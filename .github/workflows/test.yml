@@ -78,6 +78,18 @@ jobs:
       env:
         COVERAGE: 1
 
+    - name: Debug Codecov token
+      if: runner.os == 'Linux' && matrix.ruby == '3.4'
+      run: |
+        if [ -z "${{ secrets.CODECOV_TOKEN }}" ]; then
+          echo "Token is EMPTY"
+        else
+          echo "Token length: ${#CODECOV_TOKEN}"
+          echo "Token MD5: $(echo -n "$CODECOV_TOKEN" | md5sum | cut -d' ' -f1)"
+        fi
+      env:
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
     - name: Upload coverage to Codecov
       if: runner.os == 'Linux' && matrix.ruby == '3.4'
       uses: codecov/codecov-action@v4
