@@ -95,7 +95,7 @@ task :clean do
   
   files_to_clean = [
     "lib/cataract/cataract.so",
-    "ext/cataract/cataract.c",
+    "ext/cataract/*.c",
     "ext/cataract/Makefile",
     "ext/cataract/*.o"
   ]
