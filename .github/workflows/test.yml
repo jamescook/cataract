@@ -29,7 +29,9 @@ jobs:
 
     - name: Install Ragel from cache (Ubuntu)
       if: runner.os == 'Linux' && steps.cache-ragel-deb.outputs.cache-hit == 'true'
-      run: sudo dpkg -i ~/ragel.deb
+      run: |
+        sudo rm -f /var/lib/man-db/auto-update
+        sudo dpkg -i ~/ragel.deb
 
     - name: Download and install Ragel (Ubuntu)
       if: runner.os == 'Linux' && steps.cache-ragel-deb.outputs.cache-hit != 'true'
