@@ -34,6 +34,7 @@ jobs:
     - name: Download and install Ragel (Ubuntu)
       if: runner.os == 'Linux' && steps.cache-ragel-deb.outputs.cache-hit != 'true'
       run: |
+        sudo rm -f /var/lib/man-db/auto-update
         wget -O ~/ragel.deb https://archive.ubuntu.com/ubuntu/pool/universe/r/ragel/ragel_6.10-4_amd64.deb
         sudo dpkg -i ~/ragel.deb
 
