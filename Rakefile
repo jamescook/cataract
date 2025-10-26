@@ -34,6 +34,7 @@ task :benchmark do
   Rake::Task[:compile].invoke
   Rake::Task["benchmark:parsing"].invoke
   Rake::Task["benchmark:specificity"].invoke
+  Rake::Task["benchmark:merging"].invoke
 end
 
 namespace :benchmark do
@@ -49,6 +50,13 @@ namespace :benchmark do
     Rake::Task[:compile].invoke
     puts "Running specificity benchmark..."
     ruby "test/benchmarks/benchmark_specificity.rb"
+  end
+
+  desc "Benchmark CSS merging performance"
+  task :merging do
+    Rake::Task[:compile].invoke
+    puts "Running merging benchmark..."
+    ruby "test/benchmarks/benchmark_merging.rb"
   end
 
   desc "Benchmark different Ragel code generation styles"

@@ -712,3 +712,288 @@ VALUE cataract_expand_background(VALUE self, VALUE value) {
 
     return result;
 }
+
+// ============================================================================
+// SHORTHAND CREATION (Inverse of expansion)
+// ============================================================================
+
+// Helper: Create dimension shorthand (margin or padding)
+// Input: hash with "#{base}-top", "#{base}-right", "#{base}-bottom", "#{base}-left"
+// Output: optimized shorthand string, or Qnil if not all sides present
+static VALUE create_dimension_shorthand(VALUE properties, const char *base) {
+    char key_top[32], key_right[32], key_bottom[32], key_left[32];
+    snprintf(key_top, sizeof(key_top), "%s-top", base);
+    snprintf(key_right, sizeof(key_right), "%s-right", base);
+    snprintf(key_bottom, sizeof(key_bottom), "%s-bottom", base);
+    snprintf(key_left, sizeof(key_left), "%s-left", base);
+
+    VALUE top = rb_hash_aref(properties, rb_str_new_cstr(key_top));
+    VALUE right = rb_hash_aref(properties, rb_str_new_cstr(key_right));
+    VALUE bottom = rb_hash_aref(properties, rb_str_new_cstr(key_bottom));
+    VALUE left = rb_hash_aref(properties, rb_str_new_cstr(key_left));
+
+    // All four sides must be present
+    if (NIL_P(top) || NIL_P(right) || NIL_P(bottom) || NIL_P(left)) {
+        return Qnil;
+    }
+
+    const char *top_str = StringValueCStr(top);
+    const char *right_str = StringValueCStr(right);
+    const char *bottom_str = StringValueCStr(bottom);
+    const char *left_str = StringValueCStr(left);
+
+    // Optimize: if all same, use single value
+    if (strcmp(top_str, right_str) == 0 &&
+        strcmp(top_str, bottom_str) == 0 &&
+        strcmp(top_str, left_str) == 0) {
+        return rb_str_dup(top);
+    }
+
+    // Optimize: if top==bottom and left==right, use two values
+    if (strcmp(top_str, bottom_str) == 0 && strcmp(left_str, right_str) == 0) {
+        return rb_sprintf("%s %s", top_str, right_str);
+    }
+
+    // Optimize: if left==right, use three values
+    if (strcmp(left_str, right_str) == 0) {
+        return rb_sprintf("%s %s %s", top_str, right_str, bottom_str);
+    }
+
+    // All different: use four values
+    return rb_sprintf("%s %s %s %s", top_str, right_str, bottom_str, left_str);
+}
+
+// Create margin shorthand from longhand properties
+// Input: hash with "margin-top", "margin-right", "margin-bottom", "margin-left"
+// Output: optimized shorthand string, or Qnil if not all sides present
+VALUE cataract_create_margin_shorthand(VALUE self, VALUE properties) {
+    return create_dimension_shorthand(properties, "margin");
+}
+
+// Create padding shorthand from longhand properties
+VALUE cataract_create_padding_shorthand(VALUE self, VALUE properties) {
+    return create_dimension_shorthand(properties, "padding");
+}
+
+// Helper: Create border-{width,style,color} shorthand from 4 sides
+// Uses stack allocation and avoids intermediate Ruby string objects for keys
+static VALUE create_border_dimension_shorthand(VALUE properties, const char *suffix) {
+    // Build key names on stack: "border-top-{suffix}", etc.
+    size_t suffix_len = strlen(suffix);
+    char key_top[32];     // "border-top-" + suffix + \0
+    char key_right[32];
+    char key_bottom[32];
+    char key_left[32];
+
+    snprintf(key_top, sizeof(key_top), "border-top-%s", suffix);
+    snprintf(key_right, sizeof(key_right), "border-right-%s", suffix);
+    snprintf(key_bottom, sizeof(key_bottom), "border-bottom-%s", suffix);
+    snprintf(key_left, sizeof(key_left), "border-left-%s", suffix);
+
+    // Look up values directly with C strings (no intermediate VALUE objects)
+    VALUE top = rb_hash_aref(properties, rb_str_new_cstr(key_top));
+    VALUE right = rb_hash_aref(properties, rb_str_new_cstr(key_right));
+    VALUE bottom = rb_hash_aref(properties, rb_str_new_cstr(key_bottom));
+    VALUE left = rb_hash_aref(properties, rb_str_new_cstr(key_left));
+
+    // All four sides must be present
+    if (NIL_P(top) || NIL_P(right) || NIL_P(bottom) || NIL_P(left)) {
+        return Qnil;
+    }
+
+    // Extract C strings directly (no intermediate storage)
+    const char *top_str = StringValueCStr(top);
+    const char *right_str = StringValueCStr(right);
+    const char *bottom_str = StringValueCStr(bottom);
+    const char *left_str = StringValueCStr(left);
+
+    // Optimize: if all same, return single value
+    if (strcmp(top_str, right_str) == 0 &&
+        strcmp(top_str, bottom_str) == 0 &&
+        strcmp(top_str, left_str) == 0) {
+        return rb_str_dup(top);
+    }
+
+    // Optimize: if top==bottom and left==right, use two values
+    if (strcmp(top_str, bottom_str) == 0 && strcmp(left_str, right_str) == 0) {
+        return rb_sprintf("%s %s", top_str, right_str);
+    }
+
+    // Optimize: if left==right, use three values
+    if (strcmp(left_str, right_str) == 0) {
+        return rb_sprintf("%s %s %s", top_str, right_str, bottom_str);
+    }
+
+    // All different: use four values
+    return rb_sprintf("%s %s %s %s", top_str, right_str, bottom_str, left_str);
+}
+
+// Create border-width shorthand from individual sides
+VALUE cataract_create_border_width_shorthand(VALUE self, VALUE properties) {
+    return create_border_dimension_shorthand(properties, "width");
+}
+
+// Create border-style shorthand from individual sides
+VALUE cataract_create_border_style_shorthand(VALUE self, VALUE properties) {
+    return create_border_dimension_shorthand(properties, "style");
+}
+
+// Create border-color shorthand from individual sides
+VALUE cataract_create_border_color_shorthand(VALUE self, VALUE properties) {
+    return create_border_dimension_shorthand(properties, "color");
+}
+
+// Create border shorthand from border-width, border-style, border-color
+// Output: combined string, or Qnil if no properties present
+VALUE cataract_create_border_shorthand(VALUE self, VALUE properties) {
+    VALUE width = rb_hash_aref(properties, rb_str_new_cstr("border-width"));
+    VALUE style = rb_hash_aref(properties, rb_str_new_cstr("border-style"));
+    VALUE color = rb_hash_aref(properties, rb_str_new_cstr("border-color"));
+
+    // Need at least one property
+    if (NIL_P(width) && NIL_P(style) && NIL_P(color)) {
+        return Qnil;
+    }
+
+    VALUE result = rb_str_new_cstr("");
+    int first = 1;
+
+    if (!NIL_P(width)) {
+        rb_str_append(result, width);
+        first = 0;
+    }
+    if (!NIL_P(style)) {
+        if (!first) rb_str_cat2(result, " ");
+        rb_str_append(result, style);
+        first = 0;
+    }
+    if (!NIL_P(color)) {
+        if (!first) rb_str_cat2(result, " ");
+        rb_str_append(result, color);
+    }
+
+    return result;
+}
+
+// Create background shorthand from longhand properties
+VALUE cataract_create_background_shorthand(VALUE self, VALUE properties) {
+    VALUE color = rb_hash_aref(properties, rb_str_new_cstr("background-color"));
+    VALUE image = rb_hash_aref(properties, rb_str_new_cstr("background-image"));
+    VALUE repeat = rb_hash_aref(properties, rb_str_new_cstr("background-repeat"));
+    VALUE position = rb_hash_aref(properties, rb_str_new_cstr("background-position"));
+    VALUE size = rb_hash_aref(properties, rb_str_new_cstr("background-size"));
+
+    // Need at least one property
+    if (NIL_P(color) && NIL_P(image) && NIL_P(repeat) && NIL_P(position) && NIL_P(size)) {
+        return Qnil;
+    }
+
+    VALUE result = rb_str_new_cstr("");
+    int first = 1;
+
+    if (!NIL_P(color)) {
+        rb_str_append(result, color);
+        first = 0;
+    }
+    if (!NIL_P(image)) {
+        if (!first) rb_str_cat2(result, " ");
+        rb_str_append(result, image);
+        first = 0;
+    }
+    if (!NIL_P(repeat)) {
+        if (!first) rb_str_cat2(result, " ");
+        rb_str_append(result, repeat);
+        first = 0;
+    }
+    if (!NIL_P(position)) {
+        if (!first) rb_str_cat2(result, " ");
+        rb_str_append(result, position);
+        first = 0;
+    }
+    if (!NIL_P(size)) {
+        // size needs to be prefixed with /
+        if (!first) rb_str_cat2(result, " ");
+        rb_str_cat2(result, "/ ");
+        rb_str_append(result, size);
+    }
+
+    return result;
+}
+
+// Create font shorthand from longhand properties
+// Requires: font-size and font-family
+// Optional: font-style, font-weight, line-height
+VALUE cataract_create_font_shorthand(VALUE self, VALUE properties) {
+    VALUE size = rb_hash_aref(properties, rb_str_new_cstr("font-size"));
+    VALUE family = rb_hash_aref(properties, rb_str_new_cstr("font-family"));
+
+    // font-size and font-family are required
+    if (NIL_P(size) || NIL_P(family)) {
+        return Qnil;
+    }
+
+    VALUE style = rb_hash_aref(properties, rb_str_new_cstr("font-style"));
+    VALUE weight = rb_hash_aref(properties, rb_str_new_cstr("font-weight"));
+    VALUE line_height = rb_hash_aref(properties, rb_str_new_cstr("line-height"));
+
+    VALUE result = rb_str_new_cstr("");
+    int has_content = 0;
+
+    // Order: style weight size/line-height family
+    if (!NIL_P(style)) {
+        rb_str_append(result, style);
+        has_content = 1;
+    }
+    if (!NIL_P(weight)) {
+        if (has_content) rb_str_cat2(result, " ");
+        rb_str_append(result, weight);
+        has_content = 1;
+    }
+
+    // size is required
+    if (has_content) rb_str_cat2(result, " ");
+    rb_str_append(result, size);
+
+    // line-height goes with size using /
+    if (!NIL_P(line_height)) {
+        rb_str_cat2(result, "/");
+        rb_str_append(result, line_height);
+    }
+
+    // family is required
+    rb_str_cat2(result, " ");
+    rb_str_append(result, family);
+
+    return result;
+}
+
+// Create list-style shorthand from longhand properties
+VALUE cataract_create_list_style_shorthand(VALUE self, VALUE properties) {
+    VALUE type = rb_hash_aref(properties, rb_str_new_cstr("list-style-type"));
+    VALUE position = rb_hash_aref(properties, rb_str_new_cstr("list-style-position"));
+    VALUE image = rb_hash_aref(properties, rb_str_new_cstr("list-style-image"));
+
+    // Need at least one property
+    if (NIL_P(type) && NIL_P(position) && NIL_P(image)) {
+        return Qnil;
+    }
+
+    VALUE result = rb_str_new_cstr("");
+    int first = 1;
+
+    if (!NIL_P(type)) {
+        rb_str_append(result, type);
+        first = 0;
+    }
+    if (!NIL_P(position)) {
+        if (!first) rb_str_cat2(result, " ");
+        rb_str_append(result, position);
+        first = 0;
+    }
+    if (!NIL_P(image)) {
+        if (!first) rb_str_cat2(result, " ");
+        rb_str_append(result, image);
+    }
+
+    return result;
+}
