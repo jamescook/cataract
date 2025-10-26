@@ -1182,6 +1182,54 @@ static VALUE parse_css(VALUE self, VALUE css_string) {
 // CSS merge implementation (cascade resolution, shorthand creation)
 #include "merge.c"
 
+/*
+ * Convert array of Declarations::Value structs to CSS string
+ * Format: "prop: value; prop2: value2 !important; "
+ */
+static VALUE declarations_to_s(VALUE self, VALUE declarations_array) {
+    Check_Type(declarations_array, T_ARRAY);
+
+    long len = RARRAY_LEN(declarations_array);
+    if (len == 0) {
+        return rb_str_new_cstr("");
+    }
+
+    // Use rb_str_buf_new for efficient string building
+    VALUE result = rb_str_buf_new(len * 32); // Estimate 32 chars per declaration
+
+    for (long i = 0; i < len; i++) {
+        VALUE decl = rb_ary_entry(declarations_array, i);
+
+        // Extract struct fields
+        VALUE property = rb_struct_aref(decl, INT2FIX(0));
+        VALUE value = rb_struct_aref(decl, INT2FIX(1));
+        VALUE important = rb_struct_aref(decl, INT2FIX(2));
+
+        // Append: "property: value"
+        rb_str_buf_append(result, property);
+        rb_str_buf_cat2(result, ": ");
+        rb_str_buf_append(result, value);
+
+        // Append " !important" if needed
+        if (RTEST(important)) {
+            rb_str_buf_cat2(result, " !important");
+        }
+
+        rb_str_buf_cat2(result, "; ");
+
+        RB_GC_GUARD(decl);
+        RB_GC_GUARD(property);
+        RB_GC_GUARD(value);
+        RB_GC_GUARD(important);
+    }
+
+    // Strip trailing space
+    rb_str_set_len(result, RSTRING_LEN(result) - 1);
+
+    RB_GC_GUARD(result);
+    return result;
+}
+
 void Init_cataract() {
     VALUE module = rb_define_module("Cataract");
 
@@ -1229,6 +1277,9 @@ void Init_cataract() {
     rb_define_module_function(module, "create_background_shorthand", cataract_create_background_shorthand, 1);
     rb_define_module_function(module, "create_font_shorthand", cataract_create_font_shorthand, 1);
     rb_define_module_function(module, "create_list_style_shorthand", cataract_create_list_style_shorthand, 1);
+
+    // Serialization
+    rb_define_module_function(module, "declarations_to_s", declarations_to_s, 1);
 
     // Export string allocation mode as a constant for verification in benchmarks
     #ifdef DISABLE_STR_BUF_OPTIMIZATION
