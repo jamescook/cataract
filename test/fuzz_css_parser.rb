@@ -174,6 +174,8 @@ end
 stats = {
   total: 0,
   parsed: 0,
+  merge_tested: 0,
+  to_s_tested: 0,
   parse_errors: 0,
   depth_errors: 0,
   size_errors: 0,
@@ -224,8 +226,34 @@ WORKER_SCRIPT = <<~'RUBY'
 
     # Parse CSS (crash will kill subprocess)
     begin
-      Cataract.parse_css(css)
-      STDOUT.write("OK\n")
+      rules = Cataract.parse_css(css)
+      merge_tested = false
+      to_s_tested = false
+
+      # Test merge with valid CSS followed by fuzzed CSS
+      # This tests merge error handling when second rule set is invalid
+      begin
+        valid_rules = Cataract.parse_css("body { margin: 0; color: red; }")
+        combined_rules = valid_rules + rules
+        Cataract.merge(combined_rules)
+        merge_tested = true
+      rescue Cataract::Error
+        # Expected - merge might fail on invalid CSS
+      end
+
+      # Test to_s on parsed rules occasionally
+      # This tests serialization on fuzzed data
+      if !rules.empty? && rand < 0.01
+        merged = Cataract.merge(rules)
+        Cataract.declarations_to_s(merged)
+        to_s_tested = true
+      end
+
+      # Report what was tested: PARSE [+MERGE] [+TOS]
+      output = "PARSE"
+      output += "+MERGE" if merge_tested
+      output += "+TOS" if to_s_tested
+      STDOUT.write("#{output}\n")
     rescue Cataract::DepthError
       STDOUT.write("DEPTH\n")
     rescue Cataract::SizeError
@@ -255,7 +283,8 @@ def parse_in_worker(stdin, stdout, stderr, wait_thr, input, last_input)
     signal = status.termsig
     # Worker died on PREVIOUS input, not this one - collect stderr
     stderr_output = stderr.read_nonblock(100_000) rescue ""
-    return [:crash, "Signal #{signal} (#{Signal.signame(signal)})", last_input, stderr_output]
+    error_msg = signal ? "Signal #{signal} (#{Signal.signame(signal)})" : "Exit code #{status.exitstatus}"
+    return [:crash, error_msg, last_input, stderr_output, false, false]
   end
 
   # Send length-prefixed input
@@ -270,27 +299,31 @@ def parse_in_worker(stdin, stdout, stderr, wait_thr, input, last_input)
     # Timeout - worker hung, kill it
     Process.kill('KILL', wait_thr.pid) rescue nil
     stderr_output = stderr.read_nonblock(100_000) rescue ""
-    [:crash, "Timeout (infinite loop?)", input, stderr_output]
+    [:crash, "Timeout (infinite loop?)", input, stderr_output, false, false]
   elsif !wait_thr.alive?
     # Worker crashed DURING this input
     status = wait_thr.value
     signal = status.termsig
     stderr_output = stderr.read_nonblock(100_000) rescue ""
-    [:crash, "Signal #{signal} (#{Signal.signame(signal)})", input, stderr_output]
+    error_msg = signal ? "Signal #{signal} (#{Signal.signame(signal)})" : "Exit code #{status.exitstatus}"
+    [:crash, error_msg, input, stderr_output, false, false]
   else
     # Read response
     response = stdout.gets&.strip
     case response
-    when "OK"
-      [:success, nil, nil, nil]
+    when /^PARSE/
+      # Extract which operations were tested
+      merge_tested = response.include?("+MERGE")
+      to_s_tested = response.include?("+TOS")
+      [:success, nil, nil, nil, merge_tested, to_s_tested]
     when "DEPTH"
-      [:depth_error, nil, nil, nil]
+      [:depth_error, nil, nil, nil, false, false]
     when "SIZE"
-      [:size_error, nil, nil, nil]
-    when "PARSE"
-      [:parse_error, nil, nil, nil]
+      [:size_error, nil, nil, nil, false, false]
+    when "PARSEERR"
+      [:parse_error, nil, nil, nil, false, false]
     else
-      [:error, nil, nil, nil]
+      [:error, nil, nil, nil, false, false]
     end
   end
 rescue Errno::EPIPE, IOError
@@ -299,9 +332,10 @@ rescue Errno::EPIPE, IOError
     status = wait_thr.value
     signal = status.termsig
     stderr_output = stderr.read_nonblock(100_000) rescue ""
-    [:crash, "Signal #{signal} (#{Signal.signame(signal)})", last_input, stderr_output]
+    error_msg = signal ? "Signal #{signal} (#{Signal.signame(signal)})" : "Exit code #{status.exitstatus}"
+    [:crash, error_msg, last_input, stderr_output, false, false]
   else
-    [:crash, "Broken pipe", input, ""]
+    [:crash, "Broken pipe", input, "", false, false]
   end
 end
 
@@ -324,12 +358,14 @@ ITERATIONS.times do |i|
   stats[:total] += 1
 
   # Send to worker subprocess
-  result, error, crashed_input, stderr_output = parse_in_worker(stdin, stdout, stderr, wait_thr, input, last_input)
+  result, error, crashed_input, stderr_output, merge_tested, to_s_tested = parse_in_worker(stdin, stdout, stderr, wait_thr, input, last_input)
   last_input = input
 
   case result
   when :success
     stats[:parsed] += 1
+    stats[:merge_tested] += 1 if merge_tested
+    stats[:to_s_tested] += 1 if to_s_tested
   when :parse_error
     stats[:parse_errors] += 1
   when :depth_error
@@ -412,15 +448,15 @@ ITERATIONS.times do |i|
 
     progress = "#{(i + 1).to_s.rjust(6)}/#{ITERATIONS}"
     iter_rate = "(#{rate.round(1).to_s.rjust(6)} iter/sec)"
-    parsed = "OK: #{stats[:parsed].to_s.rjust(5)}"
-    parse_err = "ParseErr: #{stats[:parse_errors].to_s.rjust(5)}"
-    depth_err = "DepthErr: #{stats[:depth_errors].to_s.rjust(3)}"
-    size_err = "SizeErr: #{stats[:size_errors].to_s.rjust(3)}"
+    parsed = "Parsed: #{stats[:parsed].to_s.rjust(5)}"
+    merged = "Merged: #{stats[:merge_tested].to_s.rjust(5)}"
+    to_s = "ToS: #{stats[:to_s_tested].to_s.rjust(4)}"
+    parse_err = "Err: #{stats[:parse_errors].to_s.rjust(4)}"
     crashes = "Crash: #{stats[:crashes].to_s.rjust(2)}"
     memory = "Mem: #{rss_mb.round(1).to_s.rjust(6)} MB"
 
     # Use \r to overwrite the same line
-    print "\rProgress: #{progress} #{iter_rate} | #{parsed} | #{parse_err} | #{depth_err} | #{size_err} | #{crashes} | #{memory}"
+    print "\rProgress: #{progress} #{iter_rate} | #{parsed} | #{merged} | #{to_s} | #{parse_err} | #{crashes} | #{memory}"
     $stdout.flush
   end
 end
