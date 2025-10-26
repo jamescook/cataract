@@ -32,6 +32,9 @@ vendor/
 # Test artifacts
 coverage/
 test/.benchmark_results/
+test/fuzz_last_input.css
+test/fuzz_crash_*.css
+test/fuzz_crash_*.log
 
 # Documentation
 doc/
