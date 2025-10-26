@@ -5,7 +5,7 @@ tmp/
 *.o
 
 # Generated C code from Ragel
-ext/**/*.c
+ext/**/cataract.c
 
 # Compiled extensions
 lib/**/*.so

@@ -15,9 +15,10 @@ end
 
 # Configure CLEAN to run before compilation
 # rake-compiler already adds: tmp/, lib/**/*.{so,bundle}, etc.
-# We add .c files, Makefile, and object files for a clean build
-# The .c files will be regenerated from .rl during compilation and persist after
-CLEAN.include("ext/**/*.c", "ext/**/Makefile", "ext/**/*.o")
+# We clean Ragel-generated .c files (regenerated from .rl), but keep hand-written .c files
+# Only clean: cataract.c and shorthand_expander.c (generated from .rl files)
+CLEAN.include("ext/cataract/cataract.c", "ext/cataract/shorthand_expander.c",
+              "ext/**/Makefile", "ext/**/*.o")
 
 # Test task
 Rake::TestTask.new(:test) do |t|
