@@ -4,6 +4,12 @@
 // Global reference to Declarations::Value struct class
 static VALUE cDeclarationsValue;
 
+// Error class references
+static VALUE eCataractError;
+static VALUE eParseError;
+static VALUE eDepthError;
+static VALUE eSizeError;
+
 // Forward declarations
 VALUE cataract_split_value(VALUE self, VALUE value);
 VALUE cataract_expand_margin(VALUE self, VALUE value);
@@ -40,6 +46,25 @@ VALUE cataract_expand_background(VALUE self, VALUE value);
 #else
   #define STR_NEW_WITH_CAPACITY(capacity) rb_str_new_cstr("")
   #define STR_NEW_CSTR(str) rb_str_new_cstr(str)
+#endif
+
+// Sanity limits for CSS properties and values
+// These prevent crashes from pathological inputs (fuzzer-found edge cases)
+// Override at compile time if needed: -DMAX_PROPERTY_NAME_LENGTH=512
+#ifndef MAX_PROPERTY_NAME_LENGTH
+  #define MAX_PROPERTY_NAME_LENGTH 256  // Reasonable max for property names (e.g., "background-position-x")
+#endif
+
+#ifndef MAX_PROPERTY_VALUE_LENGTH
+  #define MAX_PROPERTY_VALUE_LENGTH 32768  // 32KB - handles large data URLs and complex values
+#endif
+
+#ifndef MAX_AT_RULE_BLOCK_LENGTH
+  #define MAX_AT_RULE_BLOCK_LENGTH 1048576  // 1MB - max size for @media, @supports, etc. block content
+#endif
+
+#ifndef MAX_PARSE_DEPTH
+  #define MAX_PARSE_DEPTH 10  // Max recursion depth for nested @media/@supports blocks
 #endif
 
 %%{
@@ -183,8 +208,22 @@ VALUE cataract_expand_background(VALUE self, VALUE value);
           prelude_end--;
         }
         VALUE media_types = parse_media_query(at_rule_prelude_start, prelude_end - at_rule_prelude_start);
-        VALUE media_content_str = rb_str_new(media_content_start + 1, p - media_content_start - 1);
-        VALUE inner_rules = parse_css(Qnil, media_content_str);
+
+        // Extract media block content (bounds check for empty/oversized blocks)
+        long media_block_len = p - media_content_start - 1;
+        VALUE inner_rules = Qnil;
+
+        VALUE media_content_str = Qnil;
+        if (media_block_len > MAX_AT_RULE_BLOCK_LENGTH) {
+          rb_raise(eSizeError,
+                   "@media block too large: %ld bytes (max %d bytes)",
+                   media_block_len, MAX_AT_RULE_BLOCK_LENGTH);
+        } else if (media_block_len > 0) {
+          media_content_str = rb_str_new(media_content_start + 1, media_block_len);
+          inner_rules = parse_css_internal(Qnil, media_content_str, depth + 1);
+        } else {
+          inner_rules = rb_ary_new();  // Empty array for empty block
+        }
 
         if (!NIL_P(media_types) && RARRAY_LEN(media_types) > 0) {
           for (long i = 0; i < RARRAY_LEN(inner_rules); i++) {
@@ -195,8 +234,11 @@ VALUE cataract_expand_background(VALUE self, VALUE value);
           rb_ary_push(rules_array, RARRAY_AREF(inner_rules, i));
         }
 
+        RB_GC_GUARD(media_types);        // Protect from GC - must be at end of scope
+        RB_GC_GUARD(media_content_str);  // Protect from GC - must be at end of scope
+        RB_GC_GUARD(inner_rules);        // Protect from GC - must be at end of scope
+
         inside_at_rule_block = 0;
-        // p++;  // Advance past the closing }
         fgoto main;  // Jump back to main state and continue parsing
       }
     } else {
@@ -214,10 +256,20 @@ VALUE cataract_expand_background(VALUE self, VALUE value);
           const char *name_cstr = StringValueCStr(at_name);
 
           if (strcmp(name_cstr, "supports") == 0) {
-            VALUE block_content = rb_str_new(at_rule_block_start + 1, p - at_rule_block_start - 1);
-            VALUE inner_rules = parse_css(Qnil, block_content);
-            for (long i = 0; i < RARRAY_LEN(inner_rules); i++) {
-              rb_ary_push(rules_array, RARRAY_AREF(inner_rules, i));
+            // Extract block content (bounds check for empty/oversized blocks)
+            long block_len = p - at_rule_block_start - 1;
+            if (block_len > MAX_AT_RULE_BLOCK_LENGTH) {
+              rb_raise(eSizeError,
+                       "@supports block too large: %ld bytes (max %d bytes)",
+                       block_len, MAX_AT_RULE_BLOCK_LENGTH);
+            } else if (block_len > 0) {
+              VALUE block_content = rb_str_new(at_rule_block_start + 1, block_len);
+              VALUE inner_rules = parse_css_internal(Qnil, block_content, depth + 1);
+              for (long i = 0; i < RARRAY_LEN(inner_rules); i++) {
+                rb_ary_push(rules_array, RARRAY_AREF(inner_rules, i));
+              }
+              RB_GC_GUARD(block_content);  // Protect from GC - must be at end of scope
+              RB_GC_GUARD(inner_rules);    // Protect from GC - must be at end of scope
             }
           } else if (strncmp(name_cstr, "keyframes", 9) == 0 || strstr(name_cstr, "-keyframes") != NULL) {
             const char *prelude_end = media_content_start;
@@ -241,11 +293,25 @@ VALUE cataract_expand_background(VALUE self, VALUE value);
             rb_hash_aset(rule, ID2SYM(rb_intern("declarations")), rb_hash_new());
             rb_hash_aset(rule, ID2SYM(rb_intern("media_types")), rb_ary_new3(1, ID2SYM(rb_intern("all"))));
             rb_ary_push(rules_array, rule);
+
+            RB_GC_GUARD(animation_name);  // Protect from GC - must be at end of scope
+            RB_GC_GUARD(selector);        // Protect from GC - must be at end of scope
+            RB_GC_GUARD(rule);            // Protect from GC - must be at end of scope
           } else if (strcmp(name_cstr, "font-face") == 0 || strcmp(name_cstr, "property") == 0 ||
                      strcmp(name_cstr, "page") == 0 || strcmp(name_cstr, "counter-style") == 0) {
             // Descriptor-based at-rules: @font-face, @property, @page, @counter-style
             // These contain descriptors (not rules), so parse as dummy selector to extract declarations
-            VALUE block_content = rb_str_new(at_rule_block_start + 1, p - at_rule_block_start - 1);
+            long block_len = p - at_rule_block_start - 1;
+            if (block_len <= 0) {
+              // Empty block, skip
+              goto at_rule_cleanup;
+            }
+            if (block_len > MAX_AT_RULE_BLOCK_LENGTH) {
+              rb_raise(eSizeError,
+                       "@%s block too large: %ld bytes (max %d bytes)",
+                       name_cstr, block_len, MAX_AT_RULE_BLOCK_LENGTH);
+            }
+            VALUE block_content = rb_str_new(at_rule_block_start + 1, block_len);
 
             // Wrap content for parsing: "* { " + content + " }"
             long content_len = RSTRING_LEN(block_content);
@@ -254,9 +320,14 @@ VALUE cataract_expand_background(VALUE self, VALUE value);
             rb_str_append(wrapped, block_content);
             rb_str_cat2(wrapped, " }");
 
-            VALUE dummy_rules = parse_css(Qnil, wrapped);
+            VALUE dummy_rules = parse_css_internal(Qnil, wrapped, depth + 1);
+            VALUE declarations = Qnil;
+            VALUE prelude_val = Qnil;
+            VALUE selector = Qnil;
+            VALUE rule = Qnil;
+
             if (!NIL_P(dummy_rules) && RARRAY_LEN(dummy_rules) > 0) {
-              VALUE declarations = rb_hash_aref(RARRAY_AREF(dummy_rules, 0), ID2SYM(rb_intern("declarations")));
+              declarations = rb_hash_aref(RARRAY_AREF(dummy_rules, 0), ID2SYM(rb_intern("declarations")));
 
               // Compute prelude first to know total size for pre-allocation
               const char *prelude_end = media_content_start;
@@ -264,7 +335,6 @@ VALUE cataract_expand_background(VALUE self, VALUE value);
                 prelude_end--;
               }
               long prelude_len = prelude_end - at_rule_prelude_start;
-              VALUE prelude_val = Qnil;
               long stripped_prelude_len = 0;
               if (prelude_len > 0) {
                 prelude_val = rb_str_new(at_rule_prelude_start, prelude_len);
@@ -275,7 +345,7 @@ VALUE cataract_expand_background(VALUE self, VALUE value);
               // Build selector: "@" + name + [" " + prelude]
               long name_len = strlen(name_cstr);
               long total_capacity = 1 + name_len + (stripped_prelude_len > 0 ? 1 + stripped_prelude_len : 0);
-              VALUE selector = STR_NEW_WITH_CAPACITY(total_capacity);
+              selector = STR_NEW_WITH_CAPACITY(total_capacity);
               rb_str_cat2(selector, "@");
               rb_str_cat2(selector, name_cstr);
 
@@ -285,22 +355,41 @@ VALUE cataract_expand_background(VALUE self, VALUE value);
                 rb_str_append(selector, prelude_val);
               }
 
-              VALUE rule = rb_hash_new();
+              rule = rb_hash_new();
               rb_hash_aset(rule, ID2SYM(rb_intern("selector")), selector);
               rb_hash_aset(rule, ID2SYM(rb_intern("declarations")), declarations);
               rb_hash_aset(rule, ID2SYM(rb_intern("media_types")), rb_ary_new3(1, ID2SYM(rb_intern("all"))));
               rb_ary_push(rules_array, rule);
             }
+
+            RB_GC_GUARD(block_content);  // Protect from GC - must be at end of scope
+            RB_GC_GUARD(wrapped);        // Protect from GC - must be at end of scope
+            RB_GC_GUARD(dummy_rules);    // Protect from GC - must be at end of scope
+            RB_GC_GUARD(declarations);   // Protect from GC - must be at end of scope
+            RB_GC_GUARD(prelude_val);    // Protect from GC - must be at end of scope
+            RB_GC_GUARD(selector);       // Protect from GC - must be at end of scope
+            RB_GC_GUARD(rule);           // Protect from GC - must be at end of scope
           } else {
             // Default: treat as conditional group rule (like @supports, @layer, @container, @scope, etc.)
-            // Recursively parse block content
-            VALUE block_content = rb_str_new(at_rule_block_start + 1, p - at_rule_block_start - 1);
-            VALUE inner_rules = parse_css(Qnil, block_content);
-            for (long i = 0; i < RARRAY_LEN(inner_rules); i++) {
-              rb_ary_push(rules_array, RARRAY_AREF(inner_rules, i));
+            // Recursively parse block content (bounds check for empty/oversized blocks)
+            long block_len = p - at_rule_block_start - 1;
+            if (block_len > MAX_AT_RULE_BLOCK_LENGTH) {
+              rb_raise(eSizeError,
+                       "@%s block too large: %ld bytes (max %d bytes)",
+                       name_cstr, block_len, MAX_AT_RULE_BLOCK_LENGTH);
+            } else if (block_len > 0) {
+              VALUE block_content = rb_str_new(at_rule_block_start + 1, block_len);
+              VALUE inner_rules = parse_css_internal(Qnil, block_content, depth + 1);
+              for (long i = 0; i < RARRAY_LEN(inner_rules); i++) {
+                rb_ary_push(rules_array, RARRAY_AREF(inner_rules, i));
+              }
+              RB_GC_GUARD(block_content);  // Protect from GC - must be at end of scope
+              RB_GC_GUARD(inner_rules);    // Protect from GC - must be at end of scope
             }
           }
 
+          at_rule_cleanup:
+          RB_GC_GUARD(at_name);  // Protect from GC - must be at end of scope after all name_cstr usage
           at_rule_name_start = NULL;
           at_rule_prelude_start = NULL;
           media_content_start = NULL;
@@ -308,7 +397,6 @@ VALUE cataract_expand_background(VALUE self, VALUE value);
         }
 
         inside_at_rule_block = 0;
-        p++;
         fgoto main;
       }
     }
@@ -416,8 +504,23 @@ VALUE cataract_expand_background(VALUE self, VALUE value);
 
         // Skip if value is empty (e.g., "color: !important" with no actual value)
         if (val_end > val_start) {
-          // Create property string and lowercase it in C
+          // Sanity check: property name length
           long prop_len = prop_end - prop_start;
+          if (prop_len > MAX_PROPERTY_NAME_LENGTH) {
+            DEBUG_PRINTF("[capture_declarations] Skipping property: name too long (%ld > %d)\n",
+                         prop_len, MAX_PROPERTY_NAME_LENGTH);
+            continue;
+          }
+
+          // Sanity check: value length
+          long val_len = val_end - val_start;
+          if (val_len > MAX_PROPERTY_VALUE_LENGTH) {
+            DEBUG_PRINTF("[capture_declarations] Skipping property: value too long (%ld > %d)\n",
+                         val_len, MAX_PROPERTY_VALUE_LENGTH);
+            continue;
+          }
+
+          // Create property string and lowercase it in C
           char prop_lower[prop_len];
           for (long i = 0; i < prop_len; i++) {
             char c = prop_start[i];
@@ -438,6 +541,11 @@ VALUE cataract_expand_background(VALUE self, VALUE value);
           );
 
           rb_ary_push(current_declarations, decl);
+
+          // Protect temporaries from GC (in case compiler optimizes them to registers)
+          RB_GC_GUARD(property);
+          RB_GC_GUARD(value);
+          RB_GC_GUARD(decl);
         } else {
           DEBUG_PRINTF("[capture_declarations] Skipping empty value for property at pos %ld\n", prop_start - RSTRING_PTR(css_string));
         }
@@ -913,7 +1021,14 @@ static VALUE parse_media_query(const char *query_str, long query_len) {
     return mq_types;
 }
 
-static VALUE parse_css(VALUE self, VALUE css_string) {
+static VALUE parse_css_internal(VALUE self, VALUE css_string, int depth) {
+    // Check recursion depth to prevent stack overflow and memory exhaustion
+    if (depth > MAX_PARSE_DEPTH) {
+        rb_raise(eDepthError,
+                 "CSS nesting too deep: exceeded maximum depth of %d",
+                 MAX_PARSE_DEPTH);
+    }
+
     // Ragel state variables
     char *p, *pe, *eof;
     char *mark = NULL, *media_content_start = NULL;
@@ -964,7 +1079,7 @@ static VALUE parse_css(VALUE self, VALUE css_string) {
         const char *context_start = (pos >= 20) ? (p - 20) : RSTRING_PTR(css_string);
         long context_len = (pos >= 20) ? 20 : pos;
 
-        rb_raise(rb_eRuntimeError,
+        rb_raise(eParseError,
                  "Parse error at position %ld (length %ld, state %d). Context: ...%.*s<<<HERE",
                  pos, len, cs, (int)context_len, context_start);
     }
@@ -1048,8 +1163,19 @@ static VALUE calculate_specificity(VALUE self, VALUE selector_string) {
     return INT2NUM(specificity);
 }
 
+// Public wrapper for Ruby - starts at depth 0
+static VALUE parse_css(VALUE self, VALUE css_string) {
+    return parse_css_internal(self, css_string, 0);
+}
+
 void Init_cataract() {
     VALUE module = rb_define_module("Cataract");
+
+    // Define error class hierarchy
+    eCataractError = rb_define_class_under(module, "Error", rb_eStandardError);
+    eParseError = rb_define_class_under(module, "ParseError", eCataractError);
+    eDepthError = rb_define_class_under(module, "DepthError", eCataractError);
+    eSizeError = rb_define_class_under(module, "SizeError", eCataractError);
 
     // Define Cataract::Declarations class (Ruby side will add methods)
     VALUE cDeclarations = rb_define_class_under(module, "Declarations", rb_cObject);

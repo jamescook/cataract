@@ -135,3 +135,12 @@ task lint: 'compile:ragel' do
 
   puts "✓ cppcheck passed (warnings/errors only, style checks skipped)"
 end
+
+# Fuzz testing
+desc "Run fuzzer to test parser robustness"
+task fuzz: :compile do
+  iterations = ENV['ITERATIONS'] || '10000'
+  puts "Running CSS parser fuzzer (#{iterations} iterations)..."
+  # Use system with ENV.to_h to preserve environment variables like FUZZ_GC_STRESS
+  system(ENV.to_h, RbConfig.ruby, '-Ilib', 'test/fuzz_css_parser.rb', iterations)
+end
