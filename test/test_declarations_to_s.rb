@@ -11,6 +11,15 @@ class TestDeclarationsToS < Minitest::Test
     assert_equal '', result
   end
 
+  def test_bootstrap
+    sheet = Cataract.parse_css(File.read('test/fixtures/bootstrap.css'))
+    # Get declarations from first rule
+    first_rule = sheet.rules.first
+    result = Cataract.declarations_to_s(first_rule.declarations)
+    # Bootstrap's first rule should have some declarations
+    assert result.length > 0
+  end
+
   def test_single_declaration
     decl = Cataract::Declarations::Value.new('color', 'red', false)
     result = Cataract.declarations_to_s([decl])

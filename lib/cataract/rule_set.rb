@@ -171,29 +171,10 @@ module Cataract
     
     # Parse "color: red; background: blue" into Declarations
     # Also handles css_parser format with braces: "{ color: red }"
-    # Uses Ragel parser for robustness (handles data URIs, escaping, etc.)
     def parse_declaration_string(str)
-      # Strip outer braces if present (css_parser compatibility)
-      clean_str = str.strip
-      if clean_str.start_with?('{') && clean_str.end_with?('}')
-        clean_str = clean_str[1..-2].strip
-      end
-
-      # Use Ragel parser by wrapping in a dummy selector
-      # This handles all edge cases (data URIs, escaped strings, comments, etc.)
-      dummy_css = ".x { #{clean_str} }"
-
-      begin
-        parsed = Cataract.parse_css(dummy_css)
-        return Declarations.new if parsed.empty?
-
-        # Extract declarations from the parsed rule
-        raw_declarations = parsed[0][:declarations]
-        return Declarations.new(raw_declarations)
-      rescue
-        # If parsing fails, return empty declarations (css_parser behavior for malformed CSS)
-        return Declarations.new
-      end
+      # Use C function directly - no dummy wrapper needed!
+      raw_declarations = Cataract.parse_declarations(str)
+      Declarations.new(raw_declarations)
     end
     
     # Calculate CSS specificity using C extension
