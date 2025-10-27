@@ -4,8 +4,9 @@ require_relative 'ragel_generator'
 # Generate C code from Ragel grammars
 RagelGenerator.generate_c_from_ragel(ext_dir: File.dirname(__FILE__))
 
-# Only compile cataract.c (it includes value_splitter.c)
-$objs = ['cataract.o']
+# Compile cataract.c (Ragel parser, includes merge.c and shorthand_expander.c)
+# and stylesheet.c (standalone serialization functions)
+$objs = ['cataract.o', 'stylesheet.o']
 
 # String buffer optimization (enabled by default, disable for benchmarking)
 # Check both env var (for development) and command-line flag (for gem install)
