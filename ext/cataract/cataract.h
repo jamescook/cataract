@@ -84,6 +84,28 @@ static inline void trim_trailing(const char *start, const char **end) {
     }
 }
 
+// Lowercase property name (CSS property names are ASCII-only)
+static inline VALUE lowercase_property(VALUE property_str) {
+    Check_Type(property_str, T_STRING);
+
+    long len = RSTRING_LEN(property_str);
+    const char *src = RSTRING_PTR(property_str);
+
+    // Create new string with same length
+    VALUE result = rb_str_buf_new(len);
+
+    for (long i = 0; i < len; i++) {
+        char c = src[i];
+        // Lowercase ASCII letters only (CSS properties are ASCII)
+        if (c >= 'A' && c <= 'Z') {
+            c = c + ('a' - 'A');
+        }
+        rb_str_buf_cat(result, &c, 1);
+    }
+
+    return result;
+}
+
 // ============================================================================
 // Function declarations (implemented in various .c/.rl files)
 // ============================================================================
@@ -120,5 +142,31 @@ VALUE cataract_create_border_shorthand(VALUE self, VALUE properties);
 VALUE cataract_create_background_shorthand(VALUE self, VALUE properties);
 VALUE cataract_create_font_shorthand(VALUE self, VALUE properties);
 VALUE cataract_create_list_style_shorthand(VALUE self, VALUE properties);
+
+// Pure C parser (css_parser.c)
+VALUE parse_css_pure_c(VALUE css_string, int depth);
+
+// Media query parser (defined in cataract.rl, used by css_parser.c)
+VALUE parse_media_query(const char *query_str, long query_len);
+
+// Specificity calculator (specificity.c)
+VALUE calculate_specificity_pure_c(VALUE self, VALUE selector_string);
+
+// Extracted action functions (defined in cataract.rl, used by css_parser.c)
+void capture_declarations_fn(
+    const char **decl_start_ptr,
+    const char *p,
+    VALUE *current_declarations,
+    const char *css_string_base
+);
+
+void finish_rule_fn(
+    int inside_at_rule_block,
+    VALUE *current_selectors,
+    VALUE *current_declarations,
+    VALUE *current_media_types,
+    VALUE rules_array,
+    const char **mark_ptr
+);
 
 #endif // CATARACT_H

@@ -1,25 +1,5 @@
 #include "cataract.h"
 
-// Helper: Lowercase a CSS property name (ASCII only, safe for CSS)
-//
-// SAFE FOR: Property names (color, margin-top), media types (screen, print)
-// NOT SAFE FOR: Property values (content: "Unicode 你好"), selectors with attributes
-//
-// CSS property names are guaranteed ASCII per W3C spec, so simple A-Z → a-z is correct.
-// Returns a new Ruby string with lowercased content.
-static VALUE lowercase_property(VALUE property_str) {
-    const char *str = StringValueCStr(property_str);
-    long len = RSTRING_LEN(property_str);
-
-    char lower[len];  // VLA - C99
-    for (long i = 0; i < len; i++) {
-        char c = str[i];
-        lower[i] = (c >= 'A' && c <= 'Z') ? (c + 32) : c;
-    }
-
-    return rb_str_new(lower, len);
-}
-
 // Context for expanded property iteration
 struct expand_context {
     VALUE properties_hash;
