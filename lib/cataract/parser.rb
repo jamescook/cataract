@@ -12,8 +12,9 @@ module Cataract
     end
 
     def parse(css_string)
-      new_rules = Cataract.parse_css_internal(css_string)
-      @raw_rules.concat(new_rules)
+      result = Cataract.parse_css_internal(css_string)
+      # parse_css_internal returns {rules: [...], charset: "..." | nil}
+      @raw_rules.concat(result[:rules])
       self
     end
 

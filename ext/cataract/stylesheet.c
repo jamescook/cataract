@@ -83,11 +83,20 @@ static int serialize_media_callback(VALUE media_type, VALUE rules_for_media, VAL
     return ST_CONTINUE;
 }
 
-VALUE stylesheet_to_s_c(VALUE self, VALUE rules_array) {
+VALUE stylesheet_to_s_c(VALUE self, VALUE rules_array, VALUE charset) {
     Check_Type(rules_array, T_ARRAY);
 
     long len = RARRAY_LEN(rules_array);
+
+    // Handle empty stylesheet
     if (len == 0) {
+        if (!NIL_P(charset)) {
+            // Even empty stylesheet should emit @charset if present
+            VALUE result = rb_str_new_cstr("@charset \"");
+            rb_str_buf_append(result, charset);
+            rb_str_buf_cat2(result, "\";\n");
+            return result;
+        }
         return rb_str_new_cstr("");
     }
 
@@ -141,6 +150,14 @@ VALUE stylesheet_to_s_c(VALUE self, VALUE rules_array) {
 
     // Step 4: Serialize to string using rb_hash_foreach (no .keys call)
     VALUE result = rb_str_buf_new(merged_len * 100);
+
+    // Emit @charset first if present (must be first per W3C spec)
+    if (!NIL_P(charset)) {
+        rb_str_buf_cat2(result, "@charset \"");
+        rb_str_buf_append(result, charset);
+        rb_str_buf_cat2(result, "\";\n");
+    }
+
     struct serialize_media_ctx serialize_ctx = { result, self };
     rb_hash_foreach(styles_by_media, serialize_media_callback, (VALUE)&serialize_ctx);
 

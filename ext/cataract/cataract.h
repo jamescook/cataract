@@ -92,7 +92,7 @@ static inline void trim_trailing(const char *start, const char **end) {
 VALUE declarations_to_s(VALUE self, VALUE declarations_array);
 
 // Stylesheet serialization (stylesheet.c)
-VALUE stylesheet_to_s_c(VALUE self, VALUE rules_array);
+VALUE stylesheet_to_s_c(VALUE self, VALUE rules_array, VALUE charset);
 
 // Merge/cascade functions (merge.c)
 VALUE cataract_merge(VALUE self, VALUE rules_array);
