@@ -1,5 +1,5 @@
 require_relative 'cataract/version'
-require 'cataract/cataract'  # Load C extension first (defines Rule struct)
+require_relative 'cataract/cataract'  # Load C extension first (defines Rule struct)
 require_relative 'cataract/rule'  # Add Ruby methods to Rule
 require_relative 'cataract/stylesheet'
 require_relative 'cataract/rule_set'

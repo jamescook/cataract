@@ -158,13 +158,13 @@ static VALUE cataract_merge(VALUE self, VALUE rules_array) {
             } else if (strcmp(prop_str, "border-width") == 0) {
                 expanded = cataract_expand_border_width(Qnil, value);
             } else if (strcmp(prop_str, "border-top") == 0) {
-                expanded = cataract_expand_border_side(Qnil, value, rb_str_new_cstr("top"));
+                expanded = cataract_expand_border_side(Qnil, rb_str_new_cstr("top"), value);
             } else if (strcmp(prop_str, "border-right") == 0) {
-                expanded = cataract_expand_border_side(Qnil, value, rb_str_new_cstr("right"));
+                expanded = cataract_expand_border_side(Qnil, rb_str_new_cstr("right"), value);
             } else if (strcmp(prop_str, "border-bottom") == 0) {
-                expanded = cataract_expand_border_side(Qnil, value, rb_str_new_cstr("bottom"));
+                expanded = cataract_expand_border_side(Qnil, rb_str_new_cstr("bottom"), value);
             } else if (strcmp(prop_str, "border-left") == 0) {
-                expanded = cataract_expand_border_side(Qnil, value, rb_str_new_cstr("left"));
+                expanded = cataract_expand_border_side(Qnil, rb_str_new_cstr("left"), value);
             } else if (strcmp(prop_str, "font") == 0) {
                 expanded = cataract_expand_font(Qnil, value);
             } else if (strcmp(prop_str, "list-style") == 0) {

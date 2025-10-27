@@ -469,7 +469,7 @@ static VALUE lowercase_property(VALUE property_str);
       const char *pos = start;
       while (pos < end) {
         // Skip whitespace and semicolons
-        while (pos < end && (*pos == ' ' || *pos == '\t' || *pos == '\n' || *pos == '\r' || *pos == ';')) {
+        while (pos < end && (IS_WHITESPACE(*pos) || *pos == ';')) {
           pos++;
         }
         if (pos >= end) break;
@@ -480,19 +480,14 @@ static VALUE lowercase_property(VALUE property_str);
         if (pos >= end) break;  // No colon found
 
         const char *prop_end = pos;
-        // Trim trailing whitespace and newlines from property
-        while (prop_end > prop_start && (*(prop_end-1) == ' ' || *(prop_end-1) == '\t' || *(prop_end-1) == '\n' || *(prop_end-1) == '\r')) {
-          prop_end--;
-        }
-        // Trim leading whitespace and newlines from property
-        while (prop_start < prop_end && (*prop_start == ' ' || *prop_start == '\t' || *prop_start == '\n' || *prop_start == '\r')) {
-          prop_start++;
-        }
+        // Trim whitespace from property
+        trim_trailing(prop_start, &prop_end);
+        trim_leading(&prop_start, prop_end);
 
         pos++;  // Skip colon
 
         // Skip whitespace after colon
-        while (pos < end && (*pos == ' ' || *pos == '\t' || *pos == '\n' || *pos == '\r')) {
+        while (pos < end && IS_WHITESPACE(*pos)) {
           pos++;
         }
 
@@ -513,9 +508,7 @@ static VALUE lowercase_property(VALUE property_str);
         const char *val_end = pos;
 
         // Trim trailing whitespace from value
-        while (val_end > val_start && (*(val_end-1) == ' ' || *(val_end-1) == '\t' || *(val_end-1) == '\n' || *(val_end-1) == '\r')) {
-          val_end--;
-        }
+        trim_trailing(val_start, &val_end);
 
         // Check for !important
         int is_important = 0;
@@ -523,14 +516,14 @@ static VALUE lowercase_property(VALUE property_str);
         // Look backwards for "!important"
         if (val_end - val_start >= 10) {  // strlen("!important") = 10
           const char *check = val_end - 10;
-          while (check < val_end && (*check == ' ' || *check == '\t' || *check == '\n' || *check == '\r')) check++;
+          while (check < val_end && IS_WHITESPACE(*check)) check++;
           if (check < val_end && *check == '!') {
             check++;
-            while (check < val_end && (*check == ' ' || *check == '\t' || *check == '\n' || *check == '\r')) check++;
+            while (check < val_end && IS_WHITESPACE(*check)) check++;
             if ((val_end - check) >= 9 && strncmp(check, "important", 9) == 0) {
               is_important = 1;
               important_pos = check - 1;
-              while (important_pos > val_start && (*(important_pos-1) == ' ' || *(important_pos-1) == '\t' || *(important_pos-1) == '\n' || *(important_pos-1) == '\r' || *(important_pos-1) == '!')) {
+              while (important_pos > val_start && (IS_WHITESPACE(*(important_pos-1)) || *(important_pos-1) == '!')) {
                 important_pos--;
               }
               val_end = important_pos;
@@ -539,9 +532,7 @@ static VALUE lowercase_property(VALUE property_str);
         }
 
         // Final trim of trailing whitespace/newlines from value (after !important removal)
-        while (val_end > val_start && (*(val_end-1) == ' ' || *(val_end-1) == '\t' || *(val_end-1) == '\n' || *(val_end-1) == '\r')) {
-          val_end--;
-        }
+        trim_trailing(val_start, &val_end);
 
         // Skip if value is empty (e.g., "color: !important" with no actual value)
         if (val_end > val_start) {

@@ -160,6 +160,40 @@ class TestShorthandCreation < Minitest::Test
     assert_nil result, 'Should return nil if no border properties'
   end
 
+  # Real-world case from bootstrap.css: .form-control-plaintext
+  # Has: border: solid transparent; border-width: 1px 0;
+  # After merge: border-width becomes "1px 0", border-style becomes "solid", border-color becomes "transparent"
+  # Should NOT create border shorthand because border-width has multiple values
+  def test_create_border_multivalue_width_should_fail
+    input = {
+      'border-width' => '1px 0',
+      'border-style' => 'solid',
+      'border-color' => 'transparent'
+    }
+    result = Cataract.create_border_shorthand(input)
+    assert_nil result, 'Should return nil when border-width has multiple values (1px 0)'
+  end
+
+  def test_create_border_multivalue_style_should_fail
+    input = {
+      'border-width' => '1px',
+      'border-style' => 'solid dashed',
+      'border-color' => 'black'
+    }
+    result = Cataract.create_border_shorthand(input)
+    assert_nil result, 'Should return nil when border-style has multiple values'
+  end
+
+  def test_create_border_multivalue_color_should_fail
+    input = {
+      'border-width' => '2px',
+      'border-style' => 'solid',
+      'border-color' => 'red blue'
+    }
+    result = Cataract.create_border_shorthand(input)
+    assert_nil result, 'Should return nil when border-color has multiple values'
+  end
+
   # Background shorthand creation
   def test_create_background_color_only
     input = {
