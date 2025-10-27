@@ -19,6 +19,9 @@
 #include <ruby.h>
 #include <string.h>
 
+// String pre-allocation optimization for efficient incremental building
+#define STR_NEW_WITH_CAPACITY(capacity) rb_str_buf_new(capacity)
+
 %%{
   machine value_splitter;
 
@@ -844,7 +847,9 @@ VALUE cataract_create_border_color_shorthand(VALUE self, VALUE properties) {
 }
 
 // Create border shorthand from border-width, border-style, border-color
-// Output: combined string, or Qnil if no properties present
+// Output: combined string, or Qnil if no properties present or if values are multi-value shorthands
+// Note: border shorthand can only have ONE value per component (width, style, color)
+// Cannot combine "border-width: 1px 0" into "border: 1px 0 solid" (invalid CSS)
 VALUE cataract_create_border_shorthand(VALUE self, VALUE properties) {
     VALUE width = rb_hash_aref(properties, rb_str_new_cstr("border-width"));
     VALUE style = rb_hash_aref(properties, rb_str_new_cstr("border-style"));
@@ -855,7 +860,19 @@ VALUE cataract_create_border_shorthand(VALUE self, VALUE properties) {
         return Qnil;
     }
 
-    VALUE result = rb_str_new_cstr("");
+    // Can't create border shorthand if any value is multi-value (contains spaces)
+    // This handles real-world cases like bootstrap.css: border-width: 1px 0;
+    if (!NIL_P(width) && strchr(RSTRING_PTR(width), ' ') != NULL) {
+        return Qnil;
+    }
+    if (!NIL_P(style) && strchr(RSTRING_PTR(style), ' ') != NULL) {
+        return Qnil;
+    }
+    if (!NIL_P(color) && strchr(RSTRING_PTR(color), ' ') != NULL) {
+        return Qnil;
+    }
+
+    VALUE result = STR_NEW_WITH_CAPACITY(64);
     int first = 1;
 
     if (!NIL_P(width)) {
@@ -888,7 +905,7 @@ VALUE cataract_create_background_shorthand(VALUE self, VALUE properties) {
         return Qnil;
     }
 
-    VALUE result = rb_str_new_cstr("");
+    VALUE result = STR_NEW_WITH_CAPACITY(128);
     int first = 1;
 
     if (!NIL_P(color)) {
@@ -936,7 +953,7 @@ VALUE cataract_create_font_shorthand(VALUE self, VALUE properties) {
     VALUE weight = rb_hash_aref(properties, rb_str_new_cstr("font-weight"));
     VALUE line_height = rb_hash_aref(properties, rb_str_new_cstr("line-height"));
 
-    VALUE result = rb_str_new_cstr("");
+    VALUE result = STR_NEW_WITH_CAPACITY(128);
     int has_content = 0;
 
     // Order: style weight size/line-height family
@@ -978,7 +995,7 @@ VALUE cataract_create_list_style_shorthand(VALUE self, VALUE properties) {
         return Qnil;
     }
 
-    VALUE result = rb_str_new_cstr("");
+    VALUE result = STR_NEW_WITH_CAPACITY(64);
     int first = 1;
 
     if (!NIL_P(type)) {
