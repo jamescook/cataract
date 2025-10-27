@@ -9,6 +9,7 @@ module Cataract
     def initialize(rules)
       @rules = rules
       @resolved = nil
+      @serialized = nil
     end
 
     def each(&block)
@@ -16,38 +17,7 @@ module Cataract
     end
 
     def to_s
-      # Merge duplicate selectors before serializing
-      merged_rules = merge_duplicate_selectors
-
-      # Group rules by media type and output with proper @media blocks
-      out = []
-      styles_by_media_types = {}
-
-      merged_rules.each do |rule|
-        rule.media_query.each do |media_type|
-          styles_by_media_types[media_type] ||= []
-          decls_str = Cataract.declarations_to_s(rule.declarations)
-          styles_by_media_types[media_type] << [rule.selector, decls_str]
-        end
-      end
-
-      styles_by_media_types.each_pair do |media_type, media_styles|
-        media_block = (media_type != :all)
-        out << "@media #{media_type} {" if media_block
-
-        media_styles.each do |media_style|
-          if media_block
-            out.push("  #{media_style[0]} { #{media_style[1]} }")
-          else
-            out.push("#{media_style[0]} { #{media_style[1]} }")
-          end
-        end
-
-        out << '}' if media_block
-      end
-
-      out << ''
-      out.join("\n")
+      @serialized ||= serialize_to_css
     end
 
     # Add more CSS to this stylesheet
@@ -55,6 +25,7 @@ module Cataract
       new_rules = Cataract.parse_css_internal(css)
       @rules.concat(new_rules)
       @resolved = nil
+      @serialized = nil
       self
     end
 
@@ -100,6 +71,39 @@ module Cataract
     end
 
     private
+
+    # Serialize stylesheet to CSS string
+    def serialize_to_css
+      # Merge duplicate selectors before serializing
+      merged_rules = merge_duplicate_selectors
+
+      # Pre-allocate string buffer
+      result = String.new(capacity: merged_rules.length * 100)
+      styles_by_media_types = {}
+
+      # Group by media type (still need hash for grouping)
+      merged_rules.each do |rule|
+        rule.media_query.each do |media_type|
+          (styles_by_media_types[media_type] ||= []) << rule
+        end
+      end
+
+      # Build string directly without intermediate array
+      styles_by_media_types.each_pair do |media_type, rules|
+        media_block = (media_type != :all)
+        result << "@media #{media_type} {\n" if media_block
+
+        rules.each do |rule|
+          decls_str = Cataract.declarations_to_s(rule.declarations)
+          result << (media_block ? "  " : "")
+          result << rule.selector << " { " << decls_str << " }\n"
+        end
+
+        result << "}\n" if media_block
+      end
+
+      result
+    end
 
     # Merge rules with duplicate selectors
     # Returns array of Rule structs with unique selectors

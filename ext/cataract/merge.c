@@ -1,3 +1,5 @@
+#include "cataract.h"
+
 // Helper: Lowercase a CSS property name (ASCII only, safe for CSS)
 //
 // SAFE FOR: Property names (color, margin-top), media types (screen, print)
@@ -92,7 +94,7 @@ static int merge_build_result_callback(VALUE property, VALUE prop_data, VALUE re
 // Merge CSS rules according to cascade rules
 // Input: array of parsed rules from parse_css
 // Output: array of Declarations::Value structs (merged and with shorthand recreated)
-static VALUE cataract_merge(VALUE self, VALUE rules_array) {
+VALUE cataract_merge(VALUE self, VALUE rules_array) {
     Check_Type(rules_array, T_ARRAY);
 
     long num_rules = RARRAY_LEN(rules_array);
