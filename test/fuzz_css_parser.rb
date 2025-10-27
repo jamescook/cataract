@@ -259,7 +259,7 @@ WORKER_SCRIPT = <<~'RUBY'
     rescue Cataract::SizeError
       STDOUT.write("SIZE\n")
     rescue Cataract::ParseError, Cataract::Error
-      STDOUT.write("PARSE\n")
+      STDOUT.write("PARSEERR\n")
     rescue => e
       STDOUT.write("ERR\n")
     end
@@ -478,6 +478,8 @@ puts "Fuzzing complete!"
 puts "Time: #{elapsed.round(2)}s (#{(stats[:total] / elapsed).round(1)} iter/sec)"
 puts "Total: #{stats[:total]}"
 puts "Parsed: #{stats[:parsed]} (#{(stats[:parsed] * 100.0 / stats[:total]).round(1)}%)"
+puts "Merge tested: #{stats[:merge_tested]} (#{(stats[:merge_tested] * 100.0 / stats[:total]).round(1)}%)"
+puts "ToS tested: #{stats[:to_s_tested]} (#{(stats[:to_s_tested] * 100.0 / stats[:total]).round(1)}%)"
 puts "Parse Errors: #{stats[:parse_errors]} (#{(stats[:parse_errors] * 100.0 / stats[:total]).round(1)}%)"
 puts "Depth Errors: #{stats[:depth_errors]} (#{(stats[:depth_errors] * 100.0 / stats[:total]).round(1)}%)"
 puts "Size Errors: #{stats[:size_errors]} (#{(stats[:size_errors] * 100.0 / stats[:total]).round(1)}%)"
