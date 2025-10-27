@@ -784,6 +784,8 @@ static VALUE lowercase_property(VALUE property_str);
   # STYLESHEET (CSS1)
   # ============================================================================
   # Single at_rule pattern - actions detect @media and use appropriate depth tracking
+  # NOTE: @charset is handled outside Ragel (see parse_css_internal) since it must
+  # be at the very start and adding optional charset_rule? explodes compile times
   stylesheet_item = at_rule | rule | comment | ws;
   stylesheet = stylesheet_item*;
   main := stylesheet;
@@ -979,6 +981,44 @@ static VALUE parse_css_internal(VALUE self, VALUE css_string, int depth) {
                  MAX_PARSE_DEPTH);
     }
 
+    Check_Type(css_string, T_STRING);
+
+    // Extract @charset if present (must be at very start per W3C spec)
+    // We handle this outside Ragel because:
+    // 1. @charset must be at the absolute start (simple string check suffices)
+    // 2. Adding optional charset_rule? to Ragel grammar explodes compile times
+    // 3. Simpler and faster to handle with basic C string operations
+    VALUE charset = Qnil;
+    char *css_start = RSTRING_PTR(css_string);
+    long css_len = RSTRING_LEN(css_string);
+
+    // Check for @charset at very start: @charset "UTF-8";
+    // Per spec: exact syntax with double quotes required
+    if (css_len > 10 && strncmp(css_start, "@charset ", 9) == 0) {
+        // Find opening quote
+        char *quote_start = strchr(css_start + 9, '"');
+        if (quote_start != NULL) {
+            // Find closing quote and semicolon
+            char *quote_end = strchr(quote_start + 1, '"');
+            if (quote_end != NULL) {
+                char *semicolon = quote_end + 1;
+                // Skip whitespace between quote and semicolon
+                while (semicolon < css_start + css_len && IS_WHITESPACE(*semicolon)) {
+                    semicolon++;
+                }
+                if (semicolon < css_start + css_len && *semicolon == ';') {
+                    // Valid @charset rule found
+                    charset = rb_str_new(quote_start + 1, quote_end - quote_start - 1);
+                    // Skip past the entire @charset rule for parsing
+                    css_start = semicolon + 1;
+                    css_len = RSTRING_LEN(css_string) - (css_start - RSTRING_PTR(css_string));
+                    DEBUG_PRINTF("[@charset] Extracted: '%s', remaining CSS: %ld bytes\n",
+                                RSTRING_PTR(charset), css_len);
+                }
+            }
+        }
+    }
+
     // Ragel state variables
     char *p, *pe, *eof;
     char *mark = NULL, *media_content_start = NULL;
@@ -996,10 +1036,9 @@ static VALUE parse_css_internal(VALUE self, VALUE css_string, int depth) {
     VALUE rules_array, current_selectors, current_declarations, current_media_types;
     VALUE selector;
 
-    // Setup input
-    Check_Type(css_string, T_STRING);
-    p = RSTRING_PTR(css_string);
-    pe = p + RSTRING_LEN(css_string);
+    // Setup input (may be adjusted if @charset was stripped)
+    p = css_start;
+    pe = css_start + css_len;
     eof = pe;
 
     // Initialize result array and working variables
@@ -1020,8 +1059,17 @@ static VALUE parse_css_internal(VALUE self, VALUE css_string, int depth) {
     RB_GC_GUARD(current_selectors);
     RB_GC_GUARD(current_declarations);
     RB_GC_GUARD(current_media_types);
+    RB_GC_GUARD(charset);
 
     if (cs >= css_parser_first_final) {
+        // At depth 0 (top-level parse), return hash with rules and charset (may be nil)
+        // Nested parses (depth > 0) return array for backwards compatibility
+        if (depth == 0) {
+            VALUE result = rb_hash_new();
+            rb_hash_aset(result, ID2SYM(rb_intern("rules")), rules_array);
+            rb_hash_aset(result, ID2SYM(rb_intern("charset")), charset);
+            return result;
+        }
         return rules_array;
     } else {
         long pos = p - RSTRING_PTR(css_string);
@@ -1419,7 +1467,7 @@ void Init_cataract() {
 
     // Serialization
     rb_define_module_function(module, "declarations_to_s", declarations_to_s, 1);
-    rb_define_module_function(module, "stylesheet_to_s_c", stylesheet_to_s_c, 1);
+    rb_define_module_function(module, "stylesheet_to_s_c", stylesheet_to_s_c, 2);
 
     // Export string allocation mode as a constant for verification in benchmarks
     #ifdef DISABLE_STR_BUF_OPTIMIZATION

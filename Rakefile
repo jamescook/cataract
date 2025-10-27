@@ -129,9 +129,14 @@ task lint: 'compile:ragel' do
     abort("cppcheck not installed. Install with: brew install cppcheck (macOS) or apt-get install cppcheck (Ubuntu)")
   end
 
-  puts "Running cppcheck on generated C code..."
+  puts "Running cppcheck on C code..."
 
-  # Run cppcheck on generated C files
+  # Run cppcheck on all C files:
+  # - cataract.c (Ragel-generated parser)
+  # - shorthand_expander.c (Ragel-generated shorthand logic)
+  # - merge.c (CSS cascade/merge logic)
+  # - stylesheet.c (serialization logic)
+  #
   # Focus on serious issues, skip style noise from Ragel-generated code
   # --enable=warning,performance,portability: serious issues only (skip 'style')
   # --suppress=missingIncludeSystem: ignore system header issues
@@ -139,7 +144,8 @@ task lint: 'compile:ragel' do
   # --inline-suppr: allow inline suppressions in code
   # --error-exitcode=1: exit with 1 if errors found
   # -q: quiet mode, less verbose
-  system("cppcheck --enable=warning,performance,portability --suppress=missingIncludeSystem --suppress=normalCheckLevelMaxBranches --inline-suppr -q ext/cataract/*.c") ||
+  # -I ext/cataract: include path for cataract.h header
+  system("cppcheck --enable=warning,performance,portability --suppress=missingIncludeSystem --suppress=normalCheckLevelMaxBranches --inline-suppr -q -I ext/cataract ext/cataract/*.c") ||
     abort("cppcheck found issues!")
 
   puts "✓ cppcheck passed (warnings/errors only, style checks skipped)"

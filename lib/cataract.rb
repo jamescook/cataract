@@ -7,13 +7,14 @@ require_relative 'cataract/declarations'
 require_relative 'cataract/parser'
 
 module Cataract
-  # Wrap parse_css to return Stylesheet instead of raw array
+  # Wrap parse_css to return Stylesheet instead of raw hash
   class << self
     alias_method :parse_css_internal, :parse_css
 
     def parse_css(css)
-      rules = parse_css_internal(css)
-      Stylesheet.new(rules)
+      result = parse_css_internal(css)
+      # parse_css_internal always returns {rules: [...], charset: "UTF-8" | nil}
+      Stylesheet.new(result[:rules], result[:charset])
     end
   end
 

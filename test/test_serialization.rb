@@ -77,4 +77,57 @@ class TestSerialization < Minitest::Test
     sheet2 = Cataract.parse_css(result)
     assert sheet2.size > 0
   end
+
+  def test_charset_parsing
+    css = '@charset "UTF-8";
+body { color: red; }'
+    sheet = Cataract.parse_css(css)
+
+    assert_equal 'UTF-8', sheet.charset
+    assert_equal 1, sheet.size
+  end
+
+  def test_charset_serialization
+    css = '@charset "UTF-8";
+body { color: red; }'
+    sheet = Cataract.parse_css(css)
+    result = sheet.to_s
+
+    # @charset should be first line
+    assert_match(/\A@charset "UTF-8";/, result)
+    assert_includes result, 'body'
+    assert_includes result, 'color: red'
+  end
+
+  def test_no_charset
+    css = 'body { color: red; }'
+    sheet = Cataract.parse_css(css)
+
+    assert_nil sheet.charset
+    refute_includes sheet.to_s, '@charset'
+  end
+
+  def test_charset_round_trip
+    css = '@charset "UTF-8";
+.test { margin: 5px; }'
+    sheet = Cataract.parse_css(css)
+    result = sheet.to_s
+
+    # Parse again and verify charset preserved
+    sheet2 = Cataract.parse_css(result)
+    assert_equal 'UTF-8', sheet2.charset
+    assert_equal 1, sheet2.size
+  end
+
+  def test_bootstrap_charset
+    css = File.read('test/fixtures/bootstrap.css')
+    sheet = Cataract.parse_css(css)
+
+    # Bootstrap starts with @charset "UTF-8"
+    assert_equal 'UTF-8', sheet.charset
+
+    # Verify it's preserved in serialization
+    result = sheet.to_s
+    assert_match(/\A@charset "UTF-8";/, result)
+  end
 end
