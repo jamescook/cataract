@@ -255,8 +255,9 @@ class TestCSS2Features < Minitest::Test
 
     # This should already work based on Declarations class
     rule = @parser.rules.first
-    assert rule.declarations.important?("color")
-    assert_equal "color: red !important;", rule.declarations.to_s
+    decls = Cataract::Declarations.new(rule.declarations)
+    assert decls.important?("color")
+    assert_equal "color: red !important;", decls.to_s
   end
 
   # ============================================================================

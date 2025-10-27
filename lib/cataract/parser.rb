@@ -12,8 +12,7 @@ module Cataract
     end
 
     def parse(css_string)
-      new_rules = Cataract.parse_css(css_string)
-      # Append new rules to existing ones
+      new_rules = Cataract.parse_css_internal(css_string)
       @raw_rules.concat(new_rules)
       self
     end
@@ -42,9 +41,9 @@ module Cataract
       # If media_types specified, update all just-added rules
       if media_types
         media_types_array = Array(media_types).map(&:to_sym)
-        # Update only the newly added rules
-        @raw_rules[rules_before..-1].each do |raw_rule|
-          raw_rule[:media_types] = media_types_array
+        # Update only the newly added rules (set media_query field on Rule struct)
+        @raw_rules[rules_before..-1].each do |rule|
+          rule[:media_query] = media_types_array
         end
       end
 
@@ -112,58 +111,60 @@ module Cataract
       self
     end
 
-    # Lazy map over raw rules, converting to RuleSet objects on demand
     def rules
       return enum_for(:rules) unless block_given?
 
-      @raw_rules.each do |raw_rule|
-        yield convert_raw_rule_to_rich(raw_rule)
+      @raw_rules.each do |rule|
+        yield rule
       end
     end
 
-    # Add a new rule
     def add_rule!(selector:, declarations:, media_types: [:all])
-      new_rule = RuleSet.new(
-        selector: selector,
-        declarations: declarations,
-        media_types: media_types
+      # Convert declarations to Declarations object if needed
+      decls = declarations.is_a?(Declarations) ? declarations : Declarations.new(declarations)
+
+      # Create Rule struct
+      rule = Cataract::Rule.new(
+        selector.to_s,
+        decls.to_a,
+        nil,  # specificity calculated on demand
+        Array(media_types).map(&:to_sym)
       )
 
-      # Add to raw rules array as a hash
-      @raw_rules << {
-        selector: new_rule.selector,
-        declarations: new_rule.declarations.to_h,
-        media_types: new_rule.media_types
-      }
+      @raw_rules << rule
 
-      new_rule
+      # Return RuleSet wrapper for user-facing API (css_parser compatibility)
+      RuleSet.new(
+        selector: rule.selector,
+        declarations: Declarations.new(rule.declarations),
+        media_types: rule.media_types
+      )
     end
 
-    # Add a RuleSet directly
     def add_rule_set!(rule_set)
-      @raw_rules << {
-        selector: rule_set.selector,
-        declarations: rule_set.declarations.to_h,
-        media_types: rule_set.media_types
-      }
+      # Convert RuleSet to Rule struct
+      rule = Cataract::Rule.new(
+        rule_set.selector,
+        rule_set.declarations.to_a,
+        rule_set.specificity,
+        rule_set.media_types
+      )
+      @raw_rules << rule
       self
     end
 
-    # Remove a RuleSet
     def remove_rule_set!(rule_set)
-      @raw_rules.reject! do |raw_rule|
-        raw_rule[:selector] == rule_set.selector &&
-          raw_rule[:declarations] == rule_set.declarations.to_h &&
-          raw_rule[:media_types] == rule_set.media_types
+      @raw_rules.reject! do |rule|
+        rule.selector == rule_set.selector &&
+          rule.declarations == rule_set.declarations.to_a &&
+          rule.media_query == rule_set.media_types
       end
       self
     end
 
     # Remove rules matching criteria
     def remove_rules!(selector: nil, media_types: nil)
-      @raw_rules.reject! do |raw_rule|
-        # Convert to rich object for matching
-        rule = convert_raw_rule_to_rich(raw_rule)
+      @raw_rules.reject! do |rule|
         match = true
         match &&= (rule.selector == selector) if selector
         match &&= rule.applies_to_media?(media_types) if media_types
@@ -178,7 +179,9 @@ module Cataract
 
       rules.each do |rule|
         next unless rule.applies_to_media?(media_types)
-        yield rule.selector, rule.declarations.to_s, rule.specificity, rule.media_types
+        # Convert declarations array to string using C function
+        decls_str = Cataract.declarations_to_s(rule.declarations)
+        yield rule.selector, decls_str, rule.specificity, rule.media_query
       end
     end
 
@@ -202,7 +205,7 @@ module Cataract
       matching_rules = rules.select do |rule|
         rule.selector == selector && rule.applies_to_media?(media_types)
       end
-      matching_rules.map { |rule| rule.declarations.to_s }
+      matching_rules.map { |rule| Cataract.declarations_to_s(rule.declarations) }
     end
     alias [] find_by_selector
 
@@ -260,9 +263,10 @@ module Cataract
         # Skip filtering when which_media is :all
         next unless which_media == :all || rule.applies_to_media?(which_media)
 
-        rule.media_types.each do |media_type|
+        rule.media_query.each do |media_type|
           styles_by_media_types[media_type] ||= []
-          styles_by_media_types[media_type] << [rule.selector, rule.declarations.to_s]
+          decls_str = Cataract.declarations_to_s(rule.declarations)
+          styles_by_media_types[media_type] << [rule.selector, decls_str]
         end
       end
 
@@ -306,11 +310,16 @@ module Cataract
       result = {}
 
       rules.each do |rule|
-        rule.media_types.each do |media_type|
+        rule.media_query.each do |media_type|
           media_key = media_type.to_s
           result[media_key] ||= {}
           result[media_key][rule.selector] ||= {}
-          result[media_key][rule.selector].merge!(rule.declarations.to_h)
+
+          # Iterate declarations array directly - no intermediate object
+          rule.declarations.each do |decl|
+            result[media_key][rule.selector][decl.property] =
+              decl.important ? "#{decl.value} !important" : decl.value
+          end
         end
       end
 
@@ -335,13 +344,11 @@ module Cataract
     #   expand_shorthand("margin: 10px; margin-top: 20px;")
     #   => {"margin-top" => "20px", "margin-right" => "10px", "margin-bottom" => "10px", "margin-left" => "10px"}
     def expand_shorthand(declarations_string)
-      # Parse the declarations string into a Declarations object
-      # We use a dummy selector to parse the declarations
-      dummy_css = "* { #{declarations_string} }"
-      parsed = Cataract.parse_css(dummy_css)
-      return {} if parsed.empty?
+      # Parse the declarations string directly using C function
+      raw_declarations = Cataract.parse_declarations(declarations_string)
+      return {} if raw_declarations.empty?
 
-      declarations = Declarations.new(parsed[0][:declarations])
+      declarations = Declarations.new(raw_declarations)
       result = {}
 
       # Process declarations in order
@@ -397,17 +404,6 @@ module Cataract
       end
 
       result
-    end
-
-    private
-
-    # Convert a single raw rule to a RuleSet object
-    def convert_raw_rule_to_rich(raw_rule)
-      RuleSet.new(
-        selector: raw_rule[:selector],
-        declarations: raw_rule[:declarations],
-        media_types: raw_rule[:media_types] || [:all] # Extract from raw_rule when available
-      )
     end
   end
 end

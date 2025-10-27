@@ -1,8 +1,9 @@
 #include <ruby.h>
 #include <stdio.h>
 
-// Global reference to Declarations::Value struct class
+// Global references to struct classes
 static VALUE cDeclarationsValue;
+static VALUE cRule;
 
 // Error class references
 static VALUE eCataractError;
@@ -27,6 +28,24 @@ VALUE cataract_expand_background(VALUE self, VALUE value);
 VALUE cataract_create_margin_shorthand(VALUE self, VALUE properties);
 VALUE cataract_create_padding_shorthand(VALUE self, VALUE properties);
 VALUE cataract_create_border_width_shorthand(VALUE self, VALUE properties);
+
+// Helper macros and functions for string trimming
+#define IS_WHITESPACE(c) ((c) == ' ' || (c) == '\t' || (c) == '\n' || (c) == '\r')
+
+// Trim leading whitespace - modifies start pointer
+static inline void trim_leading(const char **start, const char *end) {
+    while (*start < end && IS_WHITESPACE(**start)) {
+        (*start)++;
+    }
+}
+
+// Trim trailing whitespace - modifies end pointer
+static inline void trim_trailing(const char *start, const char **end) {
+    while (*end > start && IS_WHITESPACE(*(*end - 1))) {
+        (*end)--;
+    }
+}
+
 VALUE cataract_create_border_style_shorthand(VALUE self, VALUE properties);
 VALUE cataract_create_border_color_shorthand(VALUE self, VALUE properties);
 VALUE cataract_create_border_shorthand(VALUE self, VALUE properties);
@@ -241,7 +260,9 @@ static VALUE lowercase_property(VALUE property_str);
 
         if (!NIL_P(media_types) && RARRAY_LEN(media_types) > 0) {
           for (long i = 0; i < RARRAY_LEN(inner_rules); i++) {
-            rb_hash_aset(RARRAY_AREF(inner_rules, i), ID2SYM(rb_intern("media_types")), rb_ary_dup(media_types));
+            VALUE rule = RARRAY_AREF(inner_rules, i);
+            // Set media_query field (index 3) on the Rule struct
+            rb_struct_aset(rule, INT2FIX(3), rb_ary_dup(media_types));
           }
         }
         for (long i = 0; i < RARRAY_LEN(inner_rules); i++) {
@@ -302,10 +323,12 @@ static VALUE lowercase_property(VALUE property_str);
             rb_str_cat2(selector, " ");
             rb_str_append(selector, animation_name);
 
-            VALUE rule = rb_hash_new();
-            rb_hash_aset(rule, ID2SYM(rb_intern("selector")), selector);
-            rb_hash_aset(rule, ID2SYM(rb_intern("declarations")), rb_hash_new());
-            rb_hash_aset(rule, ID2SYM(rb_intern("media_types")), rb_ary_new3(1, ID2SYM(rb_intern("all"))));
+            VALUE rule = rb_struct_new(cRule,
+                selector,                                    // selector
+                rb_ary_new(),                               // declarations (empty array)
+                Qnil,                                        // specificity (calculated on demand)
+                rb_ary_new3(1, ID2SYM(rb_intern("all")))   // media_query
+            );
             rb_ary_push(rules_array, rule);
 
             RB_GC_GUARD(animation_name);  // Protect from GC - must be at end of scope
@@ -341,7 +364,9 @@ static VALUE lowercase_property(VALUE property_str);
             VALUE rule = Qnil;
 
             if (!NIL_P(dummy_rules) && RARRAY_LEN(dummy_rules) > 0) {
-              declarations = rb_hash_aref(RARRAY_AREF(dummy_rules, 0), ID2SYM(rb_intern("declarations")));
+              VALUE first_rule = RARRAY_AREF(dummy_rules, 0);
+              // Get declarations field (index 1) from Rule struct
+              declarations = rb_struct_aref(first_rule, INT2FIX(1));
 
               // Compute prelude first to know total size for pre-allocation
               const char *prelude_end = media_content_start;
@@ -369,10 +394,12 @@ static VALUE lowercase_property(VALUE property_str);
                 rb_str_append(selector, prelude_val);
               }
 
-              rule = rb_hash_new();
-              rb_hash_aset(rule, ID2SYM(rb_intern("selector")), selector);
-              rb_hash_aset(rule, ID2SYM(rb_intern("declarations")), declarations);
-              rb_hash_aset(rule, ID2SYM(rb_intern("media_types")), rb_ary_new3(1, ID2SYM(rb_intern("all"))));
+              rule = rb_struct_new(cRule,
+                  selector,                                    // selector
+                  declarations,                                // declarations
+                  Qnil,                                        // specificity (calculated on demand)
+                  rb_ary_new3(1, ID2SYM(rb_intern("all")))   // media_query
+              );
               rb_ary_push(rules_array, rule);
             }
 
@@ -579,15 +606,22 @@ static VALUE lowercase_property(VALUE property_str);
         for (long i = 0; i < len; i++) {
           VALUE sel = RARRAY_AREF(current_selectors, i);
           DEBUG_PRINTF("[finish_rule] Rule %ld: selector='%s'\n", i, RSTRING_PTR(sel));
-          VALUE rule = rb_hash_new();
-          rb_hash_aset(rule, ID2SYM(rb_intern("selector")), sel);
-          rb_hash_aset(rule, ID2SYM(rb_intern("declarations")), rb_ary_dup(current_declarations));
 
-          // Add media types if we're inside a @media block
+          // Determine media query: use current_media_types if inside @media block, otherwise default to [:all]
+          VALUE media_query;
           if (!NIL_P(current_media_types) && RARRAY_LEN(current_media_types) > 0) {
-            rb_hash_aset(rule, ID2SYM(rb_intern("media_types")), rb_ary_dup(current_media_types));
-            DEBUG_PRINTF("[finish_rule] Added media types to rule\n");
+            media_query = rb_ary_dup(current_media_types);
+            DEBUG_PRINTF("[finish_rule] Using current media types\n");
+          } else {
+            media_query = rb_ary_new3(1, ID2SYM(rb_intern("all")));
           }
+
+          VALUE rule = rb_struct_new(cRule,
+              sel,                                // selector
+              rb_ary_dup(current_declarations),   // declarations
+              Qnil,                               // specificity (calculated on demand)
+              media_query                         // media_query
+          );
 
           rb_ary_push(rules_array, rule);
         }
@@ -1173,8 +1207,122 @@ static VALUE calculate_specificity(VALUE self, VALUE selector_string) {
     return INT2NUM(specificity);
 }
 
+/*
+ * Parse declarations string into array of Declarations::Value structs
+ * Extracted from capture_declarations action - same logic, reusable
+ *
+ * @param start Pointer to start of declarations string
+ * @param end Pointer to end of declarations string
+ * @return Array of Declarations::Value structs
+ */
+static VALUE parse_declarations_string(const char *start, const char *end) {
+    VALUE declarations = rb_ary_new();
+
+    const char *pos = start;
+    while (pos < end) {
+        // Skip whitespace and semicolons
+        while (pos < end && (IS_WHITESPACE(*pos) || *pos == ';')) pos++;
+        if (pos >= end) break;
+
+        // Find property (up to colon)
+        const char *prop_start = pos;
+        while (pos < end && *pos != ':') pos++;
+        if (pos >= end) break;  // No colon found
+
+        const char *prop_end = pos;
+        trim_trailing(prop_start, &prop_end);
+        trim_leading(&prop_start, prop_end);
+
+        pos++;  // Skip colon
+        trim_leading(&pos, end);
+
+        // Find value (up to semicolon or end), handling parentheses
+        const char *val_start = pos;
+        int paren_depth = 0;
+        while (pos < end) {
+            if (*pos == '(') paren_depth++;
+            else if (*pos == ')') paren_depth--;
+            else if (*pos == ';' && paren_depth == 0) break;
+            pos++;
+        }
+        const char *val_end = pos;
+        trim_trailing(val_start, &val_end);
+
+        // Check for !important
+        int is_important = 0;
+        if (val_end - val_start >= 10) {  // strlen("!important") = 10
+            const char *check = val_end - 10;
+            while (check < val_end && IS_WHITESPACE(*check)) check++;
+            if (check < val_end && *check == '!') {
+                check++;
+                while (check < val_end && IS_WHITESPACE(*check)) check++;
+                if ((val_end - check) >= 9 && strncmp(check, "important", 9) == 0) {
+                    is_important = 1;
+                    const char *important_pos = check - 1;
+                    while (important_pos > val_start && (IS_WHITESPACE(*(important_pos-1)) || *(important_pos-1) == '!')) {
+                        important_pos--;
+                    }
+                    val_end = important_pos;
+                    trim_trailing(val_start, &val_end);
+                }
+            }
+        }
+
+        // Skip if value is empty
+        if (val_end > val_start) {
+            long prop_len = prop_end - prop_start;
+            if (prop_len > MAX_PROPERTY_NAME_LENGTH) continue;
+
+            long val_len = val_end - val_start;
+            if (val_len > MAX_PROPERTY_VALUE_LENGTH) continue;
+
+            // Create property string and lowercase it
+            VALUE property_raw = rb_str_new(prop_start, prop_len);
+            VALUE property = lowercase_property(property_raw);
+            VALUE value = rb_str_new(val_start, val_len);
+
+            // Create Declarations::Value struct
+            VALUE decl = rb_struct_new(cDeclarationsValue,
+                property, value, is_important ? Qtrue : Qfalse);
+
+            rb_ary_push(declarations, decl);
+        }
+    }
+
+    return declarations;
+}
+
+/*
+ * Ruby-facing wrapper for parse_declarations
+ *
+ * @param declarations_string [String] CSS declarations like "color: red; margin: 10px"
+ * @return [Array<Declarations::Value>] Array of parsed declaration structs
+ */
+static VALUE parse_declarations(VALUE self, VALUE declarations_string) {
+    Check_Type(declarations_string, T_STRING);
+
+    const char *input = RSTRING_PTR(declarations_string);
+    long input_len = RSTRING_LEN(declarations_string);
+
+    // Strip outer braces and whitespace (css_parser compatibility)
+    const char *start = input;
+    const char *end = input + input_len;
+
+    while (start < end && (IS_WHITESPACE(*start) || *start == '{')) start++;
+    while (end > start && (IS_WHITESPACE(*(end-1)) || *(end-1) == '}')) end--;
+
+    VALUE result = parse_declarations_string(start, end);
+
+    RB_GC_GUARD(result);
+    return result;
+}
+
 // Public wrapper for Ruby - starts at depth 0
 static VALUE parse_css(VALUE self, VALUE css_string) {
+    // Verify that cRule was initialized in Init_cataract
+    if (cRule == Qnil || cRule == 0) {
+        rb_raise(rb_eRuntimeError, "cRule struct class not initialized - Init_cataract may have failed");
+    }
     return parse_css_internal(self, css_string, 0);
 }
 
@@ -1183,7 +1331,71 @@ static VALUE parse_css(VALUE self, VALUE css_string) {
 #include "merge.c"
 
 /*
- * Convert array of Declarations::Value structs to CSS string
+ * Convert array of Rule structs to full CSS string
+ * Format: "selector { prop: value; }\nselector2 { prop: value; }"
+ */
+static VALUE rules_to_s(VALUE self, VALUE rules_array) {
+    Check_Type(rules_array, T_ARRAY);
+
+    long len = RARRAY_LEN(rules_array);
+    if (len == 0) {
+        return rb_str_new_cstr("");
+    }
+
+    // Estimate: ~100 chars per rule (selector + declarations)
+    VALUE result = rb_str_buf_new(len * 100);
+
+    for (long i = 0; i < len; i++) {
+        VALUE rule = rb_ary_entry(rules_array, i);
+
+        // Validate this is a Rule struct
+        if (!RB_TYPE_P(rule, T_STRUCT)) {
+            rb_raise(rb_eTypeError,
+                     "Expected array of Rule structs, got %s at index %ld",
+                     rb_obj_classname(rule), i);
+        }
+
+        // Extract: selector, declarations, specificity, media_query
+        VALUE selector = rb_struct_aref(rule, INT2FIX(0));
+        VALUE declarations = rb_struct_aref(rule, INT2FIX(1));
+
+        // Append selector
+        rb_str_buf_append(result, selector);
+        rb_str_buf_cat2(result, " { ");
+
+        // Serialize each declaration
+        long decl_len = RARRAY_LEN(declarations);
+        for (long j = 0; j < decl_len; j++) {
+            VALUE decl = rb_ary_entry(declarations, j);
+
+            VALUE property = rb_struct_aref(decl, INT2FIX(0));
+            VALUE value = rb_struct_aref(decl, INT2FIX(1));
+            VALUE important = rb_struct_aref(decl, INT2FIX(2));
+
+            rb_str_buf_append(result, property);
+            rb_str_buf_cat2(result, ": ");
+            rb_str_buf_append(result, value);
+
+            if (RTEST(important)) {
+                rb_str_buf_cat2(result, " !important");
+            }
+
+            rb_str_buf_cat2(result, "; ");
+        }
+
+        rb_str_buf_cat2(result, "}\n");
+
+        RB_GC_GUARD(rule);
+        RB_GC_GUARD(selector);
+        RB_GC_GUARD(declarations);
+    }
+
+    RB_GC_GUARD(result);
+    return result;
+}
+
+/*
+ * Convert array of Declarations::Value structs to CSS string (internal)
  * Format: "prop: value; prop2: value2 !important; "
  */
 static VALUE declarations_to_s(VALUE self, VALUE declarations_array) {
@@ -1199,6 +1411,13 @@ static VALUE declarations_to_s(VALUE self, VALUE declarations_array) {
 
     for (long i = 0; i < len; i++) {
         VALUE decl = rb_ary_entry(declarations_array, i);
+
+        // Validate this is a Declarations::Value struct
+        if (!RB_TYPE_P(decl, T_STRUCT) || rb_obj_class(decl) != cDeclarationsValue) {
+            rb_raise(rb_eTypeError,
+                     "Expected array of Declarations::Value structs, got %s at index %ld",
+                     rb_obj_classname(decl), i);
+        }
 
         // Extract struct fields
         VALUE property = rb_struct_aref(decl, INT2FIX(0));
@@ -1252,9 +1471,23 @@ void Init_cataract() {
         NULL
     );
 
+    // Define Cataract::Rule = Struct.new(:selector, :declarations, :specificity, :media_query)
+    cRule = rb_struct_define_under(
+        module,
+        "Rule",
+        "selector",
+        "declarations",
+        "specificity",
+        "media_query",
+        NULL
+    );
+
     rb_define_module_function(module, "parse_css", parse_css, 1);
+    rb_define_module_function(module, "parse_declarations", parse_declarations, 1);
     rb_define_module_function(module, "calculate_specificity", calculate_specificity, 1);
     rb_define_module_function(module, "merge_rules", cataract_merge, 1);
+    rb_define_module_function(module, "apply_cascade", cataract_merge, 1);  // Alias with better name
+    rb_define_module_function(module, "rules_to_s", rules_to_s, 1);
     rb_define_module_function(module, "split_value", cataract_split_value, 1);
     rb_define_module_function(module, "expand_margin", cataract_expand_margin, 1);
     rb_define_module_function(module, "expand_padding", cataract_expand_padding, 1);

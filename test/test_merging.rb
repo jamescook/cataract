@@ -87,7 +87,7 @@ class TestMerging < Minitest::Test
     CSS
 
     # Filter to only rules matching 'a' selector
-    a_rules = rules.select { |r| r[:selector].match?(/\ba\b/) }
+    a_rules = rules.select { |r| r.selector.match?(/\ba\b/) }
     merged = Cataract.merge(a_rules)
 
     # p=1, a[rel="external"]=11, so max=11 should beat a=1

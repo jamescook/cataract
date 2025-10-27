@@ -9,6 +9,9 @@ module Cataract
         # Hash from user - convert to internal storage
         @values = []
         properties.each { |prop, value| self[prop] = value }
+      when String
+        # String "color: red; background: blue" - parse it
+        @values = parse_declaration_string(properties)
       else
         @values = []
       end
@@ -112,6 +115,11 @@ module Cataract
       result
     end
 
+    # Return array of Declarations::Value structs (for creating Rule structs)
+    def to_a
+      @values
+    end
+
     def merge!(other)
       case other
       when Declarations
@@ -150,6 +158,12 @@ module Cataract
     # Find a Value struct by normalized property name
     def find_value(normalized_property)
       @values.find { |v| v.property == normalized_property }
+    end
+
+    # Parse "color: red; background: blue" string into array of Value structs
+    def parse_declaration_string(str)
+      # Use C function directly - no dummy wrapper needed!
+      Cataract.parse_declarations(str)
     end
   end
 end

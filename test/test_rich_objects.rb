@@ -113,10 +113,10 @@ class TestRichObjects < Minitest::Test
     
     # Test lazy loading
     assert_equal 3, parser.rules_count
-    
-    # Test rules are RuleSet objects
+
+    # Test rules are Rule structs (internal representation)
     rules = parser.rules
-    assert rules.all? { |rule| rule.is_a?(Cataract::RuleSet) }
+    assert rules.all? { |rule| rule.is_a?(Cataract::Rule) }
     
     # Test individual rules
     header_rule = rules.find { |r| r.selector == ".header" }
@@ -125,7 +125,7 @@ class TestRichObjects < Minitest::Test
     
     nav_rule = rules.find { |r| r.selector == "#nav" }
     assert_equal "red !important;", nav_rule["background"]
-    assert nav_rule.declarations.important?("background")
+    assert Cataract::Declarations.new(nav_rule.declarations).important?("background")
   end
   
   def test_parser_add_rule

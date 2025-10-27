@@ -111,12 +111,12 @@ static VALUE cataract_merge(VALUE self, VALUE rules_array) {
     // Iterate through each rule
     for (long i = 0; i < num_rules; i++) {
         VALUE rule = RARRAY_AREF(rules_array, i);
-        Check_Type(rule, T_HASH);
+        Check_Type(rule, T_STRUCT);
 
-        // Extract selector, declarations, specificity
-        VALUE selector = rb_hash_aref(rule, ID2SYM(rb_intern("selector")));
-        VALUE declarations = rb_hash_aref(rule, ID2SYM(rb_intern("declarations")));
-        VALUE specificity_val = rb_hash_aref(rule, ID2SYM(rb_intern("specificity")));
+        // Extract selector, declarations, specificity from Rule struct
+        VALUE selector = rb_struct_aref(rule, INT2FIX(0));       // selector
+        VALUE declarations = rb_struct_aref(rule, INT2FIX(1));   // declarations
+        VALUE specificity_val = rb_struct_aref(rule, INT2FIX(2)); // specificity
 
         // Calculate specificity if not provided (lazy)
         int specificity = 0;
