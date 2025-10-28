@@ -130,4 +130,81 @@ class TestRoundtrip < Minitest::Test
     assert_includes dumped, ".test"
     assert_includes dumped, "color: red"
   end
+
+  def test_roundtrip_preserves_utf8_in_content
+    css = <<~CSS
+      .emoji::before {
+        content: "👍 ✨ 🎉";
+      }
+      .japanese {
+        content: "こんにちは世界";
+        font-family: "ＭＳ ゴシック";
+      }
+    CSS
+
+    stylesheet = Cataract.parse_css(css)
+    dumped = stylesheet.to_s
+
+    # Verify UTF-8 content is preserved
+    assert_includes dumped, "👍"
+    assert_includes dumped, "✨"
+    assert_includes dumped, "🎉"
+    assert_includes dumped, "こんにちは世界"
+    assert_includes dumped, "ゴシック"
+
+    # Verify encoding
+    assert_equal Encoding::UTF_8, dumped.encoding
+  end
+
+  def test_roundtrip_preserves_utf8_selectors
+    css = <<~CSS
+      .日本語クラス {
+        color: red;
+      }
+      .한글클래스 {
+        color: blue;
+      }
+      .中文类名 {
+        color: green;
+      }
+    CSS
+
+    stylesheet = Cataract.parse_css(css)
+    dumped = stylesheet.to_s
+
+    # Verify UTF-8 selectors are preserved
+    assert_includes dumped, "日本語クラス"
+    assert_includes dumped, "한글클래스"
+    assert_includes dumped, "中文类名"
+
+    # Verify encoding
+    assert_equal Encoding::UTF_8, dumped.encoding
+  end
+
+  def test_roundtrip_mixed_ascii_and_utf8
+    css = <<~CSS
+      .button {
+        content: "→ Click here";
+        padding: 10px;
+      }
+      .arrow::after {
+        content: "⟶";
+      }
+    CSS
+
+    stylesheet = Cataract.parse_css(css)
+    dumped = stylesheet.to_s
+
+    # Verify both ASCII and UTF-8 preserved
+    assert_includes dumped, "button"
+    assert_includes dumped, "padding: 10px"
+    assert_includes dumped, "→"
+    assert_includes dumped, "⟶"
+
+    # Parse-dump-parse cycle should be idempotent
+    stylesheet2 = Cataract.parse_css(dumped)
+    dumped2 = stylesheet2.to_s
+
+    assert_equal dumped, dumped2, "UTF-8 CSS should be idempotent through parse-dump cycle"
+  end
 end

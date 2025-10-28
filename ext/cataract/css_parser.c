@@ -141,9 +141,9 @@ void capture_declarations_fn(
             }
 
             // Create property string and lowercase it (CSS property names are ASCII-only)
-            VALUE property_raw = rb_str_new(prop_start, prop_len);
+            VALUE property_raw = rb_usascii_str_new(prop_start, prop_len);
             VALUE property = lowercase_property(property_raw);
-            VALUE value = rb_str_new(val_start, val_end - val_start);
+            VALUE value = rb_utf8_str_new(val_start, val_end - val_start);
 
             DEBUG_PRINTF("[capture_declarations] Found: property='%s' value='%s' important=%d\n",
                          RSTRING_PTR(property), RSTRING_PTR(value), is_important);
@@ -368,9 +368,9 @@ VALUE parse_declarations_string(const char *start, const char *end) {
             if (val_len > MAX_PROPERTY_VALUE_LENGTH) continue;
 
             // Create property string and lowercase it
-            VALUE property_raw = rb_str_new(prop_start, prop_len);
+            VALUE property_raw = rb_usascii_str_new(prop_start, prop_len);
             VALUE property = lowercase_property(property_raw);
-            VALUE value = rb_str_new(val_start, val_len);
+            VALUE value = rb_utf8_str_new(val_start, val_len);
 
             // Create Declarations::Value struct
             VALUE decl = rb_struct_new(cDeclarationsValue,
@@ -567,7 +567,7 @@ VALUE parse_css_impl(VALUE css_string, int depth) {
                         animation_name = rb_funcall(animation_name, rb_intern("strip"), 0);
 
                         // Build selector: "@keyframes " + name
-                        VALUE sel = rb_str_new_cstr("@");
+                        VALUE sel = UTF8_STR("@");
                         rb_str_cat(sel, at_name, strlen(at_name));
                         rb_str_cat2(sel, " ");
                         rb_str_append(sel, animation_name);
@@ -589,7 +589,7 @@ VALUE parse_css_impl(VALUE css_string, int depth) {
                                strcmp(at_name, "page") == 0 || strcmp(at_name, "counter-style") == 0) {
                         // Descriptor-based @rules - parse block as declarations
                         // Wrap in dummy selector for parsing
-                        VALUE wrapped = rb_str_new_cstr("* { ");
+                        VALUE wrapped = UTF8_STR("* { ");
                         rb_str_cat(wrapped, block_start, block_len);
                         rb_str_cat2(wrapped, " }");
 
@@ -601,7 +601,7 @@ VALUE parse_css_impl(VALUE css_string, int depth) {
                             declarations = rb_struct_aref(first_rule, INT2FIX(1));
 
                             // Build selector: "@" + name + [" " + prelude]
-                            VALUE sel = rb_str_new_cstr("@");
+                            VALUE sel = UTF8_STR("@");
                             rb_str_cat(sel, at_name, strlen(at_name));
 
                             if (prelude_len > 0) {
@@ -680,7 +680,7 @@ VALUE parse_css_impl(VALUE css_string, int depth) {
                                 }
 
                                 if (seg_end > seg_start) {
-                                    VALUE sel = rb_str_new(seg_start, seg_end - seg_start);
+                                    VALUE sel = rb_utf8_str_new(seg_start, seg_end - seg_start);
                                     rb_ary_push(current_selectors, sel);
                                     DEBUG_PRINTF("[pure_c] Captured selector: '%s'\n", RSTRING_PTR(sel));
                                 }

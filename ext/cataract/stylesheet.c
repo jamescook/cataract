@@ -92,12 +92,12 @@ VALUE stylesheet_to_s_c(VALUE self, VALUE rules_array, VALUE charset) {
     if (len == 0) {
         if (!NIL_P(charset)) {
             // Even empty stylesheet should emit @charset if present
-            VALUE result = rb_str_new_cstr("@charset \"");
+            VALUE result = UTF8_STR("@charset \"");
             rb_str_buf_append(result, charset);
             rb_str_buf_cat2(result, "\";\n");
             return result;
         }
-        return rb_str_new_cstr("");
+        return UTF8_STR("");
     }
 
     // Step 1: Group rules by [selector, media_query]

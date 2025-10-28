@@ -2,6 +2,7 @@
 #define CATARACT_H
 
 #include <ruby.h>
+#include <ruby/encoding.h>
 
 // ============================================================================
 // Global struct class references (defined in cataract.c, declared extern here)
@@ -22,6 +23,16 @@ extern VALUE eSizeError;
 
 // Whitespace detection
 #define IS_WHITESPACE(c) ((c) == ' ' || (c) == '\t' || (c) == '\n' || (c) == '\r')
+
+// US-ASCII string literal creation (compile-time length for efficiency)
+// Use this for string literals like "margin-top" to avoid strlen() at runtime
+// Example: USASCII_STR("margin-top") expands to rb_usascii_str_new("margin-top", 10)
+#define USASCII_STR(str) rb_usascii_str_new((str), sizeof(str) - 1)
+
+// UTF-8 string literal creation (compile-time length for efficiency)
+// Use this for string literals that may be concatenated with UTF-8 content
+// Example: UTF8_STR("@") expands to rb_utf8_str_new("@", 1)
+#define UTF8_STR(str) rb_utf8_str_new((str), sizeof(str) - 1)
 
 // Debug output (disabled by default)
 // #define CATARACT_DEBUG 1
@@ -94,8 +105,9 @@ static inline VALUE lowercase_property(VALUE property_str) {
     long len = RSTRING_LEN(property_str);
     const char *src = RSTRING_PTR(property_str);
 
-    // Create new string with same length
+    // Create new US-ASCII string with same length (CSS property names are ASCII-only)
     VALUE result = rb_str_buf_new(len);
+    rb_enc_associate(result, rb_usascii_encoding());
 
 #ifndef DISABLE_LOOP_UNROLL
     // Manual loop unrolling: process 4 chars at a time (default, ~6.6% faster on M1)

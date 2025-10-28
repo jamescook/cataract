@@ -1,5 +1,11 @@
 #include "cataract.h"
 
+// Cache frequently used symbol IDs (initialized in cataract_merge)
+static ID id_value = 0;
+static ID id_specificity = 0;
+static ID id_important = 0;
+static ID id_struct_class = 0;
+
 // Context for expanded property iteration
 struct expand_context {
     VALUE properties_hash;
@@ -22,14 +28,14 @@ static int merge_expanded_callback(VALUE exp_prop, VALUE exp_value, VALUE ctx_va
 
     if (NIL_P(existing)) {
         VALUE prop_data = rb_hash_new();
-        rb_hash_aset(prop_data, ID2SYM(rb_intern("value")), exp_value);
-        rb_hash_aset(prop_data, ID2SYM(rb_intern("specificity")), INT2NUM(ctx->specificity));
-        rb_hash_aset(prop_data, ID2SYM(rb_intern("important")), ctx->important);
-        rb_hash_aset(prop_data, ID2SYM(rb_intern("_struct_class")), ctx->value_struct);
+        rb_hash_aset(prop_data, ID2SYM(id_value), exp_value);
+        rb_hash_aset(prop_data, ID2SYM(id_specificity), INT2NUM(ctx->specificity));
+        rb_hash_aset(prop_data, ID2SYM(id_important), ctx->important);
+        rb_hash_aset(prop_data, ID2SYM(id_struct_class), ctx->value_struct);
         rb_hash_aset(ctx->properties_hash, exp_prop, prop_data);
     } else {
-        VALUE existing_spec = rb_hash_aref(existing, ID2SYM(rb_intern("specificity")));
-        VALUE existing_important = rb_hash_aref(existing, ID2SYM(rb_intern("important")));
+        VALUE existing_spec = rb_hash_aref(existing, ID2SYM(id_specificity));
+        VALUE existing_important = rb_hash_aref(existing, ID2SYM(id_important));
 
         int existing_spec_int = NUM2INT(existing_spec);
         int existing_is_important = RTEST(existing_important);
@@ -46,9 +52,9 @@ static int merge_expanded_callback(VALUE exp_prop, VALUE exp_value, VALUE ctx_va
         }
 
         if (should_replace) {
-            rb_hash_aset(existing, ID2SYM(rb_intern("value")), exp_value);
-            rb_hash_aset(existing, ID2SYM(rb_intern("specificity")), INT2NUM(ctx->specificity));
-            rb_hash_aset(existing, ID2SYM(rb_intern("important")), ctx->important);
+            rb_hash_aset(existing, ID2SYM(id_value), exp_value);
+            rb_hash_aset(existing, ID2SYM(id_specificity), INT2NUM(ctx->specificity));
+            rb_hash_aset(existing, ID2SYM(id_important), ctx->important);
         }
     }
 
@@ -60,9 +66,9 @@ static int merge_expanded_callback(VALUE exp_prop, VALUE exp_value, VALUE ctx_va
 // Callback for rb_hash_foreach - builds result array from properties hash
 static int merge_build_result_callback(VALUE property, VALUE prop_data, VALUE result_ary) {
     // Get Declarations::Value struct class (cached in prop_data for efficiency)
-    VALUE value_struct = rb_hash_aref(prop_data, ID2SYM(rb_intern("_struct_class")));
-    VALUE value = rb_hash_aref(prop_data, ID2SYM(rb_intern("value")));
-    VALUE important = rb_hash_aref(prop_data, ID2SYM(rb_intern("important")));
+    VALUE value_struct = rb_hash_aref(prop_data, ID2SYM(id_struct_class));
+    VALUE value = rb_hash_aref(prop_data, ID2SYM(id_value));
+    VALUE important = rb_hash_aref(prop_data, ID2SYM(id_important));
 
     // Create Declarations::Value struct
     VALUE decl_struct = rb_struct_new(value_struct, property, value, important);
@@ -76,6 +82,14 @@ static int merge_build_result_callback(VALUE property, VALUE prop_data, VALUE re
 // Output: array of Declarations::Value structs (merged and with shorthand recreated)
 VALUE cataract_merge(VALUE self, VALUE rules_array) {
     Check_Type(rules_array, T_ARRAY);
+
+    // Initialize cached symbol IDs on first call (thread-safe since GVL is held)
+    if (id_value == 0) {
+        id_value = rb_intern("value");
+        id_specificity = rb_intern("specificity");
+        id_important = rb_intern("important");
+        id_struct_class = rb_intern("_struct_class");
+    }
 
     long num_rules = RARRAY_LEN(rules_array);
     if (num_rules == 0) {
@@ -140,13 +154,13 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
             } else if (strcmp(prop_str, "border-width") == 0) {
                 expanded = cataract_expand_border_width(Qnil, value);
             } else if (strcmp(prop_str, "border-top") == 0) {
-                expanded = cataract_expand_border_side(Qnil, rb_str_new_cstr("top"), value);
+                expanded = cataract_expand_border_side(Qnil, USASCII_STR("top"), value);
             } else if (strcmp(prop_str, "border-right") == 0) {
-                expanded = cataract_expand_border_side(Qnil, rb_str_new_cstr("right"), value);
+                expanded = cataract_expand_border_side(Qnil, USASCII_STR("right"), value);
             } else if (strcmp(prop_str, "border-bottom") == 0) {
-                expanded = cataract_expand_border_side(Qnil, rb_str_new_cstr("bottom"), value);
+                expanded = cataract_expand_border_side(Qnil, USASCII_STR("bottom"), value);
             } else if (strcmp(prop_str, "border-left") == 0) {
-                expanded = cataract_expand_border_side(Qnil, rb_str_new_cstr("left"), value);
+                expanded = cataract_expand_border_side(Qnil, USASCII_STR("left"), value);
             } else if (strcmp(prop_str, "font") == 0) {
                 expanded = cataract_expand_font(Qnil, value);
             } else if (strcmp(prop_str, "list-style") == 0) {
@@ -177,15 +191,15 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
             if (NIL_P(existing)) {
                 // New property - add it
                 VALUE prop_data = rb_hash_new();
-                rb_hash_aset(prop_data, ID2SYM(rb_intern("value")), value);
-                rb_hash_aset(prop_data, ID2SYM(rb_intern("specificity")), INT2NUM(specificity));
-                rb_hash_aset(prop_data, ID2SYM(rb_intern("important")), important);
-                rb_hash_aset(prop_data, ID2SYM(rb_intern("_struct_class")), value_struct);
+                rb_hash_aset(prop_data, ID2SYM(id_value), value);
+                rb_hash_aset(prop_data, ID2SYM(id_specificity), INT2NUM(specificity));
+                rb_hash_aset(prop_data, ID2SYM(id_important), important);
+                rb_hash_aset(prop_data, ID2SYM(id_struct_class), value_struct);
                 rb_hash_aset(properties_hash, property, prop_data);
             } else {
                 // Property exists - check cascade rules
-                VALUE existing_spec = rb_hash_aref(existing, ID2SYM(rb_intern("specificity")));
-                VALUE existing_important = rb_hash_aref(existing, ID2SYM(rb_intern("important")));
+                VALUE existing_spec = rb_hash_aref(existing, ID2SYM(id_specificity));
+                VALUE existing_important = rb_hash_aref(existing, ID2SYM(id_important));
 
                 int existing_spec_int = NUM2INT(existing_spec);
                 int existing_is_important = RTEST(existing_important);
@@ -205,9 +219,9 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
                 }
 
                 if (should_replace) {
-                    rb_hash_aset(existing, ID2SYM(rb_intern("value")), value);
-                    rb_hash_aset(existing, ID2SYM(rb_intern("specificity")), INT2NUM(specificity));
-                    rb_hash_aset(existing, ID2SYM(rb_intern("important")), important);
+                    rb_hash_aset(existing, ID2SYM(id_value), value);
+                    rb_hash_aset(existing, ID2SYM(id_specificity), INT2NUM(specificity));
+                    rb_hash_aset(existing, ID2SYM(id_important), important);
                 }
             }
 
@@ -226,11 +240,11 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
 
     // Helper macro to extract property data
     #define GET_PROP_VALUE(hash, prop_name) \
-        ({ VALUE pd = rb_hash_aref(hash, rb_str_new_cstr(prop_name)); \
-           NIL_P(pd) ? Qnil : rb_hash_aref(pd, ID2SYM(rb_intern("value"))); })
+        ({ VALUE pd = rb_hash_aref(hash, USASCII_STR(prop_name)); \
+           NIL_P(pd) ? Qnil : rb_hash_aref(pd, ID2SYM(id_value)); })
 
     #define GET_PROP_DATA(hash, prop_name) \
-        rb_hash_aref(hash, rb_str_new_cstr(prop_name))
+        rb_hash_aref(hash, USASCII_STR(prop_name))
 
     // Try to create margin shorthand
     VALUE margin_top = GET_PROP_VALUE(properties_hash, "margin-top");
@@ -240,31 +254,31 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
 
     if (!NIL_P(margin_top) && !NIL_P(margin_right) && !NIL_P(margin_bottom) && !NIL_P(margin_left)) {
         VALUE margin_props = rb_hash_new();
-        rb_hash_aset(margin_props, rb_str_new_cstr("margin-top"), margin_top);
-        rb_hash_aset(margin_props, rb_str_new_cstr("margin-right"), margin_right);
-        rb_hash_aset(margin_props, rb_str_new_cstr("margin-bottom"), margin_bottom);
-        rb_hash_aset(margin_props, rb_str_new_cstr("margin-left"), margin_left);
+        rb_hash_aset(margin_props, USASCII_STR("margin-top"), margin_top);
+        rb_hash_aset(margin_props, USASCII_STR("margin-right"), margin_right);
+        rb_hash_aset(margin_props, USASCII_STR("margin-bottom"), margin_bottom);
+        rb_hash_aset(margin_props, USASCII_STR("margin-left"), margin_left);
 
         VALUE margin_shorthand = cataract_create_margin_shorthand(Qnil, margin_props);
         if (!NIL_P(margin_shorthand)) {
             // Find max specificity and check if any are important
             VALUE top_data = GET_PROP_DATA(properties_hash, "margin-top");
-            VALUE margin_important = rb_hash_aref(top_data, ID2SYM(rb_intern("important")));
-            int margin_spec = NUM2INT(rb_hash_aref(top_data, ID2SYM(rb_intern("specificity"))));
+            VALUE margin_important = rb_hash_aref(top_data, ID2SYM(id_important));
+            int margin_spec = NUM2INT(rb_hash_aref(top_data, ID2SYM(id_specificity)));
 
             // Add shorthand
             VALUE margin_data = rb_hash_new();
-            rb_hash_aset(margin_data, ID2SYM(rb_intern("value")), margin_shorthand);
-            rb_hash_aset(margin_data, ID2SYM(rb_intern("specificity")), INT2NUM(margin_spec));
-            rb_hash_aset(margin_data, ID2SYM(rb_intern("important")), margin_important);
-            rb_hash_aset(margin_data, ID2SYM(rb_intern("_struct_class")), value_struct);
-            rb_hash_aset(properties_hash, rb_str_new_cstr("margin"), margin_data);
+            rb_hash_aset(margin_data, ID2SYM(id_value), margin_shorthand);
+            rb_hash_aset(margin_data, ID2SYM(id_specificity), INT2NUM(margin_spec));
+            rb_hash_aset(margin_data, ID2SYM(id_important), margin_important);
+            rb_hash_aset(margin_data, ID2SYM(id_struct_class), value_struct);
+            rb_hash_aset(properties_hash, USASCII_STR("margin"), margin_data);
 
             // Remove longhand properties
-            rb_hash_delete(properties_hash, rb_str_new_cstr("margin-top"));
-            rb_hash_delete(properties_hash, rb_str_new_cstr("margin-right"));
-            rb_hash_delete(properties_hash, rb_str_new_cstr("margin-bottom"));
-            rb_hash_delete(properties_hash, rb_str_new_cstr("margin-left"));
+            rb_hash_delete(properties_hash, USASCII_STR("margin-top"));
+            rb_hash_delete(properties_hash, USASCII_STR("margin-right"));
+            rb_hash_delete(properties_hash, USASCII_STR("margin-bottom"));
+            rb_hash_delete(properties_hash, USASCII_STR("margin-left"));
         }
         RB_GC_GUARD(margin_props);
         RB_GC_GUARD(margin_shorthand);
@@ -278,28 +292,28 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
 
     if (!NIL_P(padding_top) && !NIL_P(padding_right) && !NIL_P(padding_bottom) && !NIL_P(padding_left)) {
         VALUE padding_props = rb_hash_new();
-        rb_hash_aset(padding_props, rb_str_new_cstr("padding-top"), padding_top);
-        rb_hash_aset(padding_props, rb_str_new_cstr("padding-right"), padding_right);
-        rb_hash_aset(padding_props, rb_str_new_cstr("padding-bottom"), padding_bottom);
-        rb_hash_aset(padding_props, rb_str_new_cstr("padding-left"), padding_left);
+        rb_hash_aset(padding_props, USASCII_STR("padding-top"), padding_top);
+        rb_hash_aset(padding_props, USASCII_STR("padding-right"), padding_right);
+        rb_hash_aset(padding_props, USASCII_STR("padding-bottom"), padding_bottom);
+        rb_hash_aset(padding_props, USASCII_STR("padding-left"), padding_left);
 
         VALUE padding_shorthand = cataract_create_padding_shorthand(Qnil, padding_props);
         if (!NIL_P(padding_shorthand)) {
             VALUE top_data = GET_PROP_DATA(properties_hash, "padding-top");
-            VALUE padding_important = rb_hash_aref(top_data, ID2SYM(rb_intern("important")));
-            int padding_spec = NUM2INT(rb_hash_aref(top_data, ID2SYM(rb_intern("specificity"))));
+            VALUE padding_important = rb_hash_aref(top_data, ID2SYM(id_important));
+            int padding_spec = NUM2INT(rb_hash_aref(top_data, ID2SYM(id_specificity)));
 
             VALUE padding_data = rb_hash_new();
-            rb_hash_aset(padding_data, ID2SYM(rb_intern("value")), padding_shorthand);
-            rb_hash_aset(padding_data, ID2SYM(rb_intern("specificity")), INT2NUM(padding_spec));
-            rb_hash_aset(padding_data, ID2SYM(rb_intern("important")), padding_important);
-            rb_hash_aset(padding_data, ID2SYM(rb_intern("_struct_class")), value_struct);
-            rb_hash_aset(properties_hash, rb_str_new_cstr("padding"), padding_data);
+            rb_hash_aset(padding_data, ID2SYM(id_value), padding_shorthand);
+            rb_hash_aset(padding_data, ID2SYM(id_specificity), INT2NUM(padding_spec));
+            rb_hash_aset(padding_data, ID2SYM(id_important), padding_important);
+            rb_hash_aset(padding_data, ID2SYM(id_struct_class), value_struct);
+            rb_hash_aset(properties_hash, USASCII_STR("padding"), padding_data);
 
-            rb_hash_delete(properties_hash, rb_str_new_cstr("padding-top"));
-            rb_hash_delete(properties_hash, rb_str_new_cstr("padding-right"));
-            rb_hash_delete(properties_hash, rb_str_new_cstr("padding-bottom"));
-            rb_hash_delete(properties_hash, rb_str_new_cstr("padding-left"));
+            rb_hash_delete(properties_hash, USASCII_STR("padding-top"));
+            rb_hash_delete(properties_hash, USASCII_STR("padding-right"));
+            rb_hash_delete(properties_hash, USASCII_STR("padding-bottom"));
+            rb_hash_delete(properties_hash, USASCII_STR("padding-left"));
         }
         RB_GC_GUARD(padding_props);
         RB_GC_GUARD(padding_shorthand);
@@ -314,25 +328,25 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
     if (!NIL_P(border_top_width) && !NIL_P(border_right_width) &&
         !NIL_P(border_bottom_width) && !NIL_P(border_left_width)) {
         VALUE width_props = rb_hash_new();
-        rb_hash_aset(width_props, rb_str_new_cstr("border-top-width"), border_top_width);
-        rb_hash_aset(width_props, rb_str_new_cstr("border-right-width"), border_right_width);
-        rb_hash_aset(width_props, rb_str_new_cstr("border-bottom-width"), border_bottom_width);
-        rb_hash_aset(width_props, rb_str_new_cstr("border-left-width"), border_left_width);
+        rb_hash_aset(width_props, USASCII_STR("border-top-width"), border_top_width);
+        rb_hash_aset(width_props, USASCII_STR("border-right-width"), border_right_width);
+        rb_hash_aset(width_props, USASCII_STR("border-bottom-width"), border_bottom_width);
+        rb_hash_aset(width_props, USASCII_STR("border-left-width"), border_left_width);
 
         VALUE border_width_short = cataract_create_border_width_shorthand(Qnil, width_props);
         if (!NIL_P(border_width_short)) {
             VALUE data = GET_PROP_DATA(properties_hash, "border-top-width");
             VALUE prop_data = rb_hash_new();
-            rb_hash_aset(prop_data, ID2SYM(rb_intern("value")), border_width_short);
-            rb_hash_aset(prop_data, ID2SYM(rb_intern("specificity")), rb_hash_aref(data, ID2SYM(rb_intern("specificity"))));
-            rb_hash_aset(prop_data, ID2SYM(rb_intern("important")), rb_hash_aref(data, ID2SYM(rb_intern("important"))));
-            rb_hash_aset(prop_data, ID2SYM(rb_intern("_struct_class")), value_struct);
-            rb_hash_aset(properties_hash, rb_str_new_cstr("border-width"), prop_data);
+            rb_hash_aset(prop_data, ID2SYM(id_value), border_width_short);
+            rb_hash_aset(prop_data, ID2SYM(id_specificity), rb_hash_aref(data, ID2SYM(id_specificity)));
+            rb_hash_aset(prop_data, ID2SYM(id_important), rb_hash_aref(data, ID2SYM(id_important)));
+            rb_hash_aset(prop_data, ID2SYM(id_struct_class), value_struct);
+            rb_hash_aset(properties_hash, USASCII_STR("border-width"), prop_data);
 
-            rb_hash_delete(properties_hash, rb_str_new_cstr("border-top-width"));
-            rb_hash_delete(properties_hash, rb_str_new_cstr("border-right-width"));
-            rb_hash_delete(properties_hash, rb_str_new_cstr("border-bottom-width"));
-            rb_hash_delete(properties_hash, rb_str_new_cstr("border-left-width"));
+            rb_hash_delete(properties_hash, USASCII_STR("border-top-width"));
+            rb_hash_delete(properties_hash, USASCII_STR("border-right-width"));
+            rb_hash_delete(properties_hash, USASCII_STR("border-bottom-width"));
+            rb_hash_delete(properties_hash, USASCII_STR("border-left-width"));
         }
         RB_GC_GUARD(width_props);
         RB_GC_GUARD(border_width_short);
@@ -347,25 +361,25 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
     if (!NIL_P(border_top_style) && !NIL_P(border_right_style) &&
         !NIL_P(border_bottom_style) && !NIL_P(border_left_style)) {
         VALUE style_props = rb_hash_new();
-        rb_hash_aset(style_props, rb_str_new_cstr("border-top-style"), border_top_style);
-        rb_hash_aset(style_props, rb_str_new_cstr("border-right-style"), border_right_style);
-        rb_hash_aset(style_props, rb_str_new_cstr("border-bottom-style"), border_bottom_style);
-        rb_hash_aset(style_props, rb_str_new_cstr("border-left-style"), border_left_style);
+        rb_hash_aset(style_props, USASCII_STR("border-top-style"), border_top_style);
+        rb_hash_aset(style_props, USASCII_STR("border-right-style"), border_right_style);
+        rb_hash_aset(style_props, USASCII_STR("border-bottom-style"), border_bottom_style);
+        rb_hash_aset(style_props, USASCII_STR("border-left-style"), border_left_style);
 
         VALUE border_style_short = cataract_create_border_style_shorthand(Qnil, style_props);
         if (!NIL_P(border_style_short)) {
             VALUE data = GET_PROP_DATA(properties_hash, "border-top-style");
             VALUE prop_data = rb_hash_new();
-            rb_hash_aset(prop_data, ID2SYM(rb_intern("value")), border_style_short);
-            rb_hash_aset(prop_data, ID2SYM(rb_intern("specificity")), rb_hash_aref(data, ID2SYM(rb_intern("specificity"))));
-            rb_hash_aset(prop_data, ID2SYM(rb_intern("important")), rb_hash_aref(data, ID2SYM(rb_intern("important"))));
-            rb_hash_aset(prop_data, ID2SYM(rb_intern("_struct_class")), value_struct);
-            rb_hash_aset(properties_hash, rb_str_new_cstr("border-style"), prop_data);
+            rb_hash_aset(prop_data, ID2SYM(id_value), border_style_short);
+            rb_hash_aset(prop_data, ID2SYM(id_specificity), rb_hash_aref(data, ID2SYM(id_specificity)));
+            rb_hash_aset(prop_data, ID2SYM(id_important), rb_hash_aref(data, ID2SYM(id_important)));
+            rb_hash_aset(prop_data, ID2SYM(id_struct_class), value_struct);
+            rb_hash_aset(properties_hash, USASCII_STR("border-style"), prop_data);
 
-            rb_hash_delete(properties_hash, rb_str_new_cstr("border-top-style"));
-            rb_hash_delete(properties_hash, rb_str_new_cstr("border-right-style"));
-            rb_hash_delete(properties_hash, rb_str_new_cstr("border-bottom-style"));
-            rb_hash_delete(properties_hash, rb_str_new_cstr("border-left-style"));
+            rb_hash_delete(properties_hash, USASCII_STR("border-top-style"));
+            rb_hash_delete(properties_hash, USASCII_STR("border-right-style"));
+            rb_hash_delete(properties_hash, USASCII_STR("border-bottom-style"));
+            rb_hash_delete(properties_hash, USASCII_STR("border-left-style"));
         }
         RB_GC_GUARD(style_props);
         RB_GC_GUARD(border_style_short);
@@ -380,25 +394,25 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
     if (!NIL_P(border_top_color) && !NIL_P(border_right_color) &&
         !NIL_P(border_bottom_color) && !NIL_P(border_left_color)) {
         VALUE color_props = rb_hash_new();
-        rb_hash_aset(color_props, rb_str_new_cstr("border-top-color"), border_top_color);
-        rb_hash_aset(color_props, rb_str_new_cstr("border-right-color"), border_right_color);
-        rb_hash_aset(color_props, rb_str_new_cstr("border-bottom-color"), border_bottom_color);
-        rb_hash_aset(color_props, rb_str_new_cstr("border-left-color"), border_left_color);
+        rb_hash_aset(color_props, USASCII_STR("border-top-color"), border_top_color);
+        rb_hash_aset(color_props, USASCII_STR("border-right-color"), border_right_color);
+        rb_hash_aset(color_props, USASCII_STR("border-bottom-color"), border_bottom_color);
+        rb_hash_aset(color_props, USASCII_STR("border-left-color"), border_left_color);
 
         VALUE border_color_short = cataract_create_border_color_shorthand(Qnil, color_props);
         if (!NIL_P(border_color_short)) {
             VALUE data = GET_PROP_DATA(properties_hash, "border-top-color");
             VALUE prop_data = rb_hash_new();
-            rb_hash_aset(prop_data, ID2SYM(rb_intern("value")), border_color_short);
-            rb_hash_aset(prop_data, ID2SYM(rb_intern("specificity")), rb_hash_aref(data, ID2SYM(rb_intern("specificity"))));
-            rb_hash_aset(prop_data, ID2SYM(rb_intern("important")), rb_hash_aref(data, ID2SYM(rb_intern("important"))));
-            rb_hash_aset(prop_data, ID2SYM(rb_intern("_struct_class")), value_struct);
-            rb_hash_aset(properties_hash, rb_str_new_cstr("border-color"), prop_data);
+            rb_hash_aset(prop_data, ID2SYM(id_value), border_color_short);
+            rb_hash_aset(prop_data, ID2SYM(id_specificity), rb_hash_aref(data, ID2SYM(id_specificity)));
+            rb_hash_aset(prop_data, ID2SYM(id_important), rb_hash_aref(data, ID2SYM(id_important)));
+            rb_hash_aset(prop_data, ID2SYM(id_struct_class), value_struct);
+            rb_hash_aset(properties_hash, USASCII_STR("border-color"), prop_data);
 
-            rb_hash_delete(properties_hash, rb_str_new_cstr("border-top-color"));
-            rb_hash_delete(properties_hash, rb_str_new_cstr("border-right-color"));
-            rb_hash_delete(properties_hash, rb_str_new_cstr("border-bottom-color"));
-            rb_hash_delete(properties_hash, rb_str_new_cstr("border-left-color"));
+            rb_hash_delete(properties_hash, USASCII_STR("border-top-color"));
+            rb_hash_delete(properties_hash, USASCII_STR("border-right-color"));
+            rb_hash_delete(properties_hash, USASCII_STR("border-bottom-color"));
+            rb_hash_delete(properties_hash, USASCII_STR("border-left-color"));
         }
         RB_GC_GUARD(color_props);
         RB_GC_GUARD(border_color_short);
@@ -411,9 +425,9 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
 
     if (!NIL_P(border_width) || !NIL_P(border_style) || !NIL_P(border_color)) {
         VALUE border_props = rb_hash_new();
-        if (!NIL_P(border_width)) rb_hash_aset(border_props, rb_str_new_cstr("border-width"), border_width);
-        if (!NIL_P(border_style)) rb_hash_aset(border_props, rb_str_new_cstr("border-style"), border_style);
-        if (!NIL_P(border_color)) rb_hash_aset(border_props, rb_str_new_cstr("border-color"), border_color);
+        if (!NIL_P(border_width)) rb_hash_aset(border_props, USASCII_STR("border-width"), border_width);
+        if (!NIL_P(border_style)) rb_hash_aset(border_props, USASCII_STR("border-style"), border_style);
+        if (!NIL_P(border_color)) rb_hash_aset(border_props, USASCII_STR("border-color"), border_color);
 
         VALUE border_shorthand = cataract_create_border_shorthand(Qnil, border_props);
         if (!NIL_P(border_shorthand)) {
@@ -421,19 +435,19 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
             VALUE border_data_src = !NIL_P(border_width) ? GET_PROP_DATA(properties_hash, "border-width") :
                                     !NIL_P(border_style) ? GET_PROP_DATA(properties_hash, "border-style") :
                                     GET_PROP_DATA(properties_hash, "border-color");
-            VALUE border_important = rb_hash_aref(border_data_src, ID2SYM(rb_intern("important")));
-            int border_spec = NUM2INT(rb_hash_aref(border_data_src, ID2SYM(rb_intern("specificity"))));
+            VALUE border_important = rb_hash_aref(border_data_src, ID2SYM(id_important));
+            int border_spec = NUM2INT(rb_hash_aref(border_data_src, ID2SYM(id_specificity)));
 
             VALUE border_data = rb_hash_new();
-            rb_hash_aset(border_data, ID2SYM(rb_intern("value")), border_shorthand);
-            rb_hash_aset(border_data, ID2SYM(rb_intern("specificity")), INT2NUM(border_spec));
-            rb_hash_aset(border_data, ID2SYM(rb_intern("important")), border_important);
-            rb_hash_aset(border_data, ID2SYM(rb_intern("_struct_class")), value_struct);
-            rb_hash_aset(properties_hash, rb_str_new_cstr("border"), border_data);
+            rb_hash_aset(border_data, ID2SYM(id_value), border_shorthand);
+            rb_hash_aset(border_data, ID2SYM(id_specificity), INT2NUM(border_spec));
+            rb_hash_aset(border_data, ID2SYM(id_important), border_important);
+            rb_hash_aset(border_data, ID2SYM(id_struct_class), value_struct);
+            rb_hash_aset(properties_hash, USASCII_STR("border"), border_data);
 
-            if (!NIL_P(border_width)) rb_hash_delete(properties_hash, rb_str_new_cstr("border-width"));
-            if (!NIL_P(border_style)) rb_hash_delete(properties_hash, rb_str_new_cstr("border-style"));
-            if (!NIL_P(border_color)) rb_hash_delete(properties_hash, rb_str_new_cstr("border-color"));
+            if (!NIL_P(border_width)) rb_hash_delete(properties_hash, USASCII_STR("border-width"));
+            if (!NIL_P(border_style)) rb_hash_delete(properties_hash, USASCII_STR("border-style"));
+            if (!NIL_P(border_color)) rb_hash_delete(properties_hash, USASCII_STR("border-color"));
         }
         RB_GC_GUARD(border_props);
         RB_GC_GUARD(border_shorthand);
