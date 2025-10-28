@@ -40,9 +40,12 @@ module Cataract
     def each_selector(media_types = :all)
       return enum_for(:each_selector, media_types) unless block_given?
 
+      media_array = Array(media_types).map(&:to_sym)
+
       @rules.each do |rule|
-        # TODO: Filter by media_types if not :all
-        # For now, yield all rules
+        # Filter by media types using the same logic as Rule#applies_to_media?
+        next unless rule.applies_to_media?(media_array)
+
         declarations_str = rule.declarations.map do |decl|
           val = decl.important ? "#{decl.value} !important" : decl.value
           "#{decl.property}: #{val}"

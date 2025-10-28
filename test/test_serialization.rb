@@ -130,4 +130,150 @@ body { color: red; }'
     result = sheet.to_s
     assert_match(/\A@charset "UTF-8";/, result)
   end
+
+  # ============================================================================
+  # each_selector - Iterator tests
+  # ============================================================================
+
+  def test_each_selector_basic
+    css = 'body { color: red; } div { margin: 10px; }'
+    sheet = Cataract.parse_css(css)
+
+    selectors = []
+    sheet.each_selector do |selector, declarations, specificity, media_types|
+      selectors << selector
+    end
+
+    assert_equal ['body', 'div'], selectors
+  end
+
+  def test_each_selector_yields_all_components
+    css = 'body { color: red; margin: 10px; }'
+    sheet = Cataract.parse_css(css)
+
+    sheet.each_selector do |selector, declarations, specificity, media_types|
+      assert_equal 'body', selector
+      assert_kind_of String, declarations
+      assert_includes declarations, 'color: red'
+      assert_includes declarations, 'margin: 10px'
+      assert_kind_of Integer, specificity
+      assert_equal [:all], media_types
+    end
+  end
+
+  def test_each_selector_with_important
+    css = 'div { color: blue !important; }'
+    sheet = Cataract.parse_css(css)
+
+    sheet.each_selector do |selector, declarations, specificity, media_types|
+      assert_includes declarations, '!important'
+    end
+  end
+
+  def test_each_selector_returns_enumerator
+    css = 'body { color: red; } div { margin: 10px; }'
+    sheet = Cataract.parse_css(css)
+
+    enum = sheet.each_selector
+    assert_kind_of Enumerator, enum
+    assert_equal 2, enum.count
+  end
+
+  def test_each_selector_with_media_all
+    css = <<~CSS
+      body { color: black; }
+      @media print {
+        body { color: white; }
+      }
+    CSS
+    sheet = Cataract.parse_css(css)
+
+    selectors = []
+    sheet.each_selector(:all) do |selector, declarations, specificity, media_types|
+      selectors << [selector, media_types]
+    end
+
+    # :all should return ALL rules
+    assert_equal 2, selectors.length
+    assert_equal ['body', [:all]], selectors[0]
+    assert_equal ['body', [:print]], selectors[1]
+  end
+
+  def test_each_selector_with_media_print
+    css = <<~CSS
+      body { color: black; }
+      @media print {
+        body { color: white; }
+      }
+      @media screen {
+        div { color: blue; }
+      }
+    CSS
+    sheet = Cataract.parse_css(css)
+
+    selectors = []
+    sheet.each_selector(:print) do |selector, declarations, specificity, media_types|
+      selectors << [selector, media_types]
+    end
+
+    # :print should return ONLY print-specific rules (not universal)
+    assert_equal 1, selectors.length
+    assert_equal ['body', [:print]], selectors[0]
+  end
+
+  def test_each_selector_with_media_screen
+    css = <<~CSS
+      body { color: black; }
+      @media screen {
+        div { color: blue; }
+      }
+      @media print {
+        body { color: white; }
+      }
+    CSS
+    sheet = Cataract.parse_css(css)
+
+    selectors = []
+    sheet.each_selector(:screen) do |selector, declarations, specificity, media_types|
+      selectors << [selector, media_types]
+    end
+
+    # :screen should return ONLY screen-specific rules
+    assert_equal 1, selectors.length
+    assert_equal ['div', [:screen]], selectors[0]
+  end
+
+  def test_each_selector_with_multiple_media_types
+    css = <<~CSS
+      @media screen, print {
+        .header { color: black; }
+      }
+      @media print {
+        body { margin: 0; }
+      }
+    CSS
+    sheet = Cataract.parse_css(css)
+
+    # Query for both screen and print
+    selectors = []
+    sheet.each_selector([:screen, :print]) do |selector, declarations, specificity, media_types|
+      selectors << selector
+    end
+
+    assert_equal 2, selectors.length
+    assert_includes selectors, '.header'
+    assert_includes selectors, 'body'
+  end
+
+  def test_each_selector_no_matches
+    css = '@media print { body { color: black; } }'
+    sheet = Cataract.parse_css(css)
+
+    selectors = []
+    sheet.each_selector(:screen) do |selector, declarations, specificity, media_types|
+      selectors << selector
+    end
+
+    assert_equal [], selectors
+  end
 end
