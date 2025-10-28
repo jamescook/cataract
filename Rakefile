@@ -139,7 +139,7 @@ task :lint do
 
   success = c_files.all? do |file|
     puts "  Checking #{file}..."
-    system(clang_tidy, file, "--",
+    system(clang_tidy, "--quiet", file, "--",
            "-I#{ruby_include}",
            "-I#{ruby_arch_include}",
            "-Iext/cataract")
