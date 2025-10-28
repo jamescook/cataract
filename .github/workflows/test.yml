@@ -23,48 +23,6 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Cache Ragel (Ubuntu)
-      if: runner.os == 'Linux'
-      id: cache-ragel-deb
-      uses: actions/cache@v4
-      with:
-        path: ~/ragel.deb
-        key: ${{ runner.os }}-ragel-deb-6.10-4
-
-    - name: Install Ragel from cache (Ubuntu)
-      if: runner.os == 'Linux' && steps.cache-ragel-deb.outputs.cache-hit == 'true'
-      run: |
-        sudo rm -f /var/lib/man-db/auto-update
-        sudo dpkg -i ~/ragel.deb
-
-    - name: Download and install Ragel (Ubuntu)
-      if: runner.os == 'Linux' && steps.cache-ragel-deb.outputs.cache-hit != 'true'
-      run: |
-        sudo rm -f /var/lib/man-db/auto-update
-        wget -O ~/ragel.deb https://archive.ubuntu.com/ubuntu/pool/universe/r/ragel/ragel_6.10-4_amd64.deb
-        sudo dpkg -i ~/ragel.deb
-
-    - name: Cache Ragel (macOS)
-      if: runner.os == 'macOS'
-      id: cache-ragel-macos
-      uses: actions/cache@v4
-      with:
-        path: ~/ragel-cache
-        key: ${{ runner.os }}-ragel-6.10
-
-    - name: Restore Ragel from cache (macOS)
-      if: runner.os == 'macOS' && steps.cache-ragel-macos.outputs.cache-hit == 'true'
-      run: |
-        sudo cp ~/ragel-cache/ragel /usr/local/bin/ragel
-        sudo chmod +x /usr/local/bin/ragel
-
-    - name: Install Ragel (macOS)
-      if: runner.os == 'macOS' && steps.cache-ragel-macos.outputs.cache-hit != 'true'
-      run: |
-        brew install ragel
-        mkdir -p ~/ragel-cache
-        cp /usr/local/bin/ragel ~/ragel-cache/ragel
-
     - name: Set up Ruby
       uses: ruby/setup-ruby@v1
       with:
@@ -73,9 +31,6 @@ jobs:
 
     - name: Display Ruby version
       run: ruby --version
-
-    - name: Display Ragel version
-      run: ragel --version
 
     - name: Run tests
       run: bundle exec rake test
