@@ -147,4 +147,159 @@ class TestRuleSet < Minitest::Test
     rule = Cataract::RuleSet.new(selectors: 'div', block: '{content: url(data:image/png;base64,LOTSOFSTUFF)}')
     assert_includes rule.to_s, "image/png;base64,LOTSOFSTUFF"
   end
+
+  def test_merge
+    rule1 = Cataract::RuleSet.new(
+      selector: ".btn",
+      declarations: {"color" => "red", "margin" => "10px"}
+    )
+
+    rule2 = Cataract::RuleSet.new(
+      selector: ".btn",
+      declarations: {"color" => "blue", "padding" => "5px"}
+    )
+
+    # Non-mutating merge
+    merged = rule1.merge(rule2)
+    assert_equal "blue;", merged["color"]
+    assert_equal "10px;", merged["margin"]
+    assert_equal "5px;", merged["padding"]
+
+    # Original unchanged
+    assert_equal "red;", rule1["color"]
+    assert_nil rule1["padding"]
+  end
+
+  def test_merge_bang
+    rule = Cataract::RuleSet.new(
+      selector: ".btn",
+      declarations: {"color" => "red"}
+    )
+
+    rule.merge!({"background" => "blue"})
+
+    # Should mutate original
+    assert_equal "red;", rule["color"]
+    assert_equal "blue;", rule["background"]
+  end
+
+  def test_merge_with_declarations
+    rule = Cataract::RuleSet.new(
+      selector: ".btn",
+      declarations: {"color" => "red"}
+    )
+
+    decl = Cataract::Declarations.new({"margin" => "10px"})
+    merged = rule.merge(decl)
+
+    assert_equal "red;", merged["color"]
+    assert_equal "10px;", merged["margin"]
+  end
+
+  def test_equality
+    rule1 = Cataract::RuleSet.new(
+      selector: ".btn",
+      declarations: {"color" => "red"}
+    )
+
+    rule2 = Cataract::RuleSet.new(
+      selector: ".btn",
+      declarations: {"color" => "red"}
+    )
+
+    rule3 = Cataract::RuleSet.new(
+      selector: "#btn",
+      declarations: {"color" => "red"}
+    )
+
+    assert_equal rule1, rule2
+    refute_equal rule1, rule3
+  end
+
+  def test_dup
+    rule = Cataract::RuleSet.new(
+      selector: ".btn",
+      declarations: {"color" => "red"}
+    )
+
+    duped = rule.dup
+    duped["background"] = "blue"
+
+    # Original unchanged
+    assert_nil rule["background"]
+    assert_equal "blue;", duped["background"]
+  end
+
+  def test_to_h
+    rule = Cataract::RuleSet.new(
+      selector: ".btn",
+      declarations: {"color" => "red", "margin" => "10px"},
+      media_types: [:print]
+    )
+
+    hash = rule.to_h
+
+    assert_equal ".btn", hash[:selector]
+    assert_equal({"color" => "red", "margin" => "10px"}, hash[:declarations])
+    assert_equal [:print], hash[:media_types]
+    assert_equal 10, hash[:specificity]
+  end
+
+  def test_has_property?
+    rule = Cataract::RuleSet.new(
+      selector: ".btn",
+      declarations: {"color" => "red"}
+    )
+
+    assert rule.has_property?("color")
+    refute rule.has_property?("background")
+  end
+
+  def test_delete_property
+    rule = Cataract::RuleSet.new(
+      selector: ".btn",
+      declarations: {"color" => "red", "margin" => "10px"}
+    )
+
+    rule.delete_property("margin")
+
+    refute rule.has_property?("margin")
+    assert_equal "red;", rule["color"]
+  end
+
+  def test_empty?
+    rule = Cataract::RuleSet.new(
+      selector: ".btn",
+      declarations: {"color" => "red"}
+    )
+
+    refute rule.empty?
+
+    rule.delete_property("color")
+    assert rule.empty?
+  end
+
+  def test_applies_to_media?
+    # Default media type is :all - universal rules ONLY match :all (css_parser behavior)
+    rule_all = Cataract::RuleSet.new(
+      selector: ".btn",
+      declarations: {"color" => "red"}
+    )
+
+    assert rule_all.applies_to_media?([:all])
+    refute rule_all.applies_to_media?([:print])  # Universal rules don't match specific queries
+    refute rule_all.applies_to_media?([:screen]) # Universal rules don't match specific queries
+
+    # Specific media type
+    rule_print = Cataract::RuleSet.new(
+      selector: ".btn",
+      declarations: {"color" => "red"},
+      media_types: [:print]
+    )
+
+    assert rule_print.applies_to_media?([:print])
+    refute rule_print.applies_to_media?([:screen])
+    # Querying for :all matches all rules
+    assert rule_print.applies_to_media?([:all])
+  end
 end

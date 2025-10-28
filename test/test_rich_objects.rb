@@ -1,46 +1,7 @@
 require "minitest/autorun"
 require "cataract"
 
-class TestRichObjects < Minitest::Test
-  def test_ruleset_basic_usage
-    rule = Cataract::RuleSet.new(
-      selector: ".header",
-      declarations: {"color" => "red", "background" => "blue"}
-    )
-    
-    assert_equal ".header", rule.selector
-    assert_equal "red;", rule["color"]
-    assert_equal "blue;", rule["background"]
-    assert_equal 10, rule.specificity # class selector
-    
-    expected_css = ".header { color: red; background: blue; }"
-    assert_equal expected_css, rule.to_s
-  end
-  
-  def test_ruleset_with_declarations_object
-    decl = Cataract::Declarations.new({"color" => "red !important"})
-    rule = Cataract::RuleSet.new(selector: "#nav", declarations: decl)
-
-    assert_equal "#nav", rule.selector
-    assert_equal "red !important;", rule["color"]
-    assert rule.declarations.important?("color")
-    assert_equal 100, rule.specificity # ID selector
-  end
-  
-  def test_ruleset_from_string_declarations
-    rule = Cataract::RuleSet.new(
-      selector: "[disabled]",
-      declarations: "opacity: 0.5; cursor: not-allowed !important"
-    )
-    
-    assert_equal "[disabled]", rule.selector
-    assert_equal "0.5;", rule["opacity"]
-    assert_equal "not-allowed !important;", rule["cursor"]
-    refute rule.declarations.important?("opacity")
-    assert rule.declarations.important?("cursor")
-    assert_equal 10, rule.specificity # attribute selector
-  end
-  
+class TestParser < Minitest::Test
   def test_parser_with_rich_objects
     parser = Cataract::Parser.new
     css = %{

@@ -1,7 +1,11 @@
+require_relative 'media_type_matcher'
+
 module Cataract
   # Add Ruby methods to the C-defined Rule struct
   # Rule = Struct.new(:selector, :declarations, :specificity, :media_query)
   class Rule
+    include MediaTypeMatcher
+
     # Alias for css_parser compatibility
     alias_method :media_types, :media_query
 
@@ -13,19 +17,6 @@ module Cataract
     # @return [String, nil] Property value with trailing semicolon, or nil if not found
     def [](property)
       Declarations.new(declarations)[property]
-    end
-
-    # Check if this rule applies to the given media types
-    # @param media_types [Symbol, Array<Symbol>] Media type(s) to check
-    # @return [Boolean] true if rule applies
-    def applies_to_media?(media_types)
-      return true if media_types == :all
-
-      media_array = Array(media_types).map(&:to_sym)
-      rule_media = media_query || [:all]
-
-      # Rule applies if any of its media types match any requested media type
-      rule_media.any? { |mt| media_array.include?(mt) }
     end
 
     # Calculate specificity lazily if not set
