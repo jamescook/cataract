@@ -313,9 +313,12 @@ VALUE cataract_expand_font(VALUE self, VALUE value) {
         while (*family_start && *family_start != ' ') family_start++;
         while (*family_start == ' ') family_start++; // skip spaces
 
-        // Extract line-height
-        line_height = rb_str_new(after_slash, family_start - after_slash);
-        line_height = rb_funcall(line_height, rb_intern("strip"), 0);
+        // Extract line-height and trim whitespace
+        const char *lh_start = after_slash;
+        const char *lh_end = family_start;
+        trim_leading(&lh_start, lh_end);
+        trim_trailing(lh_start, &lh_end);
+        line_height = rb_str_new(lh_start, lh_end - lh_start);
 
         // Family is everything after line-height
         if (*family_start) {
@@ -341,11 +344,49 @@ VALUE cataract_expand_font(VALUE self, VALUE value) {
     for (long i = 0; i < len; i++) {
         VALUE part = rb_ary_entry(parts, i);
         const char *p = StringValueCStr(part);
-        // Size has px, em, %, pt, etc or is a size keyword
-        if (strchr(p, 'p') || strchr(p, 'e') || strchr(p, '%') || strchr(p, 't') ||
-            strcmp(p, "small") == 0 || strcmp(p, "medium") == 0 || strcmp(p, "large") == 0 ||
+        size_t plen = strlen(p);
+
+        // Check if it's a size keyword
+        if (strcmp(p, "small") == 0 || strcmp(p, "medium") == 0 || strcmp(p, "large") == 0 ||
             strcmp(p, "x-small") == 0 || strcmp(p, "x-large") == 0 || strcmp(p, "xx-small") == 0 ||
             strcmp(p, "xx-large") == 0 || strcmp(p, "smaller") == 0 || strcmp(p, "larger") == 0) {
+            size_idx = i;
+            size = part;
+            break;
+        }
+
+        // Check if it ends with a valid CSS unit (not just contains those characters!)
+        // Common absolute units: px, pt, pc, cm, mm, in
+        // Common relative units: em, ex, rem, ch, vw, vh, vmin, vmax, %
+        if (plen >= 2) {
+            const char *end = p + plen - 2;
+            if (strcmp(end, "px") == 0 || strcmp(end, "pt") == 0 || strcmp(end, "pc") == 0 ||
+                strcmp(end, "em") == 0 || strcmp(end, "ex") == 0 || strcmp(end, "cm") == 0 ||
+                strcmp(end, "mm") == 0 || strcmp(end, "in") == 0 || strcmp(end, "ch") == 0 ||
+                strcmp(end, "vw") == 0 || strcmp(end, "vh") == 0) {
+                size_idx = i;
+                size = part;
+                break;
+            }
+        }
+        if (plen >= 3) {
+            const char *end = p + plen - 3;
+            if (strcmp(end, "rem") == 0) {
+                size_idx = i;
+                size = part;
+                break;
+            }
+        }
+        if (plen >= 4) {
+            const char *end = p + plen - 4;
+            if (strcmp(end, "vmin") == 0 || strcmp(end, "vmax") == 0) {
+                size_idx = i;
+                size = part;
+                break;
+            }
+        }
+        // Check for percentage
+        if (plen >= 1 && p[plen - 1] == '%') {
             size_idx = i;
             size = part;
             break;
@@ -381,7 +422,7 @@ VALUE cataract_expand_font(VALUE self, VALUE value) {
         for (long i = size_idx + 1; i < len; i++) {
             rb_ary_push(family_parts, rb_ary_entry(parts, i));
         }
-        family = rb_funcall(family_parts, rb_intern("join"), 1, STR_NEW_CSTR(" "));
+        family = rb_ary_join(family_parts, STR_NEW_CSTR(" "));
     }
 
     // Set defaults for optional properties
@@ -465,8 +506,13 @@ VALUE cataract_expand_background(VALUE self, VALUE value) {
     if (slash) {
         // Split on /: before is position, after is size
         main_part = rb_str_new(str, slash - str);
-        size_part = STR_NEW_CSTR(slash + 1);
-        size_part = rb_funcall(size_part, rb_intern("strip"), 0);
+
+        // Trim whitespace from size part
+        const char *size_start = slash + 1;
+        const char *size_end = str + strlen(str);
+        trim_leading(&size_start, size_end);
+        trim_trailing(size_start, &size_end);
+        size_part = rb_str_new(size_start, size_end - size_start);
     } else {
         main_part = value;
         size_part = Qnil;
@@ -483,7 +529,8 @@ VALUE cataract_expand_background(VALUE self, VALUE value) {
     const char *attachment_keywords[] = {"scroll", "fixed", NULL};
     const char *position_keywords[] = {"left", "right", "top", "bottom", "center", NULL};
 
-    VALUE color = Qnil, image = Qnil, repeat = Qnil, attachment = Qnil, position = Qnil, size = size_part;
+    VALUE color = Qnil, image = Qnil, repeat = Qnil, attachment = Qnil, size = size_part;
+    VALUE position_parts = rb_ary_new(); // Collect all position keywords
 
     for (long i = 0; i < len; i++) {
         VALUE part = rb_ary_entry(parts, i);
@@ -511,11 +558,11 @@ VALUE cataract_expand_background(VALUE self, VALUE value) {
                 }
             }
         }
-        // Check for position
-        if (position == Qnil) {
+        // Check for position - collect ALL position keywords
+        {
             for (int j = 0; position_keywords[j]; j++) {
                 if (strcmp(str, position_keywords[j]) == 0) {
-                    position = part;
+                    rb_ary_push(position_parts, part);
                     goto next_part;
                 }
             }
@@ -535,6 +582,12 @@ VALUE cataract_expand_background(VALUE self, VALUE value) {
         }
 
         next_part:;
+    }
+
+    // Join all position parts into a single string if any were found
+    VALUE position = Qnil;
+    if (RARRAY_LEN(position_parts) > 0) {
+        position = rb_ary_join(position_parts, STR_NEW_CSTR(" "));
     }
 
     if (color != Qnil) rb_hash_aset(result, STR_NEW_CSTR("background-color"), color);

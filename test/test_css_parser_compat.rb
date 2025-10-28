@@ -389,4 +389,200 @@ class TestCssParserCompat < Minitest::Test
 
     assert_equal [], rule_sets
   end
+
+  # ============================================================================
+  # expand_shorthand - Shorthand property expansion (css_parser compat)
+  # ============================================================================
+
+  # Helper to expand shorthand using css_parser
+  def css_parser_expand(shorthand)
+    ruleset = CssParser::RuleSet.new(block: shorthand)
+    ruleset.expand_shorthand!
+    result = {}
+    ruleset.each_declaration { |prop, val, _imp| result[prop] = val }
+    result
+  end
+
+  def test_expand_shorthand_margin_variants
+    # Test various shorthand forms (from css_parser tests)
+    ['margin: 0px auto', 'margin: 0px auto 0px', 'margin: 0px auto 0px auto'].each do |shorthand|
+      our_result = @parser.expand_shorthand(shorthand)
+      css_parser_result = css_parser_expand(shorthand)
+
+      # Check specific values
+      assert_equal '0px', our_result['margin-top']
+      assert_equal 'auto', our_result['margin-right']
+      assert_equal '0px', our_result['margin-bottom']
+      assert_equal 'auto', our_result['margin-left']
+
+      # Verify we match css_parser
+      assert_equal css_parser_result['margin-top'], our_result['margin-top']
+      assert_equal css_parser_result['margin-right'], our_result['margin-right']
+      assert_equal css_parser_result['margin-bottom'], our_result['margin-bottom']
+      assert_equal css_parser_result['margin-left'], our_result['margin-left']
+    end
+  end
+
+  def test_expand_shorthand_margin_various_units
+    # Test various units (from css_parser tests)
+    ['em', 'ex', 'in', 'px', 'pt', 'pc', '%'].each do |unit|
+      shorthand = "margin: 0% -0.123#{unit} 9px -.9pc"
+      our_result = @parser.expand_shorthand(shorthand)
+      css_parser_result = css_parser_expand(shorthand)
+
+      # Check specific values
+      assert_equal '0%', our_result['margin-top']
+      assert_equal "-0.123#{unit}", our_result['margin-right']
+      assert_equal '9px', our_result['margin-bottom']
+      assert_equal '-.9pc', our_result['margin-left']
+
+      # Verify we match css_parser
+      assert_equal css_parser_result['margin-top'], our_result['margin-top']
+      assert_equal css_parser_result['margin-right'], our_result['margin-right']
+      assert_equal css_parser_result['margin-bottom'], our_result['margin-bottom']
+      assert_equal css_parser_result['margin-left'], our_result['margin-left']
+    end
+  end
+
+  def test_expand_shorthand_border
+    shorthand = 'border: 1px solid red'
+    our_result = @parser.expand_shorthand(shorthand)
+    css_parser_result = css_parser_expand(shorthand)
+
+    # Check specific values
+    assert_equal '1px', our_result['border-top-width']
+    assert_equal 'solid', our_result['border-bottom-style']
+    assert_equal 'red', our_result['border-left-color']
+
+    # Verify we match css_parser
+    assert_equal css_parser_result['border-top-width'], our_result['border-top-width']
+    assert_equal css_parser_result['border-bottom-style'], our_result['border-bottom-style']
+    assert_equal css_parser_result['border-left-color'], our_result['border-left-color']
+  end
+
+  def test_expand_shorthand_border_color_4_values
+    shorthand = 'border-color: #000000 #bada55 #ffffff #ff0000'
+    our_result = @parser.expand_shorthand(shorthand)
+    css_parser_result = css_parser_expand(shorthand)
+
+    # Check specific values
+    assert_equal '#000000', our_result['border-top-color']
+    assert_equal '#bada55', our_result['border-right-color']
+    assert_equal '#ffffff', our_result['border-bottom-color']
+    assert_equal '#ff0000', our_result['border-left-color']
+
+    # Verify we match css_parser
+    assert_equal css_parser_result['border-top-color'], our_result['border-top-color']
+    assert_equal css_parser_result['border-right-color'], our_result['border-right-color']
+    assert_equal css_parser_result['border-bottom-color'], our_result['border-bottom-color']
+    assert_equal css_parser_result['border-left-color'], our_result['border-left-color']
+  end
+
+  def test_expand_shorthand_border_color_3_values
+    shorthand = 'border-color: #000000 #bada55 #ffffff'
+    our_result = @parser.expand_shorthand(shorthand)
+    css_parser_result = css_parser_expand(shorthand)
+
+    # Check specific values
+    assert_equal '#000000', our_result['border-top-color']
+    assert_equal '#bada55', our_result['border-right-color']
+    assert_equal '#ffffff', our_result['border-bottom-color']
+    assert_equal '#bada55', our_result['border-left-color']
+
+    # Verify we match css_parser
+    assert_equal css_parser_result['border-top-color'], our_result['border-top-color']
+    assert_equal css_parser_result['border-right-color'], our_result['border-right-color']
+    assert_equal css_parser_result['border-bottom-color'], our_result['border-bottom-color']
+    assert_equal css_parser_result['border-left-color'], our_result['border-left-color']
+  end
+
+  def test_expand_shorthand_border_color_2_values
+    shorthand = 'border-color: #000000 #bada55'
+    our_result = @parser.expand_shorthand(shorthand)
+    css_parser_result = css_parser_expand(shorthand)
+
+    # Check specific values
+    assert_equal '#000000', our_result['border-top-color']
+    assert_equal '#bada55', our_result['border-right-color']
+    assert_equal '#000000', our_result['border-bottom-color']
+    assert_equal '#bada55', our_result['border-left-color']
+
+    # Verify we match css_parser
+    assert_equal css_parser_result['border-top-color'], our_result['border-top-color']
+    assert_equal css_parser_result['border-right-color'], our_result['border-right-color']
+    assert_equal css_parser_result['border-bottom-color'], our_result['border-bottom-color']
+    assert_equal css_parser_result['border-left-color'], our_result['border-left-color']
+  end
+
+  def test_expand_shorthand_font_size_various_units
+    # Test various units (from css_parser tests)
+    ['em', 'ex', 'in', 'px', 'pt', 'pc', '%'].each do |unit|
+      shorthand = "font: 300 italic 11.25#{unit}/14px verdana, helvetica, sans-serif"
+      our_result = @parser.expand_shorthand(shorthand)
+      css_parser_result = css_parser_expand(shorthand)
+
+      # Check specific value
+      assert_equal "11.25#{unit}", our_result['font-size']
+
+      # Verify we match css_parser
+      assert_equal css_parser_result['font-size'], our_result['font-size']
+    end
+  end
+
+  def test_expand_shorthand_font_size_keywords
+    # Test size keywords (from css_parser tests)
+    ['smaller', 'small', 'medium', 'large', 'x-large'].each do |keyword|
+      shorthand = "font: 300 italic #{keyword}/14px verdana, helvetica, sans-serif"
+      our_result = @parser.expand_shorthand(shorthand)
+      css_parser_result = css_parser_expand(shorthand)
+
+      # Check specific value
+      assert_equal keyword, our_result['font-size']
+
+      # Verify we match css_parser
+      assert_equal css_parser_result['font-size'], our_result['font-size']
+    end
+  end
+
+  def test_expand_shorthand_font_weight_values
+    # Test various font weights (from css_parser tests)
+    ['300', 'bold', 'bolder', 'lighter', 'normal'].each do |weight|
+      shorthand = "font: #{weight} italic 12px sans-serif"
+      our_result = @parser.expand_shorthand(shorthand)
+      css_parser_result = css_parser_expand(shorthand)
+
+      # Check specific value
+      assert_equal weight, our_result['font-weight']
+
+      # Verify we match css_parser
+      assert_equal css_parser_result['font-weight'], our_result['font-weight']
+    end
+  end
+
+  def test_expand_shorthand_font_weight_defaults_to_normal
+    # Ensure normal is the default (from css_parser tests)
+    ['font: normal italic 12px sans-serif', 'font: italic 12px sans-serif',
+     'font: small-caps normal 12px sans-serif', 'font: 12px/16px sans-serif'].each do |shorthand|
+      our_result = @parser.expand_shorthand(shorthand)
+      css_parser_result = css_parser_expand(shorthand)
+
+      # Check specific value
+      assert_equal 'normal', our_result['font-weight']
+
+      # Verify we match css_parser
+      assert_equal css_parser_result['font-weight'], our_result['font-weight']
+    end
+  end
+
+  def test_expand_shorthand_font_families_with_quotes
+    shorthand = "font: 300 italic 12px/14px \"Helvetica-Neue-Light 45\", 'verdana', helvetica, sans-serif"
+    our_result = @parser.expand_shorthand(shorthand)
+    css_parser_result = css_parser_expand(shorthand)
+
+    # Check specific value
+    assert_equal "\"Helvetica-Neue-Light 45\", 'verdana', helvetica, sans-serif", our_result['font-family']
+
+    # Verify we match css_parser
+    assert_equal css_parser_result['font-family'], our_result['font-family']
+  end
 end

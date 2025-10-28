@@ -255,4 +255,161 @@ class TestShorthandExpansion < Minitest::Test
     assert_equal "20px", declarations["margin-top"]
     assert_equal "10px", declarations["margin-right"]
   end
+
+  # ===========================================================================
+  # Parser#expand_shorthand - Test all shorthand types through Parser API
+  # ===========================================================================
+
+  def test_parser_expand_shorthand_padding
+    result = @parser.expand_shorthand("padding: 5px 10px;")
+
+    assert_equal "5px", result["padding-top"]
+    assert_equal "10px", result["padding-right"]
+    assert_equal "5px", result["padding-bottom"]
+    assert_equal "10px", result["padding-left"]
+  end
+
+  def test_parser_expand_shorthand_border
+    result = @parser.expand_shorthand("border: 1px solid red;")
+
+    assert_equal "1px", result["border-top-width"]
+    assert_equal "1px", result["border-right-width"]
+    assert_equal "1px", result["border-bottom-width"]
+    assert_equal "1px", result["border-left-width"]
+    assert_equal "solid", result["border-top-style"]
+    assert_equal "solid", result["border-right-style"]
+    assert_equal "solid", result["border-bottom-style"]
+    assert_equal "solid", result["border-left-style"]
+    assert_equal "red", result["border-top-color"]
+    assert_equal "red", result["border-right-color"]
+    assert_equal "red", result["border-bottom-color"]
+    assert_equal "red", result["border-left-color"]
+  end
+
+  def test_parser_expand_shorthand_border_top
+    result = @parser.expand_shorthand("border-top: 2px dashed blue;")
+
+    assert_equal "2px", result["border-top-width"]
+    assert_equal "dashed", result["border-top-style"]
+    assert_equal "blue", result["border-top-color"]
+  end
+
+  def test_parser_expand_shorthand_border_right
+    result = @parser.expand_shorthand("border-right: 3px dotted green;")
+
+    assert_equal "3px", result["border-right-width"]
+    assert_equal "dotted", result["border-right-style"]
+    assert_equal "green", result["border-right-color"]
+  end
+
+  def test_parser_expand_shorthand_border_bottom
+    result = @parser.expand_shorthand("border-bottom: 4px double yellow;")
+
+    assert_equal "4px", result["border-bottom-width"]
+    assert_equal "double", result["border-bottom-style"]
+    assert_equal "yellow", result["border-bottom-color"]
+  end
+
+  def test_parser_expand_shorthand_border_left
+    result = @parser.expand_shorthand("border-left: 5px groove purple;")
+
+    assert_equal "5px", result["border-left-width"]
+    assert_equal "groove", result["border-left-style"]
+    assert_equal "purple", result["border-left-color"]
+  end
+
+  def test_parser_expand_shorthand_border_color
+    result = @parser.expand_shorthand("border-color: red blue;")
+
+    assert_equal "red", result["border-top-color"]
+    assert_equal "blue", result["border-right-color"]
+    assert_equal "red", result["border-bottom-color"]
+    assert_equal "blue", result["border-left-color"]
+  end
+
+  def test_parser_expand_shorthand_border_style
+    result = @parser.expand_shorthand("border-style: solid dashed;")
+
+    assert_equal "solid", result["border-top-style"]
+    assert_equal "dashed", result["border-right-style"]
+    assert_equal "solid", result["border-bottom-style"]
+    assert_equal "dashed", result["border-left-style"]
+  end
+
+  def test_parser_expand_shorthand_border_width
+    result = @parser.expand_shorthand("border-width: 1px 2px 3px;")
+
+    assert_equal "1px", result["border-top-width"]
+    assert_equal "2px", result["border-right-width"]
+    assert_equal "3px", result["border-bottom-width"]
+    assert_equal "2px", result["border-left-width"]
+  end
+
+  def test_parser_expand_shorthand_font
+    result = @parser.expand_shorthand("font: italic bold 16px/1.5 Arial, sans-serif;")
+
+    assert_equal "italic", result["font-style"]
+    assert_equal "bold", result["font-weight"]
+    assert_equal "16px", result["font-size"]
+    assert_equal "1.5", result["line-height"]
+    assert_equal "Arial, sans-serif", result["font-family"]
+  end
+
+  def test_parser_expand_shorthand_list_style
+    result = @parser.expand_shorthand("list-style: square inside url('marker.png');")
+
+    assert_equal "square", result["list-style-type"]
+    assert_equal "inside", result["list-style-position"]
+    assert_equal "url('marker.png')", result["list-style-image"]
+  end
+
+  def test_parser_expand_shorthand_background
+    result = @parser.expand_shorthand("background: red url('bg.png') no-repeat center top;")
+
+    assert_equal "red", result["background-color"]
+    assert_equal "url('bg.png')", result["background-image"]
+    assert_equal "no-repeat", result["background-repeat"]
+    # background-position captures all position values (per W3C spec)
+    assert_equal "center top", result["background-position"]
+  end
+
+  def test_parser_expand_shorthand_with_important
+    result = @parser.expand_shorthand("margin: 10px !important;")
+
+    assert_equal "10px !important", result["margin-top"]
+    assert_equal "10px !important", result["margin-right"]
+    assert_equal "10px !important", result["margin-bottom"]
+    assert_equal "10px !important", result["margin-left"]
+  end
+
+  def test_parser_expand_shorthand_mixed_important
+    result = @parser.expand_shorthand("margin: 10px; padding: 5px !important;")
+
+    assert_equal "10px", result["margin-top"]
+    assert_equal "10px", result["margin-right"]
+    assert_equal "5px !important", result["padding-top"]
+    assert_equal "5px !important", result["padding-right"]
+  end
+
+  def test_parser_expand_shorthand_longhand_overrides_shorthand
+    result = @parser.expand_shorthand("margin: 10px; margin-top: 20px;")
+
+    assert_equal "20px", result["margin-top"]
+    assert_equal "10px", result["margin-right"]
+    assert_equal "10px", result["margin-bottom"]
+    assert_equal "10px", result["margin-left"]
+  end
+
+  def test_parser_expand_shorthand_longhand_only
+    result = @parser.expand_shorthand("color: red; font-size: 14px;")
+
+    assert_equal "red", result["color"]
+    assert_equal "14px", result["font-size"]
+  end
+
+  def test_parser_expand_shorthand_empty_string
+    result = @parser.expand_shorthand("")
+
+    assert_equal({}, result)
+  end
 end
