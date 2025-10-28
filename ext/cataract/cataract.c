@@ -316,6 +316,16 @@ void Init_cataract() {
         rb_hash_aset(compile_flags, ID2SYM(rb_intern("debug")), Qfalse);
     #endif
 
+    #ifdef DISABLE_LOOP_UNROLL
+        rb_hash_aset(compile_flags, ID2SYM(rb_intern("loop_unroll")), Qfalse);
+    #else
+        rb_hash_aset(compile_flags, ID2SYM(rb_intern("loop_unroll")), Qtrue);
+    #endif
+
+    // Note: Compiler flags like -O3, -march=native, -funroll-loops don't have
+    // preprocessor defines, so we can't detect them at runtime. They're purely
+    // compiler optimizations that affect the generated code.
+
     rb_define_const(module, "COMPILE_FLAGS", compile_flags);
 }
 
