@@ -116,7 +116,6 @@ VALUE calculate_specificity(VALUE self, VALUE selector_string) {
 
             // Skip function arguments if present
             if (p < pe && *p == '(') {
-                const char *paren_start = p;
                 p++;
                 int paren_depth = 1;
 

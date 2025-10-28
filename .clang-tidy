@@ -19,9 +19,6 @@ WarningsAsErrors: '*'
 # Check first-party headers only (our own code in ext/cataract/)
 HeaderFilterRegex: 'ext/cataract/.*\.h$'
 
-# Exclude build artifacts and vendor code
-ExcludeHeaderFilterRegex: 'tmp/|\.bundle|\.so'
-
 # Don't check system headers (Ruby C API headers)
 SystemHeaders: false
 
