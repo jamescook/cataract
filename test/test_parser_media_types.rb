@@ -34,8 +34,9 @@ class TestParserMediaTypes < Minitest::Test
       }
     CSS
 
-    # :all returns ALL rules (css_parser behavior)
+    # :all returns ALL rules
     assert_equal 'color: black; color: red;', @parser.find_by_selector('body', :all).join(' ')
+    # :screen returns ONLY the screen-specific rule (matches css_parser)
     assert_equal 'color: red;', @parser.find_by_selector('body', :screen).join(' ')
   end
 
@@ -165,10 +166,11 @@ class TestParserMediaTypes < Minitest::Test
     all_body_rules = @parser.find_by_selector('body', :all)
     assert_equal 3, all_body_rules.length
 
-    # Print should return only print-specific rule
+    # Print should return ONLY the print-specific rule (matches css_parser)
     print_body = @parser.find_by_selector('body', :print)
     assert_equal 1, print_body.length
     assert_includes print_body.join(' '), 'background: white'
+    assert_includes print_body.join(' '), 'color: black'
   end
 
   def test_nested_rules_within_media_query

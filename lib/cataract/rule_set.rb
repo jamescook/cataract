@@ -1,5 +1,9 @@
+require_relative 'media_type_matcher'
+
 module Cataract
   class RuleSet
+    include MediaTypeMatcher
+
     attr_reader :selector, :declarations, :media_types
 
     # YJIT-friendly: define all instance variables upfront
@@ -39,25 +43,9 @@ module Cataract
     def specificity
       @specificity ||= calculate_specificity(@selector)
     end
-    
-    # Check if rule applies to given media types
-    #
-    # Note: :all has special meaning - it matches ALL rules regardless of their media type.
-    # This matches css_parser gem behavior.
-    def applies_to_media?(media_types)
-      target_media = Array(media_types).map(&:to_sym)
 
-      # If querying for :all, match ALL rules (css_parser behavior)
-      return true if target_media.include?(:all)
+    # applies_to_media? is provided by MediaTypeMatcher module
 
-      # If querying for specific media type(s), don't match :all rules
-      # (non-media-specific rules don't match specific media queries in css_parser)
-      return false if @media_types.include?(:all)
-
-      # Check for intersection between rule's media types and query
-      !(@media_types & target_media).empty?
-    end
-    
     # Property access delegation
     def [](property)
       @declarations[property]

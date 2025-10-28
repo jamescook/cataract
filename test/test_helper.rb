@@ -3,7 +3,10 @@ if ENV['COVERAGE']
   require 'simplecov'
   require 'simplecov-cobertura'
 
-  SimpleCov.formatter = SimpleCov::Formatter::CoberturaFormatter
+  SimpleCov.formatters = SimpleCov::Formatter::MultiFormatter.new([
+    SimpleCov::Formatter::HTMLFormatter,
+    SimpleCov::Formatter::CoberturaFormatter
+  ])
 
   SimpleCov.start do
     add_filter '/test/'

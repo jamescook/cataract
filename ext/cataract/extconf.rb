@@ -1,12 +1,23 @@
 require 'mkmf'
-require_relative 'ragel_generator'
 
-# Generate C code from Ragel grammars
-RagelGenerator.generate_c_from_ragel(ext_dir: File.dirname(__FILE__))
+# NOTE: Ragel dependency removed! All parsers are now pure C.
+# ragel_generator.rb is no longer used, but kept for historical reference.
 
-# Compile cataract.c (Ragel parser, includes merge.c and shorthand_expander.c)
-# and stylesheet.c (standalone serialization functions)
-$objs = ['cataract.o', 'stylesheet.o']
+# Compile C files:
+# - cataract.c (Ruby bindings and initialization)
+# - shorthand_expander.c (shorthand property expansion/creation)
+# - value_splitter.c (CSS value splitting utility)
+# - stylesheet.c (CSS serialization)
+# - css_parser.c (main CSS parser)
+# - specificity.c (selector specificity calculator)
+# - merge.c (CSS cascade and merge logic)
+$objs = ['cataract.o', 'shorthand_expander.o', 'value_splitter.o', 'stylesheet.o', 'css_parser.o', 'specificity.o', 'merge.o']
+
+# Enable debug mode for CI testing (checks debug printf statements)
+if ENV['CATARACT_DEBUG']
+  puts "Enabling debug mode (DEBUG_PRINTF enabled)"
+  $CFLAGS << " -DCATARACT_DEBUG"
+end
 
 # String buffer optimization (enabled by default, disable for benchmarking)
 # Check both env var (for development) and command-line flag (for gem install)
