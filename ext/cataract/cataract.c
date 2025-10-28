@@ -310,10 +310,8 @@ static VALUE parse_css_internal(VALUE self, VALUE css_string, int depth) {
     Check_Type(css_string, T_STRING);
 
     // Extract @charset if present (must be at very start per W3C spec)
-    // We handle this outside Ragel because:
-    // 1. @charset must be at the absolute start (simple string check suffices)
-    // 2. Adding optional charset_rule? to Ragel grammar explodes compile times
-    // 3. Simpler and faster to handle with basic C string operations
+    // Handled separately because @charset must be at the absolute start
+    // and can be processed with simple string operations
     VALUE charset = Qnil;
     char *css_start = RSTRING_PTR(css_string);
     long css_len = RSTRING_LEN(css_string);
@@ -345,23 +343,14 @@ static VALUE parse_css_internal(VALUE self, VALUE css_string, int depth) {
         }
     }
 
-    // Pure C parser - no Ragel state variables needed
-    VALUE rules_array = parse_css_pure_c(css_string, depth);
-
-    // REMOVED: Ragel parser (keeping for reference during migration)
-    // rules_array = rb_ary_new();
-    // current_selectors = Qnil;
-    // current_declarations = Qnil;
-    // current_media_types = Qnil;
-    // %% machine css_parser; write init;
-    // %% machine css_parser; write exec;
+    // Parse CSS using our C parser implementation
+    VALUE rules_array = parse_css_impl(css_string, depth);
 
     // GC Guard: Protect Ruby objects from garbage collection
     RB_GC_GUARD(css_string);
     RB_GC_GUARD(rules_array);
     RB_GC_GUARD(charset);
 
-    // Phase 1: Pure C parser always succeeds (no error checking yet)
     // At depth 0 (top-level parse), return hash with rules and charset (may be nil)
     // Nested parses (depth > 0) return array for backwards compatibility
     if (depth == 0) {
@@ -371,40 +360,11 @@ static VALUE parse_css_internal(VALUE self, VALUE css_string, int depth) {
         return result;
     }
     return rules_array;
-
-    // REMOVED: Ragel error checking (not needed for pure C parser)
-    // if (cs >= css_parser_first_final) { ... } else { rb_raise(eParseError, ...); }
 }
 
-// Calculate CSS specificity for a selector string
-// Uses the specificity_counter Ragel machine to count selector components
-static VALUE calculate_specificity(VALUE self, VALUE selector_string) {
-    // Delegate to pure C implementation
-    return calculate_specificity_pure_c(self, selector_string);
-
-    // REMOVED: Ragel specificity counter (migrated to specificity.c)
-    /*
-    int id_count = 0;
-    int class_count = 0;
-    int attr_count = 0;
-    int pseudo_class_count = 0;
-    int pseudo_element_count = 0;
-    int element_count = 0;
-
-    char *p, *pe, *eof;
-    char *pseudo_mark = NULL;
-    char *pseudo_end = NULL;
-    const char *not_pseudo_mark = NULL;
-    int cs;
-
-    Check_Type(selector_string, T_STRING);
-    p = RSTRING_PTR(selector_string);
-    pe = p + RSTRING_LEN(selector_string);
-    eof = pe;
-
-    %% machine specificity_counter; write init;
-    %% machine specificity_counter; write exec;
-    */
+// Calculate CSS specificity for a selector string (wrapper for public API)
+VALUE calculate_specificity(VALUE self, VALUE selector_string) {
+    return calculate_specificity_impl(self, selector_string);
 }
 
 /*
@@ -525,10 +485,6 @@ static VALUE parse_css(VALUE self, VALUE css_string) {
     }
     return parse_css_internal(self, css_string, 0);
 }
-
-
-// CSS merge implementation (cascade resolution, shorthand creation)
-#include "merge.c"
 
 /*
  * Convert array of Rule structs to full CSS string

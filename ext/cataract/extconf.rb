@@ -3,14 +3,15 @@ require 'mkmf'
 # NOTE: Ragel dependency removed! All parsers are now pure C.
 # ragel_generator.rb is no longer used, but kept for historical reference.
 
-# Compile pure C files:
+# Compile C files:
 # - cataract.c (Ruby bindings and initialization)
 # - shorthand_expander.c (shorthand property expansion/creation)
 # - value_splitter.c (CSS value splitting utility)
 # - stylesheet.c (CSS serialization)
-# - css_parser.c (main CSS parser - replaced Ragel)
-# - specificity.c (selector specificity calculator - replaced Ragel)
-$objs = ['cataract.o', 'shorthand_expander.o', 'value_splitter.o', 'stylesheet.o', 'css_parser.o', 'specificity.o']
+# - css_parser.c (main CSS parser)
+# - specificity.c (selector specificity calculator)
+# - merge.c (CSS cascade and merge logic)
+$objs = ['cataract.o', 'shorthand_expander.o', 'value_splitter.o', 'stylesheet.o', 'css_parser.o', 'specificity.o', 'merge.o']
 
 # String buffer optimization (enabled by default, disable for benchmarking)
 # Check both env var (for development) and command-line flag (for gem install)

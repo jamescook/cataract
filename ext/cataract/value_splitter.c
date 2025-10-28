@@ -1,13 +1,8 @@
 /*
- * value_splitter.c - Pure C implementation for splitting CSS declaration values
+ * value_splitter.c - CSS value splitting utility
  *
  * Purpose: Split CSS declaration values on whitespace while preserving content
  *          inside functions and quoted strings.
- *
- * Migrated from Ragel to pure C for:
- *   - Simpler maintenance (no Ragel dependency)
- *   - Faster compile times
- *   - Easier debugging
  *
  * Examples:
  *   "1px 2px 3px 4px"              => ["1px", "2px", "3px", "4px"]

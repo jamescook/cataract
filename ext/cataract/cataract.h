@@ -143,16 +143,19 @@ VALUE cataract_create_background_shorthand(VALUE self, VALUE properties);
 VALUE cataract_create_font_shorthand(VALUE self, VALUE properties);
 VALUE cataract_create_list_style_shorthand(VALUE self, VALUE properties);
 
-// Pure C parser (css_parser.c)
-VALUE parse_css_pure_c(VALUE css_string, int depth);
+// CSS parser implementation (css_parser.c)
+VALUE parse_css_impl(VALUE css_string, int depth);
 
-// Media query parser (defined in cataract.rl, used by css_parser.c)
+// Media query parser (defined in cataract.c)
 VALUE parse_media_query(const char *query_str, long query_len);
 
-// Specificity calculator (specificity.c)
-VALUE calculate_specificity_pure_c(VALUE self, VALUE selector_string);
+// Specificity calculator implementation (specificity.c)
+VALUE calculate_specificity_impl(VALUE self, VALUE selector_string);
 
-// Extracted action functions (defined in cataract.rl, used by css_parser.c)
+// Specificity calculator wrapper (cataract.c)
+VALUE calculate_specificity(VALUE self, VALUE selector_string);
+
+// Helper functions (defined in cataract.c, used by css_parser.c)
 void capture_declarations_fn(
     const char **decl_start_ptr,
     const char *p,

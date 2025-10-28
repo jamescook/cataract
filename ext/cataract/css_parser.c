@@ -1,11 +1,9 @@
 /*
- * css_parser.c - Pure C CSS parser (no Ragel dependency)
+ * css_parser.c - CSS parser implementation
  *
- * Phase 2: Full @rule support
- * - Handles: selectors, declaration blocks, @media, @supports, @keyframes, @font-face, etc.
+ * Handles: selectors, declaration blocks, @media, @supports, @keyframes, @font-face, etc.
  *
- * This is a character-by-character state machine that calls the extracted
- * action functions from cataract.rl.
+ * This is a character-by-character state machine parser.
  */
 
 #include "cataract.h"
@@ -19,10 +17,10 @@ typedef enum {
 } ParserState;
 
 // Forward declaration for recursion
-VALUE parse_css_pure_c(VALUE css_string, int depth);
+VALUE parse_css_impl(VALUE css_string, int depth);
 
 /*
- * Pure C CSS parser - Phase 2
+ * CSS parser implementation
  *
  * Parses selectors, declarations, and @rules. Creates Rule structs.
  *
@@ -30,7 +28,7 @@ VALUE parse_css_pure_c(VALUE css_string, int depth);
  * @param depth [Integer] Recursion depth (for error handling)
  * @return [Array<Rule>] Array of Rule structs
  */
-VALUE parse_css_pure_c(VALUE css_string, int depth) {
+VALUE parse_css_impl(VALUE css_string, int depth) {
     Check_Type(css_string, T_STRING);
 
     const char *p = RSTRING_PTR(css_string);
@@ -163,7 +161,7 @@ VALUE parse_css_pure_c(VALUE css_string, int depth) {
 
                         // Recursively parse block content
                         VALUE block_content = rb_str_new(block_start, block_len);
-                        VALUE inner_rules = parse_css_pure_c(block_content, depth + 1);
+                        VALUE inner_rules = parse_css_impl(block_content, depth + 1);
 
                         // Set media_query on all inner rules
                         if (!NIL_P(media_types) && RARRAY_LEN(media_types) > 0) {
@@ -186,7 +184,7 @@ VALUE parse_css_pure_c(VALUE css_string, int depth) {
                                strcmp(at_name, "container") == 0 || strcmp(at_name, "scope") == 0) {
                         // Conditional group rules - recursively parse and add rules
                         VALUE block_content = rb_str_new(block_start, block_len);
-                        VALUE inner_rules = parse_css_pure_c(block_content, depth + 1);
+                        VALUE inner_rules = parse_css_impl(block_content, depth + 1);
 
                         for (long i = 0; i < RARRAY_LEN(inner_rules); i++) {
                             rb_ary_push(rules_array, RARRAY_AREF(inner_rules, i));
@@ -227,7 +225,7 @@ VALUE parse_css_pure_c(VALUE css_string, int depth) {
                         rb_str_cat(wrapped, block_start, block_len);
                         rb_str_cat2(wrapped, " }");
 
-                        VALUE dummy_rules = parse_css_pure_c(wrapped, depth + 1);
+                        VALUE dummy_rules = parse_css_impl(wrapped, depth + 1);
                         VALUE declarations = Qnil;
 
                         if (!NIL_P(dummy_rules) && RARRAY_LEN(dummy_rules) > 0) {
