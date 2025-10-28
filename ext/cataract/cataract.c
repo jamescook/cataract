@@ -300,6 +300,23 @@ void Init_cataract() {
     #else
         rb_define_const(module, "STRING_ALLOC_MODE", ID2SYM(rb_intern("buffer")));
     #endif
+
+    // Export compile-time optimization flags as a hash for runtime introspection
+    VALUE compile_flags = rb_hash_new();
+
+    #ifdef DISABLE_STR_BUF_OPTIMIZATION
+        rb_hash_aset(compile_flags, ID2SYM(rb_intern("str_buf_optimization")), Qfalse);
+    #else
+        rb_hash_aset(compile_flags, ID2SYM(rb_intern("str_buf_optimization")), Qtrue);
+    #endif
+
+    #ifdef CATARACT_DEBUG
+        rb_hash_aset(compile_flags, ID2SYM(rb_intern("debug")), Qtrue);
+    #else
+        rb_hash_aset(compile_flags, ID2SYM(rb_intern("debug")), Qfalse);
+    #endif
+
+    rb_define_const(module, "COMPILE_FLAGS", compile_flags);
 }
 
 // NOTE: shorthand_expander.c and value_splitter.c are now compiled separately (not included)
