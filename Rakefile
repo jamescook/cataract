@@ -102,20 +102,54 @@ task test: :compile
 
 task default: :test
 
-# Lint task - runs cppcheck on generated C code
-desc "Run cppcheck on generated C code"
+# Lint task - runs clang-tidy on C code
+desc "Run clang-tidy on C code"
 task :lint do
-  # Check if cppcheck is installed
-  unless system("which cppcheck > /dev/null 2>&1")
-    abort("cppcheck not installed. Install with: brew install cppcheck (macOS) or apt-get install cppcheck (Ubuntu)")
+  # Find clang-tidy binary
+  clang_tidy = nil
+
+  # Try system PATH first (Linux, or if user has llvm in PATH)
+  if system("which clang-tidy > /dev/null 2>&1")
+    clang_tidy = "clang-tidy"
+  # On macOS, check Homebrew LLVM (keg-only, not in PATH by default)
+  elsif system("which brew > /dev/null 2>&1")
+    llvm_prefix = `brew --prefix llvm 2>/dev/null`.strip
+    if !llvm_prefix.empty? && File.exist?("#{llvm_prefix}/bin/clang-tidy")
+      clang_tidy = "#{llvm_prefix}/bin/clang-tidy"
+    end
   end
 
-  puts "Running cppcheck on C code..."
+  unless clang_tidy
+    abort("clang-tidy not installed.\n" +
+          "  macOS: brew install llvm\n" +
+          "  Ubuntu/Debian: apt-get install clang-tidy\n" +
+          "  Fedora/RHEL: dnf install clang-tools-extra")
+  end
 
-  system("cppcheck --enable=warning,performance,portability -q -I ext/cataract ext/cataract/*.c") ||
-    abort("cppcheck found issues!")
+  puts "Running clang-tidy on C code..."
 
-  puts "✓ cppcheck passed (warnings/errors only, style checks skipped)"
+  # Find all .c files in ext/cataract/
+  c_files = Dir.glob("ext/cataract/*.c")
+
+  # Run clang-tidy on each file
+  # Note: clang-tidy uses the .clang-tidy config file automatically
+  # We pass Ruby include path so it can find ruby.h
+  ruby_include = RbConfig::CONFIG['rubyhdrdir']
+  ruby_arch_include = RbConfig::CONFIG['rubyarchhdrdir']
+
+  success = c_files.all? do |file|
+    puts "  Checking #{file}..."
+    system(clang_tidy, file, "--",
+           "-I#{ruby_include}",
+           "-I#{ruby_arch_include}",
+           "-Iext/cataract")
+  end
+
+  if success
+    puts "✓ clang-tidy passed"
+  else
+    abort("clang-tidy found issues!")
+  end
 end
 
 # Fuzz testing

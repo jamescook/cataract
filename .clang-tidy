@@ -1,0 +1,33 @@
+---
+# clang-tidy configuration for Cataract CSS parser
+# Based on Ada URL parser's config: https://github.com/ada-url/ada
+
+Checks: >
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-exception-escape,
+  -bugprone-implicit-widening-of-multiplication-result,
+  -bugprone-narrowing-conversions,
+  -bugprone-suspicious-include,
+  -bugprone-unhandled-exception-at-new,
+  clang-analyzer-*,
+  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
+
+# Turn all the warnings from the checks above into errors.
+WarningsAsErrors: '*'
+
+# Check first-party headers only (our own code in ext/cataract/)
+HeaderFilterRegex: 'ext/cataract/.*\.h$'
+
+# Exclude build artifacts and vendor code
+ExcludeHeaderFilterRegex: 'tmp/|\.bundle|\.so'
+
+# Don't check system headers (Ruby C API headers)
+SystemHeaders: false
+
+# Ruby C extension specific suppressions
+# (Add more as needed based on Ruby API conventions)
+CheckOptions:
+  # Ruby API uses long parameter lists (e.g., rb_struct_define_under)
+  - key: bugprone-easily-swappable-parameters.MinimumLength
+    value: 4

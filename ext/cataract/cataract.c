@@ -30,7 +30,7 @@ static VALUE parse_css_internal(VALUE self, VALUE css_string, int depth) {
     // Handled separately because @charset must be at the absolute start
     // and can be processed with simple string operations
     VALUE charset = Qnil;
-    char *css_start = RSTRING_PTR(css_string);
+    const char *css_start = RSTRING_PTR(css_string);
     long css_len = RSTRING_LEN(css_string);
 
     // Check for @charset at very start: @charset "UTF-8";
@@ -50,11 +50,7 @@ static VALUE parse_css_internal(VALUE self, VALUE css_string, int depth) {
                 if (semicolon < css_start + css_len && *semicolon == ';') {
                     // Valid @charset rule found
                     charset = rb_str_new(quote_start + 1, quote_end - quote_start - 1);
-                    // Skip past the entire @charset rule for parsing
-                    css_start = semicolon + 1;
-                    css_len = RSTRING_LEN(css_string) - (css_start - RSTRING_PTR(css_string));
-                    DEBUG_PRINTF("[@charset] Extracted: '%s', remaining CSS: %ld bytes\n",
-                                RSTRING_PTR(charset), css_len);
+                    DEBUG_PRINTF("[@charset] Extracted: '%s'\n", RSTRING_PTR(charset));
                 }
             }
         }

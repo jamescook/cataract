@@ -613,7 +613,6 @@ VALUE cataract_create_padding_shorthand(VALUE self, VALUE properties) {
 // Uses stack allocation and avoids intermediate Ruby string objects for keys
 static VALUE create_border_dimension_shorthand(VALUE properties, const char *suffix) {
     // Build key names on stack: "border-top-{suffix}", etc.
-    size_t suffix_len = strlen(suffix);
     char key_top[32];     // "border-top-" + suffix + \0
     char key_right[32];
     char key_bottom[32];

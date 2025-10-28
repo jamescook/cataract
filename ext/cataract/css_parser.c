@@ -101,7 +101,6 @@ void capture_declarations_fn(
 
         // Check for !important
         int is_important = 0;
-        const char *important_pos = val_end;
         // Look backwards for "!important"
         if (val_end - val_start >= 10) {  // strlen("!important") = 10
             const char *check = val_end - 10;
@@ -111,7 +110,7 @@ void capture_declarations_fn(
                 while (check < val_end && IS_WHITESPACE(*check)) check++;
                 if ((val_end - check) >= 9 && strncmp(check, "important", 9) == 0) {
                     is_important = 1;
-                    important_pos = check - 1;
+                    const char *important_pos = check - 1;
                     while (important_pos > val_start && (IS_WHITESPACE(*(important_pos-1)) || *(important_pos-1) == '!')) {
                         important_pos--;
                     }
