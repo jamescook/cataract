@@ -58,14 +58,6 @@ namespace :benchmark do
     ruby "test/benchmarks/benchmark_merging.rb"
   end
 
-  desc "Benchmark different Ragel code generation styles"
-  task :styles do
-    puts "Benchmarking Ragel code generation styles..."
-    puts "This will compile the extension multiple times with different styles."
-    puts ""
-    ruby "test/benchmark_ragel_styles.rb"
-  end
-
   desc "Benchmark Ruby-side operations with YJIT on vs off"
   task :yjit do
     Rake::Task[:compile].invoke
@@ -110,18 +102,9 @@ task test: :compile
 
 task default: :test
 
-namespace :compile do
-  # Generate C code from Ragel grammars
-  desc "Generate C code from Ragel (.rl) files"
-  task :ragel do
-    require_relative 'ext/cataract/ragel_generator'
-    RagelGenerator.generate_c_from_ragel
-  end
-end
-
 # Lint task - runs cppcheck on generated C code
 desc "Run cppcheck on generated C code"
-task lint: 'compile:ragel' do
+task :lint do
   # Check if cppcheck is installed
   unless system("which cppcheck > /dev/null 2>&1")
     abort("cppcheck not installed. Install with: brew install cppcheck (macOS) or apt-get install cppcheck (Ubuntu)")
@@ -129,21 +112,7 @@ task lint: 'compile:ragel' do
 
   puts "Running cppcheck on C code..."
 
-  # Run cppcheck on all C files:
-  # - cataract.c (Ragel-generated parser)
-  # - shorthand_expander.c (Ragel-generated shorthand logic)
-  # - merge.c (CSS cascade/merge logic)
-  # - stylesheet.c (serialization logic)
-  #
-  # Focus on serious issues, skip style noise from Ragel-generated code
-  # --enable=warning,performance,portability: serious issues only (skip 'style')
-  # --suppress=missingIncludeSystem: ignore system header issues
-  # --suppress=normalCheckLevelMaxBranches: skip exhaustive analysis suggestion (too slow for generated code)
-  # --inline-suppr: allow inline suppressions in code
-  # --error-exitcode=1: exit with 1 if errors found
-  # -q: quiet mode, less verbose
-  # -I ext/cataract: include path for cataract.h header
-  system("cppcheck --enable=warning,performance,portability --suppress=missingIncludeSystem --suppress=normalCheckLevelMaxBranches --inline-suppr -q -I ext/cataract ext/cataract/*.c") ||
+  system("cppcheck --enable=warning,performance,portability -q -I ext/cataract ext/cataract/*.c") ||
     abort("cppcheck found issues!")
 
   puts "✓ cppcheck passed (warnings/errors only, style checks skipped)"

@@ -37,6 +37,11 @@ jobs:
       env:
         COVERAGE: 1
 
+    - name: Run tests with debug enabled
+      run: bundle exec rake test
+      env:
+        CATARACT_DEBUG: 1
+
     - name: Debug Codecov token
       if: runner.os == 'Linux' && matrix.ruby == '3.4'
       run: |

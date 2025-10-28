@@ -48,8 +48,8 @@ void capture_declarations_fn(
     const char *start = decl_start;
     const char *end = p;
 
-    DEBUG_PRINTF("[capture_declarations] Parsing declarations from %ld to %ld: '%.*s'\n",
-                 decl_start - css_string_base, p - css_string_base,
+    DEBUG_PRINTF("[capture_declarations] Parsing declarations from %td to %td: '%.*s'\n",
+                 (ptrdiff_t)(decl_start - css_string_base), (ptrdiff_t)(p - css_string_base),
                  (int)(end - start), start);
 
     // Simple C-level parser for declarations
@@ -164,8 +164,8 @@ void capture_declarations_fn(
             RB_GC_GUARD(value);
             RB_GC_GUARD(decl);
         } else {
-            DEBUG_PRINTF("[capture_declarations] Skipping empty value for property at pos %ld\n",
-                         prop_start - css_string_base);
+            DEBUG_PRINTF("[capture_declarations] Skipping empty value for property at pos %td\n",
+                         (ptrdiff_t)(prop_start - css_string_base));
         }
 
         if (pos < end && *pos == ';') pos++;  // Skip semicolon if present
@@ -458,7 +458,7 @@ VALUE parse_css_impl(VALUE css_string, int depth) {
                     strncpy(at_name, at_start, name_len);
                     at_name[name_len] = '\0';
 
-                    DEBUG_PRINTF("[pure_c] @rule detected: @%s at pos %ld\n", at_name, p - css_string_base);
+                    DEBUG_PRINTF("[pure_c] @rule detected: @%s at pos %td\n", at_name, (ptrdiff_t)(p - css_string_base));
 
                     // Skip to prelude start (after name, before {)
                     p = at_end;
@@ -644,7 +644,7 @@ VALUE parse_css_impl(VALUE css_string, int depth) {
                     // Start of selector
                     selector_start = p;
                     state = STATE_SELECTOR;
-                    DEBUG_PRINTF("[pure_c] Starting selector at pos %ld\n", p - css_string_base);
+                    DEBUG_PRINTF("[pure_c] Starting selector at pos %td\n", (ptrdiff_t)(p - css_string_base));
                 }
                 break;
 
@@ -697,7 +697,7 @@ VALUE parse_css_impl(VALUE css_string, int depth) {
                     p++;  // Skip {
                     decl_start = p;
                     state = STATE_DECLARATIONS;
-                    DEBUG_PRINTF("[pure_c] Starting declarations at pos %ld\n", p - css_string_base);
+                    DEBUG_PRINTF("[pure_c] Starting declarations at pos %td\n", (ptrdiff_t)(p - css_string_base));
                 } else {
                     // Continue parsing selector
                     p++;
@@ -716,7 +716,7 @@ VALUE parse_css_impl(VALUE css_string, int depth) {
 
                     p++;  // Skip }
                     state = STATE_INITIAL;
-                    DEBUG_PRINTF("[pure_c] Finished rule, back to initial at pos %ld\n", p - css_string_base);
+                    DEBUG_PRINTF("[pure_c] Finished rule, back to initial at pos %td\n", (ptrdiff_t)(p - css_string_base));
                 } else {
                     // Continue parsing declarations
                     p++;

@@ -13,6 +13,12 @@ require 'mkmf'
 # - merge.c (CSS cascade and merge logic)
 $objs = ['cataract.o', 'shorthand_expander.o', 'value_splitter.o', 'stylesheet.o', 'css_parser.o', 'specificity.o', 'merge.o']
 
+# Enable debug mode for CI testing (checks debug printf statements)
+if ENV['CATARACT_DEBUG']
+  puts "Enabling debug mode (DEBUG_PRINTF enabled)"
+  $CFLAGS << " -DCATARACT_DEBUG"
+end
+
 # String buffer optimization (enabled by default, disable for benchmarking)
 # Check both env var (for development) and command-line flag (for gem install)
 if ENV['DISABLE_STR_BUF_OPTIMIZATION'] || arg_config('--disable-str-buf-optimization')
