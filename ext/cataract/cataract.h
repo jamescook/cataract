@@ -146,23 +146,15 @@ VALUE cataract_create_list_style_shorthand(VALUE self, VALUE properties);
 // CSS parser implementation (css_parser.c)
 VALUE parse_css_impl(VALUE css_string, int depth);
 
-// Media query parser (defined in cataract.c)
+// CSS parsing helper functions (css_parser.c)
 VALUE parse_media_query(const char *query_str, long query_len);
-
-// Specificity calculator implementation (specificity.c)
-VALUE calculate_specificity_impl(VALUE self, VALUE selector_string);
-
-// Specificity calculator wrapper (cataract.c)
-VALUE calculate_specificity(VALUE self, VALUE selector_string);
-
-// Helper functions (defined in cataract.c, used by css_parser.c)
+VALUE parse_declarations_string(const char *start, const char *end);
 void capture_declarations_fn(
     const char **decl_start_ptr,
     const char *p,
     VALUE *current_declarations,
     const char *css_string_base
 );
-
 void finish_rule_fn(
     int inside_at_rule_block,
     VALUE *current_selectors,
@@ -171,5 +163,8 @@ void finish_rule_fn(
     VALUE rules_array,
     const char **mark_ptr
 );
+
+// Specificity calculator (specificity.c)
+VALUE calculate_specificity(VALUE self, VALUE selector_string);
 
 #endif // CATARACT_H

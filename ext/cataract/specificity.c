@@ -19,7 +19,7 @@
 #include <string.h>
 
 // Calculate specificity for a CSS selector string
-VALUE calculate_specificity_impl(VALUE self, VALUE selector_string) {
+VALUE calculate_specificity(VALUE self, VALUE selector_string) {
     Check_Type(selector_string, T_STRING);
 
     const char *p = RSTRING_PTR(selector_string);
@@ -137,7 +137,7 @@ VALUE calculate_specificity_impl(VALUE self, VALUE selector_string) {
                     // Recursively calculate specificity of :not() content
                     if (not_content_len > 0) {
                         VALUE not_content = rb_str_new(not_content_start, not_content_len);
-                        VALUE not_spec = calculate_specificity_impl(self, not_content);
+                        VALUE not_spec = calculate_specificity(self, not_content);
                         int not_specificity = NUM2INT(not_spec);
 
                         // Add :not() content's specificity to our counts
