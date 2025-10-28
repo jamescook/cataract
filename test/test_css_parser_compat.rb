@@ -1,12 +1,15 @@
 require "minitest/autorun"
 require "cataract"
+require "css_parser"
 require "webmock/minitest"
 require "tempfile"
 
 # Tests for css_parser gem API compatibility
+# Each test compares Cataract's behavior against CssParser gem to ensure compatibility
 class TestCssParserCompat < Minitest::Test
   def setup
     @parser = Cataract::Parser.new
+    @css_parser = CssParser::Parser.new
   end
 
   # ============================================================================
@@ -186,10 +189,15 @@ class TestCssParserCompat < Minitest::Test
       }
     }
     @parser.load_string!(css)
+    @css_parser.add_block!(css)
 
     result = @parser.find_by_selector('#content', [:screen, :handheld])
+    expected = @css_parser.find_by_selector('#content', [:screen, :handheld])
 
+    # Verify we got the expected value (not nil/empty)
     assert_equal ['font-size: 13px; line-height: 1.2;'], result
+    # Verify we match css_parser
+    assert_equal expected, result
   end
 
   def test_find_by_selector_with_media_type_symbol
@@ -199,10 +207,15 @@ class TestCssParserCompat < Minitest::Test
       }
     }
     @parser.load_string!(css)
+    @css_parser.add_block!(css)
 
     result = @parser.find_by_selector('#content', :print)
+    expected = @css_parser.find_by_selector('#content', :print)
 
+    # Verify we got the expected value (not nil/empty)
     assert_equal ['font-size: 11pt; line-height: 1.2;'], result
+    # Verify we match css_parser
+    assert_equal expected, result
   end
 
   def test_find_by_selector_multiple_rules_same_selector
@@ -241,11 +254,16 @@ class TestCssParserCompat < Minitest::Test
       }
     }
     @parser.load_string!(css)
+    @css_parser.add_block!(css)
 
     # Query for screen media type when rule is print-only
     result = @parser.find_by_selector('body', :screen)
+    expected = @css_parser.find_by_selector('body', :screen)
 
+    # Verify we got empty result (not nil)
     assert_equal [], result
+    # Verify we match css_parser
+    assert_equal expected, result
   end
 
   # ============================================================================
@@ -272,15 +290,26 @@ class TestCssParserCompat < Minitest::Test
       }
     }
     @parser.load_string!(css)
+    @css_parser.add_block!(css)
 
-    rule_sets = []
+    # Compare Cataract
+    cataract_rule_sets = []
     @parser.each_rule_set(:print) do |rule_set, media_types|
-      rule_sets << rule_set
+      cataract_rule_sets << rule_set
     end
 
-    assert_equal 1, rule_sets.length
-    assert_equal "body", rule_sets.first.selector
-    assert_equal [:print], rule_sets.first.media_types
+    # Compare css_parser
+    css_parser_rule_sets = []
+    @css_parser.each_rule_set(:print) do |rule_set, media_types|
+      css_parser_rule_sets << rule_set
+    end
+
+    # Verify we got expected values (only print-specific rule, not universal)
+    assert_equal 1, cataract_rule_sets.length
+    assert_equal "body", cataract_rule_sets.first.selector
+    assert_equal [:print], cataract_rule_sets.first.media_types
+    # Verify we match css_parser
+    assert_equal css_parser_rule_sets.length, cataract_rule_sets.length
   end
 
   def test_each_rule_set_returns_enumerator
@@ -322,12 +351,17 @@ class TestCssParserCompat < Minitest::Test
       }
     }
     @parser.load_string!(css)
+    @css_parser.add_block!(css)
 
-    rule_sets = @parser.find_rule_sets(['body'], :print)
+    cataract_rule_sets = @parser.find_rule_sets(['body'], :print)
+    css_parser_rule_sets = @css_parser.find_rule_sets(['body'], :print)
 
-    assert_equal 1, rule_sets.length
-    assert_equal "body", rule_sets.first.selector
-    assert_equal [:print], rule_sets.first.media_types
+    # Verify we got expected values (only print-specific rule, not universal)
+    assert_equal 1, cataract_rule_sets.length
+    assert_equal "body", cataract_rule_sets.first.selector
+    assert_equal [:print], cataract_rule_sets.first.media_types
+    # Verify we match css_parser
+    assert_equal css_parser_rule_sets.length, cataract_rule_sets.length
   end
 
   def test_find_rule_sets_normalizes_whitespace

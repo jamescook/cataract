@@ -84,6 +84,28 @@ static inline void trim_trailing(const char *start, const char **end) {
     }
 }
 
+// Lowercase property name (CSS property names are ASCII-only)
+static inline VALUE lowercase_property(VALUE property_str) {
+    Check_Type(property_str, T_STRING);
+
+    long len = RSTRING_LEN(property_str);
+    const char *src = RSTRING_PTR(property_str);
+
+    // Create new string with same length
+    VALUE result = rb_str_buf_new(len);
+
+    for (long i = 0; i < len; i++) {
+        char c = src[i];
+        // Lowercase ASCII letters only (CSS properties are ASCII)
+        if (c >= 'A' && c <= 'Z') {
+            c = c + ('a' - 'A');
+        }
+        rb_str_buf_cat(result, &c, 1);
+    }
+
+    return result;
+}
+
 // ============================================================================
 // Function declarations (implemented in various .c/.rl files)
 // ============================================================================
@@ -120,5 +142,29 @@ VALUE cataract_create_border_shorthand(VALUE self, VALUE properties);
 VALUE cataract_create_background_shorthand(VALUE self, VALUE properties);
 VALUE cataract_create_font_shorthand(VALUE self, VALUE properties);
 VALUE cataract_create_list_style_shorthand(VALUE self, VALUE properties);
+
+// CSS parser implementation (css_parser.c)
+VALUE parse_css_impl(VALUE css_string, int depth);
+
+// CSS parsing helper functions (css_parser.c)
+VALUE parse_media_query(const char *query_str, long query_len);
+VALUE parse_declarations_string(const char *start, const char *end);
+void capture_declarations_fn(
+    const char **decl_start_ptr,
+    const char *p,
+    VALUE *current_declarations,
+    const char *css_string_base
+);
+void finish_rule_fn(
+    int inside_at_rule_block,
+    VALUE *current_selectors,
+    VALUE *current_declarations,
+    VALUE *current_media_types,
+    VALUE rules_array,
+    const char **mark_ptr
+);
+
+// Specificity calculator (specificity.c)
+VALUE calculate_specificity(VALUE self, VALUE selector_string);
 
 #endif // CATARACT_H

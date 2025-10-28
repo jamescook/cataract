@@ -1,185 +1,14 @@
 /*
- * value_splitter.rl - Ragel state machine for splitting CSS declaration values
+ * shorthand_expander.c - CSS shorthand property expansion and creation
  *
- * Purpose: Split CSS declaration values on whitespace while preserving content
- *          inside functions and quoted strings.
+ * Handles expansion of shorthand properties (margin, padding, border, etc.)
+ * and creation of shorthands from longhand properties.
  *
- * Assumptions:
- *   - Input is a pre-parsed declaration value from the CSS parser
- *   - Input is well-formed (balanced parens, balanced quotes, valid CSS)
- *   - No validation or error handling needed - parser already validated it
- *
- * Examples:
- *   "1px 2px 3px 4px"              => ["1px", "2px", "3px", "4px"]
- *   "10px calc(100% - 20px)"       => ["10px", "calc(100% - 20px)"]
- *   "rgb(255, 0, 0) blue"          => ["rgb(255, 0, 0)", "blue"]
- *   "'Helvetica Neue', sans-serif" => ["'Helvetica Neue',", "sans-serif"]
+ * NOTE: value_splitter has been migrated to pure C (value_splitter.c)
  */
 
-#include <ruby.h>
-#include <string.h>
+#include "cataract.h"
 
-// String pre-allocation optimization for efficient incremental building
-#define STR_NEW_WITH_CAPACITY(capacity) rb_str_buf_new(capacity)
-
-%%{
-  machine value_splitter;
-
-  # State machine for splitting on whitespace while tracking depth
-  action start_token {
-    token_start = p;
-  }
-
-  action add_to_token {
-    // Character is part of current token
-  }
-
-  action emit_token {
-    if (p > token_start) {
-      // Extract token from token_start to p
-      size_t len = p - token_start;
-      VALUE token = rb_str_new(token_start, len);
-      rb_ary_push(result, token);
-      token_start = NULL;
-    }
-  }
-
-  action open_paren {
-    paren_depth++;
-  }
-
-  action close_paren {
-    paren_depth--;
-  }
-
-  action open_quote {
-    if (!in_quotes) {
-      in_quotes = 1;
-      quote_char = fc;
-    }
-  }
-
-  action close_quote {
-    if (in_quotes && fc == quote_char) {
-      in_quotes = 0;
-    }
-  }
-
-  # Character classes
-  squote = "'";
-  dquote = '"';
-  lparen = '(';
-  rparen = ')';
-  # Use built-in 'space' definition
-
-  # Main tokenizer
-  main := |*
-    squote => {
-      if (!in_quotes) {
-        in_quotes = 1;
-        quote_char = '\'';
-      } else if (quote_char == '\'') {
-        in_quotes = 0;
-      }
-      if (token_start == NULL) token_start = ts;
-    };
-
-    dquote => {
-      if (!in_quotes) {
-        in_quotes = 1;
-        quote_char = '"';
-      } else if (quote_char == '"') {
-        in_quotes = 0;
-      }
-      if (token_start == NULL) token_start = ts;
-    };
-
-    lparen => {
-      paren_depth++;
-      if (token_start == NULL) token_start = ts;
-    };
-
-    rparen => {
-      paren_depth--;
-      if (token_start == NULL) token_start = ts;
-    };
-
-    space => {
-      if (in_quotes || paren_depth > 0) {
-        // Space is part of token
-        if (token_start == NULL) token_start = ts;
-      } else {
-        // Space is delimiter - emit token
-        if (token_start != NULL && ts > token_start) {
-          size_t len = ts - token_start;
-          VALUE token = rb_str_new(token_start, len);
-          rb_ary_push(result, token);
-          token_start = NULL;
-        }
-      }
-    };
-
-    any => {
-      if (token_start == NULL) token_start = ts;
-    };
-  *|;
-}%%
-
-%% write data;
-
-/*
- * Split a CSS declaration value on whitespace while preserving content
- * inside functions and quoted strings.
- *
- * @param value [String] Pre-parsed CSS declaration value (assumed well-formed)
- * @return [Array<String>] Array of value tokens
- */
-VALUE cataract_split_value(VALUE self, VALUE value) {
-  // Convert Ruby string to C string
-  Check_Type(value, T_STRING);
-  const char *str = RSTRING_PTR(value);
-  long len = RSTRING_LEN(value);
-
-  // Sanity check: reject unreasonably long values (DoS protection)
-  // Legitimate CSS values shouldn't exceed a few KB
-  if (len > 65536) {
-    rb_raise(rb_eArgError, "CSS value too long (max 64KB)");
-  }
-
-  // State machine variables
-  int cs;              // Current state
-  const char *p = str; // Current position
-  const char *pe = str + len; // End position
-  const char *eof = pe;       // EOF position
-
-  // Scanner variables (required for |* *| scanner mode)
-  const char *ts;      // Token start
-  const char *te;      // Token end (set by Ragel, may not be used by our actions)
-  int act;             // Action variable (set by Ragel, may not be used by our actions)
-  (void)te;            // Suppress unused warning
-  (void)act;           // Suppress unused warning
-
-  // Token tracking
-  const char *token_start = NULL;
-  VALUE result = rb_ary_new();
-
-  // Depth tracking
-  int paren_depth = 0;
-  int in_quotes = 0;
-  char quote_char = '\0';
-
-  %% write init;
-  %% write exec;
-
-  // Emit final token if any
-  if (token_start != NULL && pe > token_start) {
-    size_t token_len = pe - token_start;
-    VALUE token = rb_str_new(token_start, token_len);
-    rb_ary_push(result, token);
-  }
-
-  return result;
-}
 /*
  * Helper: Check if string ends with !important and strip it
  * Returns 1 if important, 0 otherwise
@@ -191,7 +20,9 @@ static int check_and_strip_important(const char *str, size_t *len) {
     const char *p = str + *len - 1;
 
     // Skip trailing whitespace
-    while (p >= str && (*p == ' ' || *p == '\t' || *p == '\n' || *p == ';')) p--;
+    while (p > str && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')) {
+        p--;
+    }
 
     // Check if it ends with "!important" (case-insensitive would be: strncasecmp)
     if (p - str >= 9) {
@@ -277,12 +108,12 @@ static VALUE expand_dimensions(VALUE parts, const char *property, const char *su
             const char *val = StringValueCStr(sides[i]);
             char buf[256];
             snprintf(buf, sizeof(buf), "%s !important", val);
-            final_value = rb_str_new_cstr(buf);
+            final_value = STR_NEW_CSTR(buf);
         } else {
             final_value = sides[i];
         }
 
-        rb_hash_aset(result, rb_str_new_cstr(key), final_value);
+        rb_hash_aset(result, STR_NEW_CSTR(key), final_value);
     }
 
     return result;
@@ -381,17 +212,17 @@ VALUE cataract_expand_border(VALUE self, VALUE value) {
         if (width != Qnil) {
             char key[64];
             snprintf(key, sizeof(key), "border-%s-width", sides[i]);
-            rb_hash_aset(result, rb_str_new_cstr(key), width);
+            rb_hash_aset(result, STR_NEW_CSTR(key), width);
         }
         if (style != Qnil) {
             char key[64];
             snprintf(key, sizeof(key), "border-%s-style", sides[i]);
-            rb_hash_aset(result, rb_str_new_cstr(key), style);
+            rb_hash_aset(result, STR_NEW_CSTR(key), style);
         }
         if (color != Qnil) {
             char key[64];
             snprintf(key, sizeof(key), "border-%s-color", sides[i]);
-            rb_hash_aset(result, rb_str_new_cstr(key), color);
+            rb_hash_aset(result, STR_NEW_CSTR(key), color);
         }
     }
 
@@ -440,17 +271,17 @@ VALUE cataract_expand_border_side(VALUE self, VALUE side, VALUE value) {
     if (width != Qnil) {
         char key[64];
         snprintf(key, sizeof(key), "border-%s-width", side_str);
-        rb_hash_aset(result, rb_str_new_cstr(key), width);
+        rb_hash_aset(result, STR_NEW_CSTR(key), width);
     }
     if (style != Qnil) {
         char key[64];
         snprintf(key, sizeof(key), "border-%s-style", side_str);
-        rb_hash_aset(result, rb_str_new_cstr(key), style);
+        rb_hash_aset(result, STR_NEW_CSTR(key), style);
     }
     if (color != Qnil) {
         char key[64];
         snprintf(key, sizeof(key), "border-%s-color", side_str);
-        rb_hash_aset(result, rb_str_new_cstr(key), color);
+        rb_hash_aset(result, STR_NEW_CSTR(key), color);
     }
 
     return result;
@@ -488,7 +319,7 @@ VALUE cataract_expand_font(VALUE self, VALUE value) {
 
         // Family is everything after line-height
         if (*family_start) {
-            family_part = rb_str_new_cstr(family_start);
+            family_part = STR_NEW_CSTR(family_start);
         } else {
             family_part = Qnil;
         }
@@ -550,21 +381,21 @@ VALUE cataract_expand_font(VALUE self, VALUE value) {
         for (long i = size_idx + 1; i < len; i++) {
             rb_ary_push(family_parts, rb_ary_entry(parts, i));
         }
-        family = rb_funcall(family_parts, rb_intern("join"), 1, rb_str_new_cstr(" "));
+        family = rb_funcall(family_parts, rb_intern("join"), 1, STR_NEW_CSTR(" "));
     }
 
     // Set defaults for optional properties
-    if (style == Qnil) style = rb_str_new_cstr("normal");
-    if (variant == Qnil) variant = rb_str_new_cstr("normal");
-    if (weight == Qnil) weight = rb_str_new_cstr("normal");
-    if (line_height == Qnil) line_height = rb_str_new_cstr("normal");
+    if (style == Qnil) style = STR_NEW_CSTR("normal");
+    if (variant == Qnil) variant = STR_NEW_CSTR("normal");
+    if (weight == Qnil) weight = STR_NEW_CSTR("normal");
+    if (line_height == Qnil) line_height = STR_NEW_CSTR("normal");
 
-    rb_hash_aset(result, rb_str_new_cstr("font-style"), style);
-    rb_hash_aset(result, rb_str_new_cstr("font-variant"), variant);
-    rb_hash_aset(result, rb_str_new_cstr("font-weight"), weight);
-    if (size != Qnil) rb_hash_aset(result, rb_str_new_cstr("font-size"), size);
-    rb_hash_aset(result, rb_str_new_cstr("line-height"), line_height);
-    if (family != Qnil) rb_hash_aset(result, rb_str_new_cstr("font-family"), family);
+    rb_hash_aset(result, STR_NEW_CSTR("font-style"), style);
+    rb_hash_aset(result, STR_NEW_CSTR("font-variant"), variant);
+    rb_hash_aset(result, STR_NEW_CSTR("font-weight"), weight);
+    if (size != Qnil) rb_hash_aset(result, STR_NEW_CSTR("font-size"), size);
+    rb_hash_aset(result, STR_NEW_CSTR("line-height"), line_height);
+    if (family != Qnil) rb_hash_aset(result, STR_NEW_CSTR("font-family"), family);
 
     return result;
 }
@@ -614,9 +445,9 @@ VALUE cataract_expand_list_style(VALUE self, VALUE value) {
         }
     }
 
-    if (type != Qnil) rb_hash_aset(result, rb_str_new_cstr("list-style-type"), type);
-    if (position != Qnil) rb_hash_aset(result, rb_str_new_cstr("list-style-position"), position);
-    if (image != Qnil) rb_hash_aset(result, rb_str_new_cstr("list-style-image"), image);
+    if (type != Qnil) rb_hash_aset(result, STR_NEW_CSTR("list-style-type"), type);
+    if (position != Qnil) rb_hash_aset(result, STR_NEW_CSTR("list-style-position"), position);
+    if (image != Qnil) rb_hash_aset(result, STR_NEW_CSTR("list-style-image"), image);
 
     return result;
 }
@@ -634,7 +465,7 @@ VALUE cataract_expand_background(VALUE self, VALUE value) {
     if (slash) {
         // Split on /: before is position, after is size
         main_part = rb_str_new(str, slash - str);
-        size_part = rb_str_new_cstr(slash + 1);
+        size_part = STR_NEW_CSTR(slash + 1);
         size_part = rb_funcall(size_part, rb_intern("strip"), 0);
     } else {
         main_part = value;
@@ -706,12 +537,12 @@ VALUE cataract_expand_background(VALUE self, VALUE value) {
         next_part:;
     }
 
-    if (color != Qnil) rb_hash_aset(result, rb_str_new_cstr("background-color"), color);
-    if (image != Qnil) rb_hash_aset(result, rb_str_new_cstr("background-image"), image);
-    if (repeat != Qnil) rb_hash_aset(result, rb_str_new_cstr("background-repeat"), repeat);
-    if (attachment != Qnil) rb_hash_aset(result, rb_str_new_cstr("background-attachment"), attachment);
-    if (position != Qnil) rb_hash_aset(result, rb_str_new_cstr("background-position"), position);
-    if (size != Qnil) rb_hash_aset(result, rb_str_new_cstr("background-size"), size);
+    if (color != Qnil) rb_hash_aset(result, STR_NEW_CSTR("background-color"), color);
+    if (image != Qnil) rb_hash_aset(result, STR_NEW_CSTR("background-image"), image);
+    if (repeat != Qnil) rb_hash_aset(result, STR_NEW_CSTR("background-repeat"), repeat);
+    if (attachment != Qnil) rb_hash_aset(result, STR_NEW_CSTR("background-attachment"), attachment);
+    if (position != Qnil) rb_hash_aset(result, STR_NEW_CSTR("background-position"), position);
+    if (size != Qnil) rb_hash_aset(result, STR_NEW_CSTR("background-size"), size);
 
     return result;
 }
@@ -730,10 +561,10 @@ static VALUE create_dimension_shorthand(VALUE properties, const char *base) {
     snprintf(key_bottom, sizeof(key_bottom), "%s-bottom", base);
     snprintf(key_left, sizeof(key_left), "%s-left", base);
 
-    VALUE top = rb_hash_aref(properties, rb_str_new_cstr(key_top));
-    VALUE right = rb_hash_aref(properties, rb_str_new_cstr(key_right));
-    VALUE bottom = rb_hash_aref(properties, rb_str_new_cstr(key_bottom));
-    VALUE left = rb_hash_aref(properties, rb_str_new_cstr(key_left));
+    VALUE top = rb_hash_aref(properties, STR_NEW_CSTR(key_top));
+    VALUE right = rb_hash_aref(properties, STR_NEW_CSTR(key_right));
+    VALUE bottom = rb_hash_aref(properties, STR_NEW_CSTR(key_bottom));
+    VALUE left = rb_hash_aref(properties, STR_NEW_CSTR(key_left));
 
     // All four sides must be present
     if (NIL_P(top) || NIL_P(right) || NIL_P(bottom) || NIL_P(left)) {
@@ -782,7 +613,6 @@ VALUE cataract_create_padding_shorthand(VALUE self, VALUE properties) {
 // Uses stack allocation and avoids intermediate Ruby string objects for keys
 static VALUE create_border_dimension_shorthand(VALUE properties, const char *suffix) {
     // Build key names on stack: "border-top-{suffix}", etc.
-    size_t suffix_len = strlen(suffix);
     char key_top[32];     // "border-top-" + suffix + \0
     char key_right[32];
     char key_bottom[32];
@@ -794,10 +624,10 @@ static VALUE create_border_dimension_shorthand(VALUE properties, const char *suf
     snprintf(key_left, sizeof(key_left), "border-left-%s", suffix);
 
     // Look up values directly with C strings (no intermediate VALUE objects)
-    VALUE top = rb_hash_aref(properties, rb_str_new_cstr(key_top));
-    VALUE right = rb_hash_aref(properties, rb_str_new_cstr(key_right));
-    VALUE bottom = rb_hash_aref(properties, rb_str_new_cstr(key_bottom));
-    VALUE left = rb_hash_aref(properties, rb_str_new_cstr(key_left));
+    VALUE top = rb_hash_aref(properties, STR_NEW_CSTR(key_top));
+    VALUE right = rb_hash_aref(properties, STR_NEW_CSTR(key_right));
+    VALUE bottom = rb_hash_aref(properties, STR_NEW_CSTR(key_bottom));
+    VALUE left = rb_hash_aref(properties, STR_NEW_CSTR(key_left));
 
     // All four sides must be present
     if (NIL_P(top) || NIL_P(right) || NIL_P(bottom) || NIL_P(left)) {
@@ -851,9 +681,9 @@ VALUE cataract_create_border_color_shorthand(VALUE self, VALUE properties) {
 // Note: border shorthand can only have ONE value per component (width, style, color)
 // Cannot combine "border-width: 1px 0" into "border: 1px 0 solid" (invalid CSS)
 VALUE cataract_create_border_shorthand(VALUE self, VALUE properties) {
-    VALUE width = rb_hash_aref(properties, rb_str_new_cstr("border-width"));
-    VALUE style = rb_hash_aref(properties, rb_str_new_cstr("border-style"));
-    VALUE color = rb_hash_aref(properties, rb_str_new_cstr("border-color"));
+    VALUE width = rb_hash_aref(properties, STR_NEW_CSTR("border-width"));
+    VALUE style = rb_hash_aref(properties, STR_NEW_CSTR("border-style"));
+    VALUE color = rb_hash_aref(properties, STR_NEW_CSTR("border-color"));
 
     // Need at least one property
     if (NIL_P(width) && NIL_P(style) && NIL_P(color)) {
@@ -894,11 +724,11 @@ VALUE cataract_create_border_shorthand(VALUE self, VALUE properties) {
 
 // Create background shorthand from longhand properties
 VALUE cataract_create_background_shorthand(VALUE self, VALUE properties) {
-    VALUE color = rb_hash_aref(properties, rb_str_new_cstr("background-color"));
-    VALUE image = rb_hash_aref(properties, rb_str_new_cstr("background-image"));
-    VALUE repeat = rb_hash_aref(properties, rb_str_new_cstr("background-repeat"));
-    VALUE position = rb_hash_aref(properties, rb_str_new_cstr("background-position"));
-    VALUE size = rb_hash_aref(properties, rb_str_new_cstr("background-size"));
+    VALUE color = rb_hash_aref(properties, STR_NEW_CSTR("background-color"));
+    VALUE image = rb_hash_aref(properties, STR_NEW_CSTR("background-image"));
+    VALUE repeat = rb_hash_aref(properties, STR_NEW_CSTR("background-repeat"));
+    VALUE position = rb_hash_aref(properties, STR_NEW_CSTR("background-position"));
+    VALUE size = rb_hash_aref(properties, STR_NEW_CSTR("background-size"));
 
     // Need at least one property
     if (NIL_P(color) && NIL_P(image) && NIL_P(repeat) && NIL_P(position) && NIL_P(size)) {
@@ -941,17 +771,17 @@ VALUE cataract_create_background_shorthand(VALUE self, VALUE properties) {
 // Requires: font-size and font-family
 // Optional: font-style, font-weight, line-height
 VALUE cataract_create_font_shorthand(VALUE self, VALUE properties) {
-    VALUE size = rb_hash_aref(properties, rb_str_new_cstr("font-size"));
-    VALUE family = rb_hash_aref(properties, rb_str_new_cstr("font-family"));
+    VALUE size = rb_hash_aref(properties, STR_NEW_CSTR("font-size"));
+    VALUE family = rb_hash_aref(properties, STR_NEW_CSTR("font-family"));
 
     // font-size and font-family are required
     if (NIL_P(size) || NIL_P(family)) {
         return Qnil;
     }
 
-    VALUE style = rb_hash_aref(properties, rb_str_new_cstr("font-style"));
-    VALUE weight = rb_hash_aref(properties, rb_str_new_cstr("font-weight"));
-    VALUE line_height = rb_hash_aref(properties, rb_str_new_cstr("line-height"));
+    VALUE style = rb_hash_aref(properties, STR_NEW_CSTR("font-style"));
+    VALUE weight = rb_hash_aref(properties, STR_NEW_CSTR("font-weight"));
+    VALUE line_height = rb_hash_aref(properties, STR_NEW_CSTR("line-height"));
 
     VALUE result = STR_NEW_WITH_CAPACITY(128);
     int has_content = 0;
@@ -986,9 +816,9 @@ VALUE cataract_create_font_shorthand(VALUE self, VALUE properties) {
 
 // Create list-style shorthand from longhand properties
 VALUE cataract_create_list_style_shorthand(VALUE self, VALUE properties) {
-    VALUE type = rb_hash_aref(properties, rb_str_new_cstr("list-style-type"));
-    VALUE position = rb_hash_aref(properties, rb_str_new_cstr("list-style-position"));
-    VALUE image = rb_hash_aref(properties, rb_str_new_cstr("list-style-image"));
+    VALUE type = rb_hash_aref(properties, STR_NEW_CSTR("list-style-type"));
+    VALUE position = rb_hash_aref(properties, STR_NEW_CSTR("list-style-position"));
+    VALUE image = rb_hash_aref(properties, STR_NEW_CSTR("list-style-image"));
 
     // Need at least one property
     if (NIL_P(type) && NIL_P(position) && NIL_P(image)) {

@@ -4,7 +4,6 @@
 #   rake benchmark              # Run all benchmarks
 #   rake benchmark:parsing      # Run parsing benchmarks only
 #   rake benchmark:specificity  # Run specificity benchmarks only
-#   rake benchmark:styles       # Benchmark different Ragel generation styles
 #
 # See:
 #   test/benchmarks/benchmark_parsing.rb
