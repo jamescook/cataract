@@ -187,7 +187,7 @@ sheet = Cataract.parse_css(css, imports: {
 bundle install
 
 # Compile the C extension
-rake clean compile
+rake compile
 
 # Run tests
 rake test

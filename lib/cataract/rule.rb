@@ -17,6 +17,9 @@ module Cataract
       Declarations.new(declarations)[property]
     end
 
+    # Silence warning about method redefinition
+    undef_method :specificity if method_defined?(:specificity)
+
     # Calculate specificity lazily if not set
     # @return [Integer] CSS specificity value
     def specificity

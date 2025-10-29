@@ -33,13 +33,9 @@ jobs:
       run: ruby --version
 
     - name: Run tests
-      run: bundle exec rake test
+      run: bundle exec rake compile test
       env:
         COVERAGE: 1
-
-    - name: Run tests with debug enabled
-      run: bundle exec rake test
-      env:
         CATARACT_DEBUG: 1
 
     - name: Run clang-tidy

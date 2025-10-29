@@ -136,8 +136,8 @@ static VALUE rules_to_s(VALUE self, VALUE rules_array) {
         }
 
         // Extract: selector, declarations, specificity, media_query
-        VALUE selector = rb_struct_aref(rule, INT2FIX(0));
-        VALUE declarations = rb_struct_aref(rule, INT2FIX(1));
+        VALUE selector = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR));
+        VALUE declarations = rb_struct_aref(rule, INT2FIX(RULE_DECLARATIONS));
 
         // Append selector
         rb_str_buf_append(result, selector);
@@ -148,9 +148,9 @@ static VALUE rules_to_s(VALUE self, VALUE rules_array) {
         for (long j = 0; j < decl_len; j++) {
             VALUE decl = rb_ary_entry(declarations, j);
 
-            VALUE property = rb_struct_aref(decl, INT2FIX(0));
-            VALUE value = rb_struct_aref(decl, INT2FIX(1));
-            VALUE important = rb_struct_aref(decl, INT2FIX(2));
+            VALUE property = rb_struct_aref(decl, INT2FIX(DECL_PROPERTY));
+            VALUE value = rb_struct_aref(decl, INT2FIX(DECL_VALUE));
+            VALUE important = rb_struct_aref(decl, INT2FIX(DECL_IMPORTANT));
 
             rb_str_buf_append(result, property);
             rb_str_buf_cat2(result, ": ");
@@ -200,9 +200,9 @@ VALUE declarations_to_s(VALUE self, VALUE declarations_array) {
         }
 
         // Extract struct fields
-        VALUE property = rb_struct_aref(decl, INT2FIX(0));
-        VALUE value = rb_struct_aref(decl, INT2FIX(1));
-        VALUE important = rb_struct_aref(decl, INT2FIX(2));
+        VALUE property = rb_struct_aref(decl, INT2FIX(DECL_PROPERTY));
+        VALUE value = rb_struct_aref(decl, INT2FIX(DECL_VALUE));
+        VALUE important = rb_struct_aref(decl, INT2FIX(DECL_IMPORTANT));
 
         // Append: "property: value"
         rb_str_buf_append(result, property);

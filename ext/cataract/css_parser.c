@@ -699,7 +699,7 @@ VALUE parse_css_impl(VALUE css_string, int depth, VALUE parent_media_query) {
                             VALUE dummy_rules = rb_hash_aref(dummy_group, ID2SYM(rb_intern("rules")));
                             if (!NIL_P(dummy_rules) && RARRAY_LEN(dummy_rules) > 0) {
                                 VALUE first_rule = RARRAY_AREF(dummy_rules, 0);
-                                declarations = rb_struct_aref(first_rule, INT2FIX(1));
+                                declarations = rb_struct_aref(first_rule, INT2FIX(RULE_DECLARATIONS));
 
                                 // Build selector: "@" + name + [" " + prelude]
                                 VALUE sel = UTF8_STR("@");
