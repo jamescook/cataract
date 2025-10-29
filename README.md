@@ -1,12 +1,12 @@
 # Cataract
 
-A high-performance CSS parser built with Ragel state machines for accurate parsing of complex CSS structures.
+A high-performance CSS parser with C extensions for accurate parsing of complex CSS structures.
 
 [![codecov](https://codecov.io/github/jamescook/cataract/graph/badge.svg?token=1PTVV1QTV5)](https://codecov.io/github/jamescook/cataract)
 
 ## Features
 
-- **Fast**: Built with Ragel finite state machines compiled to C
+- **Fast**: High-performance C implementation for parsing and serialization
 - **CSS2 Support**: Selectors, combinators, pseudo-classes, pseudo-elements, @media queries
 - **CSS3 Support**: Attribute selectors (`^=`, `$=`, `*=`)
 - **Specificity Calculation**: Automatic CSS specificity computation
@@ -30,41 +30,8 @@ gem install cataract
 ### Requirements
 
 - Ruby >= 3.1.0
-- Ragel (for development/building from source)
-  - macOS: `brew install ragel`
-  - Ubuntu: `sudo apt-get install ragel`
 
 ## Usage
-
-### Shorthand Property Expansion
-
-```ruby
-require 'cataract'
-
-# Expand margin shorthand
-Cataract.expand_margin("10px 20px")
-# => {"margin-top"=>"10px", "margin-right"=>"20px", "margin-bottom"=>"10px", "margin-left"=>"20px"}
-
-# Handles calc() and other CSS functions
-Cataract.expand_margin("10px calc(100% - 20px)")
-# => {"margin-top"=>"10px", "margin-right"=>"calc(100% - 20px)", ...}
-
-# Preserves !important flag (per W3C spec)
-Cataract.expand_margin("10px !important")
-# => {"margin-top"=>"10px !important", "margin-right"=>"10px !important", ...}
-
-# Border shorthand
-Cataract.expand_border("1px solid red")
-# => {"border-top-width"=>"1px", "border-top-style"=>"solid", "border-top-color"=>"red", ...}
-
-# Font shorthand
-Cataract.expand_font("bold 14px/1.5 Arial, sans-serif")
-# => {"font-weight"=>"bold", "font-size"=>"14px", "line-height"=>"1.5", ...}
-
-# Also available: expand_padding, expand_border_color, expand_border_style,
-#                 expand_border_width, expand_border_side, expand_background,
-#                 expand_list_style
-```
 
 ### Basic Parsing
 
@@ -183,12 +150,32 @@ rake clean
 
 ## How It Works
 
-Cataract uses [Ragel](http://www.colm.net/open-source/ragel/) to generate a high-performance C parser from a state machine grammar. The Ragel grammar (`ext/cataract/cataract.rl`) defines the complete CSS syntax, including multiple specialized state machines for different parsing contexts (main CSS parser, specificity counter, media query parser).
+Cataract uses a high-performance C implementation for CSS parsing and serialization. The parser processes CSS into an internal data structure organized by media queries:
+
+```ruby
+{
+  # Media query string => group info
+  "(min-width: 768px)" => {
+    media_types: [:screen],  # Array of applicable media types
+    rules: [...]             # Array of Rule structs for this media query
+  },
+  nil => {
+    media_types: [:all],     # Rules with no media query
+    rules: [...]
+  }
+}
+```
+
+Each `Rule` is a struct containing:
+- `selector`: The CSS selector string
+- `declarations`: Array of `Declarations::Value` structs (property, value, important flag)
+- `specificity`: Calculated CSS specificity (cached)
 
 Key advantages:
-- **Deterministic**: No backtracking or regex complexity issues
-- **Fast**: Compiled C code with minimal overhead
-- **Maintainable**: Grammar is readable and maps directly to CSS specs
+- **Fast**: Critical paths implemented in C (parsing, merging, serialization)
+- **Efficient media query handling**: Rules grouped by media query for O(1) lookups
+- **Memory efficient**: Minimal allocations, reuses string buffers where possible
+- **Accurate**: Handles complex CSS including nested media queries, data URIs, calc() functions
 
 ## License
 
