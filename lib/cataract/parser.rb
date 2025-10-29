@@ -12,9 +12,20 @@ module Cataract
       @css_source = nil
     end
 
-    def parse(css_string)
-      result = Cataract.parse_css_internal(css_string)
+    def parse(css_string, imports: false)
+      # Resolve @import statements if requested
+      css_to_parse = if imports
+        ImportResolver.resolve(css_string, imports)
+      else
+        css_string
+      end
+
+      result = Cataract.parse_css_internal(css_to_parse)
       # parse_css_internal returns {rules: {query_string => {media_types: [...], rules: [...]}}, charset: "..." | nil}
+
+      # Store charset if not already set
+      @charset ||= result[:charset]
+
       # Merge: if key exists, concatenate rules arrays; otherwise just add
       @raw_rules.merge!(result[:rules]) do |_key, old_group, new_group|
         # Merge rules arrays from both groups

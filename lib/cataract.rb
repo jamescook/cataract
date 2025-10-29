@@ -5,13 +5,19 @@ require_relative 'cataract/stylesheet'
 require_relative 'cataract/rule_set'
 require_relative 'cataract/declarations'
 require_relative 'cataract/parser'
+require_relative 'cataract/import_resolver'
 
 module Cataract
   # Wrap parse_css to return Stylesheet instead of raw hash
   class << self
     alias_method :parse_css_internal, :parse_css
 
-    def parse_css(css)
+    def parse_css(css, imports: false)
+      # Resolve @import statements if requested
+      if imports
+        css = ImportResolver.resolve(css, imports)
+      end
+
       result = parse_css_internal(css)
       # parse_css_internal always returns {rules: [...], charset: "UTF-8" | nil}
       Stylesheet.new(result[:rules], result[:charset])

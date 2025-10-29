@@ -296,6 +296,9 @@ void Init_cataract() {
     rb_define_module_function(module, "stylesheet_to_s_c", stylesheet_to_s_c, 2);
     rb_define_module_function(module, "stylesheet_to_formatted_s_c", stylesheet_to_formatted_s_c, 2);
 
+    // Import scanning
+    rb_define_module_function(module, "extract_imports", extract_imports, 1);
+
     // Export string allocation mode as a constant for verification in benchmarks
     #ifdef DISABLE_STR_BUF_OPTIMIZATION
         rb_define_const(module, "STRING_ALLOC_MODE", ID2SYM(rb_intern("dynamic")));
