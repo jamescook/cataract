@@ -75,6 +75,43 @@ parser.rules_count
 # => 3
 ```
 
+### Advanced Filtering with each_selector
+
+The `Stylesheet#each_selector` method provides powerful filtering capabilities for CSS analysis:
+
+```ruby
+sheet = Cataract.parse_css(css)
+
+# Find high-specificity selectors (potential refactoring targets)
+sheet.each_selector(specificity: 100..) do |selector, declarations, specificity, media_types|
+  puts "High specificity: #{selector} (#{specificity})"
+end
+
+# Find all selectors that define a color property
+sheet.each_selector(property: 'color') do |selector, declarations, specificity, media_types|
+  puts "#{selector} defines color"
+end
+
+# Find all positioned elements
+sheet.each_selector(property: 'position', property_value: 'relative') do |selector, declarations, specificity, media_types|
+  puts "#{selector} is relatively positioned"
+end
+
+# Find any property with a specific value (useful for finding typos or deprecated values)
+sheet.each_selector(property_value: 'relative') do |selector, declarations, specificity, media_types|
+  puts "#{selector} uses value 'relative'"
+end
+
+# Combine filters for complex queries
+sheet.each_selector(property: 'z-index', specificity: 100.., media: :screen) do |selector, declarations, specificity, media_types|
+  puts "High-specificity z-index usage in screen media: #{selector}"
+end
+
+# Filter by specificity ranges
+sheet.each_selector(specificity: 10..100) { |sel, decls, spec, media| ... }  # Class to ID range
+sheet.each_selector(specificity: ..10) { |sel, decls, spec, media| ... }     # Low specificity (<= 10)
+```
+
 ### css_parser Compatibility
 
 Cataract provides a compatible API with the popular [css_parser](https://github.com/premailer/css_parser) gem, making it easy to switch between implementations:
@@ -107,27 +144,17 @@ parser.find_rule_sets(['.header', '.footer'])
 
 **Note on `fix_braces`:** This option is `false` by default for performance. Enable it only when parsing untrusted or malformed CSS that may have missing closing braces.
 
-## Supported CSS Features
+## CSS Support
 
-### CSS2
-- Type selectors: `div`, `p`, `span`
-- Class selectors: `.classname`
-- ID selectors: `#idname`
-- Attribute selectors: `[attr]`, `[attr="value"]`, `[attr~="value"]`, `[attr|="value"]`
-- Pseudo-classes: `:hover`, `:focus`, `:first-child`, `:link`, `:visited`, `:active`
-- Pseudo-elements: `::before`, `::after`, `::first-line`, `::first-letter`
-- Combinators: descendant (`div p`), child (`div > p`), adjacent sibling (`h1 + p`)
-- Universal selector: `*`
-- @media queries with features: `@media screen and (min-width: 768px)`
-- `!important` declarations
+Cataract aims to support all CSS specifications including:
+- **Selectors**: All CSS2/CSS3 selectors (type, class, ID, attribute, pseudo-classes, pseudo-elements, combinators)
+- **At-rules**: `@media`, `@font-face`, `@keyframes`, `@supports`, `@page`, `@layer`, `@container`, `@property`, `@scope`, `@counter-style`
+- **Media Queries**: Full support including nested queries and media features
+- **Special syntax**: Data URIs, `calc()`, `url()`, CSS functions with parentheses
+- **!important**: Full support with correct cascade behavior
 
-### CSS3
-- Attribute substring selectors: `[attr^="value"]`, `[attr$="value"]`, `[attr*="value"]`
-
-### Special Features
-- **Data URI support**: Correctly handles semicolons in data URIs (e.g., `url(data:image/png;base64,...)`)
-- **URL functions**: Parses `url()`, `calc()`, and other CSS functions with parentheses
-- **Lenient parsing**: Optional `fix_braces` mode for auto-closing missing braces
+### Not Yet Supported
+- **`@import`**: Import statements are not processed
 
 ## Development
 
