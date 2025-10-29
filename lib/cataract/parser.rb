@@ -380,24 +380,29 @@ module Cataract
     # - find_by_selector(selector, :all) -> find non-media-specific rules (for querying)
     def to_s(which_media = :all)
       out = []
+      styles_by_media_query = {}
 
-      # Iterate through each media query group
-      @raw_rules.each do |media_query_string, group|
-        # Determine if we should include this group
-        # TODO: Filtering by which_media needs implementation
+      # Group styles by media query string using each_selector (which handles filtering)
+      each_selector(which_media) do |selector, declarations, _specificity, media_types|
+        # Find the media query string for this media_types
+        media_query_string = @raw_rules.find { |mq, group| group[:media_types] == media_types }&.first
 
+        styles_by_media_query[media_query_string] ||= []
+        styles_by_media_query[media_query_string] << [selector, declarations]
+      end
+
+      # Output grouped by media query
+      styles_by_media_query.each do |media_query_string, styles|
         if media_query_string.nil?
           # No media query - output rules directly
-          group[:rules].each do |rule|
-            decls_str = Cataract.declarations_to_s(rule.declarations)
-            out << "#{rule.selector} { #{decls_str} }"
+          styles.each do |selector, declarations|
+            out << "#{selector} { #{declarations} }"
           end
         else
           # Has media query - output all rules in single @media block
           out << "@media #{media_query_string} {"
-          group[:rules].each do |rule|
-            decls_str = Cataract.declarations_to_s(rule.declarations)
-            out << "  #{rule.selector} { #{decls_str} }"
+          styles.each do |selector, declarations|
+            out << "  #{selector} { #{declarations} }"
           end
           out << "}"
         end

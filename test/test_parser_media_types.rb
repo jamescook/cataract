@@ -218,4 +218,81 @@ class TestParserMediaTypes < Minitest::Test
     assert_equal [:screen, :print], rules['.multi']
     assert_equal [:handheld], rules['.handheld']
   end
+
+  def test_to_s_with_all_media_types
+    @parser.add_block!(<<-CSS)
+      body { color: black; }
+      @media screen { .header { color: blue; } }
+      @media print { .footer { color: red; } }
+    CSS
+
+    output = @parser.to_s(:all)
+
+    # Should include all rules
+    assert_includes output, 'body { color: black; }'
+    assert_includes output, '@media screen'
+    assert_includes output, '.header { color: blue; }'
+    assert_includes output, '@media print'
+    assert_includes output, '.footer { color: red; }'
+  end
+
+  def test_to_s_with_screen_media_type_only
+    @parser.add_block!(<<-CSS)
+      body { color: black; }
+      @media screen { .header { color: blue; } }
+      @media print { .footer { color: red; } }
+    CSS
+
+    output = @parser.to_s(:screen)
+
+    # Should only include screen rules
+    assert_includes output, '@media screen'
+    assert_includes output, '.header { color: blue; }'
+
+    # Should NOT include universal or print rules
+    refute_includes output, 'body { color: black; }'
+    refute_includes output, '@media print'
+    refute_includes output, '.footer { color: red; }'
+  end
+
+  def test_to_s_with_print_media_type_only
+    @parser.add_block!(<<-CSS)
+      body { color: black; }
+      @media screen { .header { color: blue; } }
+      @media print { .footer { color: red; } }
+    CSS
+
+    output = @parser.to_s(:print)
+
+    # Should only include print rules
+    assert_includes output, '@media print'
+    assert_includes output, '.footer { color: red; }'
+
+    # Should NOT include universal or screen rules
+    refute_includes output, 'body { color: black; }'
+    refute_includes output, '@media screen'
+    refute_includes output, '.header { color: blue; }'
+  end
+
+  def test_to_s_with_multiple_media_types
+    @parser.add_block!(<<-CSS)
+      body { color: black; }
+      @media screen { .header { color: blue; } }
+      @media print { .footer { color: red; } }
+      @media handheld { .mobile { width: 100%; } }
+    CSS
+
+    output = @parser.to_s([:screen, :print])
+
+    # Should include screen and print rules
+    assert_includes output, '@media screen'
+    assert_includes output, '.header { color: blue; }'
+    assert_includes output, '@media print'
+    assert_includes output, '.footer { color: red; }'
+
+    # Should NOT include universal or handheld rules
+    refute_includes output, 'body { color: black; }'
+    refute_includes output, '@media handheld'
+    refute_includes output, '.mobile { width: 100%; }'
+  end
 end

@@ -78,16 +78,44 @@ module BenchmarkSerialization
     Benchmark.ips do |x|
       x.config(time: 5, warmup: 2)
 
-      x.report("css_parser") do
+      x.report("css_parser (all)") do
         # Clear memoization if any
         css_parser_parsed.instance_variable_set(:@css_string, nil) if css_parser_parsed.instance_variable_defined?(:@css_string)
         css_parser_parsed.to_s
       end
 
-      x.report("cataract") do
+      x.report("cataract (all)") do
         # Clear memoization
         cataract_parsed.instance_variable_set(:@serialized, nil)
         cataract_parsed.to_s
+      end
+
+      x.compare!
+    end
+
+    puts "\n" + "="*60
+    puts "MEDIA TYPE FILTERING BENCHMARK (Parser API)"
+    puts "="*60
+    puts "Testing: to_s(:print) to filter only print-specific rules"
+    puts "Note: Using Parser API (css_parser compatible) not Stylesheet"
+
+    # Pre-parse using Parser API for media filtering
+    cataract_parser = Cataract::Parser.new
+    cataract_parser.add_block!(css)
+
+    css_parser_for_filter = CssParser::Parser.new
+    css_parser_for_filter.add_block!(css)
+
+    Benchmark.ips do |x|
+      x.config(time: 5, warmup: 2)
+
+      x.report("css_parser (print)") do
+        css_parser_for_filter.instance_variable_set(:@css_string, nil) if css_parser_for_filter.instance_variable_defined?(:@css_string)
+        css_parser_for_filter.to_s(:print)
+      end
+
+      x.report("cataract (print)") do
+        cataract_parser.to_s(:print)
       end
 
       x.compare!
