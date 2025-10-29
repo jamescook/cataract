@@ -11,7 +11,8 @@ require 'mkmf'
 # - css_parser.c (main CSS parser)
 # - specificity.c (selector specificity calculator)
 # - merge.c (CSS cascade and merge logic)
-$objs = ['cataract.o', 'shorthand_expander.o', 'value_splitter.o', 'stylesheet.o', 'css_parser.o', 'specificity.o', 'merge.o']
+# - import_scanner.c (@import statement extraction)
+$objs = ['cataract.o', 'shorthand_expander.o', 'value_splitter.o', 'stylesheet.o', 'css_parser.o', 'specificity.o', 'merge.o', 'import_scanner.o']
 
 # Enable debug mode for CI testing (checks debug printf statements)
 if ENV['CATARACT_DEBUG']

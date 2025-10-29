@@ -153,8 +153,32 @@ Cataract aims to support all CSS specifications including:
 - **Special syntax**: Data URIs, `calc()`, `url()`, CSS functions with parentheses
 - **!important**: Full support with correct cascade behavior
 
-### Not Yet Supported
-- **`@import`**: Import statements are not processed
+### `@import` Support
+
+`@import` statements can be resolved with security controls:
+
+```ruby
+# Disabled by default
+sheet = Cataract.parse_css(css)  # @import statements are ignored
+
+# Enable with safe defaults (HTTPS only, .css files only, max depth 5)
+sheet = Cataract.parse_css(css, imports: true)
+
+# Custom options for full control
+sheet = Cataract.parse_css(css, imports: {
+  allowed_schemes: ['https', 'file'],   # Default: ['https']
+  extensions: ['css'],                   # Default: ['css']
+  max_depth: 3,                          # Default: 5
+  timeout: 10,                           # Default: 10 seconds
+  follow_redirects: true                 # Default: true
+})
+```
+
+**Security note**: Import resolution includes protections against:
+- Unauthorized schemes (file://, data://, etc.)
+- Non-CSS file extensions
+- Circular references
+- Excessive nesting depth
 
 ## Development
 
@@ -163,16 +187,13 @@ Cataract aims to support all CSS specifications including:
 bundle install
 
 # Compile the C extension
-rake compile
+rake clean compile
 
 # Run tests
 rake test
 
 # Run benchmarks
 rake benchmark
-
-# Clean build artifacts
-rake clean
 ```
 
 ## How It Works

@@ -174,6 +174,9 @@ VALUE declarations_to_s(VALUE self, VALUE declarations_array);
 VALUE stylesheet_to_s_c(VALUE self, VALUE rules_array, VALUE charset);
 VALUE stylesheet_to_formatted_s_c(VALUE self, VALUE rules_array, VALUE charset);
 
+// Import scanning (import_scanner.c)
+VALUE extract_imports(VALUE self, VALUE css_string);
+
 // Merge/cascade functions (merge.c)
 VALUE cataract_merge(VALUE self, VALUE rules_array);
 VALUE cataract_merge_wrapper(VALUE self, VALUE input);
