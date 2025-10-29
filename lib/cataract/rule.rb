@@ -2,12 +2,10 @@ require_relative 'media_type_matcher'
 
 module Cataract
   # Add Ruby methods to the C-defined Rule struct
-  # Rule = Struct.new(:selector, :declarations, :specificity, :media_query)
+  # Rule = Struct.new(:selector, :declarations, :specificity)
+  # Note: media_query field removed - media info now stored at group level
   class Rule
-    include MediaTypeMatcher
-
-    # Alias for css_parser compatibility
-    alias_method :media_types, :media_query
+    # Note: MediaTypeMatcher not included - rules no longer know their media context
 
     # Note: `declarations` returns Array<Declarations::Value> (the raw C struct field)
     # Wrap it if you need Declarations methods: Declarations.new(rule.declarations)

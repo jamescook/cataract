@@ -32,6 +32,7 @@ desc "Run all benchmarks"
 task :benchmark do
   Rake::Task[:compile].invoke
   Rake::Task["benchmark:parsing"].invoke
+  Rake::Task["benchmark:serialization"].invoke
   Rake::Task["benchmark:specificity"].invoke
   Rake::Task["benchmark:merging"].invoke
 end
@@ -42,6 +43,13 @@ namespace :benchmark do
     Rake::Task[:compile].invoke
     puts "Running parsing benchmark..."
     ruby "test/benchmarks/benchmark_parsing.rb"
+  end
+
+  desc "Benchmark CSS serialization (to_s) performance"
+  task :serialization do
+    Rake::Task[:compile].invoke
+    puts "Running serialization benchmark..."
+    ruby "test/benchmarks/benchmark_serialization.rb"
   end
 
   desc "Benchmark specificity calculation performance"

@@ -7,14 +7,22 @@ module Cataract
       }.merge(options)
 
       # YJIT-friendly: define all instance variables upfront
-      @raw_rules = []
+      # @raw_rules is a hash: {media_query_string => [Rule, Rule, ...]}
+      @raw_rules = {}
       @css_source = nil
     end
 
     def parse(css_string)
       result = Cataract.parse_css_internal(css_string)
-      # parse_css_internal returns {rules: [...], charset: "..." | nil}
-      @raw_rules.concat(result[:rules])
+      # parse_css_internal returns {rules: {query_string => {media_types: [...], rules: [...]}}, charset: "..." | nil}
+      # Merge: if key exists, concatenate rules arrays; otherwise just add
+      @raw_rules.merge!(result[:rules]) do |_key, old_group, new_group|
+        # Merge rules arrays from both groups
+        {
+          media_types: old_group[:media_types],  # Keep existing media types
+          rules: old_group[:rules] + new_group[:rules]
+        }
+      end
       self
     end
 
@@ -34,17 +42,51 @@ module Cataract
         end
       end
 
-      # Track how many rules we had before parsing
-      rules_before = @raw_rules.length
+      # Track rules count before parsing to identify newly added rules
+      rules_before = @raw_rules.dup
 
       parse(css_to_parse)
 
-      # If media_types specified, update all just-added rules
+      # Override media types if specified
       if media_types
-        media_types_array = Array(media_types).map(&:to_sym)
-        # Update only the newly added rules (set media_query field on Rule struct)
-        @raw_rules[rules_before..-1].each do |rule|
-          rule[:media_query] = media_types_array
+        # Normalize media_types to array
+        override_media_types = Array(media_types).map(&:to_sym)
+
+        # Determine new media key for the overridden rules
+        new_media_key = if override_media_types == [:all] || override_media_types.empty?
+          nil
+        else
+          override_media_types.map(&:to_s).join(', ')
+        end
+
+        # Collect all rules that were added during this parse call
+        new_rules = []
+        @raw_rules.each do |query_string, group|
+          # Skip groups that existed before
+          if rules_before.key?(query_string)
+            # Only take rules that weren't in the group before
+            old_count = rules_before[query_string][:rules].length
+            new_count = group[:rules].length
+            if new_count > old_count
+              new_rules.concat(group[:rules][old_count..-1])
+              # Remove the newly added rules from their original group
+              group[:rules] = group[:rules][0...old_count]
+            end
+          else
+            # Entire group is new - take all its rules
+            new_rules.concat(group[:rules])
+            # Clear the group
+            group[:rules].clear
+          end
+        end
+
+        # Remove empty groups
+        @raw_rules.delete_if { |_key, group| group[:rules].empty? }
+
+        # Add all new rules to the override media type group
+        unless new_rules.empty?
+          @raw_rules[new_media_key] ||= { media_types: override_media_types, rules: [] }
+          @raw_rules[new_media_key][:rules].concat(new_rules)
         end
       end
 
@@ -115,8 +157,11 @@ module Cataract
     def rules
       return enum_for(:rules) unless block_given?
 
-      @raw_rules.each do |rule|
-        yield rule
+      # Iterate over all rules in all media query groups
+      @raw_rules.each_value do |group|
+        group[:rules].each do |rule|
+          yield rule
+        end
       end
     end
 
@@ -124,21 +169,34 @@ module Cataract
       # Convert declarations to Declarations object if needed
       decls = declarations.is_a?(Declarations) ? declarations : Declarations.new(declarations)
 
-      # Create Rule struct
+      # Create Rule struct (no media_query field - stored at group level)
       rule = Cataract::Rule.new(
         selector.to_s,
         decls.to_a,
-        nil,  # specificity calculated on demand
-        Array(media_types).map(&:to_sym)
+        nil   # specificity calculated on demand
       )
 
-      @raw_rules << rule
+      # Normalize media_types to array
+      media_types_array = Array(media_types).map(&:to_sym)
+
+      # Determine media query string key
+      # For now, map media_types to simple strings
+      # TODO: This is a simplified approach - may need enhancement
+      media_key = if media_types_array == [:all] || media_types_array.empty?
+        nil  # No media query
+      else
+        media_types_array.map(&:to_s).join(', ')
+      end
+
+      # Get or create group
+      @raw_rules[media_key] ||= { media_types: media_types_array, rules: [] }
+      @raw_rules[media_key][:rules] << rule
 
       # Return RuleSet wrapper for user-facing API (css_parser compatibility)
       RuleSet.new(
         selector: rule.selector,
         declarations: Declarations.new(rule.declarations),
-        media_types: rule.media_types
+        media_types: media_types_array
       )
     end
 
@@ -147,30 +205,64 @@ module Cataract
       rule = Cataract::Rule.new(
         rule_set.selector,
         rule_set.declarations.to_a,
-        rule_set.specificity,
-        rule_set.media_types
+        rule_set.specificity
       )
-      @raw_rules << rule
+
+      # Determine media query key
+      media_key = if rule_set.media_types == [:all] || rule_set.media_types.empty?
+        nil
+      else
+        rule_set.media_types.map(&:to_s).join(', ')
+      end
+
+      # Get or create group
+      @raw_rules[media_key] ||= { media_types: Array(rule_set.media_types).map(&:to_sym), rules: [] }
+      @raw_rules[media_key][:rules] << rule
       self
     end
 
     def remove_rule_set!(rule_set)
-      @raw_rules.reject! do |rule|
-        rule.selector == rule_set.selector &&
-          rule.declarations == rule_set.declarations.to_a &&
-          rule.media_query == rule_set.media_types
+      # Iterate through each media query group
+      @raw_rules.each_value do |group|
+        group[:rules].reject! do |rule|
+          rule.selector == rule_set.selector &&
+            rule.declarations == rule_set.declarations.to_a
+        end
       end
+      # Clean up empty groups
+      @raw_rules.delete_if { |_key, group| group[:rules].empty? }
       self
     end
 
     # Remove rules matching criteria
     def remove_rules!(selector: nil, media_types: nil)
-      @raw_rules.reject! do |rule|
-        match = true
-        match &&= (rule.selector == selector) if selector
-        match &&= rule.applies_to_media?(media_types) if media_types
-        match
+      # Normalize media_types filter
+      filter_media_types = if media_types
+        Array(media_types).map(&:to_sym)
+      else
+        nil  # nil means remove from all media types
       end
+
+      @raw_rules.each do |_query_string, group|
+        # Skip groups that don't match media_types filter
+        if filter_media_types
+          group_media_types = group[:media_types] || []
+          # Check if this group matches the filter
+          next unless filter_media_types.include?(:all) ||
+                      !(group_media_types & filter_media_types).empty?
+        end
+
+        # Remove matching rules from this group
+        group[:rules].reject! do |rule|
+          match = true
+          match &&= (rule.selector == selector) if selector
+          match
+        end
+      end
+
+      # Clean up empty groups
+      @raw_rules.delete_if { |_key, group| group[:rules].empty? }
+      self
     end
     
     # CSS-parser gem compatible API
@@ -178,11 +270,23 @@ module Cataract
     def each_selector(media_types = :all)
       return enum_for(:each_selector, media_types) unless block_given?
 
-      rules.each do |rule|
-        next unless rule.applies_to_media?(media_types)
-        # Convert declarations array to string using C function
-        decls_str = Cataract.declarations_to_s(rule.declarations)
-        yield rule.selector, decls_str, rule.specificity, rule.media_query
+      query_media_types = Array(media_types).map(&:to_sym)
+
+      @raw_rules.each do |media_query_string, group|
+        # Filter by media types at group level
+        group_media_types = group[:media_types] || []
+
+        # :all matches everything
+        next unless query_media_types.include?(:all) ||
+                    (group_media_types.empty? && query_media_types.include?(:all)) ||
+                    !(group_media_types & query_media_types).empty?
+
+        group[:rules].each do |rule|
+          # Convert declarations array to string using C function
+          decls_str = Cataract.declarations_to_s(rule.declarations)
+          # Yield with group's media_types, not query_string
+          yield rule.selector, decls_str, rule.specificity, group_media_types
+        end
       end
     end
 
@@ -203,10 +307,28 @@ module Cataract
     #
     # Returns an array of declaration strings.
     def find_by_selector(selector, media_types = :all)
-      matching_rules = rules.select do |rule|
-        rule.selector == selector && rule.applies_to_media?(media_types)
+      query_media_types = Array(media_types).map(&:to_sym)
+      matching_declarations = []
+
+      @raw_rules.each do |query_string, group|
+        # Filter by media types at group level
+        group_media_types = group[:media_types] || []
+
+        # :all matches everything
+        if query_media_types.include?(:all) ||
+           (group_media_types.empty? && query_media_types.include?(:all)) ||
+           !(group_media_types & query_media_types).empty?
+
+          # Find rules with matching selector in this group
+          group[:rules].each do |rule|
+            if rule.selector == selector
+              matching_declarations << Cataract.declarations_to_s(rule.declarations)
+            end
+          end
+        end
       end
-      matching_rules.map { |rule| Cataract.declarations_to_s(rule.declarations) }
+
+      matching_declarations
     end
     alias [] find_by_selector
 
@@ -217,9 +339,27 @@ module Cataract
     def each_rule_set(media_types = :all) # :yields: rule_set, media_types
       return enum_for(:each_rule_set, media_types) unless block_given?
 
-      rules.each do |rule|
-        next unless rule.applies_to_media?(media_types)
-        yield rule, rule.media_types
+      query_media_types = Array(media_types).map(&:to_sym)
+
+      @raw_rules.each do |media_query_string, group|
+        # Filter by media types at group level
+        group_media_types = group[:media_types] || []
+
+        # :all matches everything
+        next unless query_media_types.include?(:all) ||
+                    (group_media_types.empty? && query_media_types.include?(:all)) ||
+                    !(group_media_types & query_media_types).empty?
+
+        group[:rules].each do |rule|
+          # Wrap Rule struct in RuleSet for user-facing API
+          rule_set = RuleSet.new(
+            selector: rule.selector,
+            declarations: Declarations.new(rule.declarations),
+            media_types: group_media_types,
+            specificity: rule.specificity
+          )
+          yield rule_set, group_media_types
+        end
       end
     end
 
@@ -256,34 +396,32 @@ module Cataract
     # - find_by_selector(selector, :all) -> find non-media-specific rules (for querying)
     def to_s(which_media = :all)
       out = []
-      styles_by_media_types = {}
+      styles_by_media_query = {}
 
-      # Special case: :all means iterate through ALL rules for output
-      # We iterate manually instead of using each_selector to avoid filtering
-      rules.each do |rule|
-        # Skip filtering when which_media is :all
-        next unless which_media == :all || rule.applies_to_media?(which_media)
+      # Group styles by media query string using each_selector (which handles filtering)
+      each_selector(which_media) do |selector, declarations, _specificity, media_types|
+        # Find the media query string for this media_types
+        media_query_string = @raw_rules.find { |mq, group| group[:media_types] == media_types }&.first
 
-        rule.media_query.each do |media_type|
-          styles_by_media_types[media_type] ||= []
-          decls_str = Cataract.declarations_to_s(rule.declarations)
-          styles_by_media_types[media_type] << [rule.selector, decls_str]
-        end
+        styles_by_media_query[media_query_string] ||= []
+        styles_by_media_query[media_query_string] << [selector, declarations]
       end
 
-      styles_by_media_types.each_pair do |media_type, media_styles|
-        media_block = (media_type != :all)
-        out << "@media #{media_type} {" if media_block
-
-        media_styles.each do |media_style|
-          if media_block
-            out.push("  #{media_style[0]} { #{media_style[1]} }")
-          else
-            out.push("#{media_style[0]} { #{media_style[1]} }")
+      # Output grouped by media query
+      styles_by_media_query.each do |media_query_string, styles|
+        if media_query_string.nil?
+          # No media query - output rules directly
+          styles.each do |selector, declarations|
+            out << "#{selector} { #{declarations} }"
           end
+        else
+          # Has media query - output all rules in single @media block
+          out << "@media #{media_query_string} {"
+          styles.each do |selector, declarations|
+            out << "  #{selector} { #{declarations} }"
+          end
+          out << "}"
         end
-
-        out << '}' if media_block
       end
 
       out << ''
@@ -292,12 +430,27 @@ module Cataract
     
     # Utility methods
     def rules_count
-      @raw_rules.length
+      @raw_rules.values.sum { |group| group[:rules].length }
     end
 
     def selectors(media_types = :all)
-      rules.select { |rule| rule.applies_to_media?(media_types) }
-           .map(&:selector)
+      query_media_types = Array(media_types).map(&:to_sym)
+      result = []
+
+      @raw_rules.each do |media_query_string, group|
+        # Filter by media types at group level
+        group_media_types = group[:media_types] || []
+
+        # :all matches everything
+        if query_media_types.include?(:all) ||
+           (group_media_types.empty? && query_media_types.include?(:all)) ||
+           !(group_media_types & query_media_types).empty?
+
+          result.concat(group[:rules].map(&:selector))
+        end
+      end
+
+      result
     end
 
     # Export back to CSS source
@@ -310,16 +463,21 @@ module Cataract
     def to_h
       result = {}
 
-      rules.each do |rule|
-        rule.media_query.each do |media_type|
+      @raw_rules.each do |media_query_string, group|
+        group_media_types = group[:media_types] || [:all]
+
+        group_media_types.each do |media_type|
           media_key = media_type.to_s
           result[media_key] ||= {}
-          result[media_key][rule.selector] ||= {}
 
-          # Iterate declarations array directly - no intermediate object
-          rule.declarations.each do |decl|
-            result[media_key][rule.selector][decl.property] =
-              decl.important ? "#{decl.value} !important" : decl.value
+          group[:rules].each do |rule|
+            result[media_key][rule.selector] ||= {}
+
+            # Iterate declarations array directly - no intermediate object
+            rule.declarations.each do |decl|
+              result[media_key][rule.selector][decl.property] =
+                decl.important ? "#{decl.value} !important" : decl.value
+            end
           end
         end
       end
@@ -334,7 +492,7 @@ module Cataract
 
     # Clear all rules
     def clear!
-      @raw_rules = []
+      @raw_rules = {}
       @css_source = nil
     end
 

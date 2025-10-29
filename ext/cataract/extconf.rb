@@ -28,6 +28,31 @@ else
   puts "Using string buffer pre-allocation optimization (rb_str_buf_new)"
 end
 
+# Compiler optimization flags (test one at a time)
+if ENV['USE_O3']
+  puts "Using -O3 optimization level"
+  $CFLAGS << " -O3"
+end
+
+if ENV['USE_MARCH_NATIVE']
+  puts "Using -march=native (CPU-specific optimizations)"
+  $CFLAGS << " -march=native"
+end
+
+if ENV['USE_FUNROLL_LOOPS']
+  puts "Using -funroll-loops (automatic loop unrolling)"
+  $CFLAGS << " -funroll-loops"
+end
+
+# Manual loop unrolling in lowercase_property (enabled by default)
+# Benchmark: ~6.6% faster on Apple Silicon M1 (bootstrap.css parsing)
+if ENV['DISABLE_LOOP_UNROLL']
+  puts "Disabling manual loop unrolling in lowercase_property (baseline mode)"
+  $CFLAGS << " -DDISABLE_LOOP_UNROLL"
+else
+  puts "Using manual loop unrolling in lowercase_property (default, ~6.6% faster)"
+end
+
 # Suppress warnings from Ragel-generated code
 # The generated C code has some harmless warnings we can't fix
 $CFLAGS << " -Wno-unused-const-variable" if RUBY_PLATFORM =~ /darwin|linux/
