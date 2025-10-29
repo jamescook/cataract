@@ -95,6 +95,15 @@ static inline void trim_trailing(const char *start, const char **end) {
     }
 }
 
+// Strip whitespace from both ends and return new string
+static inline VALUE strip_string(const char *str, long len) {
+    const char *start = str;
+    const char *end = str + len;
+    trim_leading(&start, end);
+    trim_trailing(start, &end);
+    return rb_str_new(start, end - start);
+}
+
 // Lowercase property name (CSS property names are ASCII-only)
 //
 // Performance: Manual loop unrolling (USE_LOOP_UNROLL) provides ~6.6% speedup
@@ -163,9 +172,11 @@ VALUE declarations_to_s(VALUE self, VALUE declarations_array);
 
 // Stylesheet serialization (stylesheet.c)
 VALUE stylesheet_to_s_c(VALUE self, VALUE rules_array, VALUE charset);
+VALUE stylesheet_to_formatted_s_c(VALUE self, VALUE rules_array, VALUE charset);
 
 // Merge/cascade functions (merge.c)
 VALUE cataract_merge(VALUE self, VALUE rules_array);
+VALUE cataract_merge_wrapper(VALUE self, VALUE input);
 
 // Shorthand expansion (shorthand_expander.rl)
 VALUE cataract_split_value(VALUE self, VALUE value);

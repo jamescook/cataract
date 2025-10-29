@@ -643,8 +643,8 @@ VALUE parse_css_impl(VALUE css_string, int depth, VALUE parent_media_query) {
 
                     } else if (strstr(at_name, "keyframes") != NULL) {
                         // @keyframes - create dummy rule with animation name
-                        VALUE animation_name = rb_str_new(prelude_start, prelude_len);
-                        animation_name = rb_funcall(animation_name, rb_intern("strip"), 0);
+                        // Strip whitespace without rb_funcall
+                        VALUE animation_name = strip_string(prelude_start, prelude_len);
 
                         // Build selector: "@keyframes " + name
                         VALUE sel = UTF8_STR("@");
@@ -706,8 +706,8 @@ VALUE parse_css_impl(VALUE css_string, int depth, VALUE parent_media_query) {
                                 rb_str_cat(sel, at_name, strlen(at_name));
 
                                 if (prelude_len > 0) {
-                                    VALUE prelude_val = rb_str_new(prelude_start, prelude_len);
-                                    prelude_val = rb_funcall(prelude_val, rb_intern("strip"), 0);
+                                    // Strip whitespace without rb_funcall
+                                    VALUE prelude_val = strip_string(prelude_start, prelude_len);
                                     if (RSTRING_LEN(prelude_val) > 0) {
                                         rb_str_cat2(sel, " ");
                                         rb_str_append(sel, prelude_val);

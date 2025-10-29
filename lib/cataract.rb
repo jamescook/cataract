@@ -42,15 +42,16 @@ module Cataract
     return [] if rules.nil? || rules.empty?
 
     # Accept both Stylesheet and Array for convenience
-    rules_array = if rules.is_a?(Stylesheet)
-      rules.rules.to_a  # Convert enumerator to array
+    input = if rules.is_a?(Stylesheet)
+      # Pass hash structure directly to C - it will flatten efficiently
+      rules.instance_variable_get(:@rule_groups)
     elsif rules.is_a?(Enumerator)
       rules.to_a
     else
       rules
     end
 
-    # Call C implementation for performance
-    Cataract.merge_rules(rules_array)
+    # Call C implementation for performance (handles both hash and array)
+    Cataract.merge_rules(input)
   end
 end

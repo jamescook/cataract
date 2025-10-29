@@ -466,3 +466,44 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
 
     return result;
 }
+
+// Context for flattening hash structure callback
+struct flatten_hash_ctx {
+    VALUE rules_array;
+};
+
+// Callback to flatten {query_string => {media_types: [...], rules: [...]}} to array
+static int flatten_hash_callback(VALUE query_string, VALUE group_hash, VALUE arg) {
+    struct flatten_hash_ctx *ctx = (struct flatten_hash_ctx *)arg;
+
+    VALUE rules = rb_hash_aref(group_hash, ID2SYM(rb_intern("rules")));
+    if (!NIL_P(rules) && TYPE(rules) == T_ARRAY) {
+        long rules_len = RARRAY_LEN(rules);
+        for (long i = 0; i < rules_len; i++) {
+            rb_ary_push(ctx->rules_array, RARRAY_AREF(rules, i));
+        }
+    }
+
+    return ST_CONTINUE;
+}
+
+// Wrapper function that accepts either array or hash structure
+// This is called from Ruby as Cataract.merge_rules
+VALUE cataract_merge_wrapper(VALUE self, VALUE input) {
+    // Check if input is a hash (new structure from Stylesheet)
+    if (TYPE(input) == T_HASH) {
+        // Flatten hash structure to array
+        VALUE rules_array = rb_ary_new();
+        struct flatten_hash_ctx ctx = { rules_array };
+        rb_hash_foreach(input, flatten_hash_callback, (VALUE)&ctx);
+
+        // Call the original merge function
+        VALUE result = cataract_merge(self, rules_array);
+
+        RB_GC_GUARD(rules_array);
+        return result;
+    }
+
+    // Input is already an array - call original function directly
+    return cataract_merge(self, input);
+}

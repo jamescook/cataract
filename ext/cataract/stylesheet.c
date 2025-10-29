@@ -3,66 +3,97 @@
 
 /*
  * C implementation of Stylesheet#to_s with no rb_funcall
- * Uses rb_hash_foreach callbacks instead of extracting keys
+ * Optimized for new hash structure: {query_string => {media_types: [...], rules: [...]}}
  *
  * This provides ~36% speedup over the Ruby implementation for serialization,
  * which is important since to_s is a hot path in the premailer use case.
  */
 
-// Context for merge callback
-struct merge_groups_ctx {
+// Context for merge callback within a group
+struct merge_selector_ctx {
     VALUE merged_rules;
     VALUE self;
 };
 
-// Callback for merging each group
-static int merge_groups_callback(VALUE key, VALUE group_rules, VALUE arg) {
-    struct merge_groups_ctx *ctx = (struct merge_groups_ctx *)arg;
+// Callback for merging rules with the same selector within a media group
+static int merge_selector_callback(VALUE selector, VALUE selector_rules, VALUE arg) {
+    struct merge_selector_ctx *ctx = (struct merge_selector_ctx *)arg;
 
-    VALUE first_rule = RARRAY_AREF(group_rules, 0);
-    VALUE selector = rb_struct_aref(first_rule, INT2FIX(0));
+    // If only one rule, use it directly
+    if (RARRAY_LEN(selector_rules) == 1) {
+        rb_ary_push(ctx->merged_rules, RARRAY_AREF(selector_rules, 0));
+        return ST_CONTINUE;
+    }
+
+    // Multiple rules with same selector - merge them
+    VALUE first_rule = RARRAY_AREF(selector_rules, 0);
     VALUE specificity = rb_struct_aref(first_rule, INT2FIX(2));
-    // Note: media_query field removed from Rule struct - now stored at group level
 
-    // Merge declarations for this group (C function, no rb_funcall)
-    VALUE merged_declarations = cataract_merge(ctx->self, group_rules);
+    // Merge declarations for this selector (C function, no rb_funcall)
+    VALUE merged_declarations = cataract_merge(ctx->self, selector_rules);
 
-    // Create new Rule struct (no media_query field)
-    VALUE new_rule = rb_struct_new(cRule, selector, merged_declarations, specificity);
-    rb_ary_push(ctx->merged_rules, new_rule);
+    // Create new merged Rule struct
+    VALUE merged_rule = rb_struct_new(cRule, selector, merged_declarations, specificity);
+    rb_ary_push(ctx->merged_rules, merged_rule);
 
     return ST_CONTINUE;
 }
 
-// Context for serialization callback
-struct serialize_media_ctx {
+// Context for processing each media group
+struct process_group_ctx {
     VALUE result;
     VALUE self;
 };
 
-// Callback for serializing each media type
-static int serialize_media_callback(VALUE media_type, VALUE rules_for_media, VALUE arg) {
-    struct serialize_media_ctx *ctx = (struct serialize_media_ctx *)arg;
+// Callback for processing each media query group
+static int process_group_callback(VALUE query_string, VALUE group_hash, VALUE arg) {
+    struct process_group_ctx *ctx = (struct process_group_ctx *)arg;
 
-    // Check if this is a media block
-    VALUE all_sym = ID2SYM(rb_intern("all"));
-    int is_media_block = (media_type != all_sym);
+    // Extract rules array from group hash
+    VALUE rules_array = rb_hash_aref(group_hash, ID2SYM(rb_intern("rules")));
+    if (NIL_P(rules_array) || RARRAY_LEN(rules_array) == 0) {
+        return ST_CONTINUE; // Skip empty groups
+    }
 
-    if (is_media_block) {
+    // Group rules by selector for merging
+    VALUE rules_by_selector = rb_hash_new();
+    long rules_len = RARRAY_LEN(rules_array);
+
+    for (long i = 0; i < rules_len; i++) {
+        VALUE rule = RARRAY_AREF(rules_array, i);
+        VALUE selector = rb_struct_aref(rule, INT2FIX(0));
+
+        VALUE selector_group = rb_hash_aref(rules_by_selector, selector);
+        if (NIL_P(selector_group)) {
+            selector_group = rb_ary_new();
+            rb_hash_aset(rules_by_selector, selector, selector_group);
+        }
+        rb_ary_push(selector_group, rule);
+    }
+
+    // Merge rules with same selector
+    VALUE merged_rules = rb_ary_new();
+    struct merge_selector_ctx merge_ctx = { merged_rules, ctx->self };
+    rb_hash_foreach(rules_by_selector, merge_selector_callback, (VALUE)&merge_ctx);
+
+    // Check if this is a media query or not
+    int has_media_query = !NIL_P(query_string);
+
+    if (has_media_query) {
+        // Output @media wrapper
         rb_str_buf_cat2(ctx->result, "@media ");
-        // Use rb_sym2str instead of to_s (no rb_funcall)
-        VALUE media_str = rb_sym2str(media_type);
-        rb_str_buf_append(ctx->result, media_str);
+        rb_str_buf_append(ctx->result, query_string);
         rb_str_buf_cat2(ctx->result, " {\n");
     }
 
-    long rules_len = RARRAY_LEN(rules_for_media);
-    for (long j = 0; j < rules_len; j++) {
-        VALUE rule = RARRAY_AREF(rules_for_media, j);
+    // Output each merged rule
+    long merged_len = RARRAY_LEN(merged_rules);
+    for (long j = 0; j < merged_len; j++) {
+        VALUE rule = RARRAY_AREF(merged_rules, j);
         VALUE selector = rb_struct_aref(rule, INT2FIX(0));
         VALUE declarations = rb_struct_aref(rule, INT2FIX(1));
 
-        if (is_media_block) {
+        if (has_media_query) {
             rb_str_buf_cat2(ctx->result, "  ");
         }
 
@@ -76,20 +107,26 @@ static int serialize_media_callback(VALUE media_type, VALUE rules_for_media, VAL
         rb_str_buf_cat2(ctx->result, " }\n");
     }
 
-    if (is_media_block) {
+    if (has_media_query) {
         rb_str_buf_cat2(ctx->result, "}\n");
     }
+
+    RB_GC_GUARD(rules_array);
+    RB_GC_GUARD(rules_by_selector);
+    RB_GC_GUARD(merged_rules);
 
     return ST_CONTINUE;
 }
 
-VALUE stylesheet_to_s_c(VALUE self, VALUE rules_array, VALUE charset) {
-    Check_Type(rules_array, T_ARRAY);
+// Main function: stylesheet_to_s_c(rule_groups_hash, charset)
+// New signature: takes hash structure {query_string => {media_types: [...], rules: [...]}}
+VALUE stylesheet_to_s_c(VALUE self, VALUE rule_groups, VALUE charset) {
+    Check_Type(rule_groups, T_HASH);
 
-    long len = RARRAY_LEN(rules_array);
+    long num_groups = RHASH_SIZE(rule_groups);
 
     // Handle empty stylesheet
-    if (len == 0) {
+    if (num_groups == 0) {
         if (!NIL_P(charset)) {
             // Even empty stylesheet should emit @charset if present
             VALUE result = UTF8_STR("@charset \"");
@@ -100,56 +137,8 @@ VALUE stylesheet_to_s_c(VALUE self, VALUE rules_array, VALUE charset) {
         return UTF8_STR("");
     }
 
-    // Step 1: Group rules by [selector, media_query]
-    // Use array as hash key (Ruby compares arrays by value)
-    VALUE groups = rb_hash_new();
-
-    for (long i = 0; i < len; i++) {
-        VALUE rule = RARRAY_AREF(rules_array, i);
-        Check_Type(rule, T_STRUCT);
-
-        VALUE selector = rb_struct_aref(rule, INT2FIX(0));
-        VALUE media_query = rb_struct_aref(rule, INT2FIX(3));
-
-        // Create array key [selector, media_query] - no string conversion!
-        VALUE key = rb_ary_new_from_args(2, selector, media_query);
-
-        VALUE group = rb_hash_aref(groups, key);
-        if (NIL_P(group)) {
-            group = rb_ary_new();
-            rb_hash_aset(groups, key, group);
-        }
-        rb_ary_push(group, rule);
-    }
-
-    // Step 2: Merge each group using rb_hash_foreach (no .keys call)
-    VALUE merged_rules = rb_ary_new();
-    struct merge_groups_ctx merge_ctx = { merged_rules, self };
-    rb_hash_foreach(groups, merge_groups_callback, (VALUE)&merge_ctx);
-
-    // Step 3: Group merged rules by media_type
-    VALUE styles_by_media = rb_hash_new();
-    long merged_len = RARRAY_LEN(merged_rules);
-
-    for (long i = 0; i < merged_len; i++) {
-        VALUE rule = RARRAY_AREF(merged_rules, i);
-        VALUE media_query = rb_struct_aref(rule, INT2FIX(3));
-
-        long media_len = RARRAY_LEN(media_query);
-        for (long j = 0; j < media_len; j++) {
-            VALUE media_type = RARRAY_AREF(media_query, j);
-
-            VALUE rules_for_media = rb_hash_aref(styles_by_media, media_type);
-            if (NIL_P(rules_for_media)) {
-                rules_for_media = rb_ary_new();
-                rb_hash_aset(styles_by_media, media_type, rules_for_media);
-            }
-            rb_ary_push(rules_for_media, rule);
-        }
-    }
-
-    // Step 4: Serialize to string using rb_hash_foreach (no .keys call)
-    VALUE result = rb_str_buf_new(merged_len * 100);
+    // Allocate result string with reasonable capacity
+    VALUE result = rb_str_buf_new(num_groups * 100);
 
     // Emit @charset first if present (must be first per W3C spec)
     if (!NIL_P(charset)) {
@@ -158,12 +147,143 @@ VALUE stylesheet_to_s_c(VALUE self, VALUE rules_array, VALUE charset) {
         rb_str_buf_cat2(result, "\";\n");
     }
 
-    struct serialize_media_ctx serialize_ctx = { result, self };
-    rb_hash_foreach(styles_by_media, serialize_media_callback, (VALUE)&serialize_ctx);
+    // Process each media query group
+    struct process_group_ctx ctx = { result, self };
+    rb_hash_foreach(rule_groups, process_group_callback, (VALUE)&ctx);
 
-    RB_GC_GUARD(groups);
+    RB_GC_GUARD(result);
+
+    return result;
+}
+
+// ============================================================================
+// Formatted output (to_formatted_s)
+// ============================================================================
+
+// Context for formatted processing
+struct format_group_ctx {
+    VALUE result;
+    VALUE self;
+};
+
+// Callback for formatted output with newlines and 2-space indentation
+static int format_group_callback(VALUE query_string, VALUE group_hash, VALUE arg) {
+    struct format_group_ctx *ctx = (struct format_group_ctx *)arg;
+
+    // Extract rules array from group hash
+    VALUE rules_array = rb_hash_aref(group_hash, ID2SYM(rb_intern("rules")));
+    if (NIL_P(rules_array) || RARRAY_LEN(rules_array) == 0) {
+        return ST_CONTINUE; // Skip empty groups
+    }
+
+    // Group rules by selector for merging
+    VALUE rules_by_selector = rb_hash_new();
+    long rules_len = RARRAY_LEN(rules_array);
+
+    for (long i = 0; i < rules_len; i++) {
+        VALUE rule = RARRAY_AREF(rules_array, i);
+        VALUE selector = rb_struct_aref(rule, INT2FIX(0));
+
+        VALUE selector_group = rb_hash_aref(rules_by_selector, selector);
+        if (NIL_P(selector_group)) {
+            selector_group = rb_ary_new();
+            rb_hash_aset(rules_by_selector, selector, selector_group);
+        }
+        rb_ary_push(selector_group, rule);
+    }
+
+    // Merge rules with same selector
+    VALUE merged_rules = rb_ary_new();
+    struct merge_selector_ctx merge_ctx = { merged_rules, ctx->self };
+    rb_hash_foreach(rules_by_selector, merge_selector_callback, (VALUE)&merge_ctx);
+
+    // Check if this is a media query or not
+    int has_media_query = !NIL_P(query_string);
+
+    if (has_media_query) {
+        // Output @media wrapper
+        rb_str_buf_cat2(ctx->result, "@media ");
+        rb_str_buf_append(ctx->result, query_string);
+        rb_str_buf_cat2(ctx->result, " {\n");
+    }
+
+    // Output each merged rule with formatting
+    long merged_len = RARRAY_LEN(merged_rules);
+    for (long j = 0; j < merged_len; j++) {
+        VALUE rule = RARRAY_AREF(merged_rules, j);
+        VALUE selector = rb_struct_aref(rule, INT2FIX(0));
+        VALUE declarations = rb_struct_aref(rule, INT2FIX(1));
+
+        // Indent selector if inside media query
+        if (has_media_query) {
+            rb_str_buf_cat2(ctx->result, "  ");
+        }
+
+        // Selector on its own line
+        rb_str_buf_append(ctx->result, selector);
+        rb_str_buf_cat2(ctx->result, " {\n");
+
+        // Declarations indented with 2 spaces (or 4 if inside media query)
+        const char *indent = has_media_query ? "    " : "  ";
+        rb_str_buf_cat2(ctx->result, indent);
+
+        // Get declarations string
+        VALUE decls_str = declarations_to_s(ctx->self, declarations);
+        rb_str_buf_append(ctx->result, decls_str);
+
+        rb_str_buf_cat2(ctx->result, "\n");
+
+        // Closing brace
+        if (has_media_query) {
+            rb_str_buf_cat2(ctx->result, "  ");
+        }
+        rb_str_buf_cat2(ctx->result, "}\n");
+    }
+
+    if (has_media_query) {
+        rb_str_buf_cat2(ctx->result, "}\n");
+    }
+
+    RB_GC_GUARD(rules_array);
+    RB_GC_GUARD(rules_by_selector);
     RB_GC_GUARD(merged_rules);
-    RB_GC_GUARD(styles_by_media);
+
+    return ST_CONTINUE;
+}
+
+// stylesheet_to_formatted_s_c(rule_groups_hash, charset)
+// Returns formatted multi-line output with 2-space indentation
+// Not optimized for performance since it's not in the hot path
+VALUE stylesheet_to_formatted_s_c(VALUE self, VALUE rule_groups, VALUE charset) {
+    Check_Type(rule_groups, T_HASH);
+
+    long num_groups = RHASH_SIZE(rule_groups);
+
+    // Handle empty stylesheet
+    if (num_groups == 0) {
+        if (!NIL_P(charset)) {
+            VALUE result = UTF8_STR("@charset \"");
+            rb_str_buf_append(result, charset);
+            rb_str_buf_cat2(result, "\";\n");
+            return result;
+        }
+        return UTF8_STR("");
+    }
+
+    // Simple allocation - let Ruby resize as needed (not in hot path)
+    VALUE result = UTF8_STR("");
+
+    // Emit @charset first if present
+    if (!NIL_P(charset)) {
+        rb_str_buf_cat2(result, "@charset \"");
+        rb_str_buf_append(result, charset);
+        rb_str_buf_cat2(result, "\";\n");
+    }
+
+    // Process each media query group with formatting
+    struct format_group_ctx ctx = { result, self };
+    rb_hash_foreach(rule_groups, format_group_callback, (VALUE)&ctx);
+
     RB_GC_GUARD(result);
 
     return result;

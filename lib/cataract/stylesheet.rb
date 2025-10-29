@@ -27,53 +27,14 @@ module Cataract
       each
     end
 
+    # Compact format
     def to_s
-      # TODO: Use C implementation once stylesheet_to_s_c is updated for new structure
-      # For now, use Ruby implementation with merging
-      out = []
+      Cataract.stylesheet_to_s_c(@rule_groups, @charset)
+    end
 
-      # Emit @charset first if present (must be first per W3C spec)
-      if @charset
-        out << "@charset \"#{@charset}\";"
-      end
-
-      @rule_groups.each do |query_string, group|
-        # Group rules by selector within this media query group
-        rules_by_selector = {}
-        group[:rules].each do |rule|
-          rules_by_selector[rule.selector] ||= []
-          rules_by_selector[rule.selector] << rule
-        end
-
-        # Merge rules with the same selector
-        merged_rules = rules_by_selector.map do |selector, rules|
-          if rules.length == 1
-            rules.first
-          else
-            # Multiple rules with same selector - merge them
-            merged_decls = Cataract.merge_rules(rules)
-            Cataract::Rule.new(selector, merged_decls, rules.first.specificity)
-          end
-        end
-
-        if query_string.nil?
-          # No media query - output rules directly
-          merged_rules.each do |rule|
-            decls_str = Cataract.declarations_to_s(rule.declarations)
-            out << "#{rule.selector} { #{decls_str} }"
-          end
-        else
-          # Has media query - output all rules in single @media block
-          out << "@media #{query_string} {"
-          merged_rules.each do |rule|
-            decls_str = Cataract.declarations_to_s(rule.declarations)
-            out << "  #{rule.selector} { #{decls_str} }"
-          end
-          out << "}"
-        end
-      end
-
-      out.join("\n")
+    # Multi-line format with 2-space indentation
+    def to_formatted_s
+      Cataract.stylesheet_to_formatted_s_c(@rule_groups, @charset)
     end
 
     # Add more CSS to this stylesheet

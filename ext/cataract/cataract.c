@@ -265,8 +265,8 @@ void Init_cataract() {
     rb_define_module_function(module, "parse_css", parse_css, 1);
     rb_define_module_function(module, "parse_declarations", parse_declarations, 1);
     rb_define_module_function(module, "calculate_specificity", calculate_specificity, 1);
-    rb_define_module_function(module, "merge_rules", cataract_merge, 1);
-    rb_define_module_function(module, "apply_cascade", cataract_merge, 1);  // Alias with better name
+    rb_define_module_function(module, "merge_rules", cataract_merge_wrapper, 1);
+    rb_define_module_function(module, "apply_cascade", cataract_merge_wrapper, 1);  // Alias with better name
     rb_define_module_function(module, "rules_to_s", rules_to_s, 1);
     rb_define_module_function(module, "split_value", cataract_split_value, 1);
     rb_define_module_function(module, "expand_margin", cataract_expand_margin, 1);
@@ -294,6 +294,7 @@ void Init_cataract() {
     // Serialization
     rb_define_module_function(module, "declarations_to_s", declarations_to_s, 1);
     rb_define_module_function(module, "stylesheet_to_s_c", stylesheet_to_s_c, 2);
+    rb_define_module_function(module, "stylesheet_to_formatted_s_c", stylesheet_to_formatted_s_c, 2);
 
     // Export string allocation mode as a constant for verification in benchmarks
     #ifdef DISABLE_STR_BUF_OPTIMIZATION
