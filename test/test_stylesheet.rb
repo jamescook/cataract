@@ -4,7 +4,7 @@
 require 'minitest/autorun'
 require_relative '../lib/cataract'
 
-class TestSerialization < Minitest::Test
+class TestStylesheet < Minitest::Test
   def test_stylesheet_to_s
     css = 'body { color: red; margin: 10px; }'
     sheet = Cataract.parse_css(css)
@@ -189,7 +189,7 @@ body { color: red; }'
     sheet = Cataract.parse_css(css)
 
     selectors = []
-    sheet.each_selector(:all) do |selector, declarations, specificity, media_types|
+    sheet.each_selector(media: :all) do |selector, declarations, specificity, media_types|
       selectors << [selector, media_types]
     end
 
@@ -212,7 +212,7 @@ body { color: red; }'
     sheet = Cataract.parse_css(css)
 
     selectors = []
-    sheet.each_selector(:print) do |selector, declarations, specificity, media_types|
+    sheet.each_selector(media: :print) do |selector, declarations, specificity, media_types|
       selectors << [selector, media_types]
     end
 
@@ -234,7 +234,7 @@ body { color: red; }'
     sheet = Cataract.parse_css(css)
 
     selectors = []
-    sheet.each_selector(:screen) do |selector, declarations, specificity, media_types|
+    sheet.each_selector(media: :screen) do |selector, declarations, specificity, media_types|
       selectors << [selector, media_types]
     end
 
@@ -256,7 +256,7 @@ body { color: red; }'
 
     # Query for both screen and print
     selectors = []
-    sheet.each_selector([:screen, :print]) do |selector, declarations, specificity, media_types|
+    sheet.each_selector(media: [:screen, :print]) do |selector, declarations, specificity, media_types|
       selectors << selector
     end
 
@@ -270,11 +270,280 @@ body { color: red; }'
     sheet = Cataract.parse_css(css)
 
     selectors = []
-    sheet.each_selector(:screen) do |selector, declarations, specificity, media_types|
+    sheet.each_selector(media: :screen) do |selector, declarations, specificity, media_types|
       selectors << selector
     end
 
     assert_equal [], selectors
+  end
+
+  # ============================================================================
+  # each_selector with specificity filtering - New feature
+  # ============================================================================
+
+  def test_each_selector_with_specificity_exact
+    css = <<~CSS
+      body { color: red; }
+      div { margin: 10px; }
+      .header { padding: 5px; }
+      #main { font-size: 14px; }
+    CSS
+    sheet = Cataract.parse_css(css)
+
+    # Find rules with specificity = 1 (element selectors: body, div)
+    matches = []
+    sheet.each_selector(specificity: 1) do |selector, declarations, specificity, media_types|
+      matches << selector
+    end
+
+    assert_equal 2, matches.length
+    assert_includes matches, 'body'
+    assert_includes matches, 'div'
+  end
+
+  def test_each_selector_with_specificity_range
+    css = <<~CSS
+      body { color: red; }
+      .header { padding: 5px; }
+      #main { font-size: 14px; }
+      #main .btn { margin: 10px; }
+    CSS
+    sheet = Cataract.parse_css(css)
+
+    # Find rules with specificity 10-100 (class and single ID)
+    matches = []
+    sheet.each_selector(specificity: 10..100) do |selector, declarations, specificity, media_types|
+      matches << [selector, specificity]
+    end
+
+    assert_equal 2, matches.length
+    assert_includes matches, ['.header', 10]
+    assert_includes matches, ['#main', 100]
+  end
+
+  def test_each_selector_with_specificity_open_ended_range
+    css = <<~CSS
+      body { color: red; }
+      .header { padding: 5px; }
+      #main { font-size: 14px; }
+      #main .btn { margin: 10px; }
+    CSS
+    sheet = Cataract.parse_css(css)
+
+    # Find rules with specificity >= 100 (high specificity)
+    matches = []
+    sheet.each_selector(specificity: 100..) do |selector, declarations, specificity, media_types|
+      matches << selector
+    end
+
+    assert_equal 2, matches.length
+    assert_includes matches, '#main'
+    assert_includes matches, '#main .btn'
+  end
+
+  def test_each_selector_with_specificity_upper_bound
+    css = <<~CSS
+      body { color: red; }
+      .header { padding: 5px; }
+      #main { font-size: 14px; }
+      #main .btn { margin: 10px; }
+    CSS
+    sheet = Cataract.parse_css(css)
+
+    # Find rules with specificity <= 10 (low specificity)
+    matches = []
+    sheet.each_selector(specificity: ..10) do |selector, declarations, specificity, media_types|
+      matches << selector
+    end
+
+    assert_equal 2, matches.length
+    assert_includes matches, 'body'
+    assert_includes matches, '.header'
+  end
+
+  def test_each_selector_with_specificity_and_media
+    css = <<~CSS
+      body { color: black; }
+      .header { padding: 5px; }
+      @media screen {
+        body { color: blue; }
+        #main { font-size: 20px; }
+      }
+      @media print {
+        .footer { margin: 0; }
+      }
+    CSS
+    sheet = Cataract.parse_css(css)
+
+    # Find low-specificity rules (<=10) in screen media
+    matches = []
+    sheet.each_selector(specificity: ..10, media: :screen) do |selector, declarations, specificity, media_types|
+      matches << selector
+    end
+
+    assert_equal 1, matches.length
+    assert_equal 'body', matches[0]
+  end
+
+  def test_each_selector_with_specificity_no_matches
+    css = 'body { color: red; } .header { margin: 10px; }'
+    sheet = Cataract.parse_css(css)
+
+    matches = []
+    sheet.each_selector(specificity: 100..) do |selector, declarations, specificity, media_types|
+      matches << selector
+    end
+
+    assert_equal [], matches
+  end
+
+  def test_each_selector_with_specificity_returns_enumerator
+    css = 'body { color: red; } .header { margin: 10px; } #main { padding: 5px; }'
+    sheet = Cataract.parse_css(css)
+
+    enum = sheet.each_selector(specificity: 100..)
+    assert_kind_of Enumerator, enum
+    assert_equal 1, enum.count
+  end
+
+  # ============================================================================
+  # each_selector with property filtering - New feature
+  # ============================================================================
+
+  def test_each_selector_with_property_filter
+    css = <<~CSS
+      body { color: red; margin: 0; }
+      .header { padding: 5px; }
+      #main { color: blue; font-size: 14px; }
+      .footer { position: relative; }
+    CSS
+    sheet = Cataract.parse_css(css)
+
+    # Find any selector with 'color' property
+    matches = []
+    sheet.each_selector(property: 'color') do |selector, declarations, specificity, media_types|
+      matches << selector
+    end
+
+    assert_equal 2, matches.length
+    assert_includes matches, 'body'
+    assert_includes matches, '#main'
+  end
+
+  def test_each_selector_with_property_value_filter
+    css = <<~CSS
+      body { position: absolute; }
+      .header { position: relative; }
+      #main { position: relative; z-index: 10; }
+      .footer { display: relative; }
+    CSS
+    sheet = Cataract.parse_css(css)
+
+    # Find any selector with ANY property that has value 'relative'
+    matches = []
+    sheet.each_selector(property_value: 'relative') do |selector, declarations, specificity, media_types|
+      matches << selector
+    end
+
+    assert_equal 3, matches.length
+    assert_includes matches, '.header'
+    assert_includes matches, '#main'
+    assert_includes matches, '.footer'
+  end
+
+  def test_each_selector_with_property_and_value_filter
+    css = <<~CSS
+      body { position: absolute; }
+      .header { position: relative; }
+      #main { position: relative; z-index: 10; }
+      .footer { display: relative; }
+    CSS
+    sheet = Cataract.parse_css(css)
+
+    # Find selectors with specifically 'position: relative'
+    matches = []
+    sheet.each_selector(property: 'position', property_value: 'relative') do |selector, declarations, specificity, media_types|
+      matches << selector
+    end
+
+    assert_equal 2, matches.length
+    assert_includes matches, '.header'
+    assert_includes matches, '#main'
+    refute_includes matches, '.footer'
+  end
+
+  def test_each_selector_with_property_filter_no_matches
+    css = 'body { margin: 0; } .header { padding: 5px; }'
+    sheet = Cataract.parse_css(css)
+
+    matches = []
+    sheet.each_selector(property: 'color') do |selector, declarations, specificity, media_types|
+      matches << selector
+    end
+
+    assert_equal [], matches
+  end
+
+  def test_each_selector_with_property_and_media_filter
+    css = <<~CSS
+      body { color: red; }
+      .header { padding: 5px; }
+      @media screen {
+        body { color: blue; }
+        #main { font-size: 20px; }
+      }
+      @media print {
+        .footer { color: black; }
+      }
+    CSS
+    sheet = Cataract.parse_css(css)
+
+    # Find selectors with 'color' in screen media
+    matches = []
+    sheet.each_selector(property: 'color', media: :screen) do |selector, declarations, specificity, media_types|
+      matches << selector
+    end
+
+    assert_equal 1, matches.length
+    assert_equal 'body', matches[0]
+  end
+
+  def test_each_selector_with_property_and_specificity_filter
+    css = <<~CSS
+      body { color: red; }
+      .header { color: blue; }
+      #main { color: green; font-size: 14px; }
+      #main .btn { padding: 10px; }
+    CSS
+    sheet = Cataract.parse_css(css)
+
+    # Find high-specificity selectors (>= 100) with 'color' property
+    matches = []
+    sheet.each_selector(property: 'color', specificity: 100..) do |selector, declarations, specificity, media_types|
+      matches << selector
+    end
+
+    assert_equal 1, matches.length
+    assert_equal '#main', matches[0]
+  end
+
+  def test_each_selector_with_important_property_value
+    css = <<~CSS
+      body { color: red !important; }
+      .header { color: blue; }
+      #main { color: red; }
+    CSS
+    sheet = Cataract.parse_css(css)
+
+    # Find selectors with 'color: red' (should match both with and without !important)
+    matches = []
+    sheet.each_selector(property: 'color', property_value: 'red') do |selector, declarations, specificity, media_types|
+      matches << selector
+    end
+
+    assert_equal 2, matches.length
+    assert_includes matches, 'body'
+    assert_includes matches, '#main'
   end
 
   # ============================================================================

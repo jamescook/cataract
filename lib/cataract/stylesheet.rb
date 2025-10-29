@@ -65,10 +65,27 @@ module Cataract
 
     # Iterate over each selector across all rules
     # Yields: selector, declarations_string, specificity, media_types
-    def each_selector(media_types = :all)
-      return enum_for(:each_selector, media_types) unless block_given?
+    #
+    # @param media [Symbol, Array<Symbol>] Media type(s) to filter by (default: :all)
+    # @param specificity [Integer, Range] Filter by specificity (exact value or range)
+    # @param property [String] Filter by CSS property name (e.g., 'color', 'position')
+    # @param property_value [String] Filter by CSS property value (e.g., 'relative', 'red')
+    # @yield [selector, declarations_string, specificity, media_types]
+    # @return [Enumerator] if no block given
+    #
+    # Examples:
+    #   sheet.each_selector { |sel, decls, spec, media| ... }  # All selectors
+    #   sheet.each_selector(media: :print) { |sel, decls, spec, media| ... }  # Only print media
+    #   sheet.each_selector(specificity: 10) { |sel, decls, spec, media| ... }  # Exact specificity
+    #   sheet.each_selector(specificity: 100..) { |sel, decls, spec, media| ... }  # High specificity (>= 100)
+    #   sheet.each_selector(property: 'color') { |sel, decls, spec, media| ... }  # Any selector with 'color'
+    #   sheet.each_selector(property_value: 'relative') { |sel, decls, spec, media| ... }  # Any property with value 'relative'
+    #   sheet.each_selector(property: 'position', property_value: 'relative') { |sel, decls, spec, media| ... }  # Specific property-value
+    #   sheet.each_selector(property: 'color', specificity: 100.., media: :print) { |sel, decls, spec, media| ... }  # Combined filters
+    def each_selector(media: :all, specificity: nil, property: nil, property_value: nil)
+      return enum_for(:each_selector, media: media, specificity: specificity, property: property, property_value: property_value) unless block_given?
 
-      query_media_types = Array(media_types).map(&:to_sym)
+      query_media_types = Array(media).map(&:to_sym)
 
       @rule_groups.each do |query_string, group|
         # Filter by media types at group level
@@ -90,6 +107,41 @@ module Cataract
         next unless should_include
 
         group[:rules].each do |rule|
+          # Filter by specificity if provided
+          if specificity
+            rule_specificity = rule.specificity
+            matches = case specificity
+                     when Range
+                       specificity.cover?(rule_specificity)
+                     else
+                       specificity == rule_specificity
+                     end
+            next unless matches
+          end
+
+          # Filter by property and/or property_value if provided
+          if property || property_value
+            has_match = false
+
+            rule.declarations.each do |decl|
+              # Check property name match (if specified)
+              property_matches = property.nil? || decl.property == property
+
+              # Check property value match (if specified)
+              # Compare against raw value (without !important flag)
+              value_matches = property_value.nil? || decl.value == property_value
+
+              # If both filters specified, both must match
+              # If only one specified, just that one must match
+              if property_matches && value_matches
+                has_match = true
+                break
+              end
+            end
+
+            next unless has_match
+          end
+
           declarations_str = rule.declarations.map do |decl|
             val = decl.important ? "#{decl.value} !important" : decl.value
             "#{decl.property}: #{val}"
