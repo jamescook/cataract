@@ -276,4 +276,94 @@ body { color: red; }'
 
     assert_equal [], selectors
   end
+
+  # ============================================================================
+  # to_formatted_s - Formatted output tests
+  # ============================================================================
+
+  def test_to_formatted_s_basic
+    input = 'div p { color: red }'
+    expected = <<~CSS
+      div p {
+        color: red;
+      }
+    CSS
+
+    output = Cataract.parse_css(input).to_formatted_s
+    assert_equal expected, output
+  end
+
+  def test_to_formatted_s_multiple_declarations
+    input = 'body { color: red; margin: 0; padding: 10px }'
+    expected = <<~CSS
+      body {
+        color: red; margin: 0; padding: 10px;
+      }
+    CSS
+
+    output = Cataract.parse_css(input).to_formatted_s
+    assert_equal expected, output
+  end
+
+  def test_to_formatted_s_multiple_rules
+    input = 'body { color: red } .btn { padding: 10px }'
+    expected = <<~CSS
+      body {
+        color: red;
+      }
+      .btn {
+        padding: 10px;
+      }
+    CSS
+
+    output = Cataract.parse_css(input).to_formatted_s
+    assert_equal expected, output
+  end
+
+  def test_to_formatted_s_with_media_query
+    input = '@media (min-width: 768px) { .container { width: 750px } }'
+    expected = <<~CSS
+      @media (min-width: 768px) {
+        .container {
+          width: 750px;
+        }
+      }
+    CSS
+
+    output = Cataract.parse_css(input).to_formatted_s
+    assert_equal expected, output
+  end
+
+  def test_to_formatted_s_with_charset
+    input = '@charset "UTF-8"; body { color: red }'
+    expected = <<~CSS
+      @charset "UTF-8";
+      body {
+        color: red;
+      }
+    CSS
+
+    output = Cataract.parse_css(input).to_formatted_s
+    assert_equal expected, output
+  end
+
+  def test_to_formatted_s_mixed_media_and_universal
+    input = 'body { margin: 0 } @media (min-width: 768px) { .container { width: 750px } .btn { padding: 10px } }'
+    expected = <<~CSS
+      body {
+        margin: 0;
+      }
+      @media (min-width: 768px) {
+        .container {
+          width: 750px;
+        }
+        .btn {
+          padding: 10px;
+        }
+      }
+    CSS
+
+    output = Cataract.parse_css(input).to_formatted_s
+    assert_equal expected, output
+  end
 end

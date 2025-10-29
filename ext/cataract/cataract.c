@@ -57,22 +57,23 @@ static VALUE parse_css_internal(VALUE self, VALUE css_string, int depth) {
     }
 
     // Parse CSS using our C parser implementation
-    VALUE rules_array = parse_css_impl(css_string, depth);
+    // Returns hash: {query_string => [rules]} already grouped
+    VALUE rules_by_media = parse_css_impl(css_string, depth, Qnil);
 
     // GC Guard: Protect Ruby objects from garbage collection
     RB_GC_GUARD(css_string);
-    RB_GC_GUARD(rules_array);
+    RB_GC_GUARD(rules_by_media);
     RB_GC_GUARD(charset);
 
-    // At depth 0 (top-level parse), return hash with rules and charset (may be nil)
-    // Nested parses (depth > 0) return array for backwards compatibility
+    // At depth 0 (top-level parse), return hash with rules and charset
+    // Nested parses (depth > 0) return the hash directly
     if (depth == 0) {
         VALUE result = rb_hash_new();
-        rb_hash_aset(result, ID2SYM(rb_intern("rules")), rules_array);
+        rb_hash_aset(result, ID2SYM(rb_intern("rules")), rules_by_media);
         rb_hash_aset(result, ID2SYM(rb_intern("charset")), charset);
         return result;
     }
-    return rules_array;
+    return rules_by_media;
 }
 
 /*
@@ -250,22 +251,22 @@ void Init_cataract() {
         NULL
     );
 
-    // Define Cataract::Rule = Struct.new(:selector, :declarations, :specificity, :media_query)
+    // Define Cataract::Rule = Struct.new(:selector, :declarations, :specificity)
+    // Note: media_query removed - media info now stored at group level in hash structure
     cRule = rb_struct_define_under(
         module,
         "Rule",
         "selector",
         "declarations",
         "specificity",
-        "media_query",
         NULL
     );
 
     rb_define_module_function(module, "parse_css", parse_css, 1);
     rb_define_module_function(module, "parse_declarations", parse_declarations, 1);
     rb_define_module_function(module, "calculate_specificity", calculate_specificity, 1);
-    rb_define_module_function(module, "merge_rules", cataract_merge, 1);
-    rb_define_module_function(module, "apply_cascade", cataract_merge, 1);  // Alias with better name
+    rb_define_module_function(module, "merge_rules", cataract_merge_wrapper, 1);
+    rb_define_module_function(module, "apply_cascade", cataract_merge_wrapper, 1);  // Alias with better name
     rb_define_module_function(module, "rules_to_s", rules_to_s, 1);
     rb_define_module_function(module, "split_value", cataract_split_value, 1);
     rb_define_module_function(module, "expand_margin", cataract_expand_margin, 1);
@@ -293,6 +294,7 @@ void Init_cataract() {
     // Serialization
     rb_define_module_function(module, "declarations_to_s", declarations_to_s, 1);
     rb_define_module_function(module, "stylesheet_to_s_c", stylesheet_to_s_c, 2);
+    rb_define_module_function(module, "stylesheet_to_formatted_s_c", stylesheet_to_formatted_s_c, 2);
 
     // Export string allocation mode as a constant for verification in benchmarks
     #ifdef DISABLE_STR_BUF_OPTIMIZATION
@@ -300,6 +302,33 @@ void Init_cataract() {
     #else
         rb_define_const(module, "STRING_ALLOC_MODE", ID2SYM(rb_intern("buffer")));
     #endif
+
+    // Export compile-time optimization flags as a hash for runtime introspection
+    VALUE compile_flags = rb_hash_new();
+
+    #ifdef DISABLE_STR_BUF_OPTIMIZATION
+        rb_hash_aset(compile_flags, ID2SYM(rb_intern("str_buf_optimization")), Qfalse);
+    #else
+        rb_hash_aset(compile_flags, ID2SYM(rb_intern("str_buf_optimization")), Qtrue);
+    #endif
+
+    #ifdef CATARACT_DEBUG
+        rb_hash_aset(compile_flags, ID2SYM(rb_intern("debug")), Qtrue);
+    #else
+        rb_hash_aset(compile_flags, ID2SYM(rb_intern("debug")), Qfalse);
+    #endif
+
+    #ifdef DISABLE_LOOP_UNROLL
+        rb_hash_aset(compile_flags, ID2SYM(rb_intern("loop_unroll")), Qfalse);
+    #else
+        rb_hash_aset(compile_flags, ID2SYM(rb_intern("loop_unroll")), Qtrue);
+    #endif
+
+    // Note: Compiler flags like -O3, -march=native, -funroll-loops don't have
+    // preprocessor defines, so we can't detect them at runtime. They're purely
+    // compiler optimizations that affect the generated code.
+
+    rb_define_const(module, "COMPILE_FLAGS", compile_flags);
 }
 
 // NOTE: shorthand_expander.c and value_splitter.c are now compiled separately (not included)
