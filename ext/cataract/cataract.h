@@ -192,7 +192,7 @@ VALUE cataract_create_font_shorthand(VALUE self, VALUE properties);
 VALUE cataract_create_list_style_shorthand(VALUE self, VALUE properties);
 
 // CSS parser implementation (css_parser.c)
-VALUE parse_css_impl(VALUE css_string, int depth);
+VALUE parse_css_impl(VALUE css_string, int depth, VALUE parent_media_query);
 
 // CSS parsing helper functions (css_parser.c)
 VALUE parse_media_query(const char *query_str, long query_len);

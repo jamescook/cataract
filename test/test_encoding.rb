@@ -90,8 +90,11 @@ class EncodingTest < Minitest::Test
     parser = Cataract::Parser.new
     parser.parse(css)
 
-    rules = parser.instance_variable_get(:@raw_rules)
-    merged = Cataract.apply_cascade(rules)
+    # Flatten hash structure to array of rules
+    rule_groups = parser.instance_variable_get(:@raw_rules)
+    all_rules = []
+    rule_groups.each_value { |group| all_rules.concat(group[:rules]) }
+    merged = Cataract.apply_cascade(all_rules)
 
     merged.each do |decl|
       assert_equal Encoding::US_ASCII, decl.property.encoding,

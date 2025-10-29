@@ -17,9 +17,37 @@ typedef enum {
 } ParserState;
 
 // Forward declarations
-VALUE parse_css_impl(VALUE css_string, int depth);
+VALUE parse_css_impl(VALUE css_string, int depth, VALUE parent_media_query);
 VALUE parse_media_query(const char *query_str, long query_len);
 VALUE parse_declarations_string(const char *start, const char *end);
+
+// Context for merging hash callbacks
+struct merge_hash_ctx {
+    VALUE target_hash;
+};
+
+// Callback for merging inner_hash into target hash
+// Both inner and target have structure: {query_string => {media_types: [...], rules: [...]}}
+static int merge_hash_callback(VALUE key, VALUE inner_group, VALUE arg) {
+    struct merge_hash_ctx *ctx = (struct merge_hash_ctx *)arg;
+    VALUE our_group = rb_hash_aref(ctx->target_hash, key);
+
+    if (NIL_P(our_group)) {
+        // No existing group for this query string - just add it
+        rb_hash_aset(ctx->target_hash, key, inner_group);
+    } else {
+        // Merge the rules arrays from both groups
+        VALUE our_rules = rb_hash_aref(our_group, ID2SYM(rb_intern("rules")));
+        VALUE inner_rules = rb_hash_aref(inner_group, ID2SYM(rb_intern("rules")));
+
+        long inner_len = RARRAY_LEN(inner_rules);
+        for (long i = 0; i < inner_len; i++) {
+            rb_ary_push(our_rules, RARRAY_AREF(inner_rules, i));
+        }
+    }
+
+    return ST_CONTINUE;
+}
 
 // ============================================================================
 // CSS Parsing Helper Functions
@@ -180,7 +208,7 @@ void finish_rule_fn(
     VALUE *current_selectors,
     VALUE *current_declarations,
     VALUE *current_media_types,
-    VALUE rules_array,
+    VALUE rules_by_media,  // Hash: {query_string => {media_types: [...], rules: [...]}}
     const char **mark_ptr
 ) {
     // Skip if we're scanning at-rule block content (will be parsed recursively)
@@ -201,22 +229,43 @@ void finish_rule_fn(
         VALUE sel = RARRAY_AREF(*current_selectors, i);
         DEBUG_PRINTF("[finish_rule] Rule %ld: selector='%s'\n", i, RSTRING_PTR(sel));
 
-        // Determine media query: use current_media_types if inside @media block, otherwise default to [:all]
-        VALUE media_query;
-        if (!NIL_P(*current_media_types) && RARRAY_LEN(*current_media_types) > 0) {
-            media_query = rb_ary_dup(*current_media_types);
-            DEBUG_PRINTF("[finish_rule] Using current media types\n");
-        } else {
-            media_query = rb_ary_new3(1, ID2SYM(rb_intern("all")));
-        }
+        // Determine media query string for grouping
+        VALUE query_string = Qnil;
+        VALUE media_types_array = Qnil;
 
+        if (!NIL_P(*current_media_types)) {
+            query_string = rb_hash_aref(*current_media_types, ID2SYM(rb_intern("query_string")));
+            media_types_array = rb_hash_aref(*current_media_types, ID2SYM(rb_intern("media_types")));
+            DEBUG_PRINTF("[finish_rule] current_media_types present, query_string=%s\n",
+                        NIL_P(query_string) ? "nil" : RSTRING_PTR(query_string));
+        } else {
+            DEBUG_PRINTF("[finish_rule] No media types (default/all)\n");
+        }
+        // query_string is nil for non-media rules (default/all)
+
+        // Create rule (media info stored at group level, not on rule)
         VALUE rule = rb_struct_new(cRule,
             sel,                                // selector
             rb_ary_dup(*current_declarations),   // declarations
-            Qnil,                               // specificity (calculated on demand)
-            media_query                         // media_query
+            Qnil                                // specificity (calculated on demand)
         );
 
+        // Get or create the group structure for this media query
+        VALUE group = rb_hash_aref(rules_by_media, query_string);
+        if (NIL_P(group)) {
+            // Create new group: {media_types: [...], rules: [...]}
+            group = rb_hash_new();
+            // Default to [:all] for non-media rules (css_parser gem compatibility)
+            VALUE media_types_for_group = NIL_P(media_types_array) ?
+                                         rb_ary_new_from_args(1, ID2SYM(rb_intern("all"))) :
+                                         media_types_array;
+            rb_hash_aset(group, ID2SYM(rb_intern("media_types")), media_types_for_group);
+            rb_hash_aset(group, ID2SYM(rb_intern("rules")), rb_ary_new());
+            rb_hash_aset(rules_by_media, query_string, group);
+        }
+
+        // Add rule to the group's rules array
+        VALUE rules_array = rb_hash_aref(group, ID2SYM(rb_intern("rules")));
         rb_ary_push(rules_array, rule);
     }
 
@@ -227,9 +276,10 @@ cleanup:
     *mark_ptr = NULL;
 }
 
-// Parse media query string and return array of media types
-// Example: "screen and (min-width: 768px)" -> [:screen]
-// Example: "screen, print" -> [:screen, :print]
+// Parse media query string and return hash with query string and media types
+// Returns: {query_string: "...", media_types: [...]}
+// Example: "screen and (min-width: 768px)" -> {query_string: "screen and (min-width: 768px)", media_types: [:screen]}
+// Example: "screen, print" -> {query_string: "screen, print", media_types: [:screen, :print]}
 //
 // Algorithm: Scan for identifiers (alphanumeric + dash), skip keywords and parens
 VALUE parse_media_query(const char *query_str, long query_len) {
@@ -301,7 +351,13 @@ VALUE parse_media_query(const char *query_str, long query_len) {
         }
     }
 
-    return mq_types;
+    // Return hash with both query string and media types array
+    VALUE result = rb_hash_new();
+    VALUE query_string = rb_utf8_str_new(query_str, query_len);
+    rb_hash_aset(result, ID2SYM(rb_intern("query_string")), query_string);
+    rb_hash_aset(result, ID2SYM(rb_intern("media_types")), mq_types);
+
+    return result;
 }
 
 // Parse declarations string into array of Declarations::Value structs
@@ -394,9 +450,10 @@ VALUE parse_declarations_string(const char *start, const char *end) {
  *
  * @param css_string [String] CSS to parse
  * @param depth [Integer] Recursion depth (for error handling)
- * @return [Array<Rule>] Array of Rule structs
+ * @param parent_media_query [VALUE] Parent media query hash (for nested @media), or Qnil
+ * @return [Hash] {query_string => [Rule]} grouped by media query
  */
-VALUE parse_css_impl(VALUE css_string, int depth) {
+VALUE parse_css_impl(VALUE css_string, int depth, VALUE parent_media_query) {
     Check_Type(css_string, T_STRING);
 
     const char *p = RSTRING_PTR(css_string);
@@ -410,11 +467,11 @@ VALUE parse_css_impl(VALUE css_string, int depth) {
     const char *selector_start = NULL;
 
     // Ruby objects
-    VALUE rules_array = rb_ary_new();
+    VALUE rules_by_media = rb_hash_new();  // Hash: {query_string => {media_types: [...], rules: [...]}}
     VALUE current_selectors = Qnil;
     VALUE current_declarations = Qnil;
     VALUE selector = Qnil;
-    VALUE current_media_types = Qnil;  // Set from @media queries
+    VALUE current_media_types = parent_media_query;  // Inherit parent's media context
 
     while (p < pe) {
         char c = *p;
@@ -524,42 +581,65 @@ VALUE parse_css_impl(VALUE css_string, int depth) {
 
                     // Process based on @rule type
                     if (strcmp(at_name, "media") == 0) {
-                        // Parse media query
-                        VALUE media_types = parse_media_query(prelude_start, prelude_len);
+                        // Parse media query for this block
+                        VALUE media_query = parse_media_query(prelude_start, prelude_len);
 
-                        // Recursively parse block content
-                        VALUE block_content = rb_str_new(block_start, block_len);
-                        VALUE inner_rules = parse_css_impl(block_content, depth + 1);
+                        // Combine with parent media query if nested (per W3C spec)
+                        VALUE combined_media_query = media_query;
+                        if (!NIL_P(parent_media_query)) {
+                            VALUE parent_qs = rb_hash_aref(parent_media_query, ID2SYM(rb_intern("query_string")));
+                            VALUE current_qs = rb_hash_aref(media_query, ID2SYM(rb_intern("query_string")));
 
-                        // Set media_query on all inner rules
-                        if (!NIL_P(media_types) && RARRAY_LEN(media_types) > 0) {
-                            for (long i = 0; i < RARRAY_LEN(inner_rules); i++) {
-                                VALUE rule = RARRAY_AREF(inner_rules, i);
-                                rb_struct_aset(rule, INT2FIX(3), rb_ary_dup(media_types));
+                            // Combine: "screen" + " and " + "(min-width: 768px)" = "screen and (min-width: 768px)"
+                            VALUE combined_qs = rb_str_new_cstr("");
+                            if (!NIL_P(parent_qs)) rb_str_append(combined_qs, parent_qs);
+                            if (!NIL_P(parent_qs) && !NIL_P(current_qs)) rb_str_cat2(combined_qs, " and ");
+                            if (!NIL_P(current_qs)) rb_str_append(combined_qs, current_qs);
+
+                            // Combine media_types arrays (union of parent and current)
+                            VALUE parent_media_types = rb_hash_aref(parent_media_query, ID2SYM(rb_intern("media_types")));
+                            VALUE current_media_types = rb_hash_aref(media_query, ID2SYM(rb_intern("media_types")));
+                            VALUE combined_media_types = rb_ary_dup(parent_media_types);
+
+                            // Add current media types if they're not already in the array
+                            long current_len = RARRAY_LEN(current_media_types);
+                            for (long i = 0; i < current_len; i++) {
+                                VALUE media_type = RARRAY_AREF(current_media_types, i);
+                                if (!rb_ary_includes(combined_media_types, media_type)) {
+                                    rb_ary_push(combined_media_types, media_type);
+                                }
                             }
+
+                            combined_media_query = rb_hash_new();
+                            rb_hash_aset(combined_media_query, ID2SYM(rb_intern("query_string")), combined_qs);
+                            rb_hash_aset(combined_media_query, ID2SYM(rb_intern("media_types")), combined_media_types);
                         }
 
-                        // Add to main rules array
-                        for (long i = 0; i < RARRAY_LEN(inner_rules); i++) {
-                            rb_ary_push(rules_array, RARRAY_AREF(inner_rules, i));
-                        }
+                        // Recursively parse block content with combined media context
+                        VALUE block_content = rb_str_new(block_start, block_len);
+                        VALUE inner_hash = parse_css_impl(block_content, depth + 1, combined_media_query);
 
-                        RB_GC_GUARD(media_types);
+                        // Merge inner_hash into our rules_by_media using rb_hash_foreach
+                        struct merge_hash_ctx merge_ctx = { rules_by_media };
+                        rb_hash_foreach(inner_hash, merge_hash_callback, (VALUE)&merge_ctx);
+
+                        RB_GC_GUARD(media_query);
+                        RB_GC_GUARD(combined_media_query);
                         RB_GC_GUARD(block_content);
-                        RB_GC_GUARD(inner_rules);
+                        RB_GC_GUARD(inner_hash);
 
                     } else if (strcmp(at_name, "supports") == 0 || strcmp(at_name, "layer") == 0 ||
                                strcmp(at_name, "container") == 0 || strcmp(at_name, "scope") == 0) {
-                        // Conditional group rules - recursively parse and add rules
+                        // Conditional group rules - recursively parse and merge
                         VALUE block_content = rb_str_new(block_start, block_len);
-                        VALUE inner_rules = parse_css_impl(block_content, depth + 1);
+                        VALUE inner_hash = parse_css_impl(block_content, depth + 1, parent_media_query);
 
-                        for (long i = 0; i < RARRAY_LEN(inner_rules); i++) {
-                            rb_ary_push(rules_array, RARRAY_AREF(inner_rules, i));
-                        }
+                        // Merge inner_hash into rules_by_media using rb_hash_foreach
+                        struct merge_hash_ctx merge_ctx = { rules_by_media };
+                        rb_hash_foreach(inner_hash, merge_hash_callback, (VALUE)&merge_ctx);
 
                         RB_GC_GUARD(block_content);
-                        RB_GC_GUARD(inner_rules);
+                        RB_GC_GUARD(inner_hash);
 
                     } else if (strstr(at_name, "keyframes") != NULL) {
                         // @keyframes - create dummy rule with animation name
@@ -575,10 +655,26 @@ VALUE parse_css_impl(VALUE css_string, int depth) {
                         VALUE rule = rb_struct_new(cRule,
                             sel,                                    // selector
                             rb_ary_new(),                          // declarations (empty)
-                            Qnil,                                   // specificity
-                            rb_ary_new3(1, ID2SYM(rb_intern("all")))  // media_query
+                            Qnil                                    // specificity
                         );
 
+                        // Add to rules_by_media under current media context
+                        VALUE query_string = NIL_P(parent_media_query) ? Qnil :
+                                            rb_hash_aref(parent_media_query, ID2SYM(rb_intern("query_string")));
+                        VALUE media_types_array = NIL_P(parent_media_query) ?
+                                                 rb_ary_new_from_args(1, ID2SYM(rb_intern("all"))) :
+                                                 rb_hash_aref(parent_media_query, ID2SYM(rb_intern("media_types")));
+
+                        // Get or create group
+                        VALUE group = rb_hash_aref(rules_by_media, query_string);
+                        if (NIL_P(group)) {
+                            group = rb_hash_new();
+                            rb_hash_aset(group, ID2SYM(rb_intern("media_types")), media_types_array);
+                            rb_hash_aset(group, ID2SYM(rb_intern("rules")), rb_ary_new());
+                            rb_hash_aset(rules_by_media, query_string, group);
+                        }
+
+                        VALUE rules_array = rb_hash_aref(group, ID2SYM(rb_intern("rules")));
                         rb_ary_push(rules_array, rule);
 
                         RB_GC_GUARD(animation_name);
@@ -593,42 +689,65 @@ VALUE parse_css_impl(VALUE css_string, int depth) {
                         rb_str_cat(wrapped, block_start, block_len);
                         rb_str_cat2(wrapped, " }");
 
-                        VALUE dummy_rules = parse_css_impl(wrapped, depth + 1);
+                        VALUE dummy_hash = parse_css_impl(wrapped, depth + 1, parent_media_query);
                         VALUE declarations = Qnil;
 
-                        if (!NIL_P(dummy_rules) && RARRAY_LEN(dummy_rules) > 0) {
-                            VALUE first_rule = RARRAY_AREF(dummy_rules, 0);
-                            declarations = rb_struct_aref(first_rule, INT2FIX(1));
+                        // Extract first rule from the dummy parse (should be under nil key)
+                        // dummy_hash structure: {query_string => {media_types: [...], rules: [...]}}
+                        VALUE dummy_group = rb_hash_aref(dummy_hash, Qnil);
+                        if (!NIL_P(dummy_group)) {
+                            VALUE dummy_rules = rb_hash_aref(dummy_group, ID2SYM(rb_intern("rules")));
+                            if (!NIL_P(dummy_rules) && RARRAY_LEN(dummy_rules) > 0) {
+                                VALUE first_rule = RARRAY_AREF(dummy_rules, 0);
+                                declarations = rb_struct_aref(first_rule, INT2FIX(1));
 
-                            // Build selector: "@" + name + [" " + prelude]
-                            VALUE sel = UTF8_STR("@");
-                            rb_str_cat(sel, at_name, strlen(at_name));
+                                // Build selector: "@" + name + [" " + prelude]
+                                VALUE sel = UTF8_STR("@");
+                                rb_str_cat(sel, at_name, strlen(at_name));
 
-                            if (prelude_len > 0) {
-                                VALUE prelude_val = rb_str_new(prelude_start, prelude_len);
-                                prelude_val = rb_funcall(prelude_val, rb_intern("strip"), 0);
-                                if (RSTRING_LEN(prelude_val) > 0) {
-                                    rb_str_cat2(sel, " ");
-                                    rb_str_append(sel, prelude_val);
+                                if (prelude_len > 0) {
+                                    VALUE prelude_val = rb_str_new(prelude_start, prelude_len);
+                                    prelude_val = rb_funcall(prelude_val, rb_intern("strip"), 0);
+                                    if (RSTRING_LEN(prelude_val) > 0) {
+                                        rb_str_cat2(sel, " ");
+                                        rb_str_append(sel, prelude_val);
+                                    }
+                                    RB_GC_GUARD(prelude_val);
                                 }
-                                RB_GC_GUARD(prelude_val);
+
+                                VALUE rule = rb_struct_new(cRule,
+                                    sel,                                    // selector
+                                    declarations,                           // declarations
+                                    Qnil                                    // specificity
+                                );
+
+                                // Add to rules_by_media under current media context
+                                VALUE query_string = NIL_P(parent_media_query) ? Qnil :
+                                                    rb_hash_aref(parent_media_query, ID2SYM(rb_intern("query_string")));
+                                VALUE media_types_array = NIL_P(parent_media_query) ?
+                                                         rb_ary_new_from_args(1, ID2SYM(rb_intern("all"))) :
+                                                         rb_hash_aref(parent_media_query, ID2SYM(rb_intern("media_types")));
+
+                                // Get or create group
+                                VALUE group = rb_hash_aref(rules_by_media, query_string);
+                                if (NIL_P(group)) {
+                                    group = rb_hash_new();
+                                    rb_hash_aset(group, ID2SYM(rb_intern("media_types")), media_types_array);
+                                    rb_hash_aset(group, ID2SYM(rb_intern("rules")), rb_ary_new());
+                                    rb_hash_aset(rules_by_media, query_string, group);
+                                }
+
+                                VALUE rules_array = rb_hash_aref(group, ID2SYM(rb_intern("rules")));
+                                rb_ary_push(rules_array, rule);
+
+                                RB_GC_GUARD(sel);
+                                RB_GC_GUARD(rule);
                             }
-
-                            VALUE rule = rb_struct_new(cRule,
-                                sel,                                    // selector
-                                declarations,                           // declarations
-                                Qnil,                                   // specificity
-                                rb_ary_new3(1, ID2SYM(rb_intern("all")))  // media_query
-                            );
-
-                            rb_ary_push(rules_array, rule);
-
-                            RB_GC_GUARD(sel);
-                            RB_GC_GUARD(rule);
                         }
 
                         RB_GC_GUARD(wrapped);
-                        RB_GC_GUARD(dummy_rules);
+                        RB_GC_GUARD(dummy_hash);
+                        RB_GC_GUARD(dummy_group);
                         RB_GC_GUARD(declarations);
 
                     } else {
@@ -711,7 +830,7 @@ VALUE parse_css_impl(VALUE css_string, int depth) {
 
                     // Create rule(s)
                     finish_rule_fn(0, &current_selectors, &current_declarations,
-                                   &current_media_types, rules_array, &mark);
+                                   &current_media_types, rules_by_media, &mark);
 
                     p++;  // Skip }
                     state = STATE_INITIAL;
@@ -728,8 +847,8 @@ VALUE parse_css_impl(VALUE css_string, int depth) {
     if (state == STATE_DECLARATIONS && decl_start != NULL) {
         capture_declarations_fn(&decl_start, p, &current_declarations, css_string_base);
         finish_rule_fn(0, &current_selectors, &current_declarations,
-                       &current_media_types, rules_array, &mark);
+                       &current_media_types, rules_by_media, &mark);
     }
 
-    return rules_array;
+    return rules_by_media;
 }

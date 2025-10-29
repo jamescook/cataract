@@ -22,13 +22,13 @@ static int merge_groups_callback(VALUE key, VALUE group_rules, VALUE arg) {
     VALUE first_rule = RARRAY_AREF(group_rules, 0);
     VALUE selector = rb_struct_aref(first_rule, INT2FIX(0));
     VALUE specificity = rb_struct_aref(first_rule, INT2FIX(2));
-    VALUE media_query = rb_struct_aref(first_rule, INT2FIX(3));
+    // Note: media_query field removed from Rule struct - now stored at group level
 
     // Merge declarations for this group (C function, no rb_funcall)
     VALUE merged_declarations = cataract_merge(ctx->self, group_rules);
 
-    // Create new Rule struct
-    VALUE new_rule = rb_struct_new(cRule, selector, merged_declarations, specificity, media_query);
+    // Create new Rule struct (no media_query field)
+    VALUE new_rule = rb_struct_new(cRule, selector, merged_declarations, specificity);
     rb_ary_push(ctx->merged_rules, new_rule);
 
     return ST_CONTINUE;

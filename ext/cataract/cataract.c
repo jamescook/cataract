@@ -57,22 +57,23 @@ static VALUE parse_css_internal(VALUE self, VALUE css_string, int depth) {
     }
 
     // Parse CSS using our C parser implementation
-    VALUE rules_array = parse_css_impl(css_string, depth);
+    // Returns hash: {query_string => [rules]} already grouped
+    VALUE rules_by_media = parse_css_impl(css_string, depth, Qnil);
 
     // GC Guard: Protect Ruby objects from garbage collection
     RB_GC_GUARD(css_string);
-    RB_GC_GUARD(rules_array);
+    RB_GC_GUARD(rules_by_media);
     RB_GC_GUARD(charset);
 
-    // At depth 0 (top-level parse), return hash with rules and charset (may be nil)
-    // Nested parses (depth > 0) return array for backwards compatibility
+    // At depth 0 (top-level parse), return hash with rules and charset
+    // Nested parses (depth > 0) return the hash directly
     if (depth == 0) {
         VALUE result = rb_hash_new();
-        rb_hash_aset(result, ID2SYM(rb_intern("rules")), rules_array);
+        rb_hash_aset(result, ID2SYM(rb_intern("rules")), rules_by_media);
         rb_hash_aset(result, ID2SYM(rb_intern("charset")), charset);
         return result;
     }
-    return rules_array;
+    return rules_by_media;
 }
 
 /*
@@ -250,14 +251,14 @@ void Init_cataract() {
         NULL
     );
 
-    // Define Cataract::Rule = Struct.new(:selector, :declarations, :specificity, :media_query)
+    // Define Cataract::Rule = Struct.new(:selector, :declarations, :specificity)
+    // Note: media_query removed - media info now stored at group level in hash structure
     cRule = rb_struct_define_under(
         module,
         "Rule",
         "selector",
         "declarations",
         "specificity",
-        "media_query",
         NULL
     );
 

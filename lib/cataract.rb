@@ -42,7 +42,13 @@ module Cataract
     return [] if rules.nil? || rules.empty?
 
     # Accept both Stylesheet and Array for convenience
-    rules_array = rules.is_a?(Stylesheet) ? rules.rules : rules
+    rules_array = if rules.is_a?(Stylesheet)
+      rules.rules.to_a  # Convert enumerator to array
+    elsif rules.is_a?(Enumerator)
+      rules.to_a
+    else
+      rules
+    end
 
     # Call C implementation for performance
     Cataract.merge_rules(rules_array)
