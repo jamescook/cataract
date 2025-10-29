@@ -292,6 +292,8 @@ module Cataract
 
     # Get declarations by selector.
     #
+    # css_parser compatibility method. Uses each_selector internally.
+    #
     # +media_types+ are optional, and can be a symbol or an array of symbols.
     # The default value is <tt>:all</tt>.
     #
@@ -307,25 +309,10 @@ module Cataract
     #
     # Returns an array of declaration strings.
     def find_by_selector(selector, media_types = :all)
-      query_media_types = Array(media_types).map(&:to_sym)
       matching_declarations = []
 
-      @raw_rules.each do |query_string, group|
-        # Filter by media types at group level
-        group_media_types = group[:media_types] || []
-
-        # :all matches everything
-        if query_media_types.include?(:all) ||
-           (group_media_types.empty? && query_media_types.include?(:all)) ||
-           !(group_media_types & query_media_types).empty?
-
-          # Find rules with matching selector in this group
-          group[:rules].each do |rule|
-            if rule.selector == selector
-              matching_declarations << Cataract.declarations_to_s(rule.declarations)
-            end
-          end
-        end
+      each_selector(media_types) do |sel, declarations, specificity, media|
+        matching_declarations << declarations if sel == selector
       end
 
       matching_declarations
