@@ -295,4 +295,104 @@ class TestParserMediaTypes < Minitest::Test
     refute_includes output, '@media handheld'
     refute_includes output, '.mobile { width: 100%; }'
   end
+
+  def test_add_block_with_media_override_to_existing_group
+    # First add some screen rules
+    @parser.add_block!(<<-CSS)
+      @media screen {
+        .header { color: blue; }
+      }
+    CSS
+
+    assert_equal 1, @parser.rules_count
+
+    # Now add more CSS to the same screen media group using media_types override
+    # This tests the rules_before.key?(query_string) == true branch
+    @parser.add_block!('body { margin: 0; }', media_types: :screen)
+
+    assert_equal 2, @parser.rules_count
+
+    # Both rules should be in screen media
+    screen_rules = []
+    @parser.each_selector(:screen) do |selector, _decls, _spec, _media|
+      screen_rules << selector
+    end
+
+    assert_equal 2, screen_rules.length
+    assert_includes screen_rules, '.header'
+    assert_includes screen_rules, 'body'
+
+    # Verify output groups them under same @media
+    output = @parser.to_s
+    assert_includes output, '@media screen'
+    assert_includes output, '.header { color: blue; }'
+    assert_includes output, 'body { margin: 0; }'
+  end
+
+  def test_add_block_with_media_override_adds_to_existing_group_count
+    # Start with a screen rule
+    @parser.add_block!('@media screen { .header { color: blue; } }')
+    initial_count = @parser.rules_count
+    assert_equal 1, initial_count
+
+    # Add another rule to screen using override - should increment count
+    @parser.add_block!('.footer { padding: 10px; }', media_types: :screen)
+
+    assert_equal 2, @parser.rules_count
+
+    # Both should be accessible via screen filter
+    selectors = []
+    @parser.each_selector(:screen) { |sel, _, _, _| selectors << sel }
+    assert_equal 2, selectors.length
+    assert_includes selectors, '.header'
+    assert_includes selectors, '.footer'
+  end
+
+  def test_add_block_appends_to_existing_media_query_group
+    # First add_block creates screen group
+    @parser.add_block!('@media screen { .header { color: blue; } }')
+    assert_equal 1, @parser.rules_count
+
+    # Second add_block adds MORE rules to the SAME screen group (not via override, but naturally)
+    # This tests the rules_before.key?(query_string) && new_count > old_count branch
+    @parser.add_block!('@media screen { .footer { padding: 10px; } .nav { margin: 5px; } }')
+
+    assert_equal 3, @parser.rules_count
+
+    # All three should be in screen
+    selectors = []
+    @parser.each_selector(:screen) { |sel, _, _, _| selectors << sel }
+    assert_equal 3, selectors.length
+    assert_includes selectors, '.header'
+    assert_includes selectors, '.footer'
+    assert_includes selectors, '.nav'
+  end
+
+  def test_add_block_with_override_extracts_from_existing_group
+    # Create initial screen group
+    @parser.add_block!('@media screen { .header { color: blue; } }')
+    assert_equal 1, @parser.rules_count
+
+    # Add CSS that contains @media screen, but override to :print
+    # This should:
+    # 1. Parse and temporarily add .footer to screen group
+    # 2. Detect screen group existed before (rules_before.key?)
+    # 3. Extract the new rules from screen (new_count > old_count)
+    # 4. Move them to print group instead
+    @parser.add_block!('@media screen { .footer { padding: 10px; } }', media_types: :print)
+
+    assert_equal 2, @parser.rules_count
+
+    # .header should stay in screen
+    screen_selectors = []
+    @parser.each_selector(:screen) { |sel, _, _, _| screen_selectors << sel }
+    assert_equal 1, screen_selectors.length
+    assert_includes screen_selectors, '.header'
+
+    # .footer should be in print (moved by override)
+    print_selectors = []
+    @parser.each_selector(:print) { |sel, _, _, _| print_selectors << sel }
+    assert_equal 1, print_selectors.length
+    assert_includes print_selectors, '.footer'
+  end
 end
