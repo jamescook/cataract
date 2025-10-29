@@ -27,7 +27,7 @@ static int merge_selector_callback(VALUE selector, VALUE selector_rules, VALUE a
 
     // Multiple rules with same selector - merge them
     VALUE first_rule = RARRAY_AREF(selector_rules, 0);
-    VALUE specificity = rb_struct_aref(first_rule, INT2FIX(2));
+    VALUE specificity = rb_struct_aref(first_rule, INT2FIX(RULE_SPECIFICITY));
 
     // Merge declarations for this selector (C function, no rb_funcall)
     VALUE merged_declarations = cataract_merge(ctx->self, selector_rules);
@@ -61,7 +61,7 @@ static int process_group_callback(VALUE query_string, VALUE group_hash, VALUE ar
 
     for (long i = 0; i < rules_len; i++) {
         VALUE rule = RARRAY_AREF(rules_array, i);
-        VALUE selector = rb_struct_aref(rule, INT2FIX(0));
+        VALUE selector = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR));
 
         VALUE selector_group = rb_hash_aref(rules_by_selector, selector);
         if (NIL_P(selector_group)) {
@@ -90,8 +90,8 @@ static int process_group_callback(VALUE query_string, VALUE group_hash, VALUE ar
     long merged_len = RARRAY_LEN(merged_rules);
     for (long j = 0; j < merged_len; j++) {
         VALUE rule = RARRAY_AREF(merged_rules, j);
-        VALUE selector = rb_struct_aref(rule, INT2FIX(0));
-        VALUE declarations = rb_struct_aref(rule, INT2FIX(1));
+        VALUE selector = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR));
+        VALUE declarations = rb_struct_aref(rule, INT2FIX(RULE_DECLARATIONS));
 
         if (has_media_query) {
             rb_str_buf_cat2(ctx->result, "  ");
@@ -182,7 +182,7 @@ static int format_group_callback(VALUE query_string, VALUE group_hash, VALUE arg
 
     for (long i = 0; i < rules_len; i++) {
         VALUE rule = RARRAY_AREF(rules_array, i);
-        VALUE selector = rb_struct_aref(rule, INT2FIX(0));
+        VALUE selector = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR));
 
         VALUE selector_group = rb_hash_aref(rules_by_selector, selector);
         if (NIL_P(selector_group)) {
@@ -211,8 +211,8 @@ static int format_group_callback(VALUE query_string, VALUE group_hash, VALUE arg
     long merged_len = RARRAY_LEN(merged_rules);
     for (long j = 0; j < merged_len; j++) {
         VALUE rule = RARRAY_AREF(merged_rules, j);
-        VALUE selector = rb_struct_aref(rule, INT2FIX(0));
-        VALUE declarations = rb_struct_aref(rule, INT2FIX(1));
+        VALUE selector = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR));
+        VALUE declarations = rb_struct_aref(rule, INT2FIX(RULE_DECLARATIONS));
 
         // Indent selector if inside media query
         if (has_media_query) {

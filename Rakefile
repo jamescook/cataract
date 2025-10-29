@@ -18,7 +18,6 @@ end
 # All C files are now hand-written (Ragel removed), so only clean build artifacts
 CLEAN.include("ext/**/Makefile", "ext/**/*.o")
 
-# Test task
 Rake::TestTask.new(:test) do |t|
   t.libs << "test"
   t.libs << "lib"
@@ -106,7 +105,6 @@ namespace :benchmark do
 end
 
 task compile: :clean
-task test: :compile
 
 task default: :test
 

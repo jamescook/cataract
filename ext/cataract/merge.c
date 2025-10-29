@@ -110,14 +110,16 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
         Check_Type(rule, T_STRUCT);
 
         // Extract selector, declarations, specificity from Rule struct
-        VALUE selector = rb_struct_aref(rule, INT2FIX(0));       // selector
-        VALUE declarations = rb_struct_aref(rule, INT2FIX(1));   // declarations
-        VALUE specificity_val = rb_struct_aref(rule, INT2FIX(2)); // specificity
+        VALUE selector = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR));
+        VALUE declarations = rb_struct_aref(rule, INT2FIX(RULE_DECLARATIONS));
+        VALUE specificity_val = rb_struct_aref(rule, INT2FIX(RULE_SPECIFICITY));
 
         // Calculate specificity if not provided (lazy)
         int specificity = 0;
         if (NIL_P(specificity_val)) {
             specificity_val = calculate_specificity(Qnil, selector);
+            // Cache the calculated value back to the struct
+            rb_struct_aset(rule, INT2FIX(RULE_SPECIFICITY), specificity_val);
         }
         specificity = NUM2INT(specificity_val);
 
@@ -129,9 +131,9 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
             VALUE decl = RARRAY_AREF(declarations, j);
 
             // Extract property, value, important from Declarations::Value struct
-            VALUE property = rb_struct_aref(decl, INT2FIX(0)); // property
-            VALUE value = rb_struct_aref(decl, INT2FIX(1));    // value
-            VALUE important = rb_struct_aref(decl, INT2FIX(2)); // important
+            VALUE property = rb_struct_aref(decl, INT2FIX(DECL_PROPERTY));
+            VALUE value = rb_struct_aref(decl, INT2FIX(DECL_VALUE));
+            VALUE important = rb_struct_aref(decl, INT2FIX(DECL_IMPORTANT));
 
             // Lowercase property name (safe - CSS properties are ASCII)
             property = lowercase_property(property);

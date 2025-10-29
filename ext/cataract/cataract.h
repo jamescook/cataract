@@ -18,6 +18,20 @@ extern VALUE eDepthError;
 extern VALUE eSizeError;
 
 // ============================================================================
+// Struct field indices
+// ============================================================================
+
+// Rule struct field indices (selector, declarations, specificity)
+#define RULE_SELECTOR 0
+#define RULE_DECLARATIONS 1
+#define RULE_SPECIFICITY 2
+
+// Declarations::Value struct field indices (property, value, important)
+#define DECL_PROPERTY 0
+#define DECL_VALUE 1
+#define DECL_IMPORTANT 2
+
+// ============================================================================
 // Macros
 // ============================================================================
 
