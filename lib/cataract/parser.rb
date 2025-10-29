@@ -236,14 +236,30 @@ module Cataract
 
     # Remove rules matching criteria
     def remove_rules!(selector: nil, media_types: nil)
-      @raw_rules.each_value do |group|
+      # Normalize media_types filter
+      filter_media_types = if media_types
+        Array(media_types).map(&:to_sym)
+      else
+        nil  # nil means remove from all media types
+      end
+
+      @raw_rules.each do |_query_string, group|
+        # Skip groups that don't match media_types filter
+        if filter_media_types
+          group_media_types = group[:media_types] || []
+          # Check if this group matches the filter
+          next unless filter_media_types.include?(:all) ||
+                      !(group_media_types & filter_media_types).empty?
+        end
+
+        # Remove matching rules from this group
         group[:rules].reject! do |rule|
           match = true
           match &&= (rule.selector == selector) if selector
-          # TODO: media_types filtering needs rethinking with hash structure
           match
         end
       end
+
       # Clean up empty groups
       @raw_rules.delete_if { |_key, group| group[:rules].empty? }
       self

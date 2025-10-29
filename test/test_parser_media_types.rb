@@ -395,4 +395,105 @@ class TestParserMediaTypes < Minitest::Test
     assert_equal 1, print_selectors.length
     assert_includes print_selectors, '.footer'
   end
+
+  # ============================================================================
+  # remove_rules! tests
+  # ============================================================================
+
+  def test_remove_rules_by_selector
+    @parser.add_block!(<<-CSS)
+      body { color: black; }
+      .header { color: blue; }
+      .footer { color: red; }
+    CSS
+
+    assert_equal 3, @parser.rules_count
+
+    @parser.remove_rules!(selector: '.header')
+
+    assert_equal 2, @parser.rules_count
+    assert @parser.find_by_selector('body').any?
+    assert @parser.find_by_selector('.header').empty?
+    assert @parser.find_by_selector('.footer').any?
+  end
+
+  def test_remove_rules_by_selector_from_specific_media_type
+    @parser.add_block!(<<-CSS)
+      .header { color: black; }
+      @media screen { .header { color: blue; } }
+      @media print { .header { color: red; } }
+    CSS
+
+    assert_equal 3, @parser.rules_count
+
+    # Remove .header only from screen
+    @parser.remove_rules!(selector: '.header', media_types: :screen)
+
+    assert_equal 2, @parser.rules_count
+
+    # Universal .header should still exist
+    assert @parser.find_by_selector('.header', :all).any?
+
+    # Screen .header should be gone
+    assert @parser.find_by_selector('.header', :screen).empty?
+
+    # Print .header should still exist
+    assert @parser.find_by_selector('.header', :print).any?
+  end
+
+  def test_remove_rules_from_all_media_when_no_media_types_specified
+    @parser.add_block!(<<-CSS)
+      .header { color: black; }
+      @media screen { .header { color: blue; } }
+      @media print { .header { color: red; } }
+    CSS
+
+    assert_equal 3, @parser.rules_count
+
+    # Remove .header from ALL media types
+    @parser.remove_rules!(selector: '.header')
+
+    assert_equal 0, @parser.rules_count
+    assert @parser.find_by_selector('.header', :all).empty?
+    assert @parser.find_by_selector('.header', :screen).empty?
+    assert @parser.find_by_selector('.header', :print).empty?
+  end
+
+  def test_remove_rules_cleans_up_empty_groups
+    @parser.add_block!('@media screen { .header { color: blue; } }')
+    assert_equal 1, @parser.rules_count
+
+    # Remove the only rule in the screen group
+    @parser.remove_rules!(selector: '.header', media_types: :screen)
+
+    assert_equal 0, @parser.rules_count
+
+    # The screen group should be completely removed
+    groups = @parser.instance_variable_get(:@raw_rules)
+    assert groups.empty?
+  end
+
+  def test_remove_rules_with_multiple_media_types
+    @parser.add_block!(<<-CSS)
+      .header { color: black; }
+      @media screen { .header { color: blue; } }
+      @media print { .header { color: red; } }
+      @media handheld { .header { color: green; } }
+    CSS
+
+    assert_equal 4, @parser.rules_count
+
+    # Remove .header from screen and print only
+    @parser.remove_rules!(selector: '.header', media_types: [:screen, :print])
+
+    assert_equal 2, @parser.rules_count
+
+    # Universal and handheld should remain
+    assert @parser.find_by_selector('.header', :all).any?
+    assert @parser.find_by_selector('.header', :handheld).any?
+
+    # Screen and print should be gone
+    assert @parser.find_by_selector('.header', :screen).empty?
+    assert @parser.find_by_selector('.header', :print).empty?
+  end
 end
