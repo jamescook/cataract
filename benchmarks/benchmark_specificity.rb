@@ -16,8 +16,10 @@ end
 
 module BenchmarkSpecificity
   def self.run
+    puts "\n\n"
     puts '=' * 60
     puts 'SPECIFICITY CALCULATION BENCHMARK'
+    puts 'Measures: Time to calculate CSS selector specificity values'
     puts '=' * 60
 
     # Simple selectors

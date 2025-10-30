@@ -16,10 +16,11 @@ end
 
 module BenchmarkParsing
   def self.run
+    puts "\n\n"
     puts '=' * 60
     puts 'CSS PARSING BENCHMARK'
+    puts 'Measures: Time to parse CSS into internal data structures'
     puts '=' * 60
-    puts "Loading from: #{File.expand_path('../../lib/cataract.rb', __dir__)}"
 
     # Load CSS fixtures
     fixtures_dir = File.expand_path('../test/fixtures', __dir__)

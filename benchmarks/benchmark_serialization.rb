@@ -17,13 +17,14 @@ end
 
 module BenchmarkSerialization
   def self.run
+    puts "\n\n"
     puts '=' * 60
     puts 'CSS SERIALIZATION (to_s) BENCHMARK'
+    puts 'Measures: Time to convert parsed CSS back to string format'
     puts '=' * 60
-    puts "Loading from: #{File.expand_path('../../lib/cataract.rb', __dir__)}"
 
     # Load Bootstrap CSS (real-world example)
-    bootstrap_path = File.expand_path('../../test/fixtures/bootstrap.css', __dir__)
+    bootstrap_path = File.expand_path('../test/fixtures/bootstrap.css', __dir__)
     unless File.exist?(bootstrap_path)
       puts "ERROR: Bootstrap CSS fixture not found at #{bootstrap_path}"
       exit 1
