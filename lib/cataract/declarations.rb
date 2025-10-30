@@ -1,4 +1,7 @@
+# frozen_string_literal: true
+
 module Cataract
+  # Container for CSS property declarations with merge and cascade support
   class Declarations
     def initialize(properties = {})
       case properties
@@ -28,7 +31,7 @@ module Cataract
       suffix = val.important ? ' !important' : ''
       "#{val.value}#{suffix};"
     end
-    alias_method :[], :get_property
+    alias [] get_property
 
     def set_property(property, value)
       prop = normalize_property(property)
@@ -58,12 +61,12 @@ module Cataract
         @values << new_val
       end
     end
-    alias_method :[]=, :set_property
+    alias []= set_property
 
     def key?(property)
       !find_value(normalize_property(property)).nil?
     end
-    alias_method :has_property?, :key?
+    alias has_property? key?
 
     def important?(property)
       val = find_value(normalize_property(property))
@@ -88,7 +91,7 @@ module Cataract
     def size
       @values.size
     end
-    alias_method :length, :size
+    alias length size
 
     def empty?
       @values.empty?
@@ -97,13 +100,14 @@ module Cataract
     # Convert to CSS string
     # css_parser format: includes trailing semicolon
     def to_s
-      return "" if empty?
+      return '' if empty?
+
       declarations = []
       each do |property, value, is_important|
         suffix = is_important ? ' !important' : ''
         declarations << "#{property}: #{value}#{suffix}"
       end
-      declarations.join('; ') + ';'
+      "#{declarations.join('; ')};"
     end
 
     def to_h
@@ -127,7 +131,7 @@ module Cataract
       when Hash
         other.each { |prop, value| self[prop] = value }
       else
-        raise ArgumentError, "Can only merge Declarations or Hash objects"
+        raise ArgumentError, 'Can only merge Declarations or Hash objects'
       end
       self
     end
@@ -144,6 +148,7 @@ module Cataract
 
     def ==(other)
       return false unless other.is_a?(Declarations)
+
       @values == other.instance_variable_get(:@values)
     end
 

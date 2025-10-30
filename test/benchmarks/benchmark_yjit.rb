@@ -15,7 +15,7 @@ begin
   CSS_PARSER_AVAILABLE = true
 rescue LoadError
   CSS_PARSER_AVAILABLE = false
-  puts "css_parser gem not available - install with: gem install css_parser"
+  puts 'css_parser gem not available - install with: gem install css_parser'
 end
 
 # State file for benchmark-ips to compare across runs
@@ -31,26 +31,26 @@ SAMPLE_CSS = <<~CSS
   h1 + p { margin-top: 0; font-size: 1.2em; }
 CSS
 
-puts "=" * 80
-puts "Ruby-side Operations Benchmark"
-puts "=" * 80
+puts '=' * 80
+puts 'Ruby-side Operations Benchmark'
+puts '=' * 80
 puts "Ruby version: #{RUBY_VERSION}"
 if defined?(RubyVM::YJIT.enabled?) && RubyVM::YJIT.enabled?
-  puts "YJIT: ✅ Enabled"
+  puts 'YJIT: ✅ Enabled'
 else
-  puts "YJIT: ❌ Disabled"
+  puts 'YJIT: ❌ Disabled'
 end
-puts "=" * 80
+puts '=' * 80
 puts
 
-puts "\n" + "=" * 80
-puts "TEST 1: Property Access (get/set)"
-puts "=" * 80
+puts "\n#{'=' * 80}"
+puts 'TEST 1: Property Access (get/set)'
+puts '=' * 80
 
 Benchmark.ips do |x|
   x.config(time: 3, warmup: 1)
 
-  yjit_label = defined?(RubyVM::YJIT.enabled?) && RubyVM::YJIT.enabled? ? " (YJIT)" : " (no YJIT)"
+  yjit_label = defined?(RubyVM::YJIT.enabled?) && RubyVM::YJIT.enabled? ? ' (YJIT)' : ' (no YJIT)'
 
   x.report("Cataract: property access#{yjit_label}") do
     decls = Cataract::Declarations.new
@@ -76,14 +76,14 @@ Benchmark.ips do |x|
   x.compare!
 end
 
-puts "\n" + "=" * 80
-puts "TEST 2: Declaration Merging"
-puts "=" * 80
+puts "\n#{'=' * 80}"
+puts 'TEST 2: Declaration Merging'
+puts '=' * 80
 
 Benchmark.ips do |x|
   x.config(time: 3, warmup: 1)
 
-  yjit_label = defined?(RubyVM::YJIT.enabled?) && RubyVM::YJIT.enabled? ? " (YJIT)" : " (no YJIT)"
+  yjit_label = defined?(RubyVM::YJIT.enabled?) && RubyVM::YJIT.enabled? ? ' (YJIT)' : ' (no YJIT)'
 
   x.report("Cataract: declaration merging#{yjit_label}") do
     decls1 = Cataract::Declarations.new
@@ -101,14 +101,14 @@ Benchmark.ips do |x|
   x.compare!
 end
 
-puts "\n" + "=" * 80
-puts "TEST 3: CSS String Generation (to_s)"
-puts "=" * 80
+puts "\n#{'=' * 80}"
+puts 'TEST 3: CSS String Generation (to_s)'
+puts '=' * 80
 
 Benchmark.ips do |x|
   x.config(time: 3, warmup: 1)
 
-  yjit_label = defined?(RubyVM::YJIT.enabled?) && RubyVM::YJIT.enabled? ? " (YJIT)" : " (no YJIT)"
+  yjit_label = defined?(RubyVM::YJIT.enabled?) && RubyVM::YJIT.enabled? ? ' (YJIT)' : ' (no YJIT)'
 
   x.report("Cataract: to_s generation#{yjit_label}") do
     decls = Cataract::Declarations.new
@@ -132,19 +132,19 @@ Benchmark.ips do |x|
   x.compare!
 end
 
-puts "\n" + "=" * 80
-puts "TEST 4: Parse + Iterate"
-puts "=" * 80
+puts "\n#{'=' * 80}"
+puts 'TEST 4: Parse + Iterate'
+puts '=' * 80
 
 Benchmark.ips do |x|
   x.config(time: 3, warmup: 1)
 
-  yjit_label = defined?(RubyVM::YJIT.enabled?) && RubyVM::YJIT.enabled? ? " (YJIT)" : " (no YJIT)"
+  yjit_label = defined?(RubyVM::YJIT.enabled?) && RubyVM::YJIT.enabled? ? ' (YJIT)' : ' (no YJIT)'
 
   x.report("Cataract: parse + iterate#{yjit_label}") do
     parser = Cataract::Parser.new
     parser.parse(SAMPLE_CSS)
-    parser.each_selector do |selector, declarations, specificity|
+    parser.each_selector do |_selector, declarations, _specificity|
       _ = declarations
     end
   end
@@ -153,7 +153,7 @@ Benchmark.ips do |x|
     x.report("css_parser: parse + iterate#{yjit_label}") do
       parser = CssParser::Parser.new
       parser.add_block!(SAMPLE_CSS)
-      parser.each_selector do |selector, declarations, specificity|
+      parser.each_selector do |_selector, declarations, _specificity|
         _ = declarations
       end
     end
@@ -163,7 +163,7 @@ Benchmark.ips do |x|
   x.compare!
 end
 
-puts "\n" + "=" * 80
+puts "\n#{'=' * 80}"
 puts "Results saved to: #{RESULTS_FILE}"
-puts ""
-puts "=" * 80
+puts ''
+puts '=' * 80

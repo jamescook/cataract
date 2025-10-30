@@ -9,6 +9,7 @@ class TestMerging < Minitest::Test
   def find_property(declarations, property_name)
     decl = declarations.find { |d| d.property == property_name }
     return nil unless decl
+
     decl.important ? "#{decl.value} !important" : decl.value
   end
 
@@ -20,6 +21,7 @@ class TestMerging < Minitest::Test
     CSS
 
     merged = Cataract.merge(rules)
+
     assert_equal 'black', find_property(merged, 'color')
     assert_equal '0px', find_property(merged, 'margin')
   end
@@ -32,6 +34,7 @@ class TestMerging < Minitest::Test
     CSS
 
     merged = Cataract.merge(rules)
+
     assert_equal 'red', find_property(merged, 'color')
   end
 
@@ -43,6 +46,7 @@ class TestMerging < Minitest::Test
     CSS
 
     merged = Cataract.merge(rules)
+
     assert_equal 'red', find_property(merged, 'color'), 'ID selector (#test) should win over class (.test)'
   end
 
@@ -54,6 +58,7 @@ class TestMerging < Minitest::Test
     CSS
 
     merged = Cataract.merge(rules)
+
     assert_equal 'red', find_property(merged, 'color'), 'ID selector should not be overridden by class'
   end
 
@@ -65,6 +70,7 @@ class TestMerging < Minitest::Test
     CSS
 
     merged = Cataract.merge(rules)
+
     assert_equal 'black !important', find_property(merged, 'color'), '!important should win over higher specificity'
   end
 
@@ -76,6 +82,7 @@ class TestMerging < Minitest::Test
     CSS
 
     merged = Cataract.merge(rules)
+
     assert_equal 'red !important', find_property(merged, 'color'), 'Higher specificity !important should win'
   end
 
@@ -102,6 +109,7 @@ class TestMerging < Minitest::Test
     CSS
 
     merged = Cataract.merge(rules)
+
     assert_equal 'blue', find_property(merged, 'color')
   end
 
@@ -113,7 +121,7 @@ class TestMerging < Minitest::Test
     CSS
 
     merged = Cataract.merge(rules)
-    # Note: background shorthand creation is not implemented yet, will be added later
+    # NOTE: background shorthand creation is not implemented yet, will be added later
     # For now, we expect longhand properties
     assert_equal 'black', find_property(merged, 'background-color')
     assert_equal 'none', find_property(merged, 'background-image')
@@ -127,18 +135,20 @@ class TestMerging < Minitest::Test
     CSS
 
     merged = Cataract.merge(rules)
+
     assert_equal '3em 3em 3em 1em', find_property(merged, 'margin')
   end
 
   # Test merging fonts
   def test_merging_fonts
-    skip "Font shorthand creation not yet implemented"
+    skip 'Font shorthand creation not yet implemented'
     rules = Cataract.parse_css(<<~CSS)
       .test { font: 11px Arial; }
       .test { font-weight: bold; }
     CSS
 
     merged = Cataract.merge(rules)
+
     assert_equal 'bold 11px Arial', find_property(merged, 'font')
   end
 
@@ -150,6 +160,7 @@ class TestMerging < Minitest::Test
     CSS
 
     merged = Cataract.merge(rules)
+
     assert_equal 'red !important', find_property(merged, 'color')
   end
 
@@ -160,6 +171,7 @@ class TestMerging < Minitest::Test
     CSS
 
     merged = Cataract.merge(rules)
+
     assert_equal 'red !important', find_property(merged, 'color')
   end
 
@@ -170,6 +182,7 @@ class TestMerging < Minitest::Test
     CSS
 
     merged = Cataract.merge(rules)
+
     assert_equal 'black !important', find_property(merged, 'color')
   end
 
@@ -192,6 +205,7 @@ class TestMerging < Minitest::Test
     CSS
 
     merged = Cataract.merge(rules)
+
     assert_equal 'red', find_property(merged, 'color')
     assert_equal '10px', find_property(merged, 'margin')
   end
@@ -199,6 +213,7 @@ class TestMerging < Minitest::Test
   # Test merging with no rules
   def test_empty_merge
     merged = Cataract.merge([])
+
     assert_empty merged
   end
 end

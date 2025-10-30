@@ -31,9 +31,11 @@ class TestStylesheet < Minitest::Test
     assert_equal 1, sheet.size
 
     sheet.add_block!('div { margin: 10px; }')
+
     assert_equal 2, sheet.size
 
     result = sheet.to_s
+
     assert_includes result, 'body'
     assert_includes result, 'color: red'
     assert_includes result, 'div'
@@ -46,7 +48,7 @@ class TestStylesheet < Minitest::Test
     declarations = sheet.declarations
 
     assert_kind_of Array, declarations
-    assert declarations.all? { |d| d.is_a?(Cataract::Declarations::Value) }
+    assert(declarations.all?(Cataract::Declarations::Value))
   end
 
   def test_stylesheet_inspect
@@ -54,6 +56,7 @@ class TestStylesheet < Minitest::Test
     sheet = Cataract.parse_css(css)
 
     inspect_str = sheet.inspect
+
     assert_includes inspect_str, 'Stylesheet'
     assert_includes inspect_str, '2 rules'
   end
@@ -65,6 +68,7 @@ class TestStylesheet < Minitest::Test
 
     # Parse the result again
     sheet2 = Cataract.parse_css(result)
+
     assert_equal sheet.size, sheet2.size
   end
 
@@ -75,7 +79,8 @@ class TestStylesheet < Minitest::Test
 
     # Should be able to parse the result
     sheet2 = Cataract.parse_css(result)
-    assert sheet2.size > 0
+
+    assert_predicate sheet2.size, :positive?
   end
 
   def test_charset_parsing
@@ -115,6 +120,7 @@ body { color: red; }'
 
     # Parse again and verify charset preserved
     sheet2 = Cataract.parse_css(result)
+
     assert_equal 'UTF-8', sheet2.charset
     assert_equal 1, sheet2.size
   end
@@ -128,6 +134,7 @@ body { color: red; }'
 
     # Verify it's preserved in serialization
     result = sheet.to_s
+
     assert_match(/\A@charset "UTF-8";/, result)
   end
 
@@ -140,11 +147,11 @@ body { color: red; }'
     sheet = Cataract.parse_css(css)
 
     selectors = []
-    sheet.each_selector do |selector, declarations, specificity, media_types|
+    sheet.each_selector do |selector, _declarations, _specificity, _media_types|
       selectors << selector
     end
 
-    assert_equal ['body', 'div'], selectors
+    assert_equal %w[body div], selectors
   end
 
   def test_each_selector_yields_all_components
@@ -165,7 +172,7 @@ body { color: red; }'
     css = 'div { color: blue !important; }'
     sheet = Cataract.parse_css(css)
 
-    sheet.each_selector do |selector, declarations, specificity, media_types|
+    sheet.each_selector do |_selector, declarations, _specificity, _media_types|
       assert_includes declarations, '!important'
     end
   end
@@ -175,6 +182,7 @@ body { color: red; }'
     sheet = Cataract.parse_css(css)
 
     enum = sheet.each_selector
+
     assert_kind_of Enumerator, enum
     assert_equal 2, enum.count
   end
@@ -189,7 +197,7 @@ body { color: red; }'
     sheet = Cataract.parse_css(css)
 
     selectors = []
-    sheet.each_selector(media: :all) do |selector, declarations, specificity, media_types|
+    sheet.each_selector(media: :all) do |selector, _declarations, _specificity, media_types|
       selectors << [selector, media_types]
     end
 
@@ -212,7 +220,7 @@ body { color: red; }'
     sheet = Cataract.parse_css(css)
 
     selectors = []
-    sheet.each_selector(media: :print) do |selector, declarations, specificity, media_types|
+    sheet.each_selector(media: :print) do |selector, _declarations, _specificity, media_types|
       selectors << [selector, media_types]
     end
 
@@ -234,7 +242,7 @@ body { color: red; }'
     sheet = Cataract.parse_css(css)
 
     selectors = []
-    sheet.each_selector(media: :screen) do |selector, declarations, specificity, media_types|
+    sheet.each_selector(media: :screen) do |selector, _declarations, _specificity, media_types|
       selectors << [selector, media_types]
     end
 
@@ -256,7 +264,7 @@ body { color: red; }'
 
     # Query for both screen and print
     selectors = []
-    sheet.each_selector(media: [:screen, :print]) do |selector, declarations, specificity, media_types|
+    sheet.each_selector(media: %i[screen print]) do |selector, _declarations, _specificity, _media_types|
       selectors << selector
     end
 
@@ -270,11 +278,11 @@ body { color: red; }'
     sheet = Cataract.parse_css(css)
 
     selectors = []
-    sheet.each_selector(media: :screen) do |selector, declarations, specificity, media_types|
+    sheet.each_selector(media: :screen) do |selector, _declarations, _specificity, _media_types|
       selectors << selector
     end
 
-    assert_equal [], selectors
+    assert_empty selectors
   end
 
   # ============================================================================
@@ -292,7 +300,7 @@ body { color: red; }'
 
     # Find rules with specificity = 1 (element selectors: body, div)
     matches = []
-    sheet.each_selector(specificity: 1) do |selector, declarations, specificity, media_types|
+    sheet.each_selector(specificity: 1) do |selector, _declarations, _specificity, _media_types|
       matches << selector
     end
 
@@ -312,7 +320,7 @@ body { color: red; }'
 
     # Find rules with specificity 10-100 (class and single ID)
     matches = []
-    sheet.each_selector(specificity: 10..100) do |selector, declarations, specificity, media_types|
+    sheet.each_selector(specificity: 10..100) do |selector, _declarations, specificity, _media_types|
       matches << [selector, specificity]
     end
 
@@ -332,7 +340,7 @@ body { color: red; }'
 
     # Find rules with specificity >= 100 (high specificity)
     matches = []
-    sheet.each_selector(specificity: 100..) do |selector, declarations, specificity, media_types|
+    sheet.each_selector(specificity: 100..) do |selector, _declarations, _specificity, _media_types|
       matches << selector
     end
 
@@ -352,7 +360,7 @@ body { color: red; }'
 
     # Find rules with specificity <= 10 (low specificity)
     matches = []
-    sheet.each_selector(specificity: ..10) do |selector, declarations, specificity, media_types|
+    sheet.each_selector(specificity: ..10) do |selector, _declarations, _specificity, _media_types|
       matches << selector
     end
 
@@ -377,7 +385,7 @@ body { color: red; }'
 
     # Find low-specificity rules (<=10) in screen media
     matches = []
-    sheet.each_selector(specificity: ..10, media: :screen) do |selector, declarations, specificity, media_types|
+    sheet.each_selector(specificity: ..10, media: :screen) do |selector, _declarations, _specificity, _media_types|
       matches << selector
     end
 
@@ -390,11 +398,11 @@ body { color: red; }'
     sheet = Cataract.parse_css(css)
 
     matches = []
-    sheet.each_selector(specificity: 100..) do |selector, declarations, specificity, media_types|
+    sheet.each_selector(specificity: 100..) do |selector, _declarations, _specificity, _media_types|
       matches << selector
     end
 
-    assert_equal [], matches
+    assert_empty matches
   end
 
   def test_each_selector_with_specificity_returns_enumerator
@@ -402,6 +410,7 @@ body { color: red; }'
     sheet = Cataract.parse_css(css)
 
     enum = sheet.each_selector(specificity: 100..)
+
     assert_kind_of Enumerator, enum
     assert_equal 1, enum.count
   end
@@ -421,7 +430,7 @@ body { color: red; }'
 
     # Find any selector with 'color' property
     matches = []
-    sheet.each_selector(property: 'color') do |selector, declarations, specificity, media_types|
+    sheet.each_selector(property: 'color') do |selector, _declarations, _specificity, _media_types|
       matches << selector
     end
 
@@ -441,7 +450,7 @@ body { color: red; }'
 
     # Find any selector with ANY property that has value 'relative'
     matches = []
-    sheet.each_selector(property_value: 'relative') do |selector, declarations, specificity, media_types|
+    sheet.each_selector(property_value: 'relative') do |selector, _declarations, _specificity, _media_types|
       matches << selector
     end
 
@@ -462,7 +471,8 @@ body { color: red; }'
 
     # Find selectors with specifically 'position: relative'
     matches = []
-    sheet.each_selector(property: 'position', property_value: 'relative') do |selector, declarations, specificity, media_types|
+    sheet.each_selector(property: 'position',
+                        property_value: 'relative') do |selector, _declarations, _specificity, _media_types|
       matches << selector
     end
 
@@ -477,11 +487,11 @@ body { color: red; }'
     sheet = Cataract.parse_css(css)
 
     matches = []
-    sheet.each_selector(property: 'color') do |selector, declarations, specificity, media_types|
+    sheet.each_selector(property: 'color') do |selector, _declarations, _specificity, _media_types|
       matches << selector
     end
 
-    assert_equal [], matches
+    assert_empty matches
   end
 
   def test_each_selector_with_property_and_media_filter
@@ -500,7 +510,7 @@ body { color: red; }'
 
     # Find selectors with 'color' in screen media
     matches = []
-    sheet.each_selector(property: 'color', media: :screen) do |selector, declarations, specificity, media_types|
+    sheet.each_selector(property: 'color', media: :screen) do |selector, _declarations, _specificity, _media_types|
       matches << selector
     end
 
@@ -519,7 +529,7 @@ body { color: red; }'
 
     # Find high-specificity selectors (>= 100) with 'color' property
     matches = []
-    sheet.each_selector(property: 'color', specificity: 100..) do |selector, declarations, specificity, media_types|
+    sheet.each_selector(property: 'color', specificity: 100..) do |selector, _declarations, _specificity, _media_types|
       matches << selector
     end
 
@@ -537,7 +547,8 @@ body { color: red; }'
 
     # Find selectors with 'color: red' (should match both with and without !important)
     matches = []
-    sheet.each_selector(property: 'color', property_value: 'red') do |selector, declarations, specificity, media_types|
+    sheet.each_selector(property: 'color',
+                        property_value: 'red') do |selector, _declarations, _specificity, _media_types|
       matches << selector
     end
 
@@ -559,6 +570,7 @@ body { color: red; }'
     CSS
 
     output = Cataract.parse_css(input).to_formatted_s
+
     assert_equal expected, output
   end
 
@@ -571,6 +583,7 @@ body { color: red; }'
     CSS
 
     output = Cataract.parse_css(input).to_formatted_s
+
     assert_equal expected, output
   end
 
@@ -586,6 +599,7 @@ body { color: red; }'
     CSS
 
     output = Cataract.parse_css(input).to_formatted_s
+
     assert_equal expected, output
   end
 
@@ -600,6 +614,7 @@ body { color: red; }'
     CSS
 
     output = Cataract.parse_css(input).to_formatted_s
+
     assert_equal expected, output
   end
 
@@ -613,6 +628,7 @@ body { color: red; }'
     CSS
 
     output = Cataract.parse_css(input).to_formatted_s
+
     assert_equal expected, output
   end
 
@@ -633,6 +649,7 @@ body { color: red; }'
     CSS
 
     output = Cataract.parse_css(input).to_formatted_s
+
     assert_equal expected, output
   end
 end

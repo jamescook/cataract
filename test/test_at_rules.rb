@@ -1,5 +1,7 @@
-require "minitest/autorun"
-require "cataract"
+# frozen_string_literal: true
+
+require 'minitest/autorun'
+require 'cataract'
 
 # Test CSS at-rules support
 # Based on W3C specifications:
@@ -25,6 +27,7 @@ class TestAtRules < Minitest::Test
 
     # @font-face should be treated as a selector
     rule = @parser.each_selector.first
+
     assert_equal '@font-face', rule[0]
     assert_includes rule[1], 'font-family'
     assert_includes rule[1], 'src'
@@ -89,6 +92,7 @@ class TestAtRules < Minitest::Test
     assert_equal 1, @parser.rules_count
 
     rule = @parser.each_selector.first
+
     assert_equal '@keyframes slide', rule[0]
   end
 
@@ -245,6 +249,7 @@ class TestAtRules < Minitest::Test
     assert_equal 1, @parser.rules_count
 
     rule = @parser.each_selector.first
+
     assert_equal 'body', rule[0]
     # Should combine media types: screen AND (min-width: 500px)
     assert_includes rule[3], :screen

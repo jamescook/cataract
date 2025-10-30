@@ -1,5 +1,7 @@
-require "minitest/autorun"
-require "cataract"
+# frozen_string_literal: true
+
+require 'minitest/autorun'
+require 'cataract'
 
 # Test modern CSS at-rules (CSS3+)
 # These use the generic at-rule pattern and should be handled automatically
@@ -18,6 +20,7 @@ class TestModernAtRules < Minitest::Test
 
     assert_equal 1, @parser.rules_count
     rule = @parser.each_selector.first
+
     assert_equal '.padding', rule[0]
   end
 
@@ -46,6 +49,7 @@ class TestModernAtRules < Minitest::Test
 
     assert_equal 1, @parser.rules_count
     rule = @parser.each_selector.first
+
     assert_equal '@property --my-color', rule[0]
   end
 
@@ -75,6 +79,7 @@ class TestModernAtRules < Minitest::Test
 
     assert_equal 1, @parser.rules_count
     rule = @parser.each_selector.first
+
     assert_equal '.card', rule[0]
   end
 
@@ -98,6 +103,7 @@ class TestModernAtRules < Minitest::Test
 
     assert_equal 1, @parser.rules_count
     rule = @parser.each_selector.first
+
     assert_equal '@page', rule[0]
   end
 
@@ -123,6 +129,7 @@ class TestModernAtRules < Minitest::Test
 
     assert_equal 1, @parser.rules_count
     rule = @parser.each_selector.first
+
     assert_equal '@counter-style thumbs', rule[0]
   end
 
@@ -136,6 +143,7 @@ class TestModernAtRules < Minitest::Test
 
     assert_equal 1, @parser.rules_count
     rule = @parser.each_selector.first
+
     assert_equal '.title', rule[0]
   end
 

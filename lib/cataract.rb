@@ -1,22 +1,23 @@
+# frozen_string_literal: true
+
 require_relative 'cataract/version'
-require_relative 'cataract/cataract'  # Load C extension first (defines Rule struct)
-require_relative 'cataract/rule'  # Add Ruby methods to Rule
+require_relative 'cataract/cataract' # Load C extension first (defines Rule struct)
+require_relative 'cataract/rule' # Add Ruby methods to Rule
 require_relative 'cataract/stylesheet'
 require_relative 'cataract/rule_set'
 require_relative 'cataract/declarations'
 require_relative 'cataract/parser'
 require_relative 'cataract/import_resolver'
 
+# High-performance CSS parser
 module Cataract
   # Wrap parse_css to return Stylesheet instead of raw hash
   class << self
-    alias_method :parse_css_internal, :parse_css
+    alias parse_css_internal parse_css
 
     def parse_css(css, imports: false)
       # Resolve @import statements if requested
-      if imports
-        css = ImportResolver.resolve(css, imports)
-      end
+      css = ImportResolver.resolve(css, imports) if imports
 
       result = parse_css_internal(css)
       # parse_css_internal always returns {rules: [...], charset: "UTF-8" | nil}
@@ -49,13 +50,13 @@ module Cataract
 
     # Accept both Stylesheet and Array for convenience
     input = if rules.is_a?(Stylesheet)
-      # Pass hash structure directly to C - it will flatten efficiently
-      rules.instance_variable_get(:@rule_groups)
-    elsif rules.is_a?(Enumerator)
-      rules.to_a
-    else
-      rules
-    end
+              # Pass hash structure directly to C - it will flatten efficiently
+              rules.instance_variable_get(:@rule_groups)
+            elsif rules.is_a?(Enumerator)
+              rules.to_a
+            else
+              rules
+            end
 
     # Call C implementation for performance (handles both hash and array)
     Cataract.merge_rules(input)

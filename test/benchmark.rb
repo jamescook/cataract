@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # This file is deprecated - benchmarks have been split into separate files
 #
 # Run benchmarks with:
@@ -12,10 +14,10 @@
 require_relative 'benchmarks/benchmark_parsing'
 require_relative 'benchmarks/benchmark_specificity'
 
-puts "="*60
-puts "DEPRECATED: This file is deprecated"
+puts '=' * 60
+puts 'DEPRECATED: This file is deprecated'
 puts "Run 'rake benchmark' to run all benchmarks"
-puts "="*60
+puts '=' * 60
 puts
 
 BenchmarkParsing.run

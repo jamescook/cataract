@@ -8,6 +8,7 @@ require_relative '../lib/cataract'
 class TestDeclarationsToS < Minitest::Test
   def test_empty_array
     result = Cataract.declarations_to_s([])
+
     assert_equal '', result
   end
 
@@ -17,18 +18,20 @@ class TestDeclarationsToS < Minitest::Test
     first_rule = sheet.rules.first
     result = Cataract.declarations_to_s(first_rule.declarations)
     # Bootstrap's first rule should have some declarations
-    assert result.length > 0
+    assert_predicate result.length, :positive?
   end
 
   def test_single_declaration
     decl = Cataract::Declarations::Value.new('color', 'red', false)
     result = Cataract.declarations_to_s([decl])
+
     assert_equal 'color: red;', result
   end
 
   def test_single_declaration_with_important
     decl = Cataract::Declarations::Value.new('color', 'red', true)
     result = Cataract.declarations_to_s([decl])
+
     assert_equal 'color: red !important;', result
   end
 
@@ -39,6 +42,7 @@ class TestDeclarationsToS < Minitest::Test
       Cataract::Declarations::Value.new('padding', '5px', false)
     ]
     result = Cataract.declarations_to_s(decls)
+
     assert_equal 'color: red; margin: 10px; padding: 5px;', result
   end
 
@@ -49,6 +53,7 @@ class TestDeclarationsToS < Minitest::Test
       Cataract::Declarations::Value.new('background', 'blue', true)
     ]
     result = Cataract.declarations_to_s(decls)
+
     assert_equal 'color: red !important; margin: 10px; background: blue !important;', result
   end
 

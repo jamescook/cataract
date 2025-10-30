@@ -1,4 +1,7 @@
+# frozen_string_literal: true
+
 module Cataract
+  # Stateful CSS parser
   class Parser
     def initialize(options = {})
       @options = {
@@ -15,10 +18,10 @@ module Cataract
     def parse(css_string, imports: false)
       # Resolve @import statements if requested
       css_to_parse = if imports
-        ImportResolver.resolve(css_string, imports)
-      else
-        css_string
-      end
+                       ImportResolver.resolve(css_string, imports)
+                     else
+                       css_string
+                     end
 
       result = Cataract.parse_css_internal(css_to_parse)
       # parse_css_internal returns {rules: {query_string => {media_types: [...], rules: [...]}}, charset: "..." | nil}
@@ -30,7 +33,7 @@ module Cataract
       @raw_rules.merge!(result[:rules]) do |_key, old_group, new_group|
         # Merge rules arrays from both groups
         {
-          media_types: old_group[:media_types],  # Keep existing media types
+          media_types: old_group[:media_types], # Keep existing media types
           rules: old_group[:rules] + new_group[:rules]
         }
       end
@@ -48,9 +51,7 @@ module Cataract
         # Count braces - if unbalanced, add missing closing braces
         open_braces = css_string.count('{')
         close_braces = css_string.count('}')
-        if open_braces > close_braces
-          css_to_parse = css_string + (' }' * (open_braces - close_braces))
-        end
+        css_to_parse = css_string + (' }' * (open_braces - close_braces)) if open_braces > close_braces
       end
 
       # Track rules count before parsing to identify newly added rules
@@ -65,10 +66,10 @@ module Cataract
 
         # Determine new media key for the overridden rules
         new_media_key = if override_media_types == [:all] || override_media_types.empty?
-          nil
-        else
-          override_media_types.map(&:to_s).join(', ')
-        end
+                          nil
+                        else
+                          override_media_types.map(&:to_s).join(', ')
+                        end
 
         # Collect all rules that were added during this parse call
         new_rules = []
@@ -79,7 +80,7 @@ module Cataract
             old_count = rules_before[query_string][:rules].length
             new_count = group[:rules].length
             if new_count > old_count
-              new_rules.concat(group[:rules][old_count..-1])
+              new_rules.concat(group[:rules][old_count..])
               # Remove the newly added rules from their original group
               group[:rules] = group[:rules][0...old_count]
             end
@@ -104,7 +105,7 @@ module Cataract
       self
     end
 
-    alias_method :load_string!, :add_block!
+    alias load_string! add_block!
 
     # Load CSS from a URI (http://, https://, or file://)
     # Options:
@@ -123,6 +124,7 @@ module Cataract
         unless response.is_a?(Net::HTTPSuccess)
           raise IOError, "Failed to load URI: #{uri} (#{response.code} #{response.message})"
         end
+
         css_content = response.body
       when 'file', nil
         # file:// URI or relative path
@@ -139,11 +141,13 @@ module Cataract
 
       parse(css_content)
       self
-    rescue Errno::ENOENT => e
+    rescue Errno::ENOENT
       raise IOError, "File not found: #{uri}" if @options[:io_exceptions]
+
       self
-    rescue => e
+    rescue StandardError => e
       raise IOError, "Error loading URI: #{uri} - #{e.message}" if @options[:io_exceptions]
+
       self
     end
 
@@ -152,27 +156,27 @@ module Cataract
     #   - filename: Path to CSS file
     #   - base_dir: Base directory for resolving relative paths (default: current directory)
     #   - media_types: Media type symbol or array (not yet implemented for filtering)
-    def load_file!(filename, base_dir = '.', media_types = :all)
+    def load_file!(filename, base_dir = '.', _media_types = :all)
       file_path = File.expand_path(filename, base_dir)
       css_content = File.read(file_path)
       parse(css_content)
       self
-    rescue Errno::ENOENT => e
+    rescue Errno::ENOENT
       raise IOError, "File not found: #{file_path}" if @options[:io_exceptions]
+
       self
-    rescue => e
+    rescue StandardError => e
       raise IOError, "Error loading file: #{file_path} - #{e.message}" if @options[:io_exceptions]
+
       self
     end
 
-    def rules
+    def rules(&block)
       return enum_for(:rules) unless block_given?
 
       # Iterate over all rules in all media query groups
       @raw_rules.each_value do |group|
-        group[:rules].each do |rule|
-          yield rule
-        end
+        group[:rules].each(&block)
       end
     end
 
@@ -184,7 +188,7 @@ module Cataract
       rule = Cataract::Rule.new(
         selector.to_s,
         decls.to_a,
-        nil   # specificity calculated on demand
+        nil # specificity calculated on demand
       )
 
       # Normalize media_types to array
@@ -194,10 +198,10 @@ module Cataract
       # For now, map media_types to simple strings
       # TODO: This is a simplified approach - may need enhancement
       media_key = if media_types_array == [:all] || media_types_array.empty?
-        nil  # No media query
-      else
-        media_types_array.map(&:to_s).join(', ')
-      end
+                    nil # No media query
+                  else
+                    media_types_array.map(&:to_s).join(', ')
+                  end
 
       # Get or create group
       @raw_rules[media_key] ||= { media_types: media_types_array, rules: [] }
@@ -221,10 +225,10 @@ module Cataract
 
       # Determine media query key
       media_key = if rule_set.media_types == [:all] || rule_set.media_types.empty?
-        nil
-      else
-        rule_set.media_types.map(&:to_s).join(', ')
-      end
+                    nil
+                  else
+                    rule_set.media_types.map(&:to_s).join(', ')
+                  end
 
       # Get or create group
       @raw_rules[media_key] ||= { media_types: Array(rule_set.media_types).map(&:to_sym), rules: [] }
@@ -248,13 +252,9 @@ module Cataract
     # Remove rules matching criteria
     def remove_rules!(selector: nil, media_types: nil)
       # Normalize media_types filter
-      filter_media_types = if media_types
-        Array(media_types).map(&:to_sym)
-      else
-        nil  # nil means remove from all media types
-      end
+      filter_media_types = (Array(media_types).map(&:to_sym) if media_types)
 
-      @raw_rules.each do |_query_string, group|
+      @raw_rules.each_value do |group|
         # Skip groups that don't match media_types filter
         if filter_media_types
           group_media_types = group[:media_types] || []
@@ -275,7 +275,7 @@ module Cataract
       @raw_rules.delete_if { |_key, group| group[:rules].empty? }
       self
     end
-    
+
     # CSS-parser gem compatible API
     # Yields: selector, declarations, specificity, media_types
     def each_selector(media_types = :all)
@@ -283,7 +283,7 @@ module Cataract
 
       query_media_types = Array(media_types).map(&:to_sym)
 
-      @raw_rules.each do |media_query_string, group|
+      @raw_rules.each_value do |group|
         # Filter by media types at group level
         group_media_types = group[:media_types] || []
 
@@ -322,7 +322,7 @@ module Cataract
     def find_by_selector(selector, media_types = :all)
       matching_declarations = []
 
-      each_selector(media_types) do |sel, declarations, specificity, media|
+      each_selector(media_types) do |sel, declarations, _specificity, _media|
         matching_declarations << declarations if sel == selector
       end
 
@@ -339,7 +339,7 @@ module Cataract
 
       query_media_types = Array(media_types).map(&:to_sym)
 
-      @raw_rules.each do |media_query_string, group|
+      @raw_rules.each_value do |group|
         # Filter by media types at group level
         group_media_types = group[:media_types] || []
 
@@ -399,7 +399,7 @@ module Cataract
       # Group styles by media query string using each_selector (which handles filtering)
       each_selector(which_media) do |selector, declarations, _specificity, media_types|
         # Find the media query string for this media_types
-        media_query_string = @raw_rules.find { |mq, group| group[:media_types] == media_types }&.first
+        media_query_string = @raw_rules.find { |_mq, group| group[:media_types] == media_types }&.first
 
         styles_by_media_query[media_query_string] ||= []
         styles_by_media_query[media_query_string] << [selector, declarations]
@@ -418,14 +418,14 @@ module Cataract
           styles.each do |selector, declarations|
             out << "  #{selector} { #{declarations} }"
           end
-          out << "}"
+          out << '}'
         end
       end
 
       out << ''
       out.join("\n")
     end
-    
+
     # Utility methods
     def rules_count
       @raw_rules.values.sum { |group| group[:rules].length }
@@ -435,17 +435,16 @@ module Cataract
       query_media_types = Array(media_types).map(&:to_sym)
       result = []
 
-      @raw_rules.each do |media_query_string, group|
+      @raw_rules.each_value do |group|
         # Filter by media types at group level
         group_media_types = group[:media_types] || []
 
         # :all matches everything
-        if query_media_types.include?(:all) ||
-           (group_media_types.empty? && query_media_types.include?(:all)) ||
-           !(group_media_types & query_media_types).empty?
+        next unless query_media_types.include?(:all) ||
+                    (group_media_types.empty? && query_media_types.include?(:all)) ||
+                    !(group_media_types & query_media_types).empty?
 
-          result.concat(group[:rules].map(&:selector))
-        end
+        result.concat(group[:rules].map(&:selector))
       end
 
       result
@@ -461,7 +460,7 @@ module Cataract
     def to_h
       result = {}
 
-      @raw_rules.each do |media_query_string, group|
+      @raw_rules.each_value do |group|
         group_media_types = group[:media_types] || [:all]
 
         group_media_types.each do |media_type|
@@ -485,7 +484,7 @@ module Cataract
 
     # Check if parser has any rules
     def empty?
-      rules_count == 0
+      rules_count.zero?
     end
 
     # Clear all rules
@@ -517,36 +516,33 @@ module Cataract
 
         # Map shorthand properties to their expansion methods
         expanded = case property
-        when 'margin'
-          Cataract.expand_margin(value)
-        when 'padding'
-          Cataract.expand_padding(value)
-        when 'border'
-          Cataract.expand_border(value)
-        when 'border-top'
-          Cataract.expand_border_side('top', value)
-        when 'border-right'
-          Cataract.expand_border_side('right', value)
-        when 'border-bottom'
-          Cataract.expand_border_side('bottom', value)
-        when 'border-left'
-          Cataract.expand_border_side('left', value)
-        when 'border-color'
-          Cataract.expand_border_color(value)
-        when 'border-style'
-          Cataract.expand_border_style(value)
-        when 'border-width'
-          Cataract.expand_border_width(value)
-        when 'font'
-          Cataract.expand_font(value)
-        when 'list-style'
-          Cataract.expand_list_style(value)
-        when 'background'
-          Cataract.expand_background(value)
-        else
-          # Not a shorthand - just set the property directly
-          nil
-        end
+                   when 'margin'
+                     Cataract.expand_margin(value)
+                   when 'padding'
+                     Cataract.expand_padding(value)
+                   when 'border'
+                     Cataract.expand_border(value)
+                   when 'border-top'
+                     Cataract.expand_border_side('top', value)
+                   when 'border-right'
+                     Cataract.expand_border_side('right', value)
+                   when 'border-bottom'
+                     Cataract.expand_border_side('bottom', value)
+                   when 'border-left'
+                     Cataract.expand_border_side('left', value)
+                   when 'border-color'
+                     Cataract.expand_border_color(value)
+                   when 'border-style'
+                     Cataract.expand_border_style(value)
+                   when 'border-width'
+                     Cataract.expand_border_width(value)
+                   when 'font'
+                     Cataract.expand_font(value)
+                   when 'list-style'
+                     Cataract.expand_list_style(value)
+                   when 'background'
+                     Cataract.expand_background(value)
+                   end
 
         if expanded
           # This was a shorthand - merge all expanded properties
