@@ -14,6 +14,11 @@ AllCops:
     - '**/*.so'
     - '**/*.bundle'
 
+# extconf.rb uses standard Ruby C extension global variables ($CFLAGS, etc.)
+Style/GlobalVars:
+  Exclude:
+    - 'ext/**/extconf.rb'
+
 # Disable complexity metrics - too subjective and often leads to harder-to-read code
 Metrics/AbcSize:
   Enabled: false
