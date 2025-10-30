@@ -260,7 +260,7 @@ module Cataract
           group_media_types = group[:media_types] || []
           # Check if this group matches the filter
           next unless filter_media_types.include?(:all) ||
-                      !(group_media_types & filter_media_types).empty?
+                      group_media_types.intersect?(filter_media_types)
         end
 
         # Remove matching rules from this group
@@ -290,7 +290,7 @@ module Cataract
         # :all matches everything
         next unless query_media_types.include?(:all) ||
                     (group_media_types.empty? && query_media_types.include?(:all)) ||
-                    !(group_media_types & query_media_types).empty?
+                    group_media_types.intersect?(query_media_types)
 
         group[:rules].each do |rule|
           # Convert declarations array to string using C function
@@ -346,7 +346,7 @@ module Cataract
         # :all matches everything
         next unless query_media_types.include?(:all) ||
                     (group_media_types.empty? && query_media_types.include?(:all)) ||
-                    !(group_media_types & query_media_types).empty?
+                    group_media_types.intersect?(query_media_types)
 
         group[:rules].each do |rule|
           # Wrap Rule struct in RuleSet for user-facing API
@@ -442,7 +442,7 @@ module Cataract
         # :all matches everything
         next unless query_media_types.include?(:all) ||
                     (group_media_types.empty? && query_media_types.include?(:all)) ||
-                    !(group_media_types & query_media_types).empty?
+                    group_media_types.intersect?(query_media_types)
 
         result.concat(group[:rules].map(&:selector))
       end
