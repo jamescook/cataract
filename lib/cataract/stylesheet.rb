@@ -107,7 +107,7 @@ module Cataract
                            false
                          else
                            # Check for intersection
-                           !(group_media_types & query_media_types).empty?
+                           group_media_types.intersect?(query_media_types)
                          end
 
         next unless should_include
