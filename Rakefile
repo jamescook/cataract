@@ -36,41 +36,37 @@ task :benchmark do
   Rake::Task['benchmark:serialization'].invoke
   Rake::Task['benchmark:specificity'].invoke
   Rake::Task['benchmark:merging'].invoke
+  Rake::Task['benchmark:yjit'].invoke
+  Rake::Task['benchmark:premailer'].invoke
 end
 
 namespace :benchmark do
   desc 'Benchmark CSS parsing performance'
   task :parsing do
-    Rake::Task[:compile].invoke
     puts 'Running parsing benchmark...'
     ruby 'benchmarks/benchmark_parsing.rb'
   end
 
   desc 'Benchmark CSS serialization (to_s) performance'
   task :serialization do
-    Rake::Task[:compile].invoke
     puts 'Running serialization benchmark...'
     ruby 'benchmarks/benchmark_serialization.rb'
   end
 
   desc 'Benchmark specificity calculation performance'
   task :specificity do
-    Rake::Task[:compile].invoke
     puts 'Running specificity benchmark...'
     ruby 'benchmarks/benchmark_specificity.rb'
   end
 
   desc 'Benchmark CSS merging performance'
   task :merging do
-    Rake::Task[:compile].invoke
     puts 'Running merging benchmark...'
     ruby 'benchmarks/benchmark_merging.rb'
   end
 
   desc 'Benchmark Premailer with css_parser vs Cataract'
   task :premailer do
-    Rake::Task[:compile].invoke
-
     # Clean up any existing state file
     state_file = '/tmp/benchmark_premailer_ips.json'
     FileUtils.rm_f(state_file)
@@ -88,7 +84,6 @@ namespace :benchmark do
 
   desc 'Benchmark Ruby-side operations with YJIT on vs off'
   task :yjit do
-    Rake::Task[:compile].invoke
     puts "\n#{'=' * 80}"
     puts 'Running with YJIT OFF'
     puts '=' * 80

@@ -112,37 +112,35 @@ sheet.each_selector(specificity: 10..100) { |sel, decls, spec, media| ... }  # C
 sheet.each_selector(specificity: ..10) { |sel, decls, spec, media| ... }     # Low specificity (<= 10)
 ```
 
-### css_parser Compatibility
+### Drop-in Replacement for Premailer
 
-Cataract provides a compatible API with the popular [css_parser](https://github.com/premailer/css_parser) gem, making it easy to switch between implementations:
+Cataract can be used as a high-performance drop-in replacement for [css_parser](https://github.com/premailer/css_parser) in [Premailer](https://github.com/premailer/premailer), providing significantly faster CSS inlining with reduced memory allocations:
 
 ```ruby
-parser = Cataract::Parser.new
+require 'cataract'
+require 'premailer'
 
-# Load CSS from various sources
-parser.add_block!('body { color: red }')
-parser.load_string!('p { margin: 0 }')
-parser.load_file!('/path/to/styles.css')
-parser.load_uri!('https://example.com/styles.css')
+# Enable Cataract as css_parser replacement
+Cataract.mimic_CssParser!
 
-# Lenient parsing with automatic brace closing
-parser.add_block!('p { color: red', fix_braces: true)
-# Automatically closes the missing brace
+# Use Premailer as normal - it will now use Cataract under the hood
+premailer = Premailer.new(html, with_html_string: true)
+output = premailer.to_inline_css
 
-# Add rules with media types
-parser.add_block!('body { font-size: 12px }', media_types: [:screen])
-parser.add_rule!(selector: '.mobile', declarations: 'width: 100%', media_types: :handheld)
-
-# Access rules
-parser.each_selector do |selector, declarations, specificity, media_types|
-  # Process each selector
-end
-
-parser.find_rule_sets(['.header', '.footer'])
-# => [array of matching RuleSet objects]
+# Restore original css_parser if needed
+Cataract.restore_CssParser!
 ```
 
-**Note on `fix_braces`:** This option is `false` by default for performance. Enable it only when parsing untrusted or malformed CSS that may have missing closing braces.
+The compatibility layer supports all css_parser APIs used by Premailer, including:
+- `add_block!`, `load_string!`, `load_file!`, `load_uri!`
+- `each_selector`, `find_rule_sets`
+- `add_rule!` with media type support
+- Shorthand expansion (`expand_shorthand!`)
+- Rule merging
+
+**Note**: Cataract provides this compatibility layer specifically for Premailer integration. For new projects, we recommend using Cataract's native API directly (see Basic Parsing above).
+
+See [BENCHMARKS.md](BENCHMARKS.md) for detailed performance comparisons.
 
 ## CSS Support
 

@@ -17,10 +17,11 @@ end
 
 module BenchmarkMerging
   def self.run
+    puts "\n\n"
     puts '=' * 60
     puts 'CSS MERGING BENCHMARK'
+    puts 'Measures: Time to merge multiple CSS rule sets with same selector'
     puts '=' * 60
-    puts "Loading from: #{File.expand_path('../../lib/cataract.rb', __dir__)}"
 
     # Test cases for merging
     test_cases = {
