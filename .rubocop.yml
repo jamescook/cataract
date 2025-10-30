@@ -48,5 +48,10 @@ Metrics/ParameterLists:
 Layout/LineLength:
   Exclude:
     - 'test/**/*'
+    - '*.gemspec'
   AllowedPatterns:
     - '^\s*#'  # Allow long comment lines
+
+# Allow more assertions per test - strict limit is too restrictive
+Minitest/MultipleAssertions:
+  Max: 10
