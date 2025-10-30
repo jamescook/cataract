@@ -298,28 +298,4 @@ class TestRuleSet < Minitest::Test
 
     assert_empty rule
   end
-
-  def test_applies_to_media?
-    # Default media type is :all - universal rules ONLY match :all (css_parser behavior)
-    rule_all = Cataract::RuleSet.new(
-      selector: '.btn',
-      declarations: { 'color' => 'red' }
-    )
-
-    assert rule_all.applies_to_media?([:all])
-    refute rule_all.applies_to_media?([:print])  # Universal rules don't match specific queries
-    refute rule_all.applies_to_media?([:screen]) # Universal rules don't match specific queries
-
-    # Specific media type
-    rule_print = Cataract::RuleSet.new(
-      selector: '.btn',
-      declarations: { 'color' => 'red' },
-      media_types: [:print]
-    )
-
-    assert rule_print.applies_to_media?([:print])
-    refute rule_print.applies_to_media?([:screen])
-    # Querying for :all matches all rules
-    assert rule_print.applies_to_media?([:all])
-  end
 end

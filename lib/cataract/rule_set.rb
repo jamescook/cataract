@@ -1,12 +1,8 @@
 # frozen_string_literal: true
 
-require_relative 'media_type_matcher'
-
 module Cataract
   # Represents a CSS rule with selector, declarations, and media query context
   class RuleSet
-    include MediaTypeMatcher
-
     attr_reader :selector, :declarations, :media_types
 
     # YJIT-friendly: define all instance variables upfront
@@ -43,8 +39,6 @@ module Cataract
     def specificity
       @specificity ||= calculate_specificity(@selector)
     end
-
-    # applies_to_media? is provided by MediaTypeMatcher module
 
     # Property access delegation
     def [](property)
