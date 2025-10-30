@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'benchmark/ips'
 
 # Load the local development version, not installed gem
@@ -9,43 +11,43 @@ begin
   CSS_PARSER_AVAILABLE = true
 rescue LoadError
   CSS_PARSER_AVAILABLE = false
-  puts "css_parser gem not available - install with: gem install css_parser"
+  puts 'css_parser gem not available - install with: gem install css_parser'
   exit 1
 end
 
 module BenchmarkMerging
   def self.run
-    puts "="*60
-    puts "CSS MERGING BENCHMARK"
-    puts "="*60
+    puts '=' * 60
+    puts 'CSS MERGING BENCHMARK'
+    puts '=' * 60
     puts "Loading from: #{File.expand_path('../../lib/cataract.rb', __dir__)}"
 
     # Test cases for merging
     test_cases = {
-      "Simple properties" => <<~CSS,
+      'Simple properties' => <<~CSS,
         .test { color: black; margin: 10px; }
         .test { padding: 5px; }
       CSS
 
-      "Cascade with specificity" => <<~CSS,
+      'Cascade with specificity' => <<~CSS,
         .test { color: black; }
         #test { color: red; }
         .test { margin: 10px; }
       CSS
 
-      "Important declarations" => <<~CSS,
+      'Important declarations' => <<~CSS,
         .test { color: black !important; }
         #test { color: red; }
         .test { margin: 10px; }
       CSS
 
-      "Shorthand expansion" => <<~CSS,
+      'Shorthand expansion' => <<~CSS,
         .test { margin: 10px 20px; }
         .test { margin-left: 5px; }
         .test { padding: 1em 2em 3em 4em; }
       CSS
 
-      "Complex merging" => <<~CSS,
+      'Complex merging' => <<~CSS
         body { margin: 0; padding: 0; }
         .container { width: 100%; margin: 0 auto; }
         #main { background: white; color: black; }
@@ -56,14 +58,14 @@ module BenchmarkMerging
     }
 
     # Verify correctness before benchmarking
-    puts "\n" + "="*60
-    puts "CORRECTNESS VALIDATION"
-    puts "="*60
+    puts "\n#{'=' * 60}"
+    puts 'CORRECTNESS VALIDATION'
+    puts '=' * 60
 
     test_cases.each do |name, css|
-      puts "\n" + "-" * 60
+      puts "\n#{'-' * 60}"
       puts "Test case: #{name}"
-      puts "-" * 60
+      puts '-' * 60
 
       # Parse and merge with Cataract
       cataract_rules = Cataract.parse_css(css)
@@ -82,7 +84,7 @@ module BenchmarkMerging
 
       # Get all rule sets
       rule_sets = []
-      parser.each_selector do |selector, declarations, specificity|
+      parser.each_selector do |selector, declarations, _specificity|
         rule_set = CssParser::RuleSet.new(selector, declarations)
         rule_sets << rule_set
       end
@@ -124,11 +126,11 @@ module BenchmarkMerging
           cataract_hash.each do |prop, val|
             cataract_val = val.gsub(/\s+/, ' ').strip
             css_parser_val = css_parser_hash[prop].gsub(/\s+/, ' ').strip
-            if cataract_val != css_parser_val
-              puts "  #{prop}:"
-              puts "    cataract:    '#{cataract_val}'"
-              puts "    css_parser:  '#{css_parser_val}'"
-            end
+            next unless cataract_val != css_parser_val
+
+            puts "  #{prop}:"
+            puts "    cataract:    '#{cataract_val}'"
+            puts "    css_parser:  '#{css_parser_val}'"
           end
         end
       else
@@ -141,13 +143,13 @@ module BenchmarkMerging
     end
 
     # Benchmarking
-    puts "\n\n" + "="*60
-    puts "PERFORMANCE BENCHMARK"
-    puts "="*60
+    puts "\n\n#{'=' * 60}"
+    puts 'PERFORMANCE BENCHMARK'
+    puts '=' * 60
 
     test_cases.each do |name, css|
       puts "\n#{name}"
-      puts "-" * 60
+      puts '-' * 60
 
       # Pre-parse the CSS for both
       cataract_rules = Cataract.parse_css(css)
@@ -155,18 +157,18 @@ module BenchmarkMerging
       parser = CssParser::Parser.new
       parser.add_block!(css)
       rule_sets = []
-      parser.each_selector do |selector, declarations, specificity|
+      parser.each_selector do |selector, declarations, _specificity|
         rule_sets << CssParser::RuleSet.new(selector, declarations)
       end
 
       Benchmark.ips do |x|
         x.config(time: 5, warmup: 2)
 
-        x.report("css_parser") do
+        x.report('css_parser') do
           CssParser.merge(rule_sets)
         end
 
-        x.report("cataract") do
+        x.report('cataract') do
           Cataract.merge(cataract_rules)
         end
 
@@ -174,21 +176,19 @@ module BenchmarkMerging
       end
     end
 
-    puts "\n" + "="*60
-    puts "NOTES"
-    puts "="*60
-    puts "Both implementations perform CSS cascade resolution:"
-    puts "  • Specificity-based cascade (ID > class > element)"
-    puts "  • !important declaration handling"
-    puts "  • Shorthand property expansion"
-    puts "  • Shorthand property creation from longhand"
-    puts ""
-    puts "Cataract implements all merge logic in C for maximum performance."
-    puts "="*60
+    puts "\n#{'=' * 60}"
+    puts 'NOTES'
+    puts '=' * 60
+    puts 'Both implementations perform CSS cascade resolution:'
+    puts '  • Specificity-based cascade (ID > class > element)'
+    puts '  • !important declaration handling'
+    puts '  • Shorthand property expansion'
+    puts '  • Shorthand property creation from longhand'
+    puts ''
+    puts 'Cataract implements all merge logic in C for maximum performance.'
+    puts '=' * 60
   end
 end
 
 # Run the benchmark if this file is executed directly
-if __FILE__ == $0
-  BenchmarkMerging.run
-end
+BenchmarkMerging.run if __FILE__ == $PROGRAM_NAME

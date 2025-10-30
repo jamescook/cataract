@@ -1,8 +1,10 @@
-require "minitest/autorun"
-require "cataract"
-require "css_parser"
-require "webmock/minitest"
-require "tempfile"
+# frozen_string_literal: true
+
+require 'minitest/autorun'
+require 'cataract'
+require 'css_parser'
+require 'webmock/minitest'
+require 'tempfile'
 
 # Tests for css_parser gem API compatibility
 # Each test compares Cataract's behavior against CssParser gem to ensure compatibility
@@ -17,19 +19,19 @@ class TestCssParserCompat < Minitest::Test
   # ============================================================================
 
   def test_load_string
-    @parser.load_string! "a { color: red }"
+    @parser.load_string! 'a { color: red }'
 
     assert_equal 1, @parser.rules_count
-    assert_includes @parser.selectors, "a"
+    assert_includes @parser.selectors, 'a'
   end
 
   def test_load_string_accumulates
-    @parser.load_string! "a { color: red }"
-    @parser.load_string! "b { color: blue }"
+    @parser.load_string! 'a { color: red }'
+    @parser.load_string! 'b { color: blue }'
 
     assert_equal 2, @parser.rules_count
-    assert_includes @parser.selectors, "a"
-    assert_includes @parser.selectors, "b"
+    assert_includes @parser.selectors, 'a'
+    assert_includes @parser.selectors, 'b'
   end
 
   # ============================================================================
@@ -38,25 +40,25 @@ class TestCssParserCompat < Minitest::Test
 
   def test_load_file_basic
     Tempfile.create(['test', '.css']) do |f|
-      f.write(".header { font-size: 20px }")
+      f.write('.header { font-size: 20px }')
       f.flush
 
       @parser.load_file!(f.path)
 
       assert_equal 1, @parser.rules_count
-      assert_includes @parser.selectors, ".header"
+      assert_includes @parser.selectors, '.header'
     end
   end
 
   def test_load_file_with_base_dir
     Dir.mktmpdir do |dir|
       file_path = File.join(dir, 'style.css')
-      File.write(file_path, ".footer { margin: 0 }")
+      File.write(file_path, '.footer { margin: 0 }')
 
       @parser.load_file!('style.css', dir)
 
       assert_equal 1, @parser.rules_count
-      assert_includes @parser.selectors, ".footer"
+      assert_includes @parser.selectors, '.footer'
     end
   end
 
@@ -71,6 +73,7 @@ class TestCssParserCompat < Minitest::Test
 
     # Should not raise, just return self
     result = parser.load_file!('nonexistent.css')
+
     assert_equal parser, result
     assert_equal 0, parser.rules_count
   end
@@ -80,27 +83,27 @@ class TestCssParserCompat < Minitest::Test
   # ============================================================================
 
   def test_load_uri_http
-    stub_request(:get, "http://example.com/style.css")
-      .to_return(body: "body { margin: 0 }")
+    stub_request(:get, 'http://example.com/style.css')
+      .to_return(body: 'body { margin: 0 }')
 
     @parser.load_uri!('http://example.com/style.css')
 
     assert_equal 1, @parser.rules_count
-    assert_includes @parser.selectors, "body"
+    assert_includes @parser.selectors, 'body'
   end
 
   def test_load_uri_https
-    stub_request(:get, "https://example.com/style.css")
-      .to_return(body: ".container { width: 100% }")
+    stub_request(:get, 'https://example.com/style.css')
+      .to_return(body: '.container { width: 100% }')
 
     @parser.load_uri!('https://example.com/style.css')
 
     assert_equal 1, @parser.rules_count
-    assert_includes @parser.selectors, ".container"
+    assert_includes @parser.selectors, '.container'
   end
 
   def test_load_uri_http_error
-    stub_request(:get, "http://example.com/missing.css")
+    stub_request(:get, 'http://example.com/missing.css')
       .to_return(status: 404)
 
     assert_raises(IOError) do
@@ -109,7 +112,7 @@ class TestCssParserCompat < Minitest::Test
   end
 
   def test_load_uri_http_error_with_io_exceptions_false
-    stub_request(:get, "http://example.com/missing.css")
+    stub_request(:get, 'http://example.com/missing.css')
       .to_return(status: 404)
 
     parser = Cataract::Parser.new(io_exceptions: false)
@@ -125,25 +128,25 @@ class TestCssParserCompat < Minitest::Test
 
   def test_load_uri_file_scheme
     Tempfile.create(['test', '.css']) do |f|
-      f.write("h1 { font-weight: bold }")
+      f.write('h1 { font-weight: bold }')
       f.flush
 
       @parser.load_uri!("file://#{f.path}")
 
       assert_equal 1, @parser.rules_count
-      assert_includes @parser.selectors, "h1"
+      assert_includes @parser.selectors, 'h1'
     end
   end
 
   def test_load_uri_relative_path
     Tempfile.create(['test', '.css']) do |f|
-      f.write("p { line-height: 1.5 }")
+      f.write('p { line-height: 1.5 }')
       f.flush
 
       @parser.load_uri!(f.path)
 
       assert_equal 1, @parser.rules_count
-      assert_includes @parser.selectors, "p"
+      assert_includes @parser.selectors, 'p'
     end
   end
 
@@ -152,21 +155,21 @@ class TestCssParserCompat < Minitest::Test
   # ============================================================================
 
   def test_multiple_loads_accumulate
-    stub_request(:get, "http://example.com/base.css")
-      .to_return(body: "body { margin: 0 }")
+    stub_request(:get, 'http://example.com/base.css')
+      .to_return(body: 'body { margin: 0 }')
 
     Tempfile.create(['local', '.css']) do |f|
-      f.write(".header { color: blue }")
+      f.write('.header { color: blue }')
       f.flush
 
       @parser.load_uri!('http://example.com/base.css')
       @parser.load_file!(f.path)
-      @parser.load_string! ".footer { padding: 10px }"
+      @parser.load_string! '.footer { padding: 10px }'
 
       assert_equal 3, @parser.rules_count
-      assert_includes @parser.selectors, "body"
-      assert_includes @parser.selectors, ".header"
-      assert_includes @parser.selectors, ".footer"
+      assert_includes @parser.selectors, 'body'
+      assert_includes @parser.selectors, '.header'
+      assert_includes @parser.selectors, '.footer'
     end
   end
 
@@ -175,7 +178,7 @@ class TestCssParserCompat < Minitest::Test
   # ============================================================================
 
   def test_find_by_selector_basic
-    @parser.load_string! "#content { font-size: 13px; line-height: 1.2 }"
+    @parser.load_string! '#content { font-size: 13px; line-height: 1.2 }'
 
     result = @parser.find_by_selector('#content')
 
@@ -183,16 +186,16 @@ class TestCssParserCompat < Minitest::Test
   end
 
   def test_find_by_selector_with_media_types_array
-    css = %{
+    css = %(
       @media screen, handheld {
         #content { font-size: 13px; line-height: 1.2 }
       }
-    }
+    )
     @parser.load_string!(css)
     @css_parser.add_block!(css)
 
-    result = @parser.find_by_selector('#content', [:screen, :handheld])
-    expected = @css_parser.find_by_selector('#content', [:screen, :handheld])
+    result = @parser.find_by_selector('#content', %i[screen handheld])
+    expected = @css_parser.find_by_selector('#content', %i[screen handheld])
 
     # Verify we got the expected value (not nil/empty)
     assert_equal ['font-size: 13px; line-height: 1.2;'], result
@@ -201,11 +204,11 @@ class TestCssParserCompat < Minitest::Test
   end
 
   def test_find_by_selector_with_media_type_symbol
-    css = %{
+    css = %(
       @media print {
         #content { font-size: 11pt; line-height: 1.2 }
       }
-    }
+    )
     @parser.load_string!(css)
     @css_parser.add_block!(css)
 
@@ -219,10 +222,10 @@ class TestCssParserCompat < Minitest::Test
   end
 
   def test_find_by_selector_multiple_rules_same_selector
-    css = %{
+    css = %(
       #content { font-size: 13px }
       #content { line-height: 1.2 }
-    }
+    )
     @parser.load_string!(css)
 
     result = @parser.find_by_selector('#content')
@@ -231,7 +234,7 @@ class TestCssParserCompat < Minitest::Test
   end
 
   def test_find_by_selector_bracket_alias
-    @parser.load_string! ".header { color: blue }"
+    @parser.load_string! '.header { color: blue }'
 
     # Test [] alias
     result = @parser['.header']
@@ -240,19 +243,19 @@ class TestCssParserCompat < Minitest::Test
   end
 
   def test_find_by_selector_no_match
-    @parser.load_string! "body { margin: 0 }"
+    @parser.load_string! 'body { margin: 0 }'
 
     result = @parser.find_by_selector('#nonexistent')
 
-    assert_equal [], result
+    assert_empty result
   end
 
   def test_find_by_selector_wrong_media_type
-    css = %{
+    css = %(
       @media print {
         body { margin: 0 }
       }
-    }
+    )
     @parser.load_string!(css)
     @css_parser.add_block!(css)
 
@@ -261,7 +264,7 @@ class TestCssParserCompat < Minitest::Test
     expected = @css_parser.find_by_selector('body', :screen)
 
     # Verify we got empty result (not nil)
-    assert_equal [], result
+    assert_empty result
     # Verify we match css_parser
     assert_equal expected, result
   end
@@ -271,51 +274,52 @@ class TestCssParserCompat < Minitest::Test
   # ============================================================================
 
   def test_each_rule_set_basic
-    @parser.load_string! "body { margin: 0 } .header { color: blue }"
+    @parser.load_string! 'body { margin: 0 } .header { color: blue }'
 
     rule_sets = []
-    @parser.each_rule_set do |rule_set, media_types|
+    @parser.each_rule_set do |rule_set, _media_types|
       rule_sets << rule_set
     end
 
     assert_equal 2, rule_sets.length
-    assert_equal ["body", ".header"], rule_sets.map(&:selector)
+    assert_equal ['body', '.header'], rule_sets.map(&:selector)
   end
 
   def test_each_rule_set_with_media_filter
-    css = %{
+    css = %(
       body { margin: 0 }
       @media print {
         body { margin: 1in }
       }
-    }
+    )
     @parser.load_string!(css)
     @css_parser.add_block!(css)
 
     # Compare Cataract
     cataract_rule_sets = []
-    @parser.each_rule_set(:print) do |rule_set, media_types|
+    @parser.each_rule_set(:print) do |rule_set, _media_types|
       cataract_rule_sets << rule_set
     end
 
     # Compare css_parser
     css_parser_rule_sets = []
-    @css_parser.each_rule_set(:print) do |rule_set, media_types|
+    @css_parser.each_rule_set(:print) do |rule_set, _media_types|
       css_parser_rule_sets << rule_set
     end
 
     # Verify we got expected values (only print-specific rule, not universal)
     assert_equal 1, cataract_rule_sets.length
-    assert_equal "body", cataract_rule_sets.first.selector
+    assert_equal 'body', cataract_rule_sets.first.selector
     assert_equal [:print], cataract_rule_sets.first.media_types
     # Verify we match css_parser
     assert_equal css_parser_rule_sets.length, cataract_rule_sets.length
   end
 
   def test_each_rule_set_returns_enumerator
-    @parser.load_string! "a { color: red }"
+    @parser.load_string! 'a { color: red }'
 
     enum = @parser.each_rule_set
+
     assert_kind_of Enumerator, enum
     assert_equal 1, enum.count
   end
@@ -325,31 +329,31 @@ class TestCssParserCompat < Minitest::Test
   # ============================================================================
 
   def test_find_rule_sets_single_selector
-    @parser.load_string! "body { margin: 0 } .header { color: blue }"
+    @parser.load_string! 'body { margin: 0 } .header { color: blue }'
 
     rule_sets = @parser.find_rule_sets(['body'])
 
     assert_equal 1, rule_sets.length
-    assert_equal "body", rule_sets.first.selector
+    assert_equal 'body', rule_sets.first.selector
   end
 
   def test_find_rule_sets_multiple_selectors
-    @parser.load_string! "body { margin: 0 } .header { color: blue } .footer { padding: 10px }"
+    @parser.load_string! 'body { margin: 0 } .header { color: blue } .footer { padding: 10px }'
 
     rule_sets = @parser.find_rule_sets(['body', '.footer'])
 
     assert_equal 2, rule_sets.length
-    assert_equal ["body", ".footer"], rule_sets.map(&:selector)
+    assert_equal ['body', '.footer'], rule_sets.map(&:selector)
   end
 
   def test_find_rule_sets_with_media_filter
-    css = %{
+    css = %(
       body { margin: 0 }
       @media print {
         body { margin: 1in }
         .header { display: none }
       }
-    }
+    )
     @parser.load_string!(css)
     @css_parser.add_block!(css)
 
@@ -358,14 +362,14 @@ class TestCssParserCompat < Minitest::Test
 
     # Verify we got expected values (only print-specific rule, not universal)
     assert_equal 1, cataract_rule_sets.length
-    assert_equal "body", cataract_rule_sets.first.selector
+    assert_equal 'body', cataract_rule_sets.first.selector
     assert_equal [:print], cataract_rule_sets.first.media_types
     # Verify we match css_parser
     assert_equal css_parser_rule_sets.length, cataract_rule_sets.length
   end
 
   def test_find_rule_sets_normalizes_whitespace
-    @parser.load_string! "div   p { color: red }"
+    @parser.load_string! 'div   p { color: red }'
 
     # Should normalize whitespace in selector search
     rule_sets = @parser.find_rule_sets(['div p'])
@@ -374,20 +378,20 @@ class TestCssParserCompat < Minitest::Test
   end
 
   def test_find_rule_sets_no_duplicates
-    @parser.load_string! "body { margin: 0 }"
+    @parser.load_string! 'body { margin: 0 }'
 
     # Asking for same selector multiple times shouldn't duplicate
-    rule_sets = @parser.find_rule_sets(['body', 'body'])
+    rule_sets = @parser.find_rule_sets(%w[body body])
 
     assert_equal 1, rule_sets.length
   end
 
   def test_find_rule_sets_no_matches
-    @parser.load_string! "body { margin: 0 }"
+    @parser.load_string! 'body { margin: 0 }'
 
     rule_sets = @parser.find_rule_sets(['.nonexistent'])
 
-    assert_equal [], rule_sets
+    assert_empty rule_sets
   end
 
   # ============================================================================
@@ -531,7 +535,7 @@ class TestCssParserCompat < Minitest::Test
 
   def test_expand_shorthand_font_size_keywords
     # Test size keywords (from css_parser tests)
-    ['smaller', 'small', 'medium', 'large', 'x-large'].each do |keyword|
+    %w[smaller small medium large x-large].each do |keyword|
       shorthand = "font: 300 italic #{keyword}/14px verdana, helvetica, sans-serif"
       our_result = @parser.expand_shorthand(shorthand)
       css_parser_result = css_parser_expand(shorthand)
@@ -546,7 +550,7 @@ class TestCssParserCompat < Minitest::Test
 
   def test_expand_shorthand_font_weight_values
     # Test various font weights (from css_parser tests)
-    ['300', 'bold', 'bolder', 'lighter', 'normal'].each do |weight|
+    %w[300 bold bolder lighter normal].each do |weight|
       shorthand = "font: #{weight} italic 12px sans-serif"
       our_result = @parser.expand_shorthand(shorthand)
       css_parser_result = css_parser_expand(shorthand)

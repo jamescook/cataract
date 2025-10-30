@@ -26,6 +26,7 @@ body { color: red; }'
 
     selectors = []
     @parser.each_selector { |sel, _, _, _| selectors << sel }
+
     assert_equal ['body'], selectors
   end
 
@@ -61,8 +62,8 @@ body { color: red; }'
 
   def test_import_with_https_url_safe_defaults
     # HTTPS with safe defaults should work
-    stub_request(:get, "https://example.com/style.css")
-      .to_return(status: 200, body: ".imported { color: blue; }")
+    stub_request(:get, 'https://example.com/style.css')
+      .to_return(status: 200, body: '.imported { color: blue; }')
 
     css = '@import url("https://example.com/style.css");
 body { color: red; }'
@@ -73,14 +74,15 @@ body { color: red; }'
 
     selectors = []
     @parser.each_selector { |sel, _, _, _| selectors << sel }
+
     assert_includes selectors, '.imported'
     assert_includes selectors, 'body'
   end
 
   def test_import_with_http_url_rejected_by_default
     # HTTP should be rejected with safe defaults
-    stub_request(:get, "http://example.com/style.css")
-      .to_return(status: 200, body: ".imported { color: blue; }")
+    stub_request(:get, 'http://example.com/style.css')
+      .to_return(status: 200, body: '.imported { color: blue; }')
 
     css = '@import url("http://example.com/style.css");'
 
@@ -91,8 +93,8 @@ body { color: red; }'
 
   def test_import_with_http_url_when_allowed
     # HTTP should work when explicitly allowed
-    stub_request(:get, "http://example.com/style.css")
-      .to_return(status: 200, body: ".imported { color: blue; }")
+    stub_request(:get, 'http://example.com/style.css')
+      .to_return(status: 200, body: '.imported { color: blue; }')
 
     css = '@import url("http://example.com/style.css");'
 
@@ -103,10 +105,10 @@ body { color: red; }'
 
   def test_import_with_nested_https_imports
     # Main file imports level1.css via HTTPS
-    stub_request(:get, "https://example.com/level1.css")
+    stub_request(:get, 'https://example.com/level1.css')
       .to_return(status: 200, body: '@import url("https://example.com/level2.css"); .level1 { color: red; }')
 
-    stub_request(:get, "https://example.com/level2.css")
+    stub_request(:get, 'https://example.com/level2.css')
       .to_return(status: 200, body: '.level2 { color: blue; }')
 
     css = '@import url("https://example.com/level1.css");'
@@ -117,13 +119,14 @@ body { color: red; }'
 
     selectors = []
     @parser.each_selector { |sel, _, _, _| selectors << sel }
+
     assert_includes selectors, '.level1'
     assert_includes selectors, '.level2'
   end
 
   def test_import_http_404_error
-    stub_request(:get, "https://example.com/missing.css")
-      .to_return(status: 404, body: "Not Found")
+    stub_request(:get, 'https://example.com/missing.css')
+      .to_return(status: 404, body: 'Not Found')
 
     css = '@import url("https://example.com/missing.css");'
 
@@ -133,7 +136,7 @@ body { color: red; }'
   end
 
   def test_import_http_network_timeout
-    stub_request(:get, "https://slow.example.com/style.css")
+    stub_request(:get, 'https://slow.example.com/style.css')
       .to_timeout
 
     css = '@import url("https://slow.example.com/style.css");'
@@ -144,11 +147,11 @@ body { color: red; }'
   end
 
   def test_import_http_redirect_followed
-    stub_request(:get, "https://example.com/style.css")
+    stub_request(:get, 'https://example.com/style.css')
       .to_return(status: 301, headers: { 'Location' => 'https://example.com/new-style.css' })
 
-    stub_request(:get, "https://example.com/new-style.css")
-      .to_return(status: 200, body: ".imported { color: blue; }")
+    stub_request(:get, 'https://example.com/new-style.css')
+      .to_return(status: 200, body: '.imported { color: blue; }')
 
     css = '@import url("https://example.com/style.css");'
 
@@ -158,6 +161,7 @@ body { color: red; }'
 
     selectors = []
     @parser.each_selector { |sel, _, _, _| selectors << sel }
+
     assert_includes selectors, '.imported'
   end
 
@@ -180,6 +184,7 @@ body { color: red; }"
 
       selectors = []
       @parser.each_selector { |sel, _, _, _| selectors << sel }
+
       assert_includes selectors, '.imported'
       assert_includes selectors, 'body'
     end
@@ -189,8 +194,10 @@ body { color: red; }"
     Dir.mktmpdir do |dir|
       # Create nested imports: level1.css -> level2.css -> level3.css
       File.write(File.join(dir, 'level3.css'), '.level3 { color: green; }')
-      File.write(File.join(dir, 'level2.css'), "@import url('file://#{File.join(dir, 'level3.css')}'); .level2 { color: blue; }")
-      File.write(File.join(dir, 'level1.css'), "@import url('file://#{File.join(dir, 'level2.css')}'); .level1 { color: red; }")
+      File.write(File.join(dir, 'level2.css'),
+                 "@import url('file://#{File.join(dir, 'level3.css')}'); .level2 { color: blue; }")
+      File.write(File.join(dir, 'level1.css'),
+                 "@import url('file://#{File.join(dir, 'level2.css')}'); .level1 { color: red; }")
 
       css = "@import url('file://#{File.join(dir, 'level1.css')}');"
 
@@ -201,6 +208,7 @@ body { color: red; }"
 
       # With max_depth: 3, should succeed
       @parser.parse(css, imports: { allowed_schemes: ['file'], extensions: ['css'], max_depth: 3 })
+
       assert_equal 3, @parser.rules_count
     end
   end
@@ -217,6 +225,7 @@ body { color: red; }"
 
       selectors = []
       @parser.each_selector { |sel, _, _, _| selectors << sel }
+
       assert_includes selectors, '.from-txt'
     end
   end
@@ -235,6 +244,7 @@ body { color: red; }"
 
         selectors = []
         @parser.each_selector { |sel, _, _, _| selectors << sel }
+
         assert_includes selectors, '.imported'
       end
     end
@@ -253,6 +263,7 @@ body { color: red; }"
 
       selectors = []
       @parser.each_selector { |sel, _, _, _| selectors << sel }
+
       assert_includes selectors, '.imported'
     end
   end
@@ -298,6 +309,7 @@ body { color: red; }"
 
       print_rules = []
       @parser.each_selector(:print) { |sel, _, _, _| print_rules << sel }
+
       assert_includes print_rules, '.print-only'
     end
   end
@@ -321,6 +333,7 @@ body { color: red; }"
 
       selectors = []
       @parser.each_selector { |sel, _, _, _| selectors << sel }
+
       assert_includes selectors, '*'
       assert_includes selectors, 'body'
       assert_includes selectors, '.main'
@@ -390,6 +403,7 @@ body { color: red; }"
 
       selectors = []
       sheet.each_selector { |sel, _, _, _| selectors << sel }
+
       assert_includes selectors, '.imported'
       assert_includes selectors, 'body'
     end

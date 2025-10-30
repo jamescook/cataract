@@ -1,5 +1,7 @@
-require "minitest/autorun"
-require "cataract"
+# frozen_string_literal: true
+
+require 'minitest/autorun'
+require 'cataract'
 
 # Basic Parser functionality tests
 # Based on css_parser gem's test_css_parser_basic.rb
@@ -16,6 +18,7 @@ class TestParserBasic < Minitest::Test
 
   def test_finding_by_selector
     @parser.add_block!(@css)
+
     assert_equal 'margin: 0px;', @parser.find_by_selector('body').join(' ')
     assert_equal 'margin: 0px; padding: 0px;', @parser.find_by_selector('p').join(' ')
     assert_equal 'color: red;', @parser.find_by_selector('.content').join(' ')
@@ -24,22 +27,26 @@ class TestParserBasic < Minitest::Test
 
   def test_adding_block
     @parser.add_block!(@css)
+
     assert_equal 'margin: 0px;', @parser.find_by_selector('body').join
   end
 
   def test_adding_block_without_closing_brace
     @parser.add_block!('p { color: red;', fix_braces: true)
+
     assert_equal 'color: red;', @parser.find_by_selector('p').join
   end
 
   def test_adding_a_rule
     @parser.add_rule!(selector: 'div', declarations: 'color: blue')
+
     assert_equal 'color: blue;', @parser.find_by_selector('div').join(' ')
   end
 
   def test_adding_a_rule_set
     rs = Cataract::RuleSet.new(selector: 'div', declarations: 'color: blue')
     @parser.add_rule_set!(rs)
+
     assert_equal 'color: blue;', @parser.find_by_selector('div').join(' ')
   end
 
@@ -48,6 +55,7 @@ class TestParserBasic < Minitest::Test
     @parser.add_rule_set!(rs)
     rs2 = Cataract::RuleSet.new(selector: 'div', declarations: 'color: blue')
     @parser.remove_rule_set!(rs2)
+
     assert_equal '', @parser.find_by_selector('div').join(' ')
   end
 
@@ -60,6 +68,7 @@ class TestParserBasic < Minitest::Test
     rs = Cataract::RuleSet.new(selector: 'div', declarations: 'color: blue')
     @parser.add_rule_set!(rs)
     hash = @parser.to_h
+
     assert_equal 'blue', hash['all']['div']['color']
   end
 end

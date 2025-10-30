@@ -1,13 +1,12 @@
+# frozen_string_literal: true
+
 require_relative 'media_type_matcher'
 
 module Cataract
   # Add Ruby methods to the C-defined Rule struct
   # Rule = Struct.new(:selector, :declarations, :specificity)
-  # Note: media_query field removed - media info now stored at group level
   class Rule
-    # Note: MediaTypeMatcher not included - rules no longer know their media context
-
-    # Note: `declarations` returns Array<Declarations::Value> (the raw C struct field)
+    # NOTE: `declarations` returns Array<Declarations::Value> (the raw C struct field)
     # Wrap it if you need Declarations methods: Declarations.new(rule.declarations)
 
     # Property accessor for convenience (delegates to Declarations)
@@ -17,7 +16,8 @@ module Cataract
       Declarations.new(declarations)[property]
     end
 
-    # Silence warning about method redefinition
+    # Silence warning about method redefinition. We redefine below to lazily calculate
+    # specificity
     undef_method :specificity if method_defined?(:specificity)
 
     # Calculate specificity lazily if not set

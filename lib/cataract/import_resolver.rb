@@ -47,7 +47,7 @@ module Cataract
       return css if imports.empty?
 
       # Process each import
-      resolved_css = +""  # Mutable string
+      resolved_css = +'' # Mutable string
       remaining_css = css
 
       imports.each do |import_data|
@@ -58,9 +58,7 @@ module Cataract
         validate_url(url, opts)
 
         # Check for circular references
-        if imported_urls.include?(url)
-          raise ImportError, "Circular import detected: #{url}"
-        end
+        raise ImportError, "Circular import detected: #{url}" if imported_urls.include?(url)
 
         # Fetch imported CSS
         imported_css = fetch_url(url, opts)
@@ -71,9 +69,7 @@ module Cataract
         imported_css = resolve(imported_css, opts, depth: depth + 1, imported_urls: imported_urls_copy)
 
         # Wrap in @media if import had media query
-        if media
-          imported_css = "@media #{media} {\n#{imported_css}\n}"
-        end
+        imported_css = "@media #{media} {\n#{imported_css}\n}" if media
 
         resolved_css << imported_css << "\n"
 
@@ -85,8 +81,6 @@ module Cataract
       resolved_css + remaining_css
     end
 
-    private
-
     # Normalize options with safe defaults
     def self.normalize_options(options)
       if options == true
@@ -96,7 +90,7 @@ module Cataract
         # imports: { ... } -> merge with safe defaults
         SAFE_DEFAULTS.merge(options)
       else
-        raise ArgumentError, "imports option must be true or a Hash"
+        raise ArgumentError, 'imports option must be true or a Hash'
       end
     end
 
@@ -137,7 +131,8 @@ module Cataract
 
       # Check scheme
       unless options[:allowed_schemes].include?(uri.scheme)
-        raise ImportError, "Import scheme '#{uri.scheme}' not allowed. Allowed schemes: #{options[:allowed_schemes].join(', ')}"
+        raise ImportError,
+              "Import scheme '#{uri.scheme}' not allowed. Allowed schemes: #{options[:allowed_schemes].join(', ')}"
       end
 
       # Check extension
@@ -145,7 +140,8 @@ module Cataract
       ext = File.extname(path).delete_prefix('.')
 
       unless ext.empty? || options[:extensions].include?(ext)
-        raise ImportError, "Import extension '.#{ext}' not allowed. Allowed extensions: #{options[:extensions].join(', ')}"
+        raise ImportError,
+              "Import extension '.#{ext}' not allowed. Allowed extensions: #{options[:extensions].join(', ')}"
       end
 
       # Additional security checks for file:// scheme
@@ -184,7 +180,7 @@ module Cataract
       else
         raise ImportError, "Unsupported scheme: #{uri.scheme}"
       end
-    rescue Errno::ENOENT => e
+    rescue Errno::ENOENT
       raise ImportError, "Import file not found: #{url}"
     rescue OpenURI::HTTPError => e
       raise ImportError, "HTTP error fetching import: #{url} (#{e.message})"
@@ -202,7 +198,8 @@ module Cataract
         redirect: options[:follow_redirects]
       }
 
-      URI.open(uri.to_s, open_uri_options) { |f| f.read }
+      # Use uri.open instead of URI.open to avoid shell command injection
+      uri.open(open_uri_options, &:read)
     end
   end
 end

@@ -16,6 +16,7 @@ class TestShorthandCreation < Minitest::Test
       'margin-left' => '10px'
     }
     result = Cataract.create_margin_shorthand(input)
+
     assert_equal '10px', result
   end
 
@@ -27,6 +28,7 @@ class TestShorthandCreation < Minitest::Test
       'margin-left' => '20px'
     }
     result = Cataract.create_margin_shorthand(input)
+
     assert_equal '10px 20px', result
   end
 
@@ -38,6 +40,7 @@ class TestShorthandCreation < Minitest::Test
       'margin-left' => '20px'
     }
     result = Cataract.create_margin_shorthand(input)
+
     assert_equal '10px 20px 30px', result
   end
 
@@ -49,6 +52,7 @@ class TestShorthandCreation < Minitest::Test
       'margin-left' => '40px'
     }
     result = Cataract.create_margin_shorthand(input)
+
     assert_equal '10px 20px 30px 40px', result
   end
 
@@ -60,6 +64,7 @@ class TestShorthandCreation < Minitest::Test
       # margin-left missing
     }
     result = Cataract.create_margin_shorthand(input)
+
     assert_nil result, 'Should return nil if not all sides present'
   end
 
@@ -72,6 +77,7 @@ class TestShorthandCreation < Minitest::Test
       'padding-left' => '5px'
     }
     result = Cataract.create_padding_shorthand(input)
+
     assert_equal '5px', result
   end
 
@@ -83,6 +89,7 @@ class TestShorthandCreation < Minitest::Test
       'padding-left' => '20px'
     }
     result = Cataract.create_padding_shorthand(input)
+
     assert_equal '10px 20px', result
   end
 
@@ -95,6 +102,7 @@ class TestShorthandCreation < Minitest::Test
       'border-left-width' => '1px'
     }
     result = Cataract.create_border_width_shorthand(input)
+
     assert_equal '1px', result
   end
 
@@ -106,6 +114,7 @@ class TestShorthandCreation < Minitest::Test
       'border-left-width' => '4px'
     }
     result = Cataract.create_border_width_shorthand(input)
+
     assert_equal '1px 2px 3px 4px', result
   end
 
@@ -118,6 +127,7 @@ class TestShorthandCreation < Minitest::Test
       'border-left-style' => 'solid'
     }
     result = Cataract.create_border_style_shorthand(input)
+
     assert_equal 'solid', result
   end
 
@@ -130,6 +140,7 @@ class TestShorthandCreation < Minitest::Test
       'border-left-color' => 'black'
     }
     result = Cataract.create_border_color_shorthand(input)
+
     assert_equal 'black', result
   end
 
@@ -141,6 +152,7 @@ class TestShorthandCreation < Minitest::Test
       'border-color' => 'black'
     }
     result = Cataract.create_border_shorthand(input)
+
     assert_equal '1px solid black', result
   end
 
@@ -151,12 +163,14 @@ class TestShorthandCreation < Minitest::Test
       # border-color missing
     }
     result = Cataract.create_border_shorthand(input)
+
     assert_equal '2px dashed', result, 'Should combine available properties'
   end
 
   def test_create_border_missing_all
     input = {}
     result = Cataract.create_border_shorthand(input)
+
     assert_nil result, 'Should return nil if no border properties'
   end
 
@@ -171,6 +185,7 @@ class TestShorthandCreation < Minitest::Test
       'border-color' => 'transparent'
     }
     result = Cataract.create_border_shorthand(input)
+
     assert_nil result, 'Should return nil when border-width has multiple values (1px 0)'
   end
 
@@ -181,6 +196,7 @@ class TestShorthandCreation < Minitest::Test
       'border-color' => 'black'
     }
     result = Cataract.create_border_shorthand(input)
+
     assert_nil result, 'Should return nil when border-style has multiple values'
   end
 
@@ -191,6 +207,7 @@ class TestShorthandCreation < Minitest::Test
       'border-color' => 'red blue'
     }
     result = Cataract.create_border_shorthand(input)
+
     assert_nil result, 'Should return nil when border-color has multiple values'
   end
 
@@ -200,6 +217,7 @@ class TestShorthandCreation < Minitest::Test
       'background-color' => 'red'
     }
     result = Cataract.create_background_shorthand(input)
+
     assert_equal 'red', result
   end
 
@@ -209,6 +227,7 @@ class TestShorthandCreation < Minitest::Test
       'background-image' => 'none'
     }
     result = Cataract.create_background_shorthand(input)
+
     assert_equal 'black none', result
   end
 
@@ -220,6 +239,7 @@ class TestShorthandCreation < Minitest::Test
       'background-position' => 'center'
     }
     result = Cataract.create_background_shorthand(input)
+
     assert_equal 'white url(bg.png) no-repeat center', result
   end
 
@@ -230,6 +250,7 @@ class TestShorthandCreation < Minitest::Test
       'font-family' => 'Arial'
     }
     result = Cataract.create_font_shorthand(input)
+
     assert_equal '12px Arial', result
   end
 
@@ -240,6 +261,7 @@ class TestShorthandCreation < Minitest::Test
       'font-family' => 'Helvetica'
     }
     result = Cataract.create_font_shorthand(input)
+
     assert_equal 'bold 14px Helvetica', result
   end
 
@@ -252,6 +274,7 @@ class TestShorthandCreation < Minitest::Test
       'font-family' => 'Georgia, serif'
     }
     result = Cataract.create_font_shorthand(input)
+
     assert_equal 'italic bold 16px/1.5 Georgia, serif', result
   end
 
@@ -261,6 +284,7 @@ class TestShorthandCreation < Minitest::Test
       # missing font-size and font-family (required)
     }
     result = Cataract.create_font_shorthand(input)
+
     assert_nil result, 'Should return nil without required properties'
   end
 
@@ -270,6 +294,7 @@ class TestShorthandCreation < Minitest::Test
       'list-style-type' => 'disc'
     }
     result = Cataract.create_list_style_shorthand(input)
+
     assert_equal 'disc', result
   end
 
@@ -279,6 +304,7 @@ class TestShorthandCreation < Minitest::Test
       'list-style-position' => 'inside'
     }
     result = Cataract.create_list_style_shorthand(input)
+
     assert_equal 'square inside', result
   end
 end

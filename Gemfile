@@ -11,3 +11,8 @@ gem 'minitest'
 gem 'minitest-spec'
 gem 'simplecov', require: false
 gem 'simplecov-cobertura', require: false
+
+gem "rubocop", "~> 1.81", :group => :development
+gem "rubocop-performance", "~> 1.26", :group => :development
+
+gem "rubocop-minitest", "~> 0.38.2", :group => :development

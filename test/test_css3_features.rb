@@ -1,5 +1,7 @@
-require "minitest/autorun"
-require "cataract"
+# frozen_string_literal: true
+
+require 'minitest/autorun'
+require 'cataract'
 
 # Tests for CSS3 features
 class TestCSS3Features < Minitest::Test

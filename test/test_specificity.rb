@@ -1,5 +1,7 @@
-require "minitest/autorun"
-require "cataract"
+# frozen_string_literal: true
+
+require 'minitest/autorun'
+require 'cataract'
 
 # Comprehensive CSS Specificity Calculation Tests
 # Migrated from css_parser gem's test_css_parser_misc.rb
@@ -18,7 +20,7 @@ class TestSpecificity < Minitest::Test
 
     # from http://www.hixie.ch/tests/adhoc/css/cascade/specificity/003.html
     assert_equal Cataract.calculate_specificity('div *'), Cataract.calculate_specificity('p')
-    assert Cataract.calculate_specificity('body div *') > Cataract.calculate_specificity('div *')
+    assert_operator Cataract.calculate_specificity('body div *'), :>, Cataract.calculate_specificity('div *')
 
     # other tests
     assert_equal 11, Cataract.calculate_specificity('h1[id|=123]')
@@ -77,7 +79,7 @@ class TestSpecificity < Minitest::Test
     # Complex real-world selectors
     assert_equal 111, Cataract.calculate_specificity('#content .post a')
     assert_equal 121, Cataract.calculate_specificity('#content .post a.external')
-    assert_equal 103, Cataract.calculate_specificity('#sidebar ul li a')  # #sidebar(100) + ul(1) + li(1) + a(1) = 103
-    assert_equal 121, Cataract.calculate_specificity('#nav .menu-item:hover a')  # #nav(100) + .menu-item(10) + :hover(10) + a(1) = 121
+    assert_equal 103, Cataract.calculate_specificity('#sidebar ul li a') # #sidebar(100) + ul(1) + li(1) + a(1) = 103
+    assert_equal 121, Cataract.calculate_specificity('#nav .menu-item:hover a') # #nav(100) + .menu-item(10) + :hover(10) + a(1) = 121
   end
 end

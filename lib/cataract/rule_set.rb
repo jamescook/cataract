@@ -1,6 +1,9 @@
+# frozen_string_literal: true
+
 require_relative 'media_type_matcher'
 
 module Cataract
+  # Represents a CSS rule with selector, declarations, and media query context
   class RuleSet
     include MediaTypeMatcher
 
@@ -11,7 +14,7 @@ module Cataract
     def initialize(selector: nil, selectors: nil, declarations: nil, block: nil, media_types: [:all], specificity: nil)
       # Handle both selector and selectors parameters (css_parser compatibility)
       selector_str = selector || selectors
-      raise ArgumentError, "Must provide selector or selectors" if selector_str.nil?
+      raise ArgumentError, 'Must provide selector or selectors' if selector_str.nil?
 
       @selector = selector_str.to_s.strip
       @media_types = Array(media_types).map(&:to_sym)
@@ -22,23 +25,20 @@ module Cataract
 
       # Handle different declaration input types
       @declarations = case decl_input
-                     when Declarations
-                       decl_input.dup
-                     when Hash
-                       # User-provided hash: {'color' => 'red', 'background' => 'blue'}
-                       Declarations.new(decl_input)
-                     when Array
-                       # Array of Cataract::Declarations::Value structs from C parser
-                       Declarations.new(decl_input)
-                     when String
-                       parse_declaration_string(decl_input)
-                     when nil
-                       Declarations.new
-                     else
-                       raise ArgumentError, "Invalid declarations type: #{decl_input.class}"
-                     end
+                      when Declarations
+                        decl_input.dup
+                      when Hash, Array
+                        # Hash: {'color' => 'red'} or Array of Cataract::Declarations::Value structs
+                        Declarations.new(decl_input)
+                      when String
+                        parse_declaration_string(decl_input)
+                      when nil
+                        Declarations.new
+                      else
+                        raise ArgumentError, "Invalid declarations type: #{decl_input.class}"
+                      end
     end
-    
+
     # Selector specificity (cached)
     def specificity
       @specificity ||= calculate_specificity(@selector)
@@ -50,30 +50,31 @@ module Cataract
     def [](property)
       @declarations[property]
     end
-    
+
     def []=(property, value)
       @declarations[property] = value
     end
-    
-    def has_property?(property)
+
+    def has_property?(property) # rubocop:disable Naming/PredicatePrefix
       @declarations.key?(property)
     end
-    
+
     def delete_property(property)
       @declarations.delete(property)
     end
-    
+
     # Check if rule is empty
     def empty?
       @declarations.empty?
     end
-    
+
     # Convert to CSS string
     def to_s
-      return "" if empty?
-      "#{@selector} { #{@declarations.to_s} }"
+      return '' if empty?
+
+      "#{@selector} { #{@declarations} }"
     end
-    
+
     # Convert to hash (for compatibility with current tests)
     def to_h
       {
@@ -83,7 +84,7 @@ module Cataract
         specificity: specificity
       }
     end
-    
+
     # Duplicate rule
     def dup
       self.class.new(
@@ -92,30 +93,29 @@ module Cataract
         media_types: @media_types.dup
       )
     end
-    
+
     # Equality
     def ==(other)
       return false unless other.is_a?(RuleSet)
+
       @selector == other.selector &&
         @declarations == other.declarations &&
         @media_types == other.media_types
     end
-    
+
     # Merge declarations from another rule (for same selector)
     def merge!(other)
       case other
       when RuleSet
         @declarations.merge!(other.declarations)
-      when Declarations
-        @declarations.merge!(other)
-      when Hash
+      when Declarations, Hash
         @declarations.merge!(other)
       else
-        raise ArgumentError, "Can only merge RuleSet, Declarations, or Hash objects"
+        raise ArgumentError, 'Can only merge RuleSet, Declarations, or Hash objects'
       end
       self
     end
-    
+
     def merge(other)
       dup.merge!(other)
     end
@@ -156,7 +156,7 @@ module Cataract
     end
 
     private
-    
+
     # Parse "color: red; background: blue" into Declarations
     # Also handles css_parser format with braces: "{ color: red }"
     def parse_declaration_string(str)
@@ -164,7 +164,7 @@ module Cataract
       raw_declarations = Cataract.parse_declarations(str)
       Declarations.new(raw_declarations)
     end
-    
+
     # Calculate CSS specificity using C extension
     def calculate_specificity(selector)
       Cataract.calculate_specificity(selector)

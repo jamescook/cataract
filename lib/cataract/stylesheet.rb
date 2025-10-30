@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Cataract
   # Stylesheet wraps parsed CSS rules grouped by media query
   # Structure: {query_string => {media_types: [...], rules: [...]}}
@@ -8,7 +10,7 @@ module Cataract
     attr_reader :rule_groups, :charset
 
     def initialize(rule_groups, charset = nil)
-      @rule_groups = rule_groups  # Hash: {query_string => {media_types: [...], rules: [...]}}
+      @rule_groups = rule_groups # Hash: {query_string => {media_types: [...], rules: [...]}}
       @charset = charset
       @resolved = nil
       @serialized = nil
@@ -17,6 +19,7 @@ module Cataract
     # Iterate over all rules across all media query groups
     def each(&block)
       return enum_for(:each) unless block_given?
+
       @rule_groups.each_value do |group|
         group[:rules].each(&block)
       end
@@ -60,7 +63,7 @@ module Cataract
       # Flatten all rules for cascade
       all_rules = []
       @rule_groups.each_value { |group| all_rules.concat(group[:rules]) }
-      @resolved ||= Cataract.apply_cascade(all_rules)
+      @declarations ||= Cataract.apply_cascade(all_rules)
     end
 
     # Iterate over each selector across all rules
@@ -83,26 +86,29 @@ module Cataract
     #   sheet.each_selector(property: 'position', property_value: 'relative') { |sel, decls, spec, media| ... }  # Specific property-value
     #   sheet.each_selector(property: 'color', specificity: 100.., media: :print) { |sel, decls, spec, media| ... }  # Combined filters
     def each_selector(media: :all, specificity: nil, property: nil, property_value: nil)
-      return enum_for(:each_selector, media: media, specificity: specificity, property: property, property_value: property_value) unless block_given?
+      unless block_given?
+        return enum_for(:each_selector, media: media, specificity: specificity, property: property,
+                                        property_value: property_value)
+      end
 
       query_media_types = Array(media).map(&:to_sym)
 
-      @rule_groups.each do |query_string, group|
+      @rule_groups.each_value do |group|
         # Filter by media types at group level
         group_media_types = group[:media_types] || []
 
         # :all matches everything
         # But specific media queries (like :screen, :print) should NOT match [:all] groups
-        if query_media_types.include?(:all)
-          # :all means iterate everything
-          should_include = true
-        elsif group_media_types.include?(:all)
-          # Group is universal (no media query) - only include if querying for :all
-          should_include = false
-        else
-          # Check for intersection
-          should_include = !(group_media_types & query_media_types).empty?
-        end
+        should_include = if query_media_types.include?(:all)
+                           # :all means iterate everything
+                           true
+                         elsif group_media_types.include?(:all)
+                           # Group is universal (no media query) - only include if querying for :all
+                           false
+                         else
+                           # Check for intersection
+                           !(group_media_types & query_media_types).empty?
+                         end
 
         next unless should_include
 
@@ -111,11 +117,11 @@ module Cataract
           if specificity
             rule_specificity = rule.specificity
             matches = case specificity
-                     when Range
-                       specificity.cover?(rule_specificity)
-                     else
-                       specificity == rule_specificity
-                     end
+                      when Range
+                        specificity.cover?(rule_specificity)
+                      else
+                        specificity == rule_specificity
+                      end
             next unless matches
           end
 
@@ -145,7 +151,7 @@ module Cataract
           declarations_str = rule.declarations.map do |decl|
             val = decl.important ? "#{decl.value} !important" : decl.value
             "#{decl.property}: #{val}"
-          end.join("; ")
+          end.join('; ')
 
           # Return the group's media_types, not from the rule
           yield rule.selector, declarations_str, rule.specificity, group[:media_types]
@@ -156,7 +162,7 @@ module Cataract
     def size
       @rule_groups.values.sum { |group| group[:rules].length }
     end
-    alias_method :length, :size
+    alias length size
 
     def empty?
       @rule_groups.empty? || @rule_groups.values.all? { |group| group[:rules].empty? }
@@ -164,8 +170,8 @@ module Cataract
 
     def inspect
       total_rules = size
-      if total_rules == 0
-        "#<Cataract::Stylesheet empty>"
+      if total_rules.zero?
+        '#<Cataract::Stylesheet empty>'
       else
         # Get first 3 rules across all groups
         preview_rules = []
@@ -173,9 +179,9 @@ module Cataract
           preview_rules.concat(group[:rules])
           break if preview_rules.length >= 3
         end
-        preview = preview_rules.first(3).map { |r| r.selector }.join(", ")
-        more = total_rules > 3 ? ", ..." : ""
-        resolved_info = @resolved ? ", #{@resolved.length} declarations resolved" : ""
+        preview = preview_rules.first(3).map(&:selector).join(', ')
+        more = total_rules > 3 ? ', ...' : ''
+        resolved_info = @resolved ? ", #{@resolved.length} declarations resolved" : ''
         "#<Cataract::Stylesheet #{total_rules} rules: #{preview}#{more}#{resolved_info}>"
       end
     end
