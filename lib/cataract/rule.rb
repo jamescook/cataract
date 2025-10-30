@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require_relative 'media_type_matcher'
-
 module Cataract
   # Add Ruby methods to the C-defined Rule struct
   # Rule = Struct.new(:selector, :declarations, :specificity)
