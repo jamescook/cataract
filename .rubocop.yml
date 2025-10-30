@@ -1,0 +1,47 @@
+plugins:
+  - rubocop-performance
+  - rubocop-minitest
+
+AllCops:
+  TargetRubyVersion: 3.0
+  NewCops: enable
+  SuggestExtensions: false
+  Exclude:
+    - 'tmp/**/*'
+    - 'vendor/**/*'
+    - 'bin/**/*'
+    - 'test/fixtures/**/*'
+    - '**/*.so'
+    - '**/*.bundle'
+
+# Disable complexity metrics - too subjective and often leads to harder-to-read code
+Metrics/AbcSize:
+  Enabled: false
+
+Metrics/CyclomaticComplexity:
+  Enabled: false
+
+Metrics/PerceivedComplexity:
+  Enabled: false
+
+Metrics/MethodLength:
+  Enabled: false
+
+Metrics/ClassLength:
+  Enabled: false
+
+Metrics/ModuleLength:
+  Enabled: false
+
+Metrics/BlockLength:
+  Enabled: false
+
+Metrics/ParameterLists:
+  Enabled: false
+
+# Keep line length for tests disabled - long test strings are fine
+Layout/LineLength:
+  Exclude:
+    - 'test/**/*'
+  AllowedPatterns:
+    - '^\s*#'  # Allow long comment lines
