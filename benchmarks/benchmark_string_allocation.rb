@@ -18,14 +18,17 @@
 # results to a JSON file for comparison.
 
 require 'benchmark/ips'
+require 'fileutils'
 
-$LOAD_PATH.unshift File.expand_path('../../lib', __dir__)
+$LOAD_PATH.unshift File.expand_path('../lib', __dir__)
 require 'cataract'
 
 # State files for benchmark-ips to compare across runs
 # Store in hidden directory to keep them out of the way
 # Use separate files for each test so we only compare like-to-like
-RESULTS_DIR = File.expand_path('../.benchmark_results', __dir__)
+RESULTS_DIR = File.expand_path('.benchmark_results', __dir__)
+FileUtils.mkdir_p(RESULTS_DIR)
+
 RESULTS_FILE_PARSE = File.join(RESULTS_DIR, 'string_allocation_parse.json')
 RESULTS_FILE_ITERATE = File.join(RESULTS_DIR, 'string_allocation_iterate.json')
 RESULTS_FILE_10X = File.join(RESULTS_DIR, 'string_allocation_10x.json')

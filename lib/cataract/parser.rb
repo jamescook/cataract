@@ -497,9 +497,9 @@ module Cataract
     # Returns a hash of longhand properties
     #
     # Example:
-    #   expand_shorthand("margin: 10px; margin-top: 20px;")
+    #   Parser.expand_shorthand("margin: 10px; margin-top: 20px;")
     #   => {"margin-top" => "20px", "margin-right" => "10px", "margin-bottom" => "10px", "margin-left" => "10px"}
-    def expand_shorthand(declarations_string)
+    def self.expand_shorthand(declarations_string)
       # Parse the declarations string directly using C function
       raw_declarations = Cataract.parse_declarations(declarations_string)
       return {} if raw_declarations.empty?
@@ -557,6 +557,10 @@ module Cataract
       end
 
       result
+    end
+
+    def expand_shorthand(declarations_string)
+      self.class.expand_shorthand(declarations_string)
     end
   end
 end

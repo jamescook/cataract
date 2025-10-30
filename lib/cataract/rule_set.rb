@@ -9,8 +9,7 @@ module Cataract
     # Accepts both :selector and :selectors, both :declarations and :block for css_parser compatibility
     def initialize(selector: nil, selectors: nil, declarations: nil, block: nil, media_types: [:all], specificity: nil)
       # Handle both selector and selectors parameters (css_parser compatibility)
-      selector_str = selector || selectors
-      raise ArgumentError, 'Must provide selector or selectors' if selector_str.nil?
+      selector_str = selector || selectors || '' # Allow empty selector for css_parser compat
 
       @selector = selector_str.to_s.strip
       @media_types = Array(media_types).map(&:to_sym)
@@ -41,8 +40,9 @@ module Cataract
     end
 
     # Property access delegation
+    # css_parser compatibility: returns empty string for missing properties instead of nil
     def [](property)
-      @declarations[property]
+      @declarations[property] || ''
     end
 
     def []=(property, value)
@@ -147,6 +147,28 @@ module Cataract
     # css_parser compatibility: return declarations as string
     def declarations_to_s
       @declarations.to_s
+    end
+
+    # Expand all shorthand properties in-place
+    # Modifies the RuleSet's declarations by replacing shorthands with longhands
+    # Returns self for chaining
+    def expand_shorthand!
+      # Convert current declarations to string and expand using Parser class method
+      expanded = Parser.expand_shorthand(@declarations.to_s)
+
+      # Clear current declarations and replace with expanded
+      @declarations.instance_variable_get(:@values).clear
+      expanded.each { |prop, value| @declarations[prop] = value }
+
+      self
+    end
+
+    # css_parser compatibility: create shorthand properties from longhand
+    # This is the opposite of expand_shorthand! - it collapses longhands into shorthands
+    # Currently a no-op since our merge already handles this efficiently
+    def create_shorthand!
+      # No-op: Cataract's merge_rules already creates shorthands automatically
+      self
     end
 
     private

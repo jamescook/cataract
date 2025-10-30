@@ -87,7 +87,6 @@ module Cataract
       end
     end
 
-    # Get property count
     def size
       @values.size
     end

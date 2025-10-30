@@ -8,6 +8,7 @@ require_relative 'cataract/rule_set'
 require_relative 'cataract/declarations'
 require_relative 'cataract/parser'
 require_relative 'cataract/import_resolver'
+require_relative 'cataract/css_parser_compat'
 
 # High-performance CSS parser
 module Cataract

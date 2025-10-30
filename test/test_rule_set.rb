@@ -184,9 +184,9 @@ class TestRuleSet < Minitest::Test
     assert_equal '10px;', merged['margin']
     assert_equal '5px;', merged['padding']
 
-    # Original unchanged
+    # Original unchanged (returns empty string for missing properties)
     assert_equal 'red;', rule1['color']
-    assert_nil rule1['padding']
+    assert_equal '', rule1['padding']
   end
 
   def test_merge_bang
@@ -244,8 +244,8 @@ class TestRuleSet < Minitest::Test
     duped = rule.dup
     duped['background'] = 'blue'
 
-    # Original unchanged
-    assert_nil rule['background']
+    # Original unchanged (returns empty string for missing properties)
+    assert_equal '', rule['background']
     assert_equal 'blue;', duped['background']
   end
 
@@ -297,5 +297,36 @@ class TestRuleSet < Minitest::Test
     rule.delete_property('color')
 
     assert_empty rule
+  end
+
+  def test_expand_shorthand!
+    rule = Cataract::RuleSet.new(
+      selector: 'div',
+      block: 'margin: 10px 20px; padding: 5px; border: 1px solid black;'
+    )
+
+    rule.expand_shorthand!
+
+    # Should expand margin
+    assert_equal '10px;', rule['margin-top']
+    assert_equal '20px;', rule['margin-right']
+    assert_equal '10px;', rule['margin-bottom']
+    assert_equal '20px;', rule['margin-left']
+
+    # Should expand padding
+    assert_equal '5px;', rule['padding-top']
+    assert_equal '5px;', rule['padding-right']
+    assert_equal '5px;', rule['padding-bottom']
+    assert_equal '5px;', rule['padding-left']
+
+    # Should expand border
+    assert_equal '1px;', rule['border-top-width']
+    assert_equal 'solid;', rule['border-top-style']
+    assert_equal 'black;', rule['border-top-color']
+
+    # Original shorthands should be removed (returns empty string for missing properties)
+    assert_equal '', rule['margin']
+    assert_equal '', rule['padding']
+    assert_equal '', rule['border']
   end
 end
