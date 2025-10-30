@@ -47,6 +47,7 @@ Metrics/ParameterLists:
 # Keep line length for tests disabled - long test strings are fine
 Layout/LineLength:
   Exclude:
+    - 'benchmarks/**/*'
     - 'test/**/*'
     - '*.gemspec'
   AllowedPatterns:
@@ -55,3 +56,9 @@ Layout/LineLength:
 # Allow more assertions per test - strict limit is too restrictive
 Minitest/MultipleAssertions:
   Max: 10
+
+Style/Documentation:
+   Enabled: true
+   Exclude:
+    - 'test/**/*'
+    - 'benchmarks/**/*'

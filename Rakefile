@@ -43,28 +43,47 @@ namespace :benchmark do
   task :parsing do
     Rake::Task[:compile].invoke
     puts 'Running parsing benchmark...'
-    ruby 'test/benchmarks/benchmark_parsing.rb'
+    ruby 'benchmarks/benchmark_parsing.rb'
   end
 
   desc 'Benchmark CSS serialization (to_s) performance'
   task :serialization do
     Rake::Task[:compile].invoke
     puts 'Running serialization benchmark...'
-    ruby 'test/benchmarks/benchmark_serialization.rb'
+    ruby 'benchmarks/benchmark_serialization.rb'
   end
 
   desc 'Benchmark specificity calculation performance'
   task :specificity do
     Rake::Task[:compile].invoke
     puts 'Running specificity benchmark...'
-    ruby 'test/benchmarks/benchmark_specificity.rb'
+    ruby 'benchmarks/benchmark_specificity.rb'
   end
 
   desc 'Benchmark CSS merging performance'
   task :merging do
     Rake::Task[:compile].invoke
     puts 'Running merging benchmark...'
-    ruby 'test/benchmarks/benchmark_merging.rb'
+    ruby 'benchmarks/benchmark_merging.rb'
+  end
+
+  desc 'Benchmark Premailer with css_parser vs Cataract'
+  task :premailer do
+    Rake::Task[:compile].invoke
+
+    # Clean up any existing state file
+    state_file = '/tmp/benchmark_premailer_ips.json'
+    FileUtils.rm_f(state_file)
+
+    puts "\n#{'=' * 80}"
+    puts 'Running with css_parser (baseline)'
+    puts '=' * 80
+    system({}, RbConfig.ruby, 'benchmarks/benchmark_premailer.rb')
+
+    puts "\n\n#{'=' * 80}"
+    puts 'Running with Cataract shim'
+    puts '=' * 80
+    system({ 'USE_CATARACT' => '1' }, RbConfig.ruby, 'benchmarks/benchmark_premailer.rb')
   end
 
   desc 'Benchmark Ruby-side operations with YJIT on vs off'
@@ -73,18 +92,18 @@ namespace :benchmark do
     puts "\n#{'=' * 80}"
     puts 'Running with YJIT OFF'
     puts '=' * 80
-    system({ 'RUBY_YJIT_ENABLE' => '0' }, RbConfig.ruby, 'test/benchmarks/benchmark_yjit.rb')
+    system(RbConfig.ruby, '--disable-yjit', 'benchmarks/benchmark_yjit.rb')
 
     puts "\n\n#{'=' * 80}"
     puts 'Running with YJIT ON'
     puts '=' * 80
-    system({ 'RUBY_YJIT_ENABLE' => '1' }, RbConfig.ruby, 'test/benchmarks/benchmark_yjit.rb')
+    system(RbConfig.ruby, '--yjit', 'benchmarks/benchmark_yjit.rb')
   end
 
   desc 'Benchmark string allocation optimization (buffer vs dynamic)'
   task :string_allocation do
     # Clean up any existing benchmark results
-    results_dir = 'test/.benchmark_results'
+    results_dir = 'benchmarks/.benchmark_results'
     if Dir.exist?(results_dir)
       Dir.glob(File.join(results_dir, 'string_allocation_*.json')).each do |file|
         puts "Removing old benchmark results: #{file}"
@@ -96,13 +115,13 @@ namespace :benchmark do
     puts 'Compiling with DYNAMIC allocation (rb_str_new_cstr)'
     puts '=' * 80
     system({ 'DISABLE_STR_BUF_OPTIMIZATION' => '1' }, 'rake', 'compile')
-    system({}, RbConfig.ruby, 'test/benchmarks/benchmark_string_allocation.rb')
+    system({}, RbConfig.ruby, 'benchmarks/benchmark_string_allocation.rb')
 
     puts "\n\n#{'=' * 80}"
     puts 'Compiling with BUFFER allocation (rb_str_buf_new, production default)'
     puts '=' * 80
     system({}, 'rake', 'compile')
-    system({}, RbConfig.ruby, 'test/benchmarks/benchmark_string_allocation.rb')
+    system({}, RbConfig.ruby, 'benchmarks/benchmark_string_allocation.rb')
   end
 end
 

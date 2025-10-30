@@ -2,24 +2,18 @@
 # frozen_string_literal: true
 
 # Benchmark Ruby-side operations with YJIT on vs off
-# Compares Cataract vs css_parser for operations like property access, merging, etc.
+# Compares Cataract performance with/without YJIT
 
 require 'benchmark/ips'
-require 'tmpdir'
+require 'fileutils'
 
-$LOAD_PATH.unshift File.expand_path('../../lib', __dir__)
+$LOAD_PATH.unshift File.expand_path('../lib', __dir__)
 require 'cataract'
 
-begin
-  require 'css_parser'
-  CSS_PARSER_AVAILABLE = true
-rescue LoadError
-  CSS_PARSER_AVAILABLE = false
-  puts 'css_parser gem not available - install with: gem install css_parser'
-end
-
 # State file for benchmark-ips to compare across runs
-RESULTS_FILE = File.join(File.expand_path('../.benchmark_results', __dir__), 'yjit_benchmark.json')
+RESULTS_DIR = File.expand_path('.benchmark_results', __dir__)
+FileUtils.mkdir_p(RESULTS_DIR)
+RESULTS_FILE = File.join(RESULTS_DIR, 'yjit_benchmark.json')
 
 # Sample CSS for parsing
 SAMPLE_CSS = <<~CSS
@@ -44,8 +38,6 @@ puts '=' * 80
 puts
 
 puts "\n#{'=' * 80}"
-puts 'TEST 1: Property Access (get/set)'
-puts '=' * 80
 
 Benchmark.ips do |x|
   x.config(time: 3, warmup: 1)
@@ -64,24 +56,7 @@ Benchmark.ips do |x|
     _ = decls['font-size']
   end
 
-  if CSS_PARSER_AVAILABLE
-    x.report("css_parser: property access#{yjit_label}") do
-      parser = CssParser::Parser.new
-      parser.add_block!('.test { color: red; background: blue; font-size: 16px; margin: 10px; padding: 5px; }')
-      _ = parser.find_by_selector('.test')
-    end
-  end
-
   x.save! RESULTS_FILE
-  x.compare!
-end
-
-puts "\n#{'=' * 80}"
-puts 'TEST 2: Declaration Merging'
-puts '=' * 80
-
-Benchmark.ips do |x|
-  x.config(time: 3, warmup: 1)
 
   yjit_label = defined?(RubyVM::YJIT.enabled?) && RubyVM::YJIT.enabled? ? ' (YJIT)' : ' (no YJIT)'
 
@@ -97,17 +72,6 @@ Benchmark.ips do |x|
     decls1.merge(decls2)
   end
 
-  x.save! RESULTS_FILE
-  x.compare!
-end
-
-puts "\n#{'=' * 80}"
-puts 'TEST 3: CSS String Generation (to_s)'
-puts '=' * 80
-
-Benchmark.ips do |x|
-  x.config(time: 3, warmup: 1)
-
   yjit_label = defined?(RubyVM::YJIT.enabled?) && RubyVM::YJIT.enabled? ? ' (YJIT)' : ' (no YJIT)'
 
   x.report("Cataract: to_s generation#{yjit_label}") do
@@ -120,25 +84,6 @@ Benchmark.ips do |x|
     decls.to_s
   end
 
-  if CSS_PARSER_AVAILABLE
-    x.report("css_parser: to_s generation#{yjit_label}") do
-      parser = CssParser::Parser.new
-      parser.add_block!('.test { color: red; background: blue; font-size: 16px; margin: 10px; padding: 5px; }')
-      parser.to_s
-    end
-  end
-
-  x.save! RESULTS_FILE
-  x.compare!
-end
-
-puts "\n#{'=' * 80}"
-puts 'TEST 4: Parse + Iterate'
-puts '=' * 80
-
-Benchmark.ips do |x|
-  x.config(time: 3, warmup: 1)
-
   yjit_label = defined?(RubyVM::YJIT.enabled?) && RubyVM::YJIT.enabled? ? ' (YJIT)' : ' (no YJIT)'
 
   x.report("Cataract: parse + iterate#{yjit_label}") do
@@ -149,21 +94,15 @@ Benchmark.ips do |x|
     end
   end
 
-  if CSS_PARSER_AVAILABLE
-    x.report("css_parser: parse + iterate#{yjit_label}") do
-      parser = CssParser::Parser.new
-      parser.add_block!(SAMPLE_CSS)
-      parser.each_selector do |_selector, declarations, _specificity|
-        _ = declarations
-      end
-    end
-  end
-
   x.save! RESULTS_FILE
+
   x.compare!
 end
 
-puts "\n#{'=' * 80}"
-puts "Results saved to: #{RESULTS_FILE}"
-puts ''
-puts '=' * 80
+puts
+
+if RubyVM::YJIT.enabled?
+  # Remove on 2nd run
+  puts 'Removing results json'
+  FileUtils.rm_f RESULTS_FILE
+end

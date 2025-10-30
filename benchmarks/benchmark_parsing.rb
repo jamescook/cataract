@@ -3,7 +3,7 @@
 require 'benchmark/ips'
 
 # Load the local development version, not installed gem
-$LOAD_PATH.unshift File.expand_path('../../lib', __dir__)
+$LOAD_PATH.unshift File.expand_path('../lib', __dir__)
 require 'cataract'
 
 begin
@@ -22,7 +22,7 @@ module BenchmarkParsing
     puts "Loading from: #{File.expand_path('../../lib/cataract.rb', __dir__)}"
 
     # Load CSS fixtures
-    fixtures_dir = File.expand_path('../fixtures', __dir__)
+    fixtures_dir = File.expand_path('../test/fixtures', __dir__)
     test_css_css1 = File.read(File.join(fixtures_dir, 'css1_sample.css'))
     test_css_css2 = File.read(File.join(fixtures_dir, 'css2_sample.css'))
 

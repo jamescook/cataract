@@ -3,7 +3,7 @@
 require 'benchmark/ips'
 
 # Load the local development version, not installed gem
-$LOAD_PATH.unshift File.expand_path('../../lib', __dir__)
+$LOAD_PATH.unshift File.expand_path('../lib', __dir__)
 require 'cataract'
 
 begin
