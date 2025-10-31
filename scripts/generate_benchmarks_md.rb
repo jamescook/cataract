@@ -69,7 +69,7 @@ class BenchmarkDocGenerator
     if File.exist?(metadata_path)
       JSON.parse(File.read(metadata_path))
     else
-      warn '⚠ Warning: metadata.json not found. Run benchmarks first.'
+      warn '⚠ Warning: metadata.json not found. Run benchmarks first.' # :nocov:
       {}
     end
   end
@@ -80,7 +80,7 @@ class BenchmarkDocGenerator
 
     JSON.parse(File.read(path))
   rescue JSON::ParserError => e
-    warn "⚠ Warning: Failed to parse #{name}.json: #{e.message}"
+    warn "⚠ Warning: Failed to parse #{name}.json: #{e.message}" # :nocov:
     nil
   end
 
@@ -130,6 +130,7 @@ class BenchmarkDocGenerator
 end
 
 # Run if called directly
+# :nocov:
 if __FILE__ == $PROGRAM_NAME
   unless Dir.exist?(BenchmarkDocGenerator::RESULTS_DIR)
     puts "Error: No benchmark results found at #{BenchmarkDocGenerator::RESULTS_DIR}"
@@ -140,3 +141,4 @@ if __FILE__ == $PROGRAM_NAME
   generator = BenchmarkDocGenerator.new
   generator.generate
 end
+# :nocov:

@@ -26,12 +26,6 @@ module Cataract
     end
   end
 
-  def self.parse(css_string, options = {})
-    parser = Parser.new(options)
-    parser.parse(css_string)
-    parser
-  end
-
   # Merge multiple CSS rules according to CSS cascade rules
   #
   # @param rules [Array<Struct>, Stylesheet] Array of Rule structs or Stylesheet
