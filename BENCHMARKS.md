@@ -181,20 +181,20 @@ Ruby-side operations with and without YJIT
 | **Specificity** | 21.09x faster | 48.9x faster | 33.07x faster |
 | **Merging** | 2.38x faster | 4.36x faster | 3.36x faster |
 
-### Why Is Cataract Faster?
+### Implementation Notes
 
 1. **C Extension**: Critical paths (parsing, specificity, merging, serialization) implemented in C
 2. **Efficient Data Structures**: Rules grouped by media query for O(1) lookups
 3. **Memory Efficient**: Pre-allocated string buffers, minimal Ruby object allocations
-4. **Optimized Algorithms**: Purpose-built CSS specificity calculator, no regex-heavy parsing
+4. **Optimized Algorithms**: Purpose-built CSS specificity calculator
 
-### When to Use Cataract
+### Use Cases
 
-- ✅ **Email inlining** (Premailer): Drop-in replacement with significant speedup
-- ✅ **Large CSS files**: 10-20x faster parsing and serialization
-- ✅ **Specificity calculations**: 20-80x faster, especially for complex selectors
-- ✅ **High-volume processing**: 95%+ fewer allocations = less GC pressure
-- ✅ **Production applications**: Battle-tested on Bootstrap CSS and real-world stylesheets
+- **Email inlining** (Premailer): Drop-in replacement for css_parser
+- **Large CSS files**: Handles complex stylesheets efficiently
+- **Specificity calculations**: Optimized for selector analysis
+- **High-volume processing**: Reduced allocations minimize GC pressure
+- **Production applications**: Tested with Bootstrap CSS and real-world stylesheets
 
 ---
 

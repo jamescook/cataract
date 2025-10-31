@@ -6,7 +6,7 @@ A high-performance CSS parser with C extensions for accurate parsing of complex 
 
 ## Features
 
-- **Fast**: High-performance C implementation for parsing and serialization
+- **C Extension**: Performance-focused C implementation for parsing and serialization
 - **CSS2 Support**: Selectors, combinators, pseudo-classes, pseudo-elements, @media queries
 - **CSS3 Support**: Attribute selectors (`^=`, `$=`, `*=`)
 - **Specificity Calculation**: Automatic CSS specificity computation
@@ -114,7 +114,7 @@ sheet.each_selector(specificity: ..10) { |sel, decls, spec, media| ... }     # L
 
 ### Drop-in Replacement for Premailer
 
-Cataract can be used as a high-performance drop-in replacement for [css_parser](https://github.com/premailer/css_parser) in [Premailer](https://github.com/premailer/premailer), providing significantly faster CSS inlining with reduced memory allocations:
+Cataract can be used as a drop-in replacement for [css_parser](https://github.com/premailer/css_parser) in [Premailer](https://github.com/premailer/premailer):
 
 ```ruby
 require 'cataract'
@@ -217,11 +217,11 @@ Each `Rule` is a struct containing:
 - `declarations`: Array of `Declarations::Value` structs (property, value, important flag)
 - `specificity`: Calculated CSS specificity (cached)
 
-Key advantages:
-- **Fast**: Critical paths implemented in C (parsing, merging, serialization)
+Implementation details:
+- **C implementation**: Critical paths implemented in C (parsing, merging, serialization)
 - **Efficient media query handling**: Rules grouped by media query for O(1) lookups
 - **Memory efficient**: Minimal allocations, reuses string buffers where possible
-- **Accurate**: Handles complex CSS including nested media queries, data URIs, calc() functions
+- **Comprehensive**: Handles complex CSS including nested media queries, data URIs, calc() functions
 
 ## License
 
