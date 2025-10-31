@@ -58,8 +58,8 @@ class YjitBenchmark < BenchmarkHarness
     # Clean up any leftover worker files from previous runs
     without_path = File.join(RESULTS_DIR, 'yjit_without.json')
     with_path = File.join(RESULTS_DIR, 'yjit_with.json')
-    File.delete(without_path) if File.exist?(without_path)
-    File.delete(with_path) if File.exist?(with_path)
+    FileUtils.rm_f(without_path)
+    FileUtils.rm_f(with_path)
 
     puts 'Running YJIT benchmarks via subprocesses...'
     puts

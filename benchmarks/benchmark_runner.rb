@@ -25,7 +25,7 @@ class BenchmarkRunner
 
   # Run a benchmark-ips block and capture results
   # @yield [Benchmark::IPS::Job] The benchmark-ips job
-  def run(&block)
+  def run
     json_path = File.join(RESULTS_DIR, "#{@name}.json")
 
     Benchmark.ips do |x|
@@ -59,7 +59,7 @@ class BenchmarkRunner
 
     return nil unless baseline_result && comparison_result
 
-    speedup = comparison_result['central_tendency'].to_f / baseline_result['central_tendency'].to_f
+    speedup = comparison_result['central_tendency'].to_f / baseline_result['central_tendency']
 
     {
       'label' => label,

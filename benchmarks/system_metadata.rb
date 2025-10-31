@@ -50,7 +50,7 @@ class SystemMetadata
       meminfo = File.read('/proc/meminfo')
       if (match = meminfo.match(/MemTotal:\s+(\d+)\s+kB/))
         kb = match[1].to_i
-        "#{(kb / (1024 * 1024))}GB"
+        "#{kb / (1024 * 1024)}GB"
       else
         'Unknown'
       end

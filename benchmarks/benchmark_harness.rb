@@ -114,7 +114,7 @@ class BenchmarkHarness
       # Print header
       puts "\n\n"
       puts '=' * 80
-      puts benchmark_name.upcase.tr('_', ' ') + ' BENCHMARK'
+      puts "#{benchmark_name.upcase.tr('_', ' ')} BENCHMARK"
       puts "Measures: #{description}"
       puts '=' * 80
       puts
@@ -174,7 +174,7 @@ class BenchmarkHarness
   # Instance methods
   protected
 
-  def benchmark(test_case_name, &block)
+  def benchmark(test_case_name)
     json_filename = "#{self.class.benchmark_name}_#{test_case_name}.json"
     json_path = File.join(RESULTS_DIR, json_filename)
 

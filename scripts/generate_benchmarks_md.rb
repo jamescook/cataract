@@ -56,10 +56,10 @@ class BenchmarkDocGenerator
     missing << 'Merging' unless @merging_data
     missing << 'YJIT' unless @yjit_data
 
-    if missing.any?
-      puts '  Missing benchmarks:'
-      missing.each { |name| puts "    - #{name}" }
-    end
+    return unless missing.any?
+
+    puts '  Missing benchmarks:'
+    missing.each { |name| puts "    - #{name}" }
   end
 
   private

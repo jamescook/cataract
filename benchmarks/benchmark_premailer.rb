@@ -64,8 +64,8 @@ class PremailerBenchmark < BenchmarkHarness
     # Clean up any leftover worker files from previous runs
     css_parser_path = File.join(RESULTS_DIR, 'premailer_css_parser.json')
     cataract_path = File.join(RESULTS_DIR, 'premailer_cataract.json')
-    File.delete(css_parser_path) if File.exist?(css_parser_path)
-    File.delete(cataract_path) if File.exist?(cataract_path)
+    FileUtils.rm_f(css_parser_path)
+    FileUtils.rm_f(cataract_path)
 
     puts 'Running Premailer benchmarks via subprocesses...'
     puts

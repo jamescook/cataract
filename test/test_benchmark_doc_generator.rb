@@ -76,6 +76,6 @@ class TestBenchmarkDocGenerator < Minitest::Test
     generator.generate
 
     # Verify no output file was created since there's no data
-    refute File.exist?(@output_path), 'BENCHMARKS.md should not be generated without data'
+    refute_path_exists @output_path, 'BENCHMARKS.md should not be generated without data'
   end
 end

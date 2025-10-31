@@ -52,14 +52,14 @@ class SerializationBenchmark < BenchmarkHarness
 
     # Verify parsing and serialization work
     cataract_sheet = Cataract.parse_css(bootstrap_css)
-    raise 'Failed to parse Bootstrap CSS' if cataract_sheet.size.zero?
+    raise 'Failed to parse Bootstrap CSS' if cataract_sheet.empty?
 
     cataract_output = cataract_sheet.to_s
     raise 'Serialization produced empty output' if cataract_output.empty?
 
     # Verify output can be re-parsed
     reparsed = Cataract.parse_css(cataract_output)
-    raise 'Failed to re-parse serialized output' if reparsed.size.zero?
+    raise 'Failed to re-parse serialized output' if reparsed.empty?
   end
 
   def call

@@ -54,7 +54,7 @@ module YjitTests
   private
 
   def yjit_label
-    @yjit_label ||= (defined?(RubyVM::YJIT.enabled?) && RubyVM::YJIT.enabled?) ? 'YJIT' : 'no YJIT'
+    @yjit_label ||= defined?(RubyVM::YJIT.enabled?) && RubyVM::YJIT.enabled? ? 'YJIT' : 'no YJIT'
   end
 
   def run_property_access_benchmark

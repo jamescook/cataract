@@ -34,7 +34,7 @@ class SpeedupCalculator
 
       next unless baseline && comparison
 
-      speedup = comparison['central_tendency'].to_f / baseline['central_tendency'].to_f
+      speedup = comparison['central_tendency'].to_f / baseline['central_tendency']
       speedups << speedup
 
       # Annotate test case metadata if provided
