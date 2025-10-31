@@ -223,6 +223,10 @@ Implementation details:
 - **Memory efficient**: Minimal allocations, reuses string buffers where possible
 - **Comprehensive**: Handles complex CSS including nested media queries, data URIs, calc() functions
 
+## Development Notes
+
+Significant portions of this codebase were generated with assistance from [Claude Code](https://claude.com/claude-code), including the benchmark infrastructure, test suite, and documentation generation system.
+
 ## License
 
 MIT
