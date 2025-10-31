@@ -69,8 +69,10 @@ class BenchmarkDocGenerator
     if File.exist?(metadata_path)
       JSON.parse(File.read(metadata_path))
     else
-      warn '⚠ Warning: metadata.json not found. Run benchmarks first.' # :nocov:
+      # :nocov:
+      warn '⚠ Warning: metadata.json not found. Run benchmarks first.'
       {}
+      # :nocov:
     end
   end
 
@@ -80,8 +82,10 @@ class BenchmarkDocGenerator
 
     JSON.parse(File.read(path))
   rescue JSON::ParserError => e
-    warn "⚠ Warning: Failed to parse #{name}.json: #{e.message}" # :nocov:
+    # :nocov:
+    warn "⚠ Warning: Failed to parse #{name}.json: #{e.message}"
     nil
+    # :nocov:
   end
 
   # Formatting helpers for ERB template
