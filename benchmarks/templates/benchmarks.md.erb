@@ -15,7 +15,8 @@ Comprehensive performance comparison between Cataract and css_parser gem.
 - **Generated**: <%= metadata['timestamp'] %>
 
 <%- if premailer_data -%>
-## Premailer Integration
+<details>
+<summary><h2>Premailer Integration</h2></summary>
 
 Drop-in replacement performance for Premailer email CSS inlining.
 
@@ -34,11 +35,14 @@ Drop-in replacement performance for Premailer email CSS inlining.
 - Drop-in replacement for Premailer with zero code changes
 - Zero code changes required - just call `Cataract.mimic_CssParser!`
 
+</details>
+
 ---
 <%- end -%>
 
 <%- if parsing_data -%>
-## CSS Parsing
+<details>
+<summary><h2>CSS Parsing</h2></summary>
 
 Performance of parsing CSS into internal data structures.
 
@@ -62,11 +66,14 @@ Performance of parsing CSS into internal data structures.
 <%- end -%>
 <%- end -%>
 
+</details>
+
 ---
 <%- end -%>
 
 <%- if serialization_data -%>
-## CSS Serialization (to_s)
+<details>
+<summary><h2>CSS Serialization (to_s)</h2></summary>
 
 Performance of converting parsed CSS back to string format.
 
@@ -90,11 +97,14 @@ Performance of converting parsed CSS back to string format.
 <%- end -%>
 <%- end -%>
 
+</details>
+
 ---
 <%- end -%>
 
 <%- if specificity_data -%>
-## Specificity Calculation
+<details>
+<summary><h2>Specificity Calculation</h2></summary>
 
 Performance of calculating CSS selector specificity values.
 
@@ -108,11 +118,14 @@ Performance of calculating CSS selector specificity values.
 
 **Summary:** <%= format_speedup(specificity_data['metadata']['speedups']['min']) %> to <%= format_speedup(specificity_data['metadata']['speedups']['max']) %> (avg <%= format_speedup(specificity_data['metadata']['speedups']['avg']) %>)
 
+</details>
+
 ---
 <%- end -%>
 
 <%- if merging_data -%>
-## CSS Merging
+<details>
+<summary><h2>CSS Merging</h2></summary>
 
 Performance of merging multiple CSS rule sets with the same selector.
 
@@ -132,11 +145,14 @@ Performance of merging multiple CSS rule sets with the same selector.
 - Shorthand property expansion (e.g., `margin` → `margin-top`, `margin-right`, etc.)
 - Shorthand property creation from longhand properties
 
+</details>
+
 ---
 <%- end -%>
 
 <%- if yjit_data -%>
-## YJIT Impact
+<details>
+<summary><h2>YJIT Impact</h2></summary>
 
 Impact of Ruby's YJIT JIT compiler on Ruby-side operations. The C extension performance is the same regardless of YJIT.
 
@@ -163,6 +179,8 @@ Impact of Ruby's YJIT JIT compiler on Ruby-side operations. The C extension perf
 - Parse + iterate benefits least since most work is in C
 - Recommended: Enable YJIT in production (`--yjit` flag or `RUBY_YJIT_ENABLE=1`)
 
+</details>
+
 ---
 <%- end -%>
 
@@ -172,26 +190,26 @@ Impact of Ruby's YJIT JIT compiler on Ruby-side operations. The C extension perf
 
 | Category | Min Speedup | Max Speedup | Avg Speedup |
 |----------|-------------|-------------|-------------|
-<% if premailer_data && premailer_data['metadata']['speedup'] %>
-<% speedup = premailer_data['metadata']['speedup'] %>
+<%- if premailer_data && premailer_data['metadata']['speedup'] -%>
+<%- speedup = premailer_data['metadata']['speedup'] -%>
 | **Premailer Integration** | <%= format_speedup(speedup) %> | <%= format_speedup(speedup) %> | <%= format_speedup(speedup) %> |
-<% end %>
-<% if parsing_data && parsing_data['metadata']['speedups'] %>
-<% sp = parsing_data['metadata']['speedups'] %>
+<%- end -%>
+<%- if parsing_data && parsing_data['metadata']['speedups'] -%>
+<%- sp = parsing_data['metadata']['speedups'] -%>
 | **Parsing** | <%= format_speedup(sp['min']) %> | <%= format_speedup(sp['max']) %> | <%= format_speedup(sp['avg']) %> |
-<% end %>
-<% if serialization_data && serialization_data['metadata']['speedups'] %>
-<% sp = serialization_data['metadata']['speedups'] %>
+<%- end -%>
+<%- if serialization_data && serialization_data['metadata']['speedups'] -%>
+<%- sp = serialization_data['metadata']['speedups'] -%>
 | **Serialization** | <%= format_speedup(sp['min']) %> | <%= format_speedup(sp['max']) %> | <%= format_speedup(sp['avg']) %> |
-<% end %>
-<% if specificity_data && specificity_data['metadata']['speedups'] %>
-<% sp = specificity_data['metadata']['speedups'] %>
+<%- end -%>
+<%- if specificity_data && specificity_data['metadata']['speedups'] -%>
+<%- sp = specificity_data['metadata']['speedups'] -%>
 | **Specificity** | <%= format_speedup(sp['min']) %> | <%= format_speedup(sp['max']) %> | <%= format_speedup(sp['avg']) %> |
-<% end %>
-<% if merging_data && merging_data['metadata']['speedups'] %>
-<% sp = merging_data['metadata']['speedups'] %>
+<%- end -%>
+<%- if merging_data && merging_data['metadata']['speedups'] -%>
+<%- sp = merging_data['metadata']['speedups'] -%>
 | **Merging** | <%= format_speedup(sp['min']) %> | <%= format_speedup(sp['max']) %> | <%= format_speedup(sp['avg']) %> |
-<% end %>
+<%- end -%>
 
 ### Why Is Cataract Faster?
 
