@@ -38,6 +38,10 @@ task :benchmark do
   Rake::Task['benchmark:merging'].invoke
   Rake::Task['benchmark:yjit'].invoke
   Rake::Task['benchmark:premailer'].invoke
+  puts "\n#{'-' * 80}"
+  puts 'All benchmarks complete!'
+  puts 'Generate documentation with: rake benchmark:generate_docs'
+  puts '-' * 80
 end
 
 namespace :benchmark do
@@ -67,32 +71,14 @@ namespace :benchmark do
 
   desc 'Benchmark Premailer with css_parser vs Cataract'
   task :premailer do
-    # Clean up any existing state file
-    state_file = '/tmp/benchmark_premailer_ips.json'
-    FileUtils.rm_f(state_file)
-
-    puts "\n#{'=' * 80}"
-    puts 'Running with css_parser (baseline)'
-    puts '=' * 80
-    system({}, RbConfig.ruby, 'benchmarks/benchmark_premailer.rb')
-
-    puts "\n\n#{'=' * 80}"
-    puts 'Running with Cataract shim'
-    puts '=' * 80
-    system({ 'USE_CATARACT' => '1' }, RbConfig.ruby, 'benchmarks/benchmark_premailer.rb')
+    puts 'Running premailer benchmark...'
+    ruby 'benchmarks/benchmark_premailer.rb'
   end
 
   desc 'Benchmark Ruby-side operations with YJIT on vs off'
   task :yjit do
-    puts "\n#{'=' * 80}"
-    puts 'Running with YJIT OFF'
-    puts '=' * 80
-    system(RbConfig.ruby, '--disable-yjit', 'benchmarks/benchmark_yjit.rb')
-
-    puts "\n\n#{'=' * 80}"
-    puts 'Running with YJIT ON'
-    puts '=' * 80
-    system(RbConfig.ruby, '--yjit', 'benchmarks/benchmark_yjit.rb')
+    puts 'Running YJIT benchmark...'
+    ruby 'benchmarks/benchmark_yjit.rb'
   end
 
   desc 'Benchmark string allocation optimization (buffer vs dynamic)'
@@ -117,6 +103,11 @@ namespace :benchmark do
     puts '=' * 80
     system({}, 'rake', 'compile')
     system({}, RbConfig.ruby, 'benchmarks/benchmark_string_allocation.rb')
+  end
+
+  desc 'Generate BENCHMARKS.md from benchmark results'
+  task :generate_docs do
+    ruby 'scripts/generate_benchmarks_md.rb'
   end
 end
 

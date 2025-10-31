@@ -36,11 +36,14 @@ jobs:
       run: bundle exec rake compile test
       env:
         COVERAGE: 1
-        CATARACT_DEBUG: 1
 
-    - name: Run rubocop
+    - name: Run debug test (Ruby 3.4 only)
       if: matrix.ruby == '3.4'
-      run: bundle exec rubocop --fail-level W
+      run: |
+        bundle exec rake clean compile
+        bundle exec ruby -Ilib:test test/test_parser_basic.rb
+      env:
+        CATARACT_DEBUG: 1
 
     - name: Run clang-tidy
       if: runner.os == 'Linux' && matrix.ruby == '3.4'
@@ -63,3 +66,17 @@ jobs:
         name: coverage-report
         path: coverage/
         retention-days: 30
+
+  rubocop:
+    runs-on: ${{ inputs.os }}
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: '3.4'
+        bundler-cache: true
+
+    - name: Run rubocop
+      run: bundle exec rubocop --fail-level W

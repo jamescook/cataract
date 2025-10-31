@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Cataract
+module Cataract # rubocop:disable Style/Documentation
   # CssParser compatibility layer
   # Provides drop-in replacement for css_parser gem (used by premailer)
   module CssParserCompat
@@ -137,12 +137,12 @@ module Cataract
   end
 
   # Public API: Install CssParser compatibility shim
-  def self.mimic_CssParser!
+  def self.mimic_CssParser! # rubocop:disable Naming/MethodName
     CssParserCompat.install!
   end
 
   # Public API: Restore original CssParser (removes shim)
-  def self.restore_CssParser!
+  def self.restore_CssParser! # rubocop:disable Naming/MethodName
     CssParserCompat.restore!
   end
 end

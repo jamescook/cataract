@@ -1,0 +1,70 @@
+{
+  "name": "parsing",
+  "description": "Time to parse CSS into internal data structures",
+  "metadata": {
+    "test_cases": [
+      {
+        "name": "Small CSS (64 lines, 1.0KB)",
+        "fixture": "CSS1",
+        "lines": 64,
+        "bytes": 1061,
+        "speedup": 10.85
+      },
+      {
+        "name": "Medium CSS with @media (139 lines, 1.6KB)",
+        "fixture": "CSS2",
+        "lines": 139,
+        "bytes": 1679,
+        "speedup": 12.87
+      }
+    ],
+    "speedups": {
+      "min": 10.85,
+      "max": 12.87,
+      "avg": 11.86
+    }
+  },
+  "timestamp": "2025-10-30T16:01:43-05:00",
+  "results": [
+    {
+      "name": "css_parser gem: CSS1",
+      "central_tendency": 6253.617340248006,
+      "ips": 6253.617340248006,
+      "error": 63,
+      "stddev": 63,
+      "microseconds": 5069278.0,
+      "iterations": 31698,
+      "cycles": 587
+    },
+    {
+      "name": "cataract: CSS1",
+      "central_tendency": 67860.26856079814,
+      "ips": 67860.26856079814,
+      "error": 536,
+      "stddev": 536,
+      "microseconds": 5023642.0,
+      "iterations": 340884,
+      "cycles": 6684
+    },
+    {
+      "name": "css_parser gem: CSS2",
+      "central_tendency": 3446.4007088523126,
+      "ips": 3446.4007088523126,
+      "error": 33,
+      "stddev": 33,
+      "microseconds": 5076214.0,
+      "iterations": 17493,
+      "cycles": 343
+    },
+    {
+      "name": "cataract: CSS2",
+      "central_tendency": 44357.90385806872,
+      "ips": 44357.90385806872,
+      "error": 404,
+      "stddev": 404,
+      "microseconds": 5069630.0,
+      "iterations": 224859,
+      "cycles": 4409
+    }
+  ]
+}
