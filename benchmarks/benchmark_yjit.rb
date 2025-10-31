@@ -1,108 +1,158 @@
-#!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Benchmark Ruby-side operations with YJIT on vs off
-# Compares Cataract performance with/without YJIT
+require_relative 'benchmark_harness'
+require 'open3'
+require 'json'
 
-require 'benchmark/ips'
-require 'fileutils'
-
+# Load the local development version, not installed gem
 $LOAD_PATH.unshift File.expand_path('../lib', __dir__)
 require 'cataract'
 
-# State file for benchmark-ips to compare across runs
-RESULTS_DIR = File.expand_path('.benchmark_results', __dir__)
-FileUtils.mkdir_p(RESULTS_DIR)
-RESULTS_FILE = File.join(RESULTS_DIR, 'yjit_benchmark.json')
+# YJIT Benchmark Supervisor
+# Spawns two subprocesses (with/without YJIT) and combines results
+class YjitBenchmark < BenchmarkHarness
+  def self.benchmark_name
+    'yjit'
+  end
 
-# Sample CSS for parsing
-SAMPLE_CSS = <<~CSS
-  body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
-  .header { color: #333; padding: 20px; background: #f8f9fa; }
-  .container { max-width: 1200px; margin: 0 auto; }
-  div p { line-height: 1.6; }
-  .container > .item { margin-bottom: 20px; }
-  h1 + p { margin-top: 0; font-size: 1.2em; }
-CSS
+  def self.description
+    'Ruby-side operations with and without YJIT'
+  end
 
-puts '=' * 80
-puts 'Ruby-side Operations Benchmark'
-puts '=' * 80
-puts "Ruby version: #{RUBY_VERSION}"
-if defined?(RubyVM::YJIT.enabled?) && RubyVM::YJIT.enabled?
-  puts 'YJIT: ✅ Enabled'
-else
-  puts 'YJIT: ❌ Disabled'
-end
-puts '=' * 80
-puts
+  def self.metadata
+    {
+      'operations' => [
+        'property access',
+        'declaration merging',
+        'to_s generation',
+        'parse + iterate'
+      ],
+      'note' => 'C extension performance is the same regardless of YJIT. This measures Ruby code.'
+    }
+  end
 
-puts "\n#{'=' * 80}"
+  def self.speedup_config
+    # Compare without YJIT (baseline) vs with YJIT (comparison)
+    {
+      baseline_matcher: SpeedupCalculator::Matchers.without_yjit,
+      comparison_matcher: SpeedupCalculator::Matchers.with_yjit,
+      test_case_key: nil # No test_cases array, just operations
+    }
+  end
 
-Benchmark.ips do |x|
-  x.config(time: 3, warmup: 1)
-
-  yjit_label = defined?(RubyVM::YJIT.enabled?) && RubyVM::YJIT.enabled? ? ' (YJIT)' : ' (no YJIT)'
-
-  x.report("Cataract: property access#{yjit_label}") do
+  def sanity_checks
+    # Verify basic operations work
     decls = Cataract::Declarations.new
     decls['color'] = 'red'
-    decls['background'] = 'blue'
-    decls['font-size'] = '16px'
-    decls['margin'] = '10px'
-    decls['padding'] = '5px'
-    _ = decls['color']
-    _ = decls['background']
-    _ = decls['font-size']
-  end
+    raise 'Property access failed' unless decls['color']
 
-  x.save! RESULTS_FILE
-
-  yjit_label = defined?(RubyVM::YJIT.enabled?) && RubyVM::YJIT.enabled? ? ' (YJIT)' : ' (no YJIT)'
-
-  x.report("Cataract: declaration merging#{yjit_label}") do
-    decls1 = Cataract::Declarations.new
-    decls1['color'] = 'red'
-    decls1['font-size'] = '16px'
-
-    decls2 = Cataract::Declarations.new
-    decls2['background'] = 'blue'
-    decls2['margin'] = '10px'
-
-    decls1.merge(decls2)
-  end
-
-  yjit_label = defined?(RubyVM::YJIT.enabled?) && RubyVM::YJIT.enabled? ? ' (YJIT)' : ' (no YJIT)'
-
-  x.report("Cataract: to_s generation#{yjit_label}") do
-    decls = Cataract::Declarations.new
-    decls['color'] = 'red'
-    decls['background'] = 'blue'
-    decls['font-size'] = '16px'
-    decls['margin'] = '10px'
-    decls['padding'] = '5px'
-    decls.to_s
-  end
-
-  yjit_label = defined?(RubyVM::YJIT.enabled?) && RubyVM::YJIT.enabled? ? ' (YJIT)' : ' (no YJIT)'
-
-  x.report("Cataract: parse + iterate#{yjit_label}") do
     parser = Cataract::Parser.new
-    parser.parse(SAMPLE_CSS)
-    parser.each_selector do |_selector, declarations, _specificity|
-      _ = declarations
-    end
+    sample_css = 'body { margin: 0; }'
+    parser.parse(sample_css)
+    raise 'Parse failed' if parser.rules_count.zero?
   end
 
-  x.save! RESULTS_FILE
+  def call
+    worker_script = File.expand_path('benchmark_yjit_workers.rb', __dir__)
 
-  x.compare!
+    # Clean up any leftover worker files from previous runs
+    without_path = File.join(RESULTS_DIR, 'yjit_without.json')
+    with_path = File.join(RESULTS_DIR, 'yjit_with.json')
+    FileUtils.rm_f(without_path)
+    FileUtils.rm_f(with_path)
+
+    puts 'Running YJIT benchmarks via subprocesses...'
+    puts
+
+    # Run without YJIT
+    puts '→ Running without YJIT (--disable-yjit)...'
+    stdout_without, status_without = run_subprocess(['ruby', '--disable-yjit', worker_script])
+    unless status_without.success?
+      raise "Worker without YJIT failed:\n#{stdout_without}"
+    end
+
+    puts stdout_without
+    puts
+
+    # Run with YJIT
+    puts '→ Running with YJIT (--yjit)...'
+    stdout_with, status_with = run_subprocess(['ruby', '--yjit', worker_script])
+    unless status_with.success?
+      raise "Worker with YJIT failed:\n#{stdout_with}"
+    end
+
+    puts stdout_with
+    puts
+
+    # Combine results
+    combine_worker_results
+  end
+
+  private
+
+  def run_subprocess(command)
+    stdout, stderr, status = Open3.capture3(*command)
+
+    # Print stderr if present (warnings, etc)
+    unless stderr.empty?
+      puts "⚠️  stderr: #{stderr}"
+    end
+
+    [stdout, status]
+  end
+
+  def combine_worker_results
+    without_path = File.join(RESULTS_DIR, 'yjit_without.json')
+    with_path = File.join(RESULTS_DIR, 'yjit_with.json')
+
+    # Check both files exist
+    unless File.exist?(without_path) && File.exist?(with_path)
+      raise "Worker results not found:\n  #{without_path}\n  #{with_path}"
+    end
+
+    # Read both JSON files
+    without_data = JSON.parse(File.read(without_path))
+    with_data = JSON.parse(File.read(with_path))
+
+    # Combine into single benchmark result
+    combined_data = {
+      'name' => self.class.benchmark_name,
+      'description' => self.class.description,
+      'metadata' => self.class.metadata,
+      'timestamp' => Time.now.iso8601,
+      'results' => []
+    }
+
+    # Merge results from both workers
+    combined_data['results'].concat(without_data['results']) if without_data['results']
+    combined_data['results'].concat(with_data['results']) if with_data['results']
+
+    # Calculate speedups using configured strategy
+    config = self.class.speedup_config
+    if config
+      calculator = SpeedupCalculator.new(
+        results: combined_data['results'],
+        test_cases: combined_data['metadata']['operations'],
+        baseline_matcher: config[:baseline_matcher],
+        comparison_matcher: config[:comparison_matcher],
+        test_case_key: config[:test_case_key]
+      )
+
+      speedup_stats = calculator.calculate
+      combined_data['metadata']['speedups'] = speedup_stats if speedup_stats
+    end
+
+    # Write combined file
+    combined_path = File.join(RESULTS_DIR, "#{self.class.benchmark_name}.json")
+    File.write(combined_path, JSON.pretty_generate(combined_data))
+
+    # Clean up worker files
+    File.delete(without_path)
+    File.delete(with_path)
+
+    puts "✓ Combined results saved to #{combined_path}"
+  end
 end
 
-puts
-
-if RubyVM::YJIT.enabled?
-  # Remove on 2nd run
-  puts 'Removing results json'
-  FileUtils.rm_f RESULTS_FILE
-end
+# Run if executed directly
+YjitBenchmark.run if __FILE__ == $PROGRAM_NAME
