@@ -14,7 +14,8 @@ Comprehensive performance comparison between Cataract and css_parser gem.
 - **OS**: macOS 14.5
 - **Generated**: 2025-10-30T16:01:15-05:00
 
-## Premailer Integration
+<details>
+<summary><h2>Premailer Integration</h2></summary>
 
 Drop-in replacement performance for Premailer email CSS inlining.
 
@@ -30,9 +31,12 @@ Drop-in replacement performance for Premailer email CSS inlining.
 - Drop-in replacement for Premailer with zero code changes
 - Zero code changes required - just call `Cataract.mimic_CssParser!`
 
+</details>
+
 ---
 
-## CSS Parsing
+<details>
+<summary><h2>CSS Parsing</h2></summary>
 
 Performance of parsing CSS into internal data structures.
 
@@ -57,9 +61,12 @@ Time to parse CSS into internal data structures
 | **Speedup** | **12.83x faster** | |
 
 
+</details>
+
 ---
 
-## CSS Serialization (to_s)
+<details>
+<summary><h2>CSS Serialization (to_s)</h2></summary>
 
 Performance of converting parsed CSS back to string format.
 
@@ -84,9 +91,12 @@ Time to convert parsed CSS back to string format
 | **Speedup** | **12.95x faster** | |
 
 
+</details>
+
 ---
 
-## Specificity Calculation
+<details>
+<summary><h2>Specificity Calculation</h2></summary>
 
 Performance of calculating CSS selector specificity values.
 
@@ -103,9 +113,12 @@ Time to calculate CSS selector specificity values
 
 **Summary:** 21.09x faster to 48.9x faster (avg 33.07x faster)
 
+</details>
+
 ---
 
-## CSS Merging
+<details>
+<summary><h2>CSS Merging</h2></summary>
 
 Performance of merging multiple CSS rule sets with the same selector.
 
@@ -127,9 +140,12 @@ Time to merge multiple CSS rule sets with same selector
 - Shorthand property expansion (e.g., `margin` → `margin-top`, `margin-right`, etc.)
 - Shorthand property creation from longhand properties
 
+</details>
+
 ---
 
-## YJIT Impact
+<details>
+<summary><h2>YJIT Impact</h2></summary>
 
 Impact of Ruby's YJIT JIT compiler on Ruby-side operations. The C extension performance is the same regardless of YJIT.
 
@@ -150,6 +166,8 @@ Ruby-side operations with and without YJIT
 - Parse + iterate benefits least since most work is in C
 - Recommended: Enable YJIT in production (`--yjit` flag or `RUBY_YJIT_ENABLE=1`)
 
+</details>
+
 ---
 
 ## Summary
@@ -158,23 +176,10 @@ Ruby-side operations with and without YJIT
 
 | Category | Min Speedup | Max Speedup | Avg Speedup |
 |----------|-------------|-------------|-------------|
-
-
-
 | **Parsing** | 11.04x faster | 12.83x faster | 11.93x faster |
-
-
-
 | **Serialization** | 12.95x faster | 19.93x faster | 16.44x faster |
-
-
-
 | **Specificity** | 21.09x faster | 48.9x faster | 33.07x faster |
-
-
-
 | **Merging** | 2.38x faster | 4.36x faster | 3.36x faster |
-
 
 ### Why Is Cataract Faster?
 
