@@ -28,7 +28,9 @@ module Cataract # rubocop:disable Style/Documentation
       return if @mimicked
 
       unless defined?(::CssParser)
+        # :nocov:
         raise LoadError, 'CssParser gem not loaded. Mimic requires css_parser to be loaded first.'
+        # :nocov:
       end
 
       # Set marker constant
