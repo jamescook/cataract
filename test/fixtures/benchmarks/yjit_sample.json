@@ -1,0 +1,101 @@
+{
+  "name": "yjit",
+  "description": "Ruby-side operations with and without YJIT",
+  "metadata": {
+    "operations": [
+      "property access",
+      "declaration merging",
+      "to_s generation",
+      "parse + iterate"
+    ],
+    "note": "C extension performance is the same regardless of YJIT. This measures Ruby code.",
+    "speedups": {
+      "min": 1.17,
+      "max": 1.59,
+      "avg": 1.42
+    }
+  },
+  "timestamp": "2025-10-30T16:26:08-05:00",
+  "results": [
+    {
+      "name": "no YJIT: property access",
+      "central_tendency": 221028.7628245108,
+      "ips": 221028.7628245108,
+      "error": 3316,
+      "stddev": 3316,
+      "microseconds": 3089368.0,
+      "iterations": 682682,
+      "cycles": 22022
+    },
+    {
+      "name": "no YJIT: declaration merging",
+      "central_tendency": 197740.30877444957,
+      "ips": 197740.30877444957,
+      "error": 899,
+      "stddev": 899,
+      "microseconds": 3097551.0,
+      "iterations": 612498,
+      "cycles": 19758
+    },
+    {
+      "name": "no YJIT: to_s generation",
+      "central_tendency": 238198.91579009045,
+      "ips": 238198.91579009045,
+      "error": 876,
+      "stddev": 876,
+      "microseconds": 3002951.0,
+      "iterations": 715290,
+      "cycles": 23843
+    },
+    {
+      "name": "no YJIT: parse + iterate",
+      "central_tendency": 88790.95673136998,
+      "ips": 88790.95673136998,
+      "error": 934,
+      "stddev": 934,
+      "microseconds": 3011129.0,
+      "iterations": 267330,
+      "cycles": 8911
+    },
+    {
+      "name": "YJIT: property access",
+      "central_tendency": 308619.3738644762,
+      "ips": 308619.3738644762,
+      "error": 2906,
+      "stddev": 2906,
+      "microseconds": 3097572.0,
+      "iterations": 955885,
+      "cycles": 30835
+    },
+    {
+      "name": "YJIT: declaration merging",
+      "central_tendency": 313642.9237746988,
+      "ips": 313642.9237746988,
+      "error": 3080,
+      "stddev": 3080,
+      "microseconds": 3091972.0,
+      "iterations": 969680,
+      "cycles": 31280
+    },
+    {
+      "name": "YJIT: to_s generation",
+      "central_tendency": 368418.7840873258,
+      "ips": 368418.7840873258,
+      "error": 6040,
+      "stddev": 6040,
+      "microseconds": 3081599.0,
+      "iterations": 1135008,
+      "cycles": 35469
+    },
+    {
+      "name": "YJIT: parse + iterate",
+      "central_tendency": 103771.21841984437,
+      "ips": 103771.21841984437,
+      "error": 1091,
+      "stddev": 1091,
+      "microseconds": 3001468.0,
+      "iterations": 311430,
+      "cycles": 10381
+    }
+  ]
+}
