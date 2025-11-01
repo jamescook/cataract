@@ -1,10 +1,24 @@
-#!/usr/bin/env ruby
-# frozen_string_literal: true
-
 require 'minitest/autorun'
 require_relative '../lib/cataract'
 
 class TestStylesheet < Minitest::Test
+  # Shared comprehensive fixture covering:
+  # - Multiple selectors (element, class, id)
+  # - Multiple declarations
+  # - Media queries
+  # - Important declarations
+  COMPREHENSIVE_CSS = <<~CSS
+    body { color: red; margin: 0; }
+    .header { padding: 5px; }
+    #main { font-size: 14px !important; }
+    @media screen {
+      body { color: blue; }
+      .nav { display: flex; }
+    }
+    @media print {
+      body { color: black; }
+    }
+  CSS
   def test_stylesheet_to_s
     css = 'body { color: red; margin: 10px; }'
     sheet = Cataract.parse_css(css)
@@ -59,6 +73,13 @@ class TestStylesheet < Minitest::Test
 
     assert_includes inspect_str, 'Stylesheet'
     assert_includes inspect_str, '2 rules'
+  end
+
+  def test_add_block_with_fix_braces
+    sheet = Cataract::Stylesheet.new
+    sheet.add_block!('p { color: red;', fix_braces: true)
+
+    assert_equal 'color: red;', sheet.find_by_selector('p').join
   end
 
   def test_round_trip
@@ -651,5 +672,207 @@ body { color: red; }'
     output = Cataract.parse_css(input).to_formatted_s
 
     assert_equal expected, output
+  end
+
+  def test_finding_by_selector
+    css = <<-CSS
+      html, body, p { margin: 0px; }
+      p { padding: 0px; }
+      #content { font: 12px/normal sans-serif; }
+      .content { color: red; }
+    CSS
+
+    stylesheet = Cataract::Stylesheet.parse(css)
+
+    assert_equal 'margin: 0px;', stylesheet.find_by_selector('body').join(' ')
+    assert_equal 'margin: 0px; padding: 0px;', stylesheet.find_by_selector('p').join(' ')
+    assert_equal 'color: red;', stylesheet.find_by_selector('.content').join(' ')
+    assert_equal 'font: 12px/normal sans-serif;', stylesheet.find_by_selector('#content').join(' ')
+  end
+
+  # ============================================================================
+  # Mutation tests - add_rule!, add_rule_set!, remove_rule_set!
+  # ============================================================================
+
+  def test_adding_a_rule
+    sheet = Cataract::Stylesheet.new
+    sheet.add_rule!(selector: 'div', declarations: 'color: blue')
+
+    assert_equal 'color: blue;', sheet.find_by_selector('div').join(' ')
+  end
+
+  def test_adding_a_rule_set
+    sheet = Cataract::Stylesheet.new
+    rs = Cataract::RuleSet.new(selector: 'div', declarations: 'color: blue')
+    sheet.add_rule_set!(rs)
+
+    assert_equal 'color: blue;', sheet.find_by_selector('div').join(' ')
+  end
+
+  def test_removing_a_rule_set
+    sheet = Cataract::Stylesheet.new
+    rs = Cataract::RuleSet.new(selector: 'div', declarations: 'color: blue')
+    sheet.add_rule_set!(rs)
+    rs2 = Cataract::RuleSet.new(selector: 'div', declarations: 'color: blue')
+    sheet.remove_rule_set!(rs2)
+
+    assert_equal '', sheet.find_by_selector('div').join(' ')
+  end
+
+  def test_converting_to_hash
+    sheet = Cataract::Stylesheet.new
+    rs = Cataract::RuleSet.new(selector: 'div', declarations: 'color: blue')
+    sheet.add_rule_set!(rs)
+    hash = sheet.to_h
+
+    assert_equal 'blue', hash['all']['div']['color']
+  end
+
+  # ============================================================================
+  # Additional Parser methods - clear!, selectors, each_rule_set, etc.
+  # ============================================================================
+
+  def test_clear
+    sheet = Cataract::Stylesheet.parse(COMPREHENSIVE_CSS)
+    assert_equal 6, sheet.size
+
+    sheet.clear!
+
+    assert_equal 0, sheet.size
+    assert sheet.empty?
+    assert_nil sheet.charset
+  end
+
+  def test_selectors_all
+    sheet = Cataract::Stylesheet.parse(COMPREHENSIVE_CSS)
+    sels = sheet.selectors(:all)
+
+    assert_equal 6, sels.length
+    assert_includes sels, 'body'
+    assert_includes sels, '.header'
+    assert_includes sels, '#main'
+    assert_includes sels, '.nav'
+  end
+
+  def test_selectors_with_media_filter
+    sheet = Cataract::Stylesheet.parse(COMPREHENSIVE_CSS)
+    screen_sels = sheet.selectors(:screen)
+
+    assert_equal 2, screen_sels.length
+    assert_includes screen_sels, 'body'
+    assert_includes screen_sels, '.nav'
+  end
+
+  def test_each_rule_set
+    sheet = Cataract::Stylesheet.parse(COMPREHENSIVE_CSS)
+    rule_sets = []
+
+    sheet.each_rule_set(:all) do |rule_set, media_types|
+      rule_sets << [rule_set.selector, media_types]
+    end
+
+    assert_equal 6, rule_sets.length
+  end
+
+  def test_each_rule_set_with_media_filter
+    sheet = Cataract::Stylesheet.parse(COMPREHENSIVE_CSS)
+    rule_sets = []
+
+    sheet.each_rule_set(:print) do |rule_set, media_types|
+      rule_sets << rule_set.selector
+    end
+
+    assert_equal 1, rule_sets.length
+    assert_includes rule_sets, 'body'
+  end
+
+  def test_find_rule_sets
+    sheet = Cataract::Stylesheet.parse(COMPREHENSIVE_CSS)
+    rule_sets = sheet.find_rule_sets(['body', '.header'])
+
+    assert_equal 4, rule_sets.length # body appears 3 times (universal, screen, print)
+    selectors = rule_sets.map(&:selector)
+    assert_includes selectors, 'body'
+    assert_includes selectors, '.header'
+  end
+
+  def test_expand_shorthand_class_method
+    result = Cataract::Stylesheet.expand_shorthand('margin: 10px 20px;')
+
+    assert_equal '10px', result['margin-top']
+    assert_equal '20px', result['margin-right']
+    assert_equal '10px', result['margin-bottom']
+    assert_equal '20px', result['margin-left']
+  end
+
+  def test_expand_shorthand_instance_method
+    sheet = Cataract::Stylesheet.new
+    result = sheet.expand_shorthand('padding: 5px;')
+
+    assert_equal '5px', result['padding-top']
+    assert_equal '5px', result['padding-right']
+    assert_equal '5px', result['padding-bottom']
+    assert_equal '5px', result['padding-left']
+  end
+
+  def test_to_css_alias
+    sheet = Cataract::Stylesheet.parse('body { color: red; }')
+    assert_respond_to sheet, :to_css
+    assert_equal sheet.to_s, sheet.to_css
+  end
+
+  def test_rules_count_alias
+    sheet = Cataract::Stylesheet.parse(COMPREHENSIVE_CSS)
+    assert_equal sheet.size, sheet.rules_count
+  end
+
+  def test_load_file_class_method
+    require 'tempfile'
+    Tempfile.create(['test', '.css']) do |f|
+      f.write('.test { color: red; }')
+      f.flush
+
+      sheet = Cataract::Stylesheet.load_file(f.path)
+
+      assert_instance_of Cataract::Stylesheet, sheet
+      assert_equal 1, sheet.size
+      assert_includes sheet.selectors, '.test'
+    end
+  end
+
+  def test_load_uri_class_method
+    require 'webmock/minitest'
+
+    stub_request(:get, 'https://example.com/style.css')
+      .to_return(body: '.remote { color: blue; }', status: 200)
+
+    sheet = Cataract::Stylesheet.load_uri('https://example.com/style.css')
+
+    assert_instance_of Cataract::Stylesheet, sheet
+    assert_equal 1, sheet.size
+    assert_includes sheet.selectors, '.remote'
+  end
+
+  def test_parse_with_import_option_in_constructor
+    require 'tempfile'
+    require 'webmock/minitest'
+
+    # Create a temporary CSS file to import
+    Dir.mktmpdir do |dir|
+      imported_file = File.join(dir, 'imported.css')
+      File.write(imported_file, '.imported { color: green; }')
+
+      # CSS with @import
+      css = "@import url('file://#{imported_file}');\n.main { color: red; }"
+
+      # Create stylesheet with import option in constructor
+      sheet = Cataract::Stylesheet.new(import: { allowed_schemes: ['file'], extensions: ['css'] })
+      sheet.parse(css)
+
+      # Should have both imported and main rules
+      assert_equal 2, sheet.size
+      assert_includes sheet.selectors, '.imported'
+      assert_includes sheet.selectors, '.main'
+    end
   end
 end

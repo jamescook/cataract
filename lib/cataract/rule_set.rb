@@ -153,8 +153,8 @@ module Cataract
     # Modifies the RuleSet's declarations by replacing shorthands with longhands
     # Returns self for chaining
     def expand_shorthand!
-      # Convert current declarations to string and expand using Parser class method
-      expanded = Parser.expand_shorthand(@declarations.to_s)
+      # Convert current declarations to string and expand using Stylesheet class method
+      expanded = Stylesheet.expand_shorthand(@declarations.to_s)
 
       # Clear current declarations and replace with expanded
       @declarations.instance_variable_get(:@values).clear

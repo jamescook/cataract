@@ -24,7 +24,7 @@ puts
 
 # Verify parsing works
 puts 'Verifying parsing works...'
-parser = Cataract::Parser.new
+parser = Cataract::Stylesheet.new
 parser.parse(bootstrap_css)
 puts "  ✅ Parsed successfully (#{parser.rules_count} rules)"
 puts
@@ -38,7 +38,7 @@ Benchmark.ips do |x|
   x.config(time: 5, warmup: 2)
 
   x.report("#{branch}:parse_bootstrap") do
-    parser = Cataract::Parser.new
+    parser = Cataract::Stylesheet.new
     parser.parse(bootstrap_css)
   end
 
