@@ -22,12 +22,12 @@ Drop-in replacement performance for Premailer email CSS inlining.
 
 | Parser | Speed | Time per operation |
 |--------|-------|-------------------|
-| css_parser | 122.6 i/s | 8.16 ms |
-| **Cataract** | **2.71K i/s** | **369.63 μs** |
-| **Speedup** | **22.07x faster** | |
+| css_parser | 122.9 i/s | 8.13 ms |
+| **Cataract** | **2.57K i/s** | **388.86 μs** |
+| **Speedup** | **20.92x faster** | |
 
 ### Key Takeaways
-- Cataract provides **22.07x faster** CSS inlining for email templates
+- Cataract provides **20.92x faster** CSS inlining for email templates
 - Drop-in replacement for Premailer with zero code changes
 - Zero code changes required - just call `Cataract.mimic_CssParser!`
 
@@ -47,18 +47,18 @@ Time to parse CSS into internal data structures
 
 | Parser | Speed | Time per operation |
 |--------|-------|-------------------|
-| css_parser | 6.22K i/s | 160.8 μs |
-| **Cataract** | **68.67K i/s** | **14.56 μs** |
-| **Speedup** | **11.04x faster** | |
+| css_parser | 6.25K i/s | 160.07 μs |
+| **Cataract** | **67.74K i/s** | **14.76 μs** |
+| **Speedup** | **10.84x faster** | |
 
 ### Medium CSS with @media (139 lines, 1.6KB)
 
 
 | Parser | Speed | Time per operation |
 |--------|-------|-------------------|
-| css_parser | 3.49K i/s | 286.42 μs |
-| **Cataract** | **44.78K i/s** | **22.33 μs** |
-| **Speedup** | **12.83x faster** | |
+| css_parser | 3.44K i/s | 290.31 μs |
+| **Cataract** | **44.04K i/s** | **22.71 μs** |
+| **Speedup** | **12.79x faster** | |
 
 
 </details>
@@ -77,18 +77,18 @@ Time to convert parsed CSS back to string format
 
 | Parser | Speed | Time per operation |
 |--------|-------|-------------------|
-| css_parser | 34.5 i/s | 29.01 ms |
-| **Cataract** | **687.1 i/s** | **1.46 ms** |
-| **Speedup** | **19.93x faster** | |
+| css_parser | 34.1 i/s | 29.3 ms |
+| **Cataract** | **675.9 i/s** | **1.48 ms** |
+| **Speedup** | **19.81x faster** | |
 
 ### Media Type Filtering (print only)
 
 
 | Parser | Speed | Time per operation |
 |--------|-------|-------------------|
-| css_parser | 3.95K i/s | 253.4 μs |
-| **Cataract** | **51.11K i/s** | **19.57 μs** |
-| **Speedup** | **12.95x faster** | |
+| css_parser | 3.84K i/s | 260.38 μs |
+| **Cataract** | **216.54K i/s** | **4.62 μs** |
+| **Speedup** | **56.38x faster** | |
 
 
 </details>
@@ -104,14 +104,14 @@ Time to calculate CSS selector specificity values
 
 | Test Case | Speedup |
 |-----------|---------|
-| Simple Selectors | **21.09x faster** |
-| Compound Selectors | **30.83x faster** |
-| Combinators | **28.28x faster** |
-| Pseudo-classes & Pseudo-elements | **45.73x faster** |
-| :not() Pseudo-class (CSS3) | **23.61x faster** |
-| Complex Real-world Selectors | **48.9x faster** |
+| Simple Selectors | **21.19x faster** |
+| Compound Selectors | **30.45x faster** |
+| Combinators | **28.63x faster** |
+| Pseudo-classes & Pseudo-elements | **45.45x faster** |
+| :not() Pseudo-class (CSS3) | **23.52x faster** |
+| Complex Real-world Selectors | **49.29x faster** |
 
-**Summary:** 21.09x faster to 48.9x faster (avg 33.07x faster)
+**Summary:** 21.19x faster to 49.29x faster (avg 33.09x faster)
 
 </details>
 
@@ -126,13 +126,13 @@ Time to merge multiple CSS rule sets with same selector
 
 | Test Case | Speedup |
 |-----------|---------|
-| Simple properties | **2.86x faster** |
-| Cascade with specificity | **4.12x faster** |
-| Important declarations | **4.36x faster** |
-| Shorthand expansion | **3.06x faster** |
-| Complex merging | **2.38x faster** |
+| Simple properties | **2.79x faster** |
+| Cascade with specificity | **4.05x faster** |
+| Important declarations | **4.24x faster** |
+| Shorthand expansion | **3.02x faster** |
+| Complex merging | **2.31x faster** |
 
-**Summary:** 2.38x faster to 4.36x faster (avg 3.36x faster)
+**Summary:** 2.31x faster to 4.24x faster (avg 3.28x faster)
 
 ### What's Being Tested
 - Specificity-based CSS cascade (ID > class > element)
@@ -155,10 +155,10 @@ Ruby-side operations with and without YJIT
 
 | Operation | Without YJIT | With YJIT | YJIT Improvement |
 |-----------|--------------|-----------|------------------|
-| property access | 225.44K i/s | 307.69K i/s | **1.36x faster** (36% faster) |
-| declaration merging | 192.53K i/s | 319.51K i/s | **1.66x faster** (66% faster) |
-| to_s generation | 239.35K i/s | 367.52K i/s | **1.54x faster** (54% faster) |
-| parse + iterate | 89.54K i/s | 105.91K i/s | **1.18x faster** (18% faster) |
+| property access | 220.91K i/s | 310.69K i/s | **1.41x faster** (41% faster) |
+| declaration merging | 195.44K i/s | 317.55K i/s | **1.62x faster** (62% faster) |
+| to_s generation | 231.39K i/s | 374.58K i/s | **1.62x faster** (62% faster) |
+| parse + iterate | 85.71K i/s | 103.7K i/s | **1.21x faster** (21% faster) |
 
 ### Key Takeaways
 - YJIT provides significant performance boost for Ruby-side operations
@@ -176,10 +176,10 @@ Ruby-side operations with and without YJIT
 
 | Category | Min Speedup | Max Speedup | Avg Speedup |
 |----------|-------------|-------------|-------------|
-| **Parsing** | 11.04x faster | 12.83x faster | 11.93x faster |
-| **Serialization** | 12.95x faster | 19.93x faster | 16.44x faster |
-| **Specificity** | 21.09x faster | 48.9x faster | 33.07x faster |
-| **Merging** | 2.38x faster | 4.36x faster | 3.36x faster |
+| **Parsing** | 10.84x faster | 12.79x faster | 11.81x faster |
+| **Serialization** | 19.81x faster | 56.38x faster | 38.09x faster |
+| **Specificity** | 21.19x faster | 49.29x faster | 33.09x faster |
+| **Merging** | 2.31x faster | 4.24x faster | 3.28x faster |
 
 ### Implementation Notes
 

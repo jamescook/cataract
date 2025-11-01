@@ -1,14 +1,18 @@
 # frozen_string_literal: true
 
-require 'test_helper'
+require_relative 'test_helper'
+require 'css_parser'
 
-class TestCssParserCompatibility < Minitest::Test
+class TestPremailerShim < Minitest::Test
   def setup
-    Cataract.mimic_CssParser!
+    # Suppress method redefinition warnings during shim setup
+    # The shim intentionally redefines methods on CssParser classes
+    # We only suppress warnings during setup, not during the actual tests
+    suppress_warnings { Cataract.mimic_CssParser! }
   end
 
   def teardown
-    Cataract.restore_CssParser!
+    suppress_warnings { Cataract.restore_CssParser! }
   end
 
   def test_mimic_sets_constant
@@ -18,7 +22,8 @@ class TestCssParserCompatibility < Minitest::Test
   end
 
   def test_parser_class_aliased
-    assert_equal Cataract::Parser, CssParser::Parser
+    # CssParser::Parser is now a subclass of Cataract::Stylesheet
+    assert_operator CssParser::Parser, :<, Cataract::Stylesheet, 'CssParser::Parser should inherit from Cataract::Stylesheet'
   end
 
   def test_rule_set_class_aliased
@@ -28,7 +33,8 @@ class TestCssParserCompatibility < Minitest::Test
   def test_parser_instantiation
     parser = CssParser::Parser.new
 
-    assert_instance_of Cataract::Parser, parser
+    # Should be an instance of the CssParser::Parser subclass, which inherits from Stylesheet
+    assert_kind_of Cataract::Stylesheet, parser
   end
 
   def test_parser_load_string
@@ -136,7 +142,7 @@ class TestCssParserCompatibility < Minitest::Test
     parser.load_string!('div { color: red; } @media print { p { font-size: 10pt; } }')
 
     selectors_found = []
-    parser.each_selector(:all) do |selector, declarations, specificity, media_types|
+    parser.each_selector(media: :all) do |selector, declarations, specificity, media_types|
       selectors_found << selector
 
       assert_kind_of String, selector
@@ -159,7 +165,7 @@ class TestCssParserCompatibility < Minitest::Test
 
     # Collect matching rules for a specific element
     declarations = []
-    parser.each_selector(:all) do |selector, declaration, _specificity, _media_types|
+    parser.each_selector(media: :all) do |selector, declaration, _specificity, _media_types|
       declarations << CssParser::RuleSet.new(selectors: selector, block: declaration) if selector == 'div'
     end
 
@@ -178,6 +184,107 @@ class TestCssParserCompatibility < Minitest::Test
 
     parser = CssParser::Parser.new
 
-    assert_instance_of Cataract::Parser, parser
+    assert_kind_of Cataract::Stylesheet, parser
+  end
+
+  def test_import_support_with_file_scheme
+    # Test that shim automatically enables file:// imports when import: true is passed
+    # This is critical for Premailer compatibility
+    fixtures_dir = File.expand_path('../benchmarks/premailer_fixtures', __dir__)
+    email_css_path = File.join(fixtures_dir, 'email.css')
+
+    skip 'Premailer fixtures not found' unless File.exist?(email_css_path)
+
+    # Create parser with import: true (what Premailer does)
+    parser = CssParser::Parser.new(import: true)
+    parser.load_file!(email_css_path)
+
+    # Should have resolved @import 'imports.css' and included those rules
+    selectors = parser.selectors
+
+    assert_includes selectors, '.imported-style', 'Should include .imported-style from imports.css'
+    assert_includes selectors, '.highlight', 'Should include .highlight from imports.css'
+    assert_includes selectors, '.header', 'Should include .header from email.css'
+  end
+
+  def test_import_disabled_by_default
+    # Without import: true, @import statements should be ignored
+    fixtures_dir = File.expand_path('../benchmarks/premailer_fixtures', __dir__)
+    email_css_path = File.join(fixtures_dir, 'email.css')
+
+    skip 'Premailer fixtures not found' unless File.exist?(email_css_path)
+
+    parser = CssParser::Parser.new
+    parser.load_file!(email_css_path)
+
+    selectors = parser.selectors
+
+    refute_includes selectors, '.imported-style', 'Should NOT include .imported-style when imports disabled'
+    assert_includes selectors, '.header', 'Should still include .header from email.css'
+  end
+
+  def test_shim_does_not_mutate_cataract_stylesheet
+    # Verify that Cataract::Stylesheet.new is NOT affected by the shim
+    # CssParser::Parser is a subclass, so only it should have the import handling
+
+    # Create a stylesheet directly through Cataract
+    sheet = Cataract::Stylesheet.new(import: true)
+    options = sheet.instance_variable_get(:@options)
+
+    # Should NOT upgrade import: true to full config hash
+    assert options[:import], 'Cataract::Stylesheet should receive import: true as-is'
+
+    # Create through CssParser::Parser alias
+    parser = CssParser::Parser.new(import: true)
+    parser_options = parser.instance_variable_get(:@options)
+
+    # SHOULD upgrade import: true to full config hash
+    assert_kind_of Hash, parser_options[:import], 'CssParser::Parser should upgrade import: true to config hash'
+    assert_equal %w[https file], parser_options[:import][:allowed_schemes],
+                 'CssParser::Parser should enable file:// scheme'
+  end
+
+  def test_cssparser_parser_is_subclass_not_alias
+    # Verify CssParser::Parser is a proper subclass, not an alias
+    assert_operator CssParser::Parser, :<, Cataract::Stylesheet, 'CssParser::Parser should be a subclass'
+    assert_equal Cataract::Stylesheet, CssParser::Parser.superclass, 'Superclass should be Stylesheet'
+    refute_equal Cataract::Stylesheet, CssParser::Parser, 'Should not be the same class (should be subclass)'
+  end
+
+  def test_each_selector_accepts_positional_media_argument
+    # css_parser API uses positional argument: each_selector(:all)
+    # Cataract API uses keyword argument: each_selector(media: :all)
+    # The shim should support both
+    parser = CssParser::Parser.new
+    parser.add_block!('body { color: red; } @media print { div { margin: 10px; } }')
+
+    # Test with positional argument (css_parser style)
+    all_selectors = []
+    parser.each_selector(:all) do |selector, _decls, _spec, _media|
+      all_selectors << selector
+    end
+
+    assert_equal 2, all_selectors.length
+    assert_includes all_selectors, 'body'
+    assert_includes all_selectors, 'div'
+
+    # Test with keyword argument (Cataract style)
+    print_selectors = []
+    parser.each_selector(media: :print) do |selector, _decls, _spec, _media|
+      print_selectors << selector
+    end
+
+    assert_equal 1, print_selectors.length
+    assert_includes print_selectors, 'div'
+  end
+
+  private
+
+  def suppress_warnings
+    original_verbose = $VERBOSE
+    $VERBOSE = nil
+    yield
+  ensure
+    $VERBOSE = original_verbose
   end
 end

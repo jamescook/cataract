@@ -59,7 +59,7 @@ module OptimizationBenchmark
 
     # Parse once to get rules for merge benchmark
     puts "\nParsing bootstrap.css to get rules..."
-    parser = Cataract::Parser.new
+    parser = Cataract::Stylesheet.new
     begin
       parser.parse(bootstrap_css)
       rules = parser.instance_variable_get(:@raw_rules) # Get raw rules array

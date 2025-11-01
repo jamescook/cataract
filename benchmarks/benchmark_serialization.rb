@@ -151,7 +151,7 @@ class SerializationBenchmark < BenchmarkHarness
     puts 'Note: Using Parser API (css_parser compatible) not Stylesheet'
 
     # Pre-parse using Parser API for media filtering
-    cataract_parser = Cataract::Parser.new
+    cataract_parser = Cataract::Stylesheet.new
     cataract_parser.add_block!(bootstrap_css)
 
     css_parser_for_filter = CssParser::Parser.new

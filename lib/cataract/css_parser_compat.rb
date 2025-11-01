@@ -41,7 +41,35 @@ module Cataract # rubocop:disable Style/Documentation
         ::CssParser.const_set(:OriginalParser, ::CssParser::Parser)
         ::CssParser.send(:remove_const, :Parser)
       end
-      ::CssParser.const_set(:Parser, Cataract::Parser)
+
+      # Create a subclass of Stylesheet instead of aliasing
+      # This way we don't mutate Cataract::Stylesheet
+      ::CssParser.const_set(:Parser, Class.new(Cataract::Stylesheet) do
+        def self.new(options = {})
+          # If imports are enabled as boolean, upgrade to config hash with file:// support
+          if options[:import] == true
+            options = options.merge(
+              import: {
+                allowed_schemes: %w[https file],
+                extensions: ['css'],
+                max_depth: 5,
+                timeout: 10,
+                follow_redirects: true
+              }
+            )
+          end
+          super
+        end
+
+        # Override each_selector to accept positional media argument for css_parser compatibility
+        # css_parser API: each_selector(:all) { |sel, decl, spec, media| }
+        # Cataract API: each_selector(media: :all) { |sel, decl, spec, media| }
+        def each_selector(media_arg = nil, media: :all, **kwargs, &block)
+          # If called with positional argument, use it as media
+          media = media_arg if media_arg
+          super(media: media, **kwargs, &block)
+        end
+      end)
 
       if defined?(::CssParser::RuleSet) || defined?(::CssParser::OriginalRuleSet)
         original_ruleset = ::CssParser::RuleSet if defined?(::CssParser::RuleSet)

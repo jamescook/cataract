@@ -5,20 +5,20 @@ require 'cataract'
 
 class TestParser < Minitest::Test
   def test_parser_with_rich_objects
-    parser = Cataract::Parser.new
+    sheet = Cataract::Stylesheet.new
     css = %(
       .header { color: blue; font-size: large }
       #nav { background: red !important }
       [disabled] { opacity: 0.5 }
     )
 
-    parser.parse(css)
+    sheet.parse(css)
 
     # Test lazy loading
-    assert_equal 3, parser.rules_count
+    assert_equal 3, sheet.rules_count
 
     # Test rules are Rule structs (internal representation)
-    rules = parser.rules
+    rules = sheet.rules
 
     assert(rules.all?(Cataract::Rule))
 
@@ -35,37 +35,37 @@ class TestParser < Minitest::Test
   end
 
   def test_parser_add_rule
-    parser = Cataract::Parser.new
-    parser.parse('.existing { color: blue }')
+    sheet = Cataract::Stylesheet.new
+    sheet.parse('.existing { color: blue }')
 
     # Add a new rule
-    new_rule = parser.add_rule!(
+    new_rule = sheet.add_rule!(
       selector: '.new',
       declarations: { 'color' => 'red', 'margin' => '10px !important' }
     )
 
-    assert_equal 2, parser.rules_count
+    assert_equal 2, sheet.rules_count
     assert_equal '.new', new_rule.selector
     assert_equal 'red;', new_rule['color']
     assert new_rule.declarations.important?('margin')
 
     # Verify it's in the rules
-    new_rule_found = parser.rules.find { |r| r.selector == '.new' }
+    new_rule_found = sheet.rules.find { |r| r.selector == '.new' }
 
     assert new_rule_found
     assert_equal 'red;', new_rule_found['color']
   end
 
   def test_parser_find_by_selector
-    parser = Cataract::Parser.new
-    parser.parse(%(
+    sheet = Cataract::Stylesheet.new
+    sheet.parse(%(
       .header { color: blue }
       .footer { color: green }
       .header { background: red }
     ))
 
     # Should find both .header rules
-    header_rules = parser.find_by_selector('.header')
+    header_rules = sheet.find_by_selector('.header')
 
     assert_equal 2, header_rules.length
     assert_includes header_rules, 'color: blue;'
@@ -78,10 +78,10 @@ class TestParser < Minitest::Test
       #nav { background: red }
     ).strip
 
-    parser = Cataract::Parser.new
-    parser.parse(original_css)
+    sheet = Cataract::Stylesheet.new
+    sheet.parse(original_css)
 
-    regenerated = parser.to_css
+    regenerated = sheet.to_css
 
     # Should contain the essential parts (order might differ)
     assert_includes regenerated, '.header { color: blue; font-size: large; }'
@@ -89,12 +89,12 @@ class TestParser < Minitest::Test
   end
 
   def test_backward_compatibility
-    parser = Cataract::Parser.new
-    parser.parse('.test { color: red }')
+    sheet = Cataract::Stylesheet.new
+    sheet.parse('.test { color: red }')
 
     # Old API should still work
     selectors = []
-    parser.each_selector do |selector, declarations, specificity|
+    sheet.each_selector do |selector, declarations, specificity|
       selectors << [selector, declarations, specificity]
     end
 

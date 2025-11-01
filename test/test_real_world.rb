@@ -6,27 +6,25 @@ require 'cataract'
 # Real-world CSS parsing tests using actual framework CSS files
 class TestRealWorld < Minitest::Test
   def setup
-    @parser = Cataract::Parser.new
+    @bootstrap_css = File.read(File.expand_path('fixtures/bootstrap.css', __dir__))
   end
 
   def test_bootstrap_parses_successfully
     # Real-world CSS from Bootstrap 5
-    css = File.read(File.expand_path('fixtures/bootstrap.css', __dir__))
-    @parser.parse(css)
+    sheet = Cataract::Stylesheet.parse(@bootstrap_css)
 
     # Bootstrap 5.0.2 should have exactly 2807 rules (matches css_parser)
     # Note: Rules are split by selector, so "h1, h2 { }" becomes 2 rules
-    assert_equal 2807, @parser.rules_count, 'Should parse Bootstrap CSS with correct rule count'
+    assert_equal 2807, sheet.size, 'Should parse Bootstrap CSS with correct rule count'
   end
 
   def test_bootstrap_standalone_pseudo_elements
     # Bootstrap uses standalone pseudo-elements like ::-moz-focus-inner
-    css = File.read(File.expand_path('fixtures/bootstrap.css', __dir__))
-    @parser.parse(css)
+    sheet = Cataract::Stylesheet.parse(@bootstrap_css)
 
     # Find the ::-moz-focus-inner rule
     found = false
-    @parser.each_selector do |selector, declarations, _specificity, _media_types|
+    sheet.each_selector do |selector, declarations, _specificity, _media_types|
       next unless selector == '::-moz-focus-inner'
 
       found = true
@@ -40,12 +38,11 @@ class TestRealWorld < Minitest::Test
 
   def test_bootstrap_pseudo_class_after_pseudo_element
     # Bootstrap uses selectors like .form-range::-webkit-slider-thumb:active
-    css = File.read(File.expand_path('fixtures/bootstrap.css', __dir__))
-    @parser.parse(css)
+    sheet = Cataract::Stylesheet.parse(@bootstrap_css)
 
     # Find webkit slider thumb with :active pseudo-class
     found = false
-    @parser.each_selector do |selector, declarations, _specificity, _media_types|
+    sheet.each_selector do |selector, declarations, _specificity, _media_types|
       next unless selector.include?('webkit-slider-thumb:active')
 
       found = true
@@ -58,11 +55,10 @@ class TestRealWorld < Minitest::Test
 
   def test_bootstrap_vendor_prefixed_pseudo_elements
     # Bootstrap uses vendor-prefixed pseudo-elements
-    css = File.read(File.expand_path('fixtures/bootstrap.css', __dir__))
-    @parser.parse(css)
+    sheet = Cataract::Stylesheet.parse(@bootstrap_css)
 
     vendor_pseudo_elements = []
-    @parser.each_selector do |selector, _declarations, _specificity, _media_types|
+    sheet.each_selector do |selector, _declarations, _specificity, _media_types|
       vendor_pseudo_elements << selector if selector.include?('::-webkit-') || selector.include?('::-moz-')
     end
 
@@ -77,14 +73,13 @@ class TestRealWorld < Minitest::Test
 
   def test_bootstrap_media_queries
     # Bootstrap uses extensive media queries
-    css = File.read(File.expand_path('fixtures/bootstrap.css', __dir__))
-    @parser.parse(css)
+    sheet = Cataract::Stylesheet.parse(@bootstrap_css)
 
     # Count rules with media types
     media_rules = 0
     screen_rules = 0
 
-    @parser.each_selector do |_selector, _declarations, _specificity, media_types|
+    sheet.each_selector do |_selector, _declarations, _specificity, media_types|
       unless media_types == [:all]
         media_rules += 1
         screen_rules += 1 if media_types.include?(:screen)
@@ -96,11 +91,10 @@ class TestRealWorld < Minitest::Test
 
   def test_bootstrap_complex_attribute_selectors
     # Bootstrap uses attribute selectors like [type=button]
-    css = File.read(File.expand_path('fixtures/bootstrap.css', __dir__))
-    @parser.parse(css)
+    sheet = Cataract::Stylesheet.parse(@bootstrap_css)
 
     attribute_selectors = []
-    @parser.each_selector do |selector, _declarations, _specificity, _media_types|
+    sheet.each_selector do |selector, _declarations, _specificity, _media_types|
       attribute_selectors << selector if selector.include?('[type=')
     end
 
@@ -109,11 +103,10 @@ class TestRealWorld < Minitest::Test
 
   def test_bootstrap_custom_properties
     # Bootstrap 5 uses CSS custom properties (--bs-*)
-    css = File.read(File.expand_path('fixtures/bootstrap.css', __dir__))
-    @parser.parse(css)
+    sheet = Cataract::Stylesheet.parse(@bootstrap_css)
 
     custom_props_found = false
-    @parser.each_selector do |selector, declarations, _specificity, _media_types|
+    sheet.each_selector do |selector, declarations, _specificity, _media_types|
       next unless selector == ':root'
 
       # :root should have CSS custom properties
@@ -126,11 +119,10 @@ class TestRealWorld < Minitest::Test
 
   def test_bootstrap_calc_functions
     # Bootstrap uses calc() for responsive sizing
-    css = File.read(File.expand_path('fixtures/bootstrap.css', __dir__))
-    @parser.parse(css)
+    sheet = Cataract::Stylesheet.parse(@bootstrap_css)
 
     calc_found = false
-    @parser.each_selector do |_selector, declarations, _specificity, _media_types|
+    sheet.each_selector do |_selector, declarations, _specificity, _media_types|
       if declarations.include?('calc(')
         calc_found = true
         break

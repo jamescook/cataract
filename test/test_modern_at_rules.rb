@@ -7,25 +7,25 @@ require 'cataract'
 # These use the generic at-rule pattern and should be handled automatically
 class TestModernAtRules < Minitest::Test
   def setup
-    @parser = Cataract::Parser.new
+    @sheet = Cataract::Stylesheet.new
   end
 
   # @layer tests (Cascade Layers)
   def test_layer_basic
-    @parser.parse(<<~CSS)
+    @sheet.parse(<<~CSS)
       @layer utilities {
         .padding { padding: 1rem; }
       }
     CSS
 
-    assert_equal 1, @parser.rules_count
-    rule = @parser.each_selector.first
+    assert_equal 1, @sheet.rules_count
+    rule = @sheet.each_selector.first
 
     assert_equal '.padding', rule[0]
   end
 
   def test_layer_named
-    @parser.parse(<<~CSS)
+    @sheet.parse(<<~CSS)
       @layer framework {
         .button { background: blue; }
       }
@@ -34,12 +34,12 @@ class TestModernAtRules < Minitest::Test
       }
     CSS
 
-    assert_equal 2, @parser.rules_count
+    assert_equal 2, @sheet.rules_count
   end
 
   # @property tests (Custom Properties API / Houdini)
   def test_property_basic
-    @parser.parse(<<~CSS)
+    @sheet.parse(<<~CSS)
       @property --my-color {
         syntax: '<color>';
         inherits: false;
@@ -47,14 +47,14 @@ class TestModernAtRules < Minitest::Test
       }
     CSS
 
-    assert_equal 1, @parser.rules_count
-    rule = @parser.each_selector.first
+    assert_equal 1, @sheet.rules_count
+    rule = @sheet.each_selector.first
 
     assert_equal '@property --my-color', rule[0]
   end
 
   def test_property_with_usage
-    @parser.parse(<<~CSS)
+    @sheet.parse(<<~CSS)
       @property --spacing {
         syntax: '<length>';
         inherits: true;
@@ -66,60 +66,60 @@ class TestModernAtRules < Minitest::Test
       }
     CSS
 
-    assert_equal 2, @parser.rules_count
+    assert_equal 2, @sheet.rules_count
   end
 
   # @container tests (Container Queries)
   def test_container_basic
-    @parser.parse(<<~CSS)
+    @sheet.parse(<<~CSS)
       @container (min-width: 400px) {
         .card { padding: 2rem; }
       }
     CSS
 
-    assert_equal 1, @parser.rules_count
-    rule = @parser.each_selector.first
+    assert_equal 1, @sheet.rules_count
+    rule = @sheet.each_selector.first
 
     assert_equal '.card', rule[0]
   end
 
   def test_container_named
-    @parser.parse(<<~CSS)
+    @sheet.parse(<<~CSS)
       @container sidebar (min-width: 300px) {
         .widget { display: grid; }
       }
     CSS
 
-    assert_equal 1, @parser.rules_count
+    assert_equal 1, @sheet.rules_count
   end
 
   # @page tests (Paged Media)
   def test_page_basic
-    @parser.parse(<<~CSS)
+    @sheet.parse(<<~CSS)
       @page {
         margin: 1in;
       }
     CSS
 
-    assert_equal 1, @parser.rules_count
-    rule = @parser.each_selector.first
+    assert_equal 1, @sheet.rules_count
+    rule = @sheet.each_selector.first
 
     assert_equal '@page', rule[0]
   end
 
   def test_page_named
-    @parser.parse(<<~CSS)
+    @sheet.parse(<<~CSS)
       @page :first {
         margin-top: 2in;
       }
     CSS
 
-    assert_equal 1, @parser.rules_count
+    assert_equal 1, @sheet.rules_count
   end
 
   # @counter-style tests
   def test_counter_style_basic
-    @parser.parse(<<~CSS)
+    @sheet.parse(<<~CSS)
       @counter-style thumbs {
         system: cyclic;
         symbols: "👍";
@@ -127,29 +127,29 @@ class TestModernAtRules < Minitest::Test
       }
     CSS
 
-    assert_equal 1, @parser.rules_count
-    rule = @parser.each_selector.first
+    assert_equal 1, @sheet.rules_count
+    rule = @sheet.each_selector.first
 
     assert_equal '@counter-style thumbs', rule[0]
   end
 
   # @scope tests (CSS Scoping)
   def test_scope_basic
-    @parser.parse(<<~CSS)
+    @sheet.parse(<<~CSS)
       @scope (.card) {
         .title { font-size: 1.2rem; }
       }
     CSS
 
-    assert_equal 1, @parser.rules_count
-    rule = @parser.each_selector.first
+    assert_equal 1, @sheet.rules_count
+    rule = @sheet.each_selector.first
 
     assert_equal '.title', rule[0]
   end
 
   # Mixed modern at-rules
   def test_mixed_modern_at_rules
-    @parser.parse(<<~CSS)
+    @sheet.parse(<<~CSS)
       @layer base {
         body { margin: 0; }
       }
@@ -167,6 +167,6 @@ class TestModernAtRules < Minitest::Test
       .regular { color: red; }
     CSS
 
-    assert_equal 4, @parser.rules_count
+    assert_equal 4, @sheet.rules_count
   end
 end

@@ -44,11 +44,11 @@ class ParsingBenchmark < BenchmarkHarness
     require 'css_parser'
 
     # Verify fixtures parse correctly
-    parser = Cataract::Parser.new
+    parser = Cataract::Stylesheet.new
     parser.parse(css1)
     raise 'CSS1 sanity check failed: expected rules' if parser.rules_count.zero?
 
-    parser = Cataract::Parser.new
+    parser = Cataract::Stylesheet.new
     parser.parse(css2)
     raise 'CSS2 sanity check failed: expected rules' if parser.rules_count.zero?
   end
@@ -87,7 +87,7 @@ class ParsingBenchmark < BenchmarkHarness
       end
 
       x.report('cataract: CSS1') do
-        parser = Cataract::Parser.new
+        parser = Cataract::Stylesheet.new
         parser.parse(css1)
       end
 
@@ -109,7 +109,7 @@ class ParsingBenchmark < BenchmarkHarness
       end
 
       x.report('cataract: CSS2') do
-        parser = Cataract::Parser.new
+        parser = Cataract::Stylesheet.new
         parser.parse(css2)
       end
 
@@ -123,7 +123,7 @@ class ParsingBenchmark < BenchmarkHarness
     puts '=' * 80
 
     # Test Cataract
-    parser = Cataract::Parser.new
+    parser = Cataract::Stylesheet.new
     parser.parse(css2)
     cataract_rules = parser.rules_count
     puts "Cataract found #{cataract_rules} rules"
