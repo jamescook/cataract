@@ -7,9 +7,6 @@ require 'tmpdir'
 require 'webmock/minitest'
 
 class TestImports < Minitest::Test
-  # Note: Tests use Cataract.parse_css (module-level API) which accepts imports: parameter
-  # Parser class takes import config in constructor, not as method parameter
-
   # ============================================================================
   # imports: false (default) - @import is treated as a regular rule
   # ============================================================================
@@ -44,7 +41,7 @@ body { color: red; }"
 
       # With safe defaults, file:// should be rejected
       assert_raises(Cataract::ImportError) do
-        sheet = Cataract.parse_css(css, imports: true)
+        Cataract.parse_css(css, imports: true)
       end
     end
   end
@@ -55,7 +52,7 @@ body { color: red; }'
 
     # With safe defaults, non-.css extensions should be rejected
     assert_raises(Cataract::ImportError) do
-      sheet = Cataract.parse_css(css, imports: true)
+      Cataract.parse_css(css, imports: true)
     end
   end
 
@@ -86,7 +83,7 @@ body { color: red; }'
     css = '@import url("http://example.com/style.css");'
 
     assert_raises(Cataract::ImportError) do
-      sheet = Cataract.parse_css(css, imports: true)
+      Cataract.parse_css(css, imports: true)
     end
   end
 
@@ -130,7 +127,7 @@ body { color: red; }'
     css = '@import url("https://example.com/missing.css");'
 
     assert_raises(Cataract::ImportError) do
-      sheet = Cataract.parse_css(css, imports: true)
+      Cataract.parse_css(css, imports: true)
     end
   end
 
@@ -141,7 +138,7 @@ body { color: red; }'
     css = '@import url("https://slow.example.com/style.css");'
 
     assert_raises(Cataract::ImportError) do
-      sheet = Cataract.parse_css(css, imports: { timeout: 1 })
+      Cataract.parse_css(css, imports: { timeout: 1 })
     end
   end
 
@@ -202,7 +199,7 @@ body { color: red; }"
 
       # With max_depth: 2, should fail on level3
       assert_raises(Cataract::ImportError) do
-        sheet = Cataract.parse_css(css, imports: { allowed_schemes: ['file'], extensions: ['css'], max_depth: 2 })
+        Cataract.parse_css(css, imports: { allowed_schemes: ['file'], extensions: ['css'], max_depth: 2 })
       end
 
       # With max_depth: 3, should succeed
@@ -347,7 +344,7 @@ body { color: red; }"
     css = "@import url('file:///nonexistent/path/to/file.css');"
 
     assert_raises(Cataract::ImportError) do
-      sheet = Cataract.parse_css(css, imports: { allowed_schemes: ['file'], extensions: ['css'] })
+      Cataract.parse_css(css, imports: { allowed_schemes: ['file'], extensions: ['css'] })
     end
   end
 
@@ -362,7 +359,7 @@ body { color: red; }"
       css = "@import url('file://#{file_a}');"
 
       assert_raises(Cataract::ImportError) do
-        sheet = Cataract.parse_css(css, imports: { allowed_schemes: ['file'], extensions: ['css'], max_depth: 10 })
+        Cataract.parse_css(css, imports: { allowed_schemes: ['file'], extensions: ['css'], max_depth: 10 })
       end
     end
   end

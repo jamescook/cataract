@@ -705,7 +705,9 @@ module Cataract
     # @return [String] Serialized CSS
     def serialize_with_media_filter(which_media, formatted:)
       if which_media == :all
-        return formatted ? Cataract.stylesheet_to_formatted_s_c(@rule_groups, @charset) : Cataract.stylesheet_to_s_c(@rule_groups, @charset)
+        return Cataract.stylesheet_to_formatted_s_c(@rule_groups, @charset) if formatted
+
+        return Cataract.stylesheet_to_s_c(@rule_groups, @charset)
       end
 
       # Normalize to array for consistent filtering
@@ -721,7 +723,12 @@ module Cataract
         end
       end
 
-      formatted ? Cataract.stylesheet_to_formatted_s_c(filtered_groups, @charset) : Cataract.stylesheet_to_s_c(filtered_groups, @charset)
+      if formatted
+        Cataract.stylesheet_to_formatted_s_c(filtered_groups,
+                                             @charset)
+      else
+        Cataract.stylesheet_to_s_c(filtered_groups, @charset)
+      end
     end
   end
 end

@@ -23,7 +23,7 @@ class TestPremailerShim < Minitest::Test
 
   def test_parser_class_aliased
     # CssParser::Parser is now a subclass of Cataract::Stylesheet
-    assert CssParser::Parser < Cataract::Stylesheet, 'CssParser::Parser should inherit from Cataract::Stylesheet'
+    assert_operator CssParser::Parser, :<, Cataract::Stylesheet, 'CssParser::Parser should inherit from Cataract::Stylesheet'
   end
 
   def test_rule_set_class_aliased
@@ -201,6 +201,7 @@ class TestPremailerShim < Minitest::Test
 
     # Should have resolved @import 'imports.css' and included those rules
     selectors = parser.selectors
+
     assert_includes selectors, '.imported-style', 'Should include .imported-style from imports.css'
     assert_includes selectors, '.highlight', 'Should include .highlight from imports.css'
     assert_includes selectors, '.header', 'Should include .header from email.css'
@@ -217,6 +218,7 @@ class TestPremailerShim < Minitest::Test
     parser.load_file!(email_css_path)
 
     selectors = parser.selectors
+
     refute_includes selectors, '.imported-style', 'Should NOT include .imported-style when imports disabled'
     assert_includes selectors, '.header', 'Should still include .header from email.css'
   end
@@ -230,7 +232,7 @@ class TestPremailerShim < Minitest::Test
     options = sheet.instance_variable_get(:@options)
 
     # Should NOT upgrade import: true to full config hash
-    assert_equal true, options[:import], 'Cataract::Stylesheet should receive import: true as-is'
+    assert options[:import], 'Cataract::Stylesheet should receive import: true as-is'
 
     # Create through CssParser::Parser alias
     parser = CssParser::Parser.new(import: true)
@@ -238,13 +240,13 @@ class TestPremailerShim < Minitest::Test
 
     # SHOULD upgrade import: true to full config hash
     assert_kind_of Hash, parser_options[:import], 'CssParser::Parser should upgrade import: true to config hash'
-    assert_equal ['https', 'file'], parser_options[:import][:allowed_schemes],
+    assert_equal %w[https file], parser_options[:import][:allowed_schemes],
                  'CssParser::Parser should enable file:// scheme'
   end
 
   def test_cssparser_parser_is_subclass_not_alias
     # Verify CssParser::Parser is a proper subclass, not an alias
-    assert CssParser::Parser < Cataract::Stylesheet, 'CssParser::Parser should be a subclass'
+    assert_operator CssParser::Parser, :<, Cataract::Stylesheet, 'CssParser::Parser should be a subclass'
     assert_equal Cataract::Stylesheet, CssParser::Parser.superclass, 'Superclass should be Stylesheet'
     refute_equal Cataract::Stylesheet, CssParser::Parser, 'Should not be the same class (should be subclass)'
   end
@@ -261,6 +263,7 @@ class TestPremailerShim < Minitest::Test
     parser.each_selector(:all) do |selector, _decls, _spec, _media|
       all_selectors << selector
     end
+
     assert_equal 2, all_selectors.length
     assert_includes all_selectors, 'body'
     assert_includes all_selectors, 'div'
@@ -270,6 +273,7 @@ class TestPremailerShim < Minitest::Test
     parser.each_selector(media: :print) do |selector, _decls, _spec, _media|
       print_selectors << selector
     end
+
     assert_equal 1, print_selectors.length
     assert_includes print_selectors, 'div'
   end

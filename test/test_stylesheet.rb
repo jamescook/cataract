@@ -7,7 +7,7 @@ class TestStylesheet < Minitest::Test
   # - Multiple declarations
   # - Media queries
   # - Important declarations
-  COMPREHENSIVE_CSS = <<~CSS
+  COMPREHENSIVE_CSS = <<~CSS.freeze
     body { color: red; margin: 0; }
     .header { padding: 5px; }
     #main { font-size: 14px !important; }
@@ -19,6 +19,7 @@ class TestStylesheet < Minitest::Test
       body { color: black; }
     }
   CSS
+
   def test_stylesheet_to_s
     css = 'body { color: red; margin: 10px; }'
     sheet = Cataract.parse_css(css)
@@ -734,12 +735,13 @@ body { color: red; }'
 
   def test_clear
     sheet = Cataract::Stylesheet.parse(COMPREHENSIVE_CSS)
+
     assert_equal 6, sheet.size
 
     sheet.clear!
 
     assert_equal 0, sheet.size
-    assert sheet.empty?
+    assert_empty sheet
     assert_nil sheet.charset
   end
 
@@ -778,7 +780,7 @@ body { color: red; }'
     sheet = Cataract::Stylesheet.parse(COMPREHENSIVE_CSS)
     rule_sets = []
 
-    sheet.each_rule_set(:print) do |rule_set, media_types|
+    sheet.each_rule_set(:print) do |rule_set, _media_types|
       rule_sets << rule_set.selector
     end
 
@@ -792,6 +794,7 @@ body { color: red; }'
 
     assert_equal 4, rule_sets.length # body appears 3 times (universal, screen, print)
     selectors = rule_sets.map(&:selector)
+
     assert_includes selectors, 'body'
     assert_includes selectors, '.header'
   end
@@ -817,12 +820,14 @@ body { color: red; }'
 
   def test_to_css_alias
     sheet = Cataract::Stylesheet.parse('body { color: red; }')
+
     assert_respond_to sheet, :to_css
     assert_equal sheet.to_s, sheet.to_css
   end
 
   def test_rules_count_alias
     sheet = Cataract::Stylesheet.parse(COMPREHENSIVE_CSS)
+
     assert_equal sheet.size, sheet.rules_count
   end
 

@@ -50,7 +50,7 @@ module Cataract # rubocop:disable Style/Documentation
           if options[:import] == true
             options = options.merge(
               import: {
-                allowed_schemes: ['https', 'file'],
+                allowed_schemes: %w[https file],
                 extensions: ['css'],
                 max_depth: 5,
                 timeout: 10,
@@ -58,7 +58,7 @@ module Cataract # rubocop:disable Style/Documentation
               }
             )
           end
-          super(options)
+          super
         end
 
         # Override each_selector to accept positional media argument for css_parser compatibility

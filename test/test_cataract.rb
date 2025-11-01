@@ -94,8 +94,8 @@ class TestCataract < Minitest::Test
   end
 
   def test_merge_empty_returns_empty_array
-    assert_equal [], Cataract.merge([])
-    assert_equal [], Cataract.merge(nil)
+    assert_empty Cataract.merge([])
+    assert_empty Cataract.merge(nil)
   end
 
   def test_merge_creates_shorthand_properties

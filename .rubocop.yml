@@ -66,3 +66,8 @@ Style/Documentation:
 # Disable modifier if/unless enforcement - use it when it's clearer, not because a cop says so
 Style/IfUnlessModifier:
   Enabled: false
+
+Style/FrozenStringLiteralComment:
+  Enabled: true
+  Exclude:
+    - 'test/**/*'
