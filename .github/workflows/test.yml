@@ -41,7 +41,7 @@ jobs:
       if: matrix.ruby == '3.4'
       run: |
         bundle exec rake clean compile
-        bundle exec ruby -Ilib:test test/test_parser_basic.rb
+        bundle exec ruby -Ilib:test test/test_stylesheet.rb
       env:
         CATARACT_DEBUG: 1
 
