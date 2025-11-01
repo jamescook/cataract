@@ -1,5 +1,7 @@
 /* Email-specific styles - layout, components */
 
+@import 'imports.css';
+
 .header {
   padding: 20px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);

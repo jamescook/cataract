@@ -34,7 +34,7 @@ RESULTS_FILE_ITERATE = File.join(RESULTS_DIR, 'string_allocation_iterate.json')
 RESULTS_FILE_10X = File.join(RESULTS_DIR, 'string_allocation_10x.json')
 
 # Large CSS fixture - using Bootstrap 5 CSS for realistic benchmark
-LARGE_CSS_FIXTURE = File.read(File.expand_path('../fixtures/bootstrap.css', __dir__))
+LARGE_CSS_FIXTURE = File.read(File.expand_path('../test/fixtures/bootstrap.css', __dir__))
 
 # Detect which version we're running by checking the compile-time constant
 actual_mode = Cataract::STRING_ALLOC_MODE
@@ -64,7 +64,7 @@ puts "CSS fixture: #{LARGE_CSS_FIXTURE.lines.count} lines, #{LARGE_CSS_FIXTURE.b
 puts '=' * 80
 puts
 
-parser = Cataract::Parser.new
+parser = Cataract::Stylesheet.new
 parser.parse(LARGE_CSS_FIXTURE)
 GC.start
 # Verify we actually parsed everything
@@ -78,7 +78,7 @@ Benchmark.ips do |x|
   x.config(time: 10, warmup: 2)
 
   x.report(mode_label) do
-    parser = Cataract::Parser.new
+    parser = Cataract::Stylesheet.new
     parser.parse(LARGE_CSS_FIXTURE)
   end
 
@@ -96,7 +96,7 @@ Benchmark.ips do |x|
   x.config(time: 10, warmup: 2)
 
   x.report(mode_label) do
-    parser = Cataract::Parser.new
+    parser = Cataract::Stylesheet.new
     parser.parse(LARGE_CSS_FIXTURE)
 
     count = 0
@@ -125,7 +125,7 @@ Benchmark.ips do |x|
 
   x.report(mode_label) do
     10.times do
-      parser = Cataract::Parser.new
+      parser = Cataract::Stylesheet.new
       parser.parse(LARGE_CSS_FIXTURE)
     end
   end

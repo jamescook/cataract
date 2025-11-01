@@ -17,7 +17,8 @@ module Cataract
       allowed_schemes: ['https'],        # Only HTTPS by default
       extensions: ['css'],               # Only .css files
       timeout: 10,                       # 10 second timeout for fetches
-      follow_redirects: true             # Follow redirects
+      follow_redirects: true,            # Follow redirects
+      base_path: nil                     # Base path for resolving relative imports
     }.freeze
 
     # Resolve @import statements in CSS
@@ -103,7 +104,7 @@ module Cataract
 
     # Normalize URL - handle relative paths and missing schemes
     # Returns a URI object
-    def self.normalize_url(url)
+    def self.normalize_url(url, base_path = nil)
       # Try to parse as-is first
       uri = URI.parse(url)
 
@@ -114,8 +115,12 @@ module Cataract
         if url.start_with?('/')
           uri = URI.parse("file://#{url}")
         else
-          # Relative path - make it absolute relative to current directory
-          absolute_path = File.expand_path(url)
+          # Relative path - make it absolute relative to base_path or current directory
+          absolute_path = if base_path
+                            File.expand_path(url, base_path)
+                          else
+                            File.expand_path(url)
+                          end
           uri = URI.parse("file://#{absolute_path}")
         end
       end
@@ -127,7 +132,7 @@ module Cataract
 
     # Validate URL against security options
     def self.validate_url(url, options)
-      uri = normalize_url(url)
+      uri = normalize_url(url, options[:base_path])
 
       # Check scheme
       unless options[:allowed_schemes].include?(uri.scheme)
@@ -168,7 +173,7 @@ module Cataract
 
     # Fetch content from URL
     def self.fetch_url(url, options)
-      uri = normalize_url(url)
+      uri = normalize_url(url, options[:base_path])
 
       case uri.scheme
       when 'file'

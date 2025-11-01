@@ -455,6 +455,51 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
         RB_GC_GUARD(border_shorthand);
     }
 
+    // Try to create font shorthand
+    VALUE font_size = GET_PROP_VALUE(properties_hash, "font-size");
+    VALUE font_family = GET_PROP_VALUE(properties_hash, "font-family");
+
+    // Font shorthand requires at least font-size and font-family
+    if (!NIL_P(font_size) && !NIL_P(font_family)) {
+        VALUE font_style = GET_PROP_VALUE(properties_hash, "font-style");
+        VALUE font_variant = GET_PROP_VALUE(properties_hash, "font-variant");
+        VALUE font_weight = GET_PROP_VALUE(properties_hash, "font-weight");
+        VALUE line_height = GET_PROP_VALUE(properties_hash, "line-height");
+
+        VALUE font_props = rb_hash_new();
+        if (!NIL_P(font_style)) rb_hash_aset(font_props, STR_NEW_CSTR("font-style"), font_style);
+        if (!NIL_P(font_variant)) rb_hash_aset(font_props, STR_NEW_CSTR("font-variant"), font_variant);
+        if (!NIL_P(font_weight)) rb_hash_aset(font_props, STR_NEW_CSTR("font-weight"), font_weight);
+        rb_hash_aset(font_props, STR_NEW_CSTR("font-size"), font_size);
+        if (!NIL_P(line_height)) rb_hash_aset(font_props, STR_NEW_CSTR("line-height"), line_height);
+        rb_hash_aset(font_props, STR_NEW_CSTR("font-family"), font_family);
+
+        VALUE font_shorthand = cataract_create_font_shorthand(Qnil, font_props);
+        if (!NIL_P(font_shorthand)) {
+            // Find max specificity and check if any are important
+            VALUE size_data = GET_PROP_DATA(properties_hash, "font-size");
+            VALUE font_important = rb_hash_aref(size_data, ID2SYM(id_important));
+            int font_spec = NUM2INT(rb_hash_aref(size_data, ID2SYM(id_specificity)));
+
+            VALUE font_data = rb_hash_new();
+            rb_hash_aset(font_data, ID2SYM(id_value), font_shorthand);
+            rb_hash_aset(font_data, ID2SYM(id_specificity), INT2NUM(font_spec));
+            rb_hash_aset(font_data, ID2SYM(id_important), font_important);
+            rb_hash_aset(font_data, ID2SYM(id_struct_class), value_struct);
+            rb_hash_aset(properties_hash, USASCII_STR("font"), font_data);
+
+            // Remove longhand properties
+            if (!NIL_P(font_style)) rb_hash_delete(properties_hash, USASCII_STR("font-style"));
+            if (!NIL_P(font_variant)) rb_hash_delete(properties_hash, USASCII_STR("font-variant"));
+            if (!NIL_P(font_weight)) rb_hash_delete(properties_hash, USASCII_STR("font-weight"));
+            rb_hash_delete(properties_hash, USASCII_STR("font-size"));
+            if (!NIL_P(line_height)) rb_hash_delete(properties_hash, USASCII_STR("line-height"));
+            rb_hash_delete(properties_hash, USASCII_STR("font-family"));
+        }
+        RB_GC_GUARD(font_props);
+        RB_GC_GUARD(font_shorthand);
+    }
+
     #undef GET_PROP_VALUE
     #undef GET_PROP_DATA
 

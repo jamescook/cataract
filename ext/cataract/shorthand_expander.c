@@ -840,11 +840,12 @@ VALUE cataract_create_font_shorthand(VALUE self, VALUE properties) {
     int has_content = 0;
 
     // Order: style weight size/line-height family
-    if (!NIL_P(style)) {
+    // Skip "normal" for style (it's the default)
+    if (!NIL_P(style) && strcmp(RSTRING_PTR(style), "normal") != 0) {
         rb_str_append(result, style);
         has_content = 1;
     }
-    if (!NIL_P(weight)) {
+    if (!NIL_P(weight) && strcmp(RSTRING_PTR(weight), "normal") != 0) {
         if (has_content) rb_str_cat2(result, " ");
         rb_str_append(result, weight);
         has_content = 1;
@@ -854,8 +855,8 @@ VALUE cataract_create_font_shorthand(VALUE self, VALUE properties) {
     if (has_content) rb_str_cat2(result, " ");
     rb_str_append(result, size);
 
-    // line-height goes with size using /
-    if (!NIL_P(line_height)) {
+    // line-height goes with size using / (skip "normal")
+    if (!NIL_P(line_height) && strcmp(RSTRING_PTR(line_height), "normal") != 0) {
         rb_str_cat2(result, "/");
         rb_str_append(result, line_height);
     }

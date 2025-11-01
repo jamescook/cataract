@@ -39,7 +39,7 @@ module YjitTests
     decls['color'] = 'red'
     raise 'Property access failed' unless decls['color']
 
-    parser = Cataract::Parser.new
+    parser = Cataract::Stylesheet.new
     parser.parse(SAMPLE_CSS)
     raise 'Parse failed' if parser.rules_count.zero?
   end
@@ -130,7 +130,7 @@ module YjitTests
       x.config(time: 3, warmup: 1)
 
       x.report("#{yjit_label}: parse + iterate") do
-        parser = Cataract::Parser.new
+        parser = Cataract::Stylesheet.new
         parser.parse(SAMPLE_CSS)
         parser.each_selector do |_selector, declarations, _specificity|
           _ = declarations

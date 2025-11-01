@@ -6,7 +6,6 @@ require_relative 'cataract/rule' # Add Ruby methods to Rule
 require_relative 'cataract/stylesheet'
 require_relative 'cataract/rule_set'
 require_relative 'cataract/declarations'
-require_relative 'cataract/parser'
 require_relative 'cataract/import_resolver'
 require_relative 'cataract/css_parser_compat'
 
@@ -20,9 +19,7 @@ module Cataract
       # Resolve @import statements if requested
       css = ImportResolver.resolve(css, imports) if imports
 
-      result = parse_css_internal(css)
-      # parse_css_internal always returns {rules: [...], charset: "UTF-8" | nil}
-      Stylesheet.new(result[:rules], result[:charset])
+      Stylesheet.parse(css)
     end
   end
 

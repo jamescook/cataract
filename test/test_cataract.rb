@@ -3,369 +3,128 @@
 require 'minitest/autorun'
 require 'cataract'
 
+# Tests for the Cataract module-level API
+# - Cataract.parse_css (wrapper for Stylesheet.parse)
+# - Cataract.merge (rule merging with CSS cascade)
 class TestCataract < Minitest::Test
-  def setup
-    @parser = Cataract::Parser.new
+  # ============================================================================
+  # Cataract.parse_css - Module-level parsing wrapper
+  # ============================================================================
+
+  def test_parse_css_returns_stylesheet
+    sheet = Cataract.parse_css('body { color: red; }')
+
+    assert_instance_of Cataract::Stylesheet, sheet
+    assert_equal 1, sheet.size
   end
 
-  def test_simple_selector
-    css = '.header { color: blue }'
-    @parser.parse(css)
+  # ============================================================================
+  # Cataract.merge - CSS cascade merging
+  # ============================================================================
 
-    assert_equal 1, @parser.rules_count
-    assert_includes @parser.selectors, '.header'
+  # Helper to find declaration by property name
+  def find_property(declarations, property_name)
+    decl = declarations.find { |d| d.property == property_name }
+    return nil unless decl
+
+    decl.important ? "#{decl.value} !important" : decl.value
   end
 
-  def test_multiple_rules
-    css = %(
-      .header { color: blue }
-      #nav { font-size: large }
-      body { margin: zero }
-    )
+  def test_merge_simple
+    rules = Cataract.parse_css(<<~CSS)
+      .test1 { color: black; }
+      .test1 { margin: 0px; }
+    CSS
 
-    @parser.parse(css)
+    merged = Cataract.merge(rules)
 
-    assert_equal 3, @parser.rules_count
-    assert_includes @parser.selectors, '.header'
-    assert_includes @parser.selectors, '#nav'
-    assert_includes @parser.selectors, 'body'
+    assert_equal 'black', find_property(merged, 'color')
+    assert_equal '0px', find_property(merged, 'margin')
   end
 
-  def test_each_selector
-    css = '.test { color: red }'
-    @parser.parse(css)
+  def test_merge_same_property_later_wins
+    rules = Cataract.parse_css(<<~CSS)
+      .test { color: red; }
+      .test { color: blue; }
+    CSS
 
-    selectors = []
-    @parser.each_selector do |selector, declarations, specificity|
-      selectors << selector
+    merged = Cataract.merge(rules)
 
-      assert_equal 'color: red;', declarations
-      assert_equal 10, specificity # class selector = 10
-    end
-
-    assert_equal ['.test'], selectors
+    assert_equal 'blue', find_property(merged, 'color')
   end
 
-  def test_find_by_selector
-    css = %(
-      .header { color: blue }
-      .footer { color: green }
-    )
+  def test_merge_with_specificity
+    rules = Cataract.parse_css(<<~CSS)
+      .test { color: red; }
+      #test { color: blue; }
+    CSS
 
-    @parser.parse(css)
+    merged = Cataract.merge(rules)
 
-    header_rules = @parser.find_by_selector('.header')
-
-    assert_equal ['color: blue;'], header_rules
-
-    missing_rules = @parser.find_by_selector('.nonexistent')
-
-    assert_empty missing_rules
+    # ID selector (#test) has higher specificity, should win
+    assert_equal 'blue', find_property(merged, 'color')
   end
 
-  def test_comments_ignored
-    css = %(
-      /* Header styles */
-      .header { color: blue }
-      /* Footer styles */
-    )
+  def test_merge_important_wins
+    rules = Cataract.parse_css(<<~CSS)
+      .test { color: red !important; }
+      #test { color: blue; }
+    CSS
 
-    @parser.parse(css)
+    merged = Cataract.merge(rules)
 
-    assert_equal 1, @parser.rules_count
-    assert_includes @parser.selectors, '.header'
+    # !important wins even with lower specificity
+    assert_equal 'red !important', find_property(merged, 'color')
   end
 
-  def test_multiple_declarations
-    css = '.multi { color: red; background: blue; margin: 10px }'
-    @parser.parse(css)
+  def test_merge_accepts_stylesheet
+    sheet = Cataract.parse_css('.test { color: red; margin: 10px; }')
+    merged = Cataract.merge(sheet)
 
-    assert_equal 1, @parser.rules_count
-
-    @parser.each_selector do |selector, declarations, _specificity|
-      assert_equal '.multi', selector
-      assert_includes declarations, 'color: red;'
-      assert_includes declarations, 'background: blue;'
-      assert_includes declarations, 'margin: 10px;'
-    end
+    assert_equal 'red', find_property(merged, 'color')
+    assert_equal '10px', find_property(merged, 'margin')
   end
 
-  def test_selector_lists
-    css = '.header, .footer, #nav { color: blue }'
-    @parser.parse(css)
+  def test_merge_accepts_array
+    sheet = Cataract.parse_css('.test { color: red; }')
+    rules_array = sheet.instance_variable_get(:@rule_groups).values.flat_map { |g| g[:rules] }
+    merged = Cataract.merge(rules_array)
 
-    # Should create 3 separate rules
-    assert_equal 3, @parser.rules_count
-
-    selectors = @parser.selectors
-
-    assert_includes selectors, '.header'
-    assert_includes selectors, '.footer'
-    assert_includes selectors, '#nav'
-
-    # Each should have the same declarations
-    ['.header', '.footer', '#nav'].each do |selector|
-      rules = @parser.find_by_selector(selector)
-
-      assert_equal ['color: blue;'], rules
-    end
+    assert_equal 'red', find_property(merged, 'color')
   end
 
-  def test_selector_lists_with_multiple_declarations
-    css = '.btn, .button { color: white; background: blue; padding: 10px }'
-    @parser.parse(css)
-
-    # Should create 2 separate rules
-    assert_equal 2, @parser.rules_count
-
-    ['.btn', '.button'].each do |selector|
-      rules = @parser.find_by_selector(selector).first
-
-      assert_includes rules, 'color: white;'
-      assert_includes rules, 'background: blue;'
-      assert_includes rules, 'padding: 10px;'
-    end
+  def test_merge_empty_returns_empty_array
+    assert_empty Cataract.merge([])
+    assert_empty Cataract.merge(nil)
   end
 
-  def test_hyphenated_identifiers
-    css = '.main-header { background-color: white }'
-    @parser.parse(css)
+  def test_merge_creates_shorthand_properties
+    rules = Cataract.parse_css(<<~CSS)
+      .test { margin-top: 10px; margin-right: 10px; margin-bottom: 10px; margin-left: 10px; }
+    CSS
 
-    assert_equal 1, @parser.rules_count
-    assert_includes @parser.selectors, '.main-header'
+    merged = Cataract.merge(rules)
 
-    @parser.each_selector do |_selector, declarations, _specificity|
-      assert_equal 'background-color: white;', declarations
-    end
+    # Should create margin shorthand
+    assert_equal '10px', find_property(merged, 'margin')
+    # Longhand properties should not be present
+    assert_nil find_property(merged, 'margin-top')
   end
 
-  def test_specificity_calculation
-    css = %(
-      body { margin: zero }
-      .class { color: blue }
-      #id { font-size: large }
-    )
+  def test_merge_with_mixed_shorthand_longhand
+    # Per W3C cascade rules, when you have:
+    #   margin: 5px;        <- sets all four sides to 5px
+    #   margin-top: 10px;   <- overrides just the top
+    # The final computed values are: top=10px, right=5px, bottom=5px, left=5px
+    #
+    # Cataract.merge optimizes this by creating a shorthand: "10px 5px 5px"
+    # This is the CSS 3-value syntax: top, right/left, bottom (right and left collapsed)
+    rules = Cataract.parse_css(<<~CSS)
+      .test { margin: 5px; margin-top: 10px; }
+    CSS
 
-    @parser.parse(css)
+    merged = Cataract.merge(rules)
 
-    specificities = {}
-    @parser.each_selector do |selector, _declarations, specificity|
-      specificities[selector] = specificity
-    end
-
-    assert_equal 1, specificities['body']     # element = 1
-    assert_equal 10, specificities['.class']  # class = 10
-    assert_equal 100, specificities['#id']    # id = 100
-  end
-
-  def test_to_s_regeneration
-    css = '.header { color: blue }'
-    @parser.parse(css)
-
-    output = @parser.to_s
-
-    assert_includes output, '.header'
-    assert_includes output, 'color: blue'
-    assert_includes output, '{'
-    assert_includes output, '}'
-  end
-
-  # Attribute selector tests
-  def test_attribute_exists_selector
-    css = '[disabled] { opacity: 0.5 }'
-    @parser.parse(css)
-
-    assert_equal 1, @parser.rules_count
-    assert_includes @parser.selectors, '[disabled]'
-
-    @parser.each_selector do |selector, declarations, specificity|
-      assert_equal '[disabled]', selector
-      assert_equal 'opacity: 0.5;', declarations
-      assert_equal 10, specificity # attribute selector = 10
-    end
-  end
-
-  def test_hyphenated_attribute_selector
-    css = '[data-toggle] { cursor: pointer }'
-    @parser.parse(css)
-
-    assert_equal 1, @parser.rules_count
-    assert_includes @parser.selectors, '[data-toggle]'
-  end
-
-  def test_mixed_attribute_and_other_selectors
-    css = %(
-      .btn { color: black }
-      [disabled] { opacity: 0.5 }
-      input { background: green }
-    )
-
-    @parser.parse(css)
-
-    assert_equal 3, @parser.rules_count
-    assert_includes @parser.selectors, '.btn'
-    assert_includes @parser.selectors, '[disabled]'
-    assert_includes @parser.selectors, 'input'
-  end
-
-  def test_attribute_selector_list
-    css = '[required], [disabled] { border: 2px solid red }'
-    @parser.parse(css)
-
-    # Should create 2 separate rules
-    assert_equal 2, @parser.rules_count
-
-    selectors = @parser.selectors
-
-    assert_includes selectors, '[required]'
-    assert_includes selectors, '[disabled]'
-
-    # Each should have the same declarations
-    ['[required]', '[disabled]'].each do |selector|
-      rules = @parser.find_by_selector(selector)
-
-      assert_equal ['border: 2px solid red;'], rules
-    end
-  end
-
-  def test_attribute_selector_specificity
-    css = %(
-      input { color: black }
-      [type] { color: blue }
-      #special { color: red }
-    )
-
-    @parser.parse(css)
-
-    specificities = {}
-    @parser.each_selector do |selector, _declarations, specificity|
-      specificities[selector] = specificity
-    end
-
-    assert_equal 1, specificities['input']     # element = 1
-    assert_equal 10, specificities['[type]']   # attribute = 10
-    assert_equal 100, specificities['#special'] # id = 100
-  end
-
-  def test_attribute_equals_unquoted_value
-    css = '[type=submit] { background: blue }'
-    @parser.parse(css)
-
-    assert_equal 1, @parser.rules_count
-    assert_includes @parser.selectors, '[type=submit]'
-
-    @parser.each_selector do |selector, declarations, specificity|
-      assert_equal '[type=submit]', selector
-      assert_equal 'background: blue;', declarations
-      assert_equal 10, specificity # attribute selector = 10
-    end
-  end
-
-  def test_attribute_equals_double_quoted_value
-    css = '[data-role="button"] { padding: 10px }'
-    @parser.parse(css)
-
-    assert_equal 1, @parser.rules_count
-    assert_includes @parser.selectors, '[data-role="button"]'
-
-    rules = @parser.find_by_selector('[data-role="button"]')
-
-    assert_equal ['padding: 10px;'], rules
-  end
-
-  def test_attribute_equals_single_quoted_value
-    css = "[title='Main Menu'] { font-weight: bold }"
-    @parser.parse(css)
-
-    assert_equal 1, @parser.rules_count
-    assert_includes @parser.selectors, "[title='Main Menu']"
-  end
-
-  def test_attribute_with_hyphenated_values
-    css = '[data-toggle=dropdown] { cursor: pointer }'
-    @parser.parse(css)
-
-    assert_equal 1, @parser.rules_count
-    assert_includes @parser.selectors, '[data-toggle=dropdown]'
-  end
-
-  def test_attribute_value_with_spaces_in_quotes
-    css = '[alt="Click here to continue"] { border: 1px solid }'
-    @parser.parse(css)
-
-    assert_equal 1, @parser.rules_count
-    assert_includes @parser.selectors, '[alt="Click here to continue"]'
-  end
-
-  def test_mixed_attribute_syntaxes
-    css = %(
-      [disabled] { opacity: 0.5 }
-      [type=submit] { background: green }
-      [data-role="button"] { padding: 8px }
-    )
-
-    @parser.parse(css)
-
-    assert_equal 3, @parser.rules_count
-    assert_includes @parser.selectors, '[disabled]'
-    assert_includes @parser.selectors, '[type=submit]'
-    assert_includes @parser.selectors, '[data-role="button"]'
-  end
-
-  def test_attribute_value_selector_lists
-    css = '[required], [type=email] { border: 2px solid red }'
-    @parser.parse(css)
-
-    # Should create 2 separate rules
-    assert_equal 2, @parser.rules_count
-
-    selectors = @parser.selectors
-
-    assert_includes selectors, '[required]'
-    assert_includes selectors, '[type=email]'
-
-    # Each should have the same declarations
-    ['[required]', '[type=email]'].each do |selector|
-      rules = @parser.find_by_selector(selector)
-
-      assert_equal ['border: 2px solid red;'], rules
-    end
-  end
-
-  def test_attribute_value_specificity
-    css = %(
-      input { color: black }
-      [type] { color: blue }
-      [type=text] { color: green }
-      #special { color: red }
-    )
-
-    @parser.parse(css)
-
-    specificities = {}
-    @parser.each_selector do |selector, _declarations, specificity|
-      specificities[selector] = specificity
-    end
-
-    assert_equal 1, specificities['input']      # element = 1
-    assert_equal 10, specificities['[type]']    # attribute = 10
-    assert_equal 10, specificities['[type=text]'] # attribute with value = 10
-    assert_equal 100, specificities['#special'] # id = 100
-  end
-
-  def test_edge_cases
-    # Test various edge cases for attribute values
-    css = %(
-      [data-value=""] { color: red }
-      [data-number="123"] { font-size: large }
-      [data-mixed="abc-123"] { text-decoration: underline }
-    )
-
-    @parser.parse(css)
-
-    assert_equal 3, @parser.rules_count
-    assert_includes @parser.selectors, '[data-value=""]'
-    assert_includes @parser.selectors, '[data-number="123"]'
-    assert_includes @parser.selectors, '[data-mixed="abc-123"]'
+    assert_equal '10px 5px 5px', find_property(merged, 'margin')
   end
 end

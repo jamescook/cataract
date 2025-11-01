@@ -7,7 +7,7 @@ require 'cataract'
 # Based on css_parser gem's shorthand expansion behavior
 class TestShorthandExpansion < Minitest::Test
   def setup
-    @parser = Cataract::Parser.new
+    @sheet = Cataract::Stylesheet.new
   end
 
   # ===========================================================================
@@ -251,8 +251,8 @@ class TestShorthandExpansion < Minitest::Test
   end
 
   def test_mixed_shorthand_and_longhand
-    @parser.parse('div { margin: 10px; margin-top: 20px; }')
-    declarations = @parser.expand_shorthand(@parser.each_selector.first[1])
+    @sheet.parse('div { margin: 10px; margin-top: 20px; }')
+    declarations = @sheet.expand_shorthand(@sheet.each_selector.first[1])
 
     # Longhand should override shorthand value
     assert_equal '20px', declarations['margin-top']
@@ -264,7 +264,7 @@ class TestShorthandExpansion < Minitest::Test
   # ===========================================================================
 
   def test_parser_expand_shorthand_padding
-    result = @parser.expand_shorthand('padding: 5px 10px;')
+    result = @sheet.expand_shorthand('padding: 5px 10px;')
 
     assert_equal '5px', result['padding-top']
     assert_equal '10px', result['padding-right']
@@ -273,7 +273,7 @@ class TestShorthandExpansion < Minitest::Test
   end
 
   def test_parser_expand_shorthand_border
-    result = @parser.expand_shorthand('border: 1px solid red;')
+    result = @sheet.expand_shorthand('border: 1px solid red;')
 
     assert_equal '1px', result['border-top-width']
     assert_equal '1px', result['border-right-width']
@@ -290,7 +290,7 @@ class TestShorthandExpansion < Minitest::Test
   end
 
   def test_parser_expand_shorthand_border_top
-    result = @parser.expand_shorthand('border-top: 2px dashed blue;')
+    result = @sheet.expand_shorthand('border-top: 2px dashed blue;')
 
     assert_equal '2px', result['border-top-width']
     assert_equal 'dashed', result['border-top-style']
@@ -298,7 +298,7 @@ class TestShorthandExpansion < Minitest::Test
   end
 
   def test_parser_expand_shorthand_border_right
-    result = @parser.expand_shorthand('border-right: 3px dotted green;')
+    result = @sheet.expand_shorthand('border-right: 3px dotted green;')
 
     assert_equal '3px', result['border-right-width']
     assert_equal 'dotted', result['border-right-style']
@@ -306,7 +306,7 @@ class TestShorthandExpansion < Minitest::Test
   end
 
   def test_parser_expand_shorthand_border_bottom
-    result = @parser.expand_shorthand('border-bottom: 4px double yellow;')
+    result = @sheet.expand_shorthand('border-bottom: 4px double yellow;')
 
     assert_equal '4px', result['border-bottom-width']
     assert_equal 'double', result['border-bottom-style']
@@ -314,7 +314,7 @@ class TestShorthandExpansion < Minitest::Test
   end
 
   def test_parser_expand_shorthand_border_left
-    result = @parser.expand_shorthand('border-left: 5px groove purple;')
+    result = @sheet.expand_shorthand('border-left: 5px groove purple;')
 
     assert_equal '5px', result['border-left-width']
     assert_equal 'groove', result['border-left-style']
@@ -322,7 +322,7 @@ class TestShorthandExpansion < Minitest::Test
   end
 
   def test_parser_expand_shorthand_border_color
-    result = @parser.expand_shorthand('border-color: red blue;')
+    result = @sheet.expand_shorthand('border-color: red blue;')
 
     assert_equal 'red', result['border-top-color']
     assert_equal 'blue', result['border-right-color']
@@ -331,7 +331,7 @@ class TestShorthandExpansion < Minitest::Test
   end
 
   def test_parser_expand_shorthand_border_style
-    result = @parser.expand_shorthand('border-style: solid dashed;')
+    result = @sheet.expand_shorthand('border-style: solid dashed;')
 
     assert_equal 'solid', result['border-top-style']
     assert_equal 'dashed', result['border-right-style']
@@ -340,7 +340,7 @@ class TestShorthandExpansion < Minitest::Test
   end
 
   def test_parser_expand_shorthand_border_width
-    result = @parser.expand_shorthand('border-width: 1px 2px 3px;')
+    result = @sheet.expand_shorthand('border-width: 1px 2px 3px;')
 
     assert_equal '1px', result['border-top-width']
     assert_equal '2px', result['border-right-width']
@@ -349,7 +349,7 @@ class TestShorthandExpansion < Minitest::Test
   end
 
   def test_parser_expand_shorthand_font
-    result = @parser.expand_shorthand('font: italic bold 16px/1.5 Arial, sans-serif;')
+    result = @sheet.expand_shorthand('font: italic bold 16px/1.5 Arial, sans-serif;')
 
     assert_equal 'italic', result['font-style']
     assert_equal 'bold', result['font-weight']
@@ -359,7 +359,7 @@ class TestShorthandExpansion < Minitest::Test
   end
 
   def test_parser_expand_shorthand_list_style
-    result = @parser.expand_shorthand("list-style: square inside url('marker.png');")
+    result = @sheet.expand_shorthand("list-style: square inside url('marker.png');")
 
     assert_equal 'square', result['list-style-type']
     assert_equal 'inside', result['list-style-position']
@@ -367,7 +367,7 @@ class TestShorthandExpansion < Minitest::Test
   end
 
   def test_parser_expand_shorthand_background
-    result = @parser.expand_shorthand("background: red url('bg.png') no-repeat center top;")
+    result = @sheet.expand_shorthand("background: red url('bg.png') no-repeat center top;")
 
     assert_equal 'red', result['background-color']
     assert_equal "url('bg.png')", result['background-image']
@@ -377,7 +377,7 @@ class TestShorthandExpansion < Minitest::Test
   end
 
   def test_parser_expand_shorthand_with_important
-    result = @parser.expand_shorthand('margin: 10px !important;')
+    result = @sheet.expand_shorthand('margin: 10px !important;')
 
     assert_equal '10px !important', result['margin-top']
     assert_equal '10px !important', result['margin-right']
@@ -386,7 +386,7 @@ class TestShorthandExpansion < Minitest::Test
   end
 
   def test_parser_expand_shorthand_mixed_important
-    result = @parser.expand_shorthand('margin: 10px; padding: 5px !important;')
+    result = @sheet.expand_shorthand('margin: 10px; padding: 5px !important;')
 
     assert_equal '10px', result['margin-top']
     assert_equal '10px', result['margin-right']
@@ -395,7 +395,7 @@ class TestShorthandExpansion < Minitest::Test
   end
 
   def test_parser_expand_shorthand_longhand_overrides_shorthand
-    result = @parser.expand_shorthand('margin: 10px; margin-top: 20px;')
+    result = @sheet.expand_shorthand('margin: 10px; margin-top: 20px;')
 
     assert_equal '20px', result['margin-top']
     assert_equal '10px', result['margin-right']
@@ -404,14 +404,14 @@ class TestShorthandExpansion < Minitest::Test
   end
 
   def test_parser_expand_shorthand_longhand_only
-    result = @parser.expand_shorthand('color: red; font-size: 14px;')
+    result = @sheet.expand_shorthand('color: red; font-size: 14px;')
 
     assert_equal 'red', result['color']
     assert_equal '14px', result['font-size']
   end
 
   def test_parser_expand_shorthand_empty_string
-    result = @parser.expand_shorthand('')
+    result = @sheet.expand_shorthand('')
 
     assert_empty(result)
   end

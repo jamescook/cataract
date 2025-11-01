@@ -46,7 +46,7 @@ class YjitBenchmark < BenchmarkHarness
     decls['color'] = 'red'
     raise 'Property access failed' unless decls['color']
 
-    parser = Cataract::Parser.new
+    parser = Cataract::Stylesheet.new
     sample_css = 'body { margin: 0; }'
     parser.parse(sample_css)
     raise 'Parse failed' if parser.rules_count.zero?

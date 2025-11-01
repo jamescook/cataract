@@ -28,7 +28,20 @@ VALUE extract_imports(VALUE self, VALUE css_string) {
 
     while (p < end) {
         // Skip whitespace and comments
-        while (p < end && IS_WHITESPACE(*p)) p++;
+        while (p < end) {
+            if (IS_WHITESPACE(*p)) {
+                p++;
+            } else if (p + 2 <= end && p[0] == '/' && p[1] == '*') {
+                // Skip /* */ comment
+                p += 2;
+                while (p + 1 < end && !(p[0] == '*' && p[1] == '/')) {
+                    p++;
+                }
+                if (p + 1 < end) p += 2; // Skip */
+            } else {
+                break;
+            }
+        }
 
         // Check for @import
         if (p + 7 <= end && strncasecmp(p, "@import", 7) == 0) {

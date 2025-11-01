@@ -11,22 +11,22 @@ require 'cataract'
 # - nested @media: https://www.w3.org/TR/css-conditional-3/#at-media
 class TestAtRules < Minitest::Test
   def setup
-    @parser = Cataract::Parser.new
+    @sheet = Cataract::Stylesheet.new
   end
 
   # @font-face tests
   def test_font_face_basic
-    @parser.parse(<<~CSS)
+    @sheet.parse(<<~CSS)
       @font-face {
         font-family: 'MyFont';
         src: url('font.woff2');
       }
     CSS
 
-    assert_equal 1, @parser.rules_count
+    assert_equal 1, @sheet.size
 
     # @font-face should be treated as a selector
-    rule = @parser.each_selector.first
+    rule = @sheet.each_selector.first
 
     assert_equal '@font-face', rule[0]
     assert_includes rule[1], 'font-family'
@@ -34,7 +34,7 @@ class TestAtRules < Minitest::Test
   end
 
   def test_font_face_with_descriptors
-    @parser.parse(<<~CSS)
+    @sheet.parse(<<~CSS)
       @font-face {
         font-family: 'Open Sans';
         src: url('opensans.woff2') format('woff2'),
@@ -45,11 +45,11 @@ class TestAtRules < Minitest::Test
       }
     CSS
 
-    assert_equal 1, @parser.rules_count
+    assert_equal 1, @sheet.size
   end
 
   def test_multiple_font_faces
-    @parser.parse(<<~CSS)
+    @sheet.parse(<<~CSS)
       @font-face {
         font-family: 'Regular';
         src: url('regular.woff2');
@@ -62,11 +62,11 @@ class TestAtRules < Minitest::Test
       }
     CSS
 
-    assert_equal 2, @parser.rules_count
+    assert_equal 2, @sheet.size
   end
 
   def test_font_face_with_other_rules
-    @parser.parse(<<~CSS)
+    @sheet.parse(<<~CSS)
       body { margin: 0; }
 
       @font-face {
@@ -77,27 +77,27 @@ class TestAtRules < Minitest::Test
       .header { font-family: 'MyFont'; }
     CSS
 
-    assert_equal 3, @parser.rules_count
+    assert_equal 3, @sheet.size
   end
 
   # @keyframes tests
   def test_keyframes_basic
-    @parser.parse(<<~CSS)
+    @sheet.parse(<<~CSS)
       @keyframes slide {
         from { left: 0; }
         to { left: 100px; }
       }
     CSS
 
-    assert_equal 1, @parser.rules_count
+    assert_equal 1, @sheet.size
 
-    rule = @parser.each_selector.first
+    rule = @sheet.each_selector.first
 
     assert_equal '@keyframes slide', rule[0]
   end
 
   def test_keyframes_with_percentages
-    @parser.parse(<<~CSS)
+    @sheet.parse(<<~CSS)
       @keyframes fade {
         0% { opacity: 0; }
         50% { opacity: 0.5; }
@@ -105,23 +105,23 @@ class TestAtRules < Minitest::Test
       }
     CSS
 
-    assert_equal 1, @parser.rules_count
+    assert_equal 1, @sheet.size
   end
 
   def test_keyframes_webkit_prefix
-    @parser.parse(<<~CSS)
+    @sheet.parse(<<~CSS)
       @-webkit-keyframes bounce {
         0% { top: 0; }
         100% { top: 100px; }
       }
     CSS
 
-    assert_equal 1, @parser.rules_count
+    assert_equal 1, @sheet.size
   end
 
   def test_keyframes_webkit_from_bootstrap
     # Real pattern from Bootstrap CSS
-    @parser.parse(<<~CSS)
+    @sheet.parse(<<~CSS)
       @-webkit-keyframes spinner-grow {
         0% {
           transform: scale(0);
@@ -139,12 +139,12 @@ class TestAtRules < Minitest::Test
       }
     CSS
 
-    assert_equal 2, @parser.rules_count
+    assert_equal 2, @sheet.size
   end
 
   def test_webkit_animation_property
     # Bootstrap pattern that fails: -webkit-animation property
-    @parser.parse(<<~CSS)
+    @sheet.parse(<<~CSS)
       @-webkit-keyframes spinner-border {
         to {
           transform: rotate(360deg) /* rtl:ignore */;
@@ -169,12 +169,12 @@ class TestAtRules < Minitest::Test
       }
     CSS
 
-    assert_equal 3, @parser.rules_count
+    assert_equal 3, @sheet.size
   end
 
   def test_css_custom_properties
     # Bootstrap pattern: CSS custom properties (CSS variables) with -- prefix
-    @parser.parse(<<~CSS)
+    @sheet.parse(<<~CSS)
       .ratio-1x1 {
         --bs-aspect-ratio: 100%;
       }
@@ -192,53 +192,53 @@ class TestAtRules < Minitest::Test
       }
     CSS
 
-    assert_equal 4, @parser.rules_count
+    assert_equal 4, @sheet.size
   end
 
   # @supports tests
   def test_supports_basic
-    @parser.parse(<<~CSS)
+    @sheet.parse(<<~CSS)
       @supports (display: grid) {
         .grid { display: grid; }
       }
     CSS
 
-    assert_equal 1, @parser.rules_count
+    assert_equal 1, @sheet.size
   end
 
   def test_supports_with_not
-    @parser.parse(<<~CSS)
+    @sheet.parse(<<~CSS)
       @supports not (display: flex) {
         .fallback { display: block; }
       }
     CSS
 
-    assert_equal 1, @parser.rules_count
+    assert_equal 1, @sheet.size
   end
 
   def test_supports_with_and
-    @parser.parse(<<~CSS)
+    @sheet.parse(<<~CSS)
       @supports (display: grid) and (gap: 1rem) {
         .modern { display: grid; gap: 1rem; }
       }
     CSS
 
-    assert_equal 1, @parser.rules_count
+    assert_equal 1, @sheet.size
   end
 
   def test_supports_with_or
-    @parser.parse(<<~CSS)
+    @sheet.parse(<<~CSS)
       @supports (display: flex) or (display: -webkit-flex) {
         .flex { display: flex; }
       }
     CSS
 
-    assert_equal 1, @parser.rules_count
+    assert_equal 1, @sheet.size
   end
 
   # Nested @media tests
   def test_nested_media_queries
-    @parser.parse(<<~CSS)
+    @sheet.parse(<<~CSS)
       @media screen {
         @media (min-width: 500px) {
           body { color: red; }
@@ -246,9 +246,9 @@ class TestAtRules < Minitest::Test
       }
     CSS
 
-    assert_equal 1, @parser.rules_count
+    assert_equal 1, @sheet.size
 
-    rule = @parser.each_selector.first
+    rule = @sheet.each_selector.first
 
     assert_equal 'body', rule[0]
     # Should combine media types: screen AND (min-width: 500px)
@@ -256,7 +256,7 @@ class TestAtRules < Minitest::Test
   end
 
   def test_nested_media_complex
-    @parser.parse(<<~CSS)
+    @sheet.parse(<<~CSS)
       @media screen {
         .outer { color: blue; }
 
@@ -266,12 +266,12 @@ class TestAtRules < Minitest::Test
       }
     CSS
 
-    assert_equal 2, @parser.rules_count
+    assert_equal 2, @sheet.size
   end
 
   # Mixed at-rules
   def test_mixed_at_rules
-    @parser.parse(<<~CSS)
+    @sheet.parse(<<~CSS)
       @font-face {
         font-family: 'Custom';
         src: url('custom.woff2');
@@ -293,6 +293,6 @@ class TestAtRules < Minitest::Test
       .header { color: blue; }
     CSS
 
-    assert_equal 5, @parser.rules_count
+    assert_equal 5, @sheet.size
   end
 end

@@ -88,13 +88,13 @@ class TestMerging < Minitest::Test
 
   # Test merging with multiple selectors (uses max specificity)
   def test_multiple_selectors_max_specificity
-    rules = Cataract.parse_css(<<~CSS)
+    sheet = Cataract.parse_css(<<~CSS)
       p, a[rel="external"] { color: black; }
       a { color: blue; }
     CSS
 
     # Filter to only rules matching 'a' selector
-    a_rules = rules.select { |r| r.selector.match?(/\ba\b/) }
+    a_rules = sheet.rules.select { |r| r.selector.match?(/\ba\b/) }
     merged = Cataract.merge(a_rules)
 
     # p=1, a[rel="external"]=11, so max=11 should beat a=1
@@ -141,13 +141,12 @@ class TestMerging < Minitest::Test
 
   # Test merging fonts
   def test_merging_fonts
-    skip 'Font shorthand creation not yet implemented'
-    rules = Cataract.parse_css(<<~CSS)
+    sheet = Cataract.parse_css(<<~CSS)
       .test { font: 11px Arial; }
       .test { font-weight: bold; }
     CSS
 
-    merged = Cataract.merge(rules)
+    merged = Cataract.merge(sheet)
 
     assert_equal 'bold 11px Arial', find_property(merged, 'font')
   end

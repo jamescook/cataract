@@ -7,10 +7,6 @@ require 'tmpdir'
 require 'webmock/minitest'
 
 class TestImports < Minitest::Test
-  def setup
-    @parser = Cataract::Parser.new
-  end
-
   # ============================================================================
   # imports: false (default) - @import is treated as a regular rule
   # ============================================================================
@@ -18,14 +14,14 @@ class TestImports < Minitest::Test
   def test_import_disabled_by_default
     css = '@import url("https://example.com/style.css");
 body { color: red; }'
-    @parser.parse(css)
+    sheet = Cataract.parse_css(css)
 
     # @import is ignored when imports are disabled (per CSS spec, @import is a directive not a rule)
     # Only body rule should be parsed
-    assert_equal 1, @parser.rules_count
+    assert_equal 1, sheet.size
 
     selectors = []
-    @parser.each_selector { |sel, _, _, _| selectors << sel }
+    sheet.each_selector { |sel, _, _, _| selectors << sel }
 
     assert_equal ['body'], selectors
   end
@@ -45,7 +41,7 @@ body { color: red; }"
 
       # With safe defaults, file:// should be rejected
       assert_raises(Cataract::ImportError) do
-        @parser.parse(css, imports: true)
+        Cataract.parse_css(css, imports: true)
       end
     end
   end
@@ -56,7 +52,7 @@ body { color: red; }'
 
     # With safe defaults, non-.css extensions should be rejected
     assert_raises(Cataract::ImportError) do
-      @parser.parse(css, imports: true)
+      Cataract.parse_css(css, imports: true)
     end
   end
 
@@ -68,12 +64,12 @@ body { color: red; }'
     css = '@import url("https://example.com/style.css");
 body { color: red; }'
 
-    @parser.parse(css, imports: true)
+    sheet = Cataract.parse_css(css, imports: true)
 
-    assert_equal 2, @parser.rules_count
+    assert_equal 2, sheet.size
 
     selectors = []
-    @parser.each_selector { |sel, _, _, _| selectors << sel }
+    sheet.each_selector { |sel, _, _, _| selectors << sel }
 
     assert_includes selectors, '.imported'
     assert_includes selectors, 'body'
@@ -87,7 +83,7 @@ body { color: red; }'
     css = '@import url("http://example.com/style.css");'
 
     assert_raises(Cataract::ImportError) do
-      @parser.parse(css, imports: true)
+      Cataract.parse_css(css, imports: true)
     end
   end
 
@@ -98,9 +94,9 @@ body { color: red; }'
 
     css = '@import url("http://example.com/style.css");'
 
-    @parser.parse(css, imports: { allowed_schemes: ['http'] })
+    sheet = Cataract.parse_css(css, imports: { allowed_schemes: ['http'] })
 
-    assert_equal 1, @parser.rules_count
+    assert_equal 1, sheet.size
   end
 
   def test_import_with_nested_https_imports
@@ -113,12 +109,12 @@ body { color: red; }'
 
     css = '@import url("https://example.com/level1.css");'
 
-    @parser.parse(css, imports: true)
+    sheet = Cataract.parse_css(css, imports: true)
 
-    assert_equal 2, @parser.rules_count
+    assert_equal 2, sheet.size
 
     selectors = []
-    @parser.each_selector { |sel, _, _, _| selectors << sel }
+    sheet.each_selector { |sel, _, _, _| selectors << sel }
 
     assert_includes selectors, '.level1'
     assert_includes selectors, '.level2'
@@ -131,7 +127,7 @@ body { color: red; }'
     css = '@import url("https://example.com/missing.css");'
 
     assert_raises(Cataract::ImportError) do
-      @parser.parse(css, imports: true)
+      Cataract.parse_css(css, imports: true)
     end
   end
 
@@ -142,7 +138,7 @@ body { color: red; }'
     css = '@import url("https://slow.example.com/style.css");'
 
     assert_raises(Cataract::ImportError) do
-      @parser.parse(css, imports: { timeout: 1 })
+      Cataract.parse_css(css, imports: { timeout: 1 })
     end
   end
 
@@ -155,12 +151,12 @@ body { color: red; }'
 
     css = '@import url("https://example.com/style.css");'
 
-    @parser.parse(css, imports: { follow_redirects: true })
+    sheet = Cataract.parse_css(css, imports: { follow_redirects: true })
 
-    assert_equal 1, @parser.rules_count
+    assert_equal 1, sheet.size
 
     selectors = []
-    @parser.each_selector { |sel, _, _, _| selectors << sel }
+    sheet.each_selector { |sel, _, _, _| selectors << sel }
 
     assert_includes selectors, '.imported'
   end
@@ -177,13 +173,13 @@ body { color: red; }'
       css = "@import url('file://#{imported_file}');
 body { color: red; }"
 
-      @parser.parse(css, imports: { allowed_schemes: ['file'], extensions: ['css'] })
+      sheet = Cataract.parse_css(css, imports: { allowed_schemes: ['file'], extensions: ['css'] })
 
       # Should have both imported rule and body rule
-      assert_equal 2, @parser.rules_count
+      assert_equal 2, sheet.size
 
       selectors = []
-      @parser.each_selector { |sel, _, _, _| selectors << sel }
+      sheet.each_selector { |sel, _, _, _| selectors << sel }
 
       assert_includes selectors, '.imported'
       assert_includes selectors, 'body'
@@ -203,13 +199,13 @@ body { color: red; }"
 
       # With max_depth: 2, should fail on level3
       assert_raises(Cataract::ImportError) do
-        @parser.parse(css, imports: { allowed_schemes: ['file'], extensions: ['css'], max_depth: 2 })
+        Cataract.parse_css(css, imports: { allowed_schemes: ['file'], extensions: ['css'], max_depth: 2 })
       end
 
       # With max_depth: 3, should succeed
-      @parser.parse(css, imports: { allowed_schemes: ['file'], extensions: ['css'], max_depth: 3 })
+      sheet = Cataract.parse_css(css, imports: { allowed_schemes: ['file'], extensions: ['css'], max_depth: 3 })
 
-      assert_equal 3, @parser.rules_count
+      assert_equal 3, sheet.size
     end
   end
 
@@ -221,10 +217,10 @@ body { color: red; }"
       css = "@import url('file://#{imported_file}');"
 
       # Should work with custom extensions
-      @parser.parse(css, imports: { allowed_schemes: ['file'], extensions: ['txt'] })
+      sheet = Cataract.parse_css(css, imports: { allowed_schemes: ['file'], extensions: ['txt'] })
 
       selectors = []
-      @parser.each_selector { |sel, _, _, _| selectors << sel }
+      sheet.each_selector { |sel, _, _, _| selectors << sel }
 
       assert_includes selectors, '.from-txt'
     end
@@ -240,10 +236,10 @@ body { color: red; }"
         css = "@import 'imported.css';"
 
         # Relative paths are converted to file:// URLs
-        @parser.parse(css, imports: { allowed_schemes: ['file'], extensions: ['css'] })
+        sheet = Cataract.parse_css(css, imports: { allowed_schemes: ['file'], extensions: ['css'] })
 
         selectors = []
-        @parser.each_selector { |sel, _, _, _| selectors << sel }
+        sheet.each_selector { |sel, _, _, _| selectors << sel }
 
         assert_includes selectors, '.imported'
       end
@@ -259,10 +255,10 @@ body { color: red; }"
       css = "@import '#{imported_file}';"
 
       # Absolute paths without scheme are converted to file:// URLs
-      @parser.parse(css, imports: { allowed_schemes: ['file'], extensions: ['css'] })
+      sheet = Cataract.parse_css(css, imports: { allowed_schemes: ['file'], extensions: ['css'] })
 
       selectors = []
-      @parser.each_selector { |sel, _, _, _| selectors << sel }
+      sheet.each_selector { |sel, _, _, _| selectors << sel }
 
       assert_includes selectors, '.imported'
     end
@@ -278,9 +274,9 @@ body { color: red; }"
       File.write(imported_file, '.imported { color: blue; }')
 
       css = "@import url('file://#{imported_file}');"
-      @parser.parse(css, imports: { allowed_schemes: ['file'], extensions: ['css'] })
+      sheet = Cataract.parse_css(css, imports: { allowed_schemes: ['file'], extensions: ['css'] })
 
-      assert_equal 1, @parser.rules_count
+      assert_equal 1, sheet.size
     end
   end
 
@@ -290,9 +286,9 @@ body { color: red; }"
       File.write(imported_file, '.imported { color: blue; }')
 
       css = "@import 'file://#{imported_file}';"
-      @parser.parse(css, imports: { allowed_schemes: ['file'], extensions: ['css'] })
+      sheet = Cataract.parse_css(css, imports: { allowed_schemes: ['file'], extensions: ['css'] })
 
-      assert_equal 1, @parser.rules_count
+      assert_equal 1, sheet.size
     end
   end
 
@@ -302,13 +298,13 @@ body { color: red; }"
       File.write(imported_file, '.print-only { color: blue; }')
 
       css = "@import url('file://#{imported_file}') print;"
-      @parser.parse(css, imports: { allowed_schemes: ['file'], extensions: ['css'] })
+      sheet = Cataract.parse_css(css, imports: { allowed_schemes: ['file'], extensions: ['css'] })
 
       # Should import with print media type
-      assert_equal 1, @parser.rules_count
+      assert_equal 1, sheet.size
 
       print_rules = []
-      @parser.each_selector(:print) { |sel, _, _, _| print_rules << sel }
+      sheet.each_selector(media: :print) { |sel, _, _, _| print_rules << sel }
 
       assert_includes print_rules, '.print-only'
     end
@@ -327,12 +323,12 @@ body { color: red; }"
 @import url('file://#{File.join(dir, 'theme.css')}');
 .main { padding: 10px; }"
 
-      @parser.parse(css, imports: { allowed_schemes: ['file'], extensions: ['css'] })
+      sheet = Cataract.parse_css(css, imports: { allowed_schemes: ['file'], extensions: ['css'] })
 
-      assert_equal 3, @parser.rules_count
+      assert_equal 3, sheet.size
 
       selectors = []
-      @parser.each_selector { |sel, _, _, _| selectors << sel }
+      sheet.each_selector { |sel, _, _, _| selectors << sel }
 
       assert_includes selectors, '*'
       assert_includes selectors, 'body'
@@ -348,7 +344,7 @@ body { color: red; }"
     css = "@import url('file:///nonexistent/path/to/file.css');"
 
     assert_raises(Cataract::ImportError) do
-      @parser.parse(css, imports: { allowed_schemes: ['file'], extensions: ['css'] })
+      Cataract.parse_css(css, imports: { allowed_schemes: ['file'], extensions: ['css'] })
     end
   end
 
@@ -363,7 +359,7 @@ body { color: red; }"
       css = "@import url('file://#{file_a}');"
 
       assert_raises(Cataract::ImportError) do
-        @parser.parse(css, imports: { allowed_schemes: ['file'], extensions: ['css'], max_depth: 10 })
+        Cataract.parse_css(css, imports: { allowed_schemes: ['file'], extensions: ['css'], max_depth: 10 })
       end
     end
   end
@@ -376,11 +372,11 @@ body { color: red; }"
       css = "@import url('file://#{imported_file}');
 body { color: red; }"
 
-      @parser.parse(css, imports: { allowed_schemes: ['file'], extensions: ['css'] })
+      sheet = Cataract.parse_css(css, imports: { allowed_schemes: ['file'], extensions: ['css'] })
 
       # Main file should preserve charset from import
       # (Note: per CSS spec, only first @charset is used)
-      assert_equal 'UTF-8', @parser.instance_variable_get(:@charset)
+      assert_equal 'UTF-8', sheet.instance_variable_get(:@charset)
     end
   end
 
@@ -405,6 +401,128 @@ body { color: red; }"
       sheet.each_selector { |sel, _, _, _| selectors << sel }
 
       assert_includes selectors, '.imported'
+      assert_includes selectors, 'body'
+    end
+  end
+
+  # ============================================================================
+  # base_path option for resolving relative imports
+  # ============================================================================
+
+  def test_relative_import_with_base_path
+    # Create a directory structure with CSS files
+    Dir.mktmpdir do |dir|
+      # Create subdirectory
+      subdir = File.join(dir, 'styles')
+      Dir.mkdir(subdir)
+
+      # Create imported file in subdirectory
+      imported_file = File.join(subdir, 'imported.css')
+      File.write(imported_file, '.imported { color: blue; }')
+
+      # CSS with relative import
+      css = "@import 'imported.css';\nbody { color: red; }"
+
+      # Parse with base_path pointing to subdirectory
+      sheet = Cataract.parse_css(css, imports: { allowed_schemes: ['file'], base_path: subdir })
+
+      assert_equal 2, sheet.size
+
+      selectors = []
+      sheet.each_selector { |sel, _, _, _| selectors << sel }
+
+      assert_includes selectors, '.imported'
+      assert_includes selectors, 'body'
+    end
+  end
+
+  def test_relative_import_without_base_path_fails
+    # Create a directory structure with CSS files
+    Dir.mktmpdir do |dir|
+      subdir = File.join(dir, 'styles')
+      Dir.mkdir(subdir)
+
+      # Create imported file in subdirectory (not in cwd)
+      imported_file = File.join(subdir, 'imported.css')
+      File.write(imported_file, '.imported { color: blue; }')
+
+      # CSS with relative import
+      css = "@import 'imported.css';\nbody { color: red; }"
+
+      # Parse without base_path - should fail because 'imported.css' doesn't exist in cwd
+      assert_raises(Cataract::ImportError) do
+        Cataract.parse_css(css, imports: { allowed_schemes: ['file'] })
+      end
+    end
+  end
+
+  def test_stylesheet_load_file_sets_base_path_automatically
+    # Create a directory structure with CSS files
+    Dir.mktmpdir do |dir|
+      # Create main CSS file
+      main_file = File.join(dir, 'main.css')
+      File.write(main_file, "@import 'imported.css';\nbody { color: red; }")
+
+      # Create imported file in same directory
+      imported_file = File.join(dir, 'imported.css')
+      File.write(imported_file, '.imported { color: blue; }')
+
+      # Use Stylesheet.load_file which should automatically set base_path
+      sheet = Cataract::Stylesheet.new(import: { allowed_schemes: ['file'] })
+      sheet.load_file!(main_file)
+
+      assert_equal 2, sheet.size
+
+      selectors = []
+      sheet.each_selector { |sel, _, _, _| selectors << sel }
+
+      assert_includes selectors, '.imported'
+      assert_includes selectors, 'body'
+    end
+  end
+
+  def test_import_with_comment_before_import
+    # Test that comments before @import are handled correctly
+    Dir.mktmpdir do |dir|
+      imported_file = File.join(dir, 'imported.css')
+      File.write(imported_file, '.imported { color: blue; }')
+
+      # CSS with comment before @import
+      css = "/* This is a comment */\n@import url('file://#{imported_file}');\nbody { color: red; }"
+
+      sheet = Cataract.parse_css(css, imports: { allowed_schemes: ['file'] })
+
+      assert_equal 2, sheet.size
+
+      selectors = []
+      sheet.each_selector { |sel, _, _, _| selectors << sel }
+
+      assert_includes selectors, '.imported'
+      assert_includes selectors, 'body'
+    end
+  end
+
+  def test_stylesheet_load_uri_with_file_scheme_sets_base_path
+    # Test that load_uri! with file:// scheme sets base_path for resolving relative imports
+    Dir.mktmpdir do |dir|
+      # Create main CSS file with relative @import
+      main_file = File.join(dir, 'main.css')
+      File.write(main_file, "@import 'imported.css';\nbody { color: red; }")
+
+      # Create imported file in same directory
+      imported_file = File.join(dir, 'imported.css')
+      File.write(imported_file, '.imported { color: blue; }')
+
+      # Use load_uri! with file:// scheme - should resolve relative imports
+      sheet = Cataract::Stylesheet.new(import: { allowed_schemes: ['file'] })
+      sheet.load_uri!("file://#{main_file}")
+
+      assert_equal 2, sheet.size
+
+      selectors = []
+      sheet.each_selector { |sel, _, _, _| selectors << sel }
+
+      assert_includes selectors, '.imported', 'load_uri! should resolve relative @import from file:// URI'
       assert_includes selectors, 'body'
     end
   end
