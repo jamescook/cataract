@@ -410,6 +410,7 @@ module Cataract
 
       uri_obj = URI(uri)
       css_content = nil
+      file_path = nil
 
       case uri_obj.scheme
       when 'http', 'https'
@@ -427,7 +428,15 @@ module Cataract
           base = URI(options[:base_uri])
           path = File.join(base.path, path) if base.scheme == 'file' || base.scheme.nil?
         end
-        css_content = File.read(File.expand_path(path))
+        file_path = File.expand_path(path)
+
+        # If imports are enabled and base_path not already set, set it for resolving relative imports
+        if @options[:import] && @options[:import][:base_path].nil?
+          file_dir = File.dirname(file_path)
+          @options[:import] = @options[:import].merge(base_path: file_dir)
+        end
+
+        css_content = File.read(file_path)
       else
         raise ArgumentError, "Unsupported URI scheme: #{uri_obj.scheme}"
       end
@@ -454,26 +463,12 @@ module Cataract
     # @return [self] Returns self for chaining
     #
     def load_file!(filename, base_dir = '.', _media_types = :all)
+      # Normalize file path and convert to file:// URI
       file_path = File.expand_path(filename, base_dir)
+      file_uri = "file://#{file_path}"
 
-      # If imports are enabled, set base_path for resolving relative imports
-      if @options[:import]
-        # Get directory of the file for resolving relative imports
-        file_dir = File.dirname(file_path)
-        @options[:import] = @options[:import].merge(base_path: file_dir)
-      end
-
-      css_content = File.read(file_path)
-      parse(css_content)
-      self
-    rescue Errno::ENOENT
-      raise IOError, "File not found: #{file_path}" if @options[:io_exceptions]
-
-      self
-    rescue StandardError => e
-      raise IOError, "Error loading file: #{file_path} - #{e.message}" if @options[:io_exceptions]
-
-      self
+      # Delegate to load_uri! which handles imports and base_path
+      load_uri!(file_uri)
     end
 
     # Convert to nested hash structure
