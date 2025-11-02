@@ -209,7 +209,6 @@ rake benchmark:parsing
 rake benchmark:serialization
 rake benchmark:specificity
 rake benchmark:merging
-rake benchmark:premailer
 rake benchmark:yjit
 
 # Generate documentation
@@ -221,4 +220,3 @@ rake benchmark:generate_docs
 - All benchmarks use benchmark-ips with 3s warmup and 5-10s measurement periods
 - Measurements are median i/s (iterations per second) with standard deviation
 - css_parser gem must be installed for comparison benchmarks
-- Premailer benchmark requires premailer gem

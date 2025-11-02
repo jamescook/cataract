@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CSS Analysis Report - <%= analysis[:summary][:file_name] %></title>
+
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <style>
+    body {
+      padding: 2rem 0;
+    }
+    .stat-card {
+      text-align: center;
+      padding: 1.5rem;
+    }
+    .stat-number {
+      font-size: 2.5rem;
+      font-weight: bold;
+      color: #0d6efd;
+    }
+    .stat-label {
+      color: #6c757d;
+      font-size: 0.875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .property-row:hover {
+      background-color: #f8f9fa;
+    }
+    .example-box {
+      background-color: #f8f9fa;
+      padding: 0.5rem;
+      border-radius: 0.25rem;
+      font-family: 'Courier New', monospace;
+      font-size: 0.875rem;
+      margin-bottom: 0.5rem;
+    }
+    .badge-important {
+      font-size: 0.75rem;
+      margin-left: 0.25rem;
+    }
+    .progress {
+      height: 1.5rem;
+    }
+    .color-swatch {
+      display: inline-block;
+      width: 50px;
+      height: 50px;
+      border: 1px solid #dee2e6;
+      border-radius: 0.25rem;
+      margin-right: 0.5rem;
+      vertical-align: middle;
+    }
+    .color-row:hover {
+      background-color: #f8f9fa;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="row mb-4">
+      <div class="col">
+        <h1 class="display-4">CSS Analysis Report</h1>
+        <p class="lead text-muted">
+          Analysis of <code><%= analysis[:summary][:file_name] %></code>
+        </p>
+        <p class="text-muted">
+          Generated on <%= analysis[:summary][:generated_at].strftime('%B %d, %Y at %I:%M %p') %> using
+          <a href="https://github.com/anthropics/cataract" target="_blank">Cataract</a>
+        </p>
+      </div>
+    </div>
+
+    <!-- Summary Statistics -->
+    <div class="row mb-5">
+      <div class="col-md-3">
+        <div class="card stat-card">
+          <div class="card-body">
+            <div class="stat-number"><%= analysis[:summary][:total_rules] %></div>
+            <div class="stat-label">Total Rules</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card stat-card">
+          <div class="card-body">
+            <div class="stat-number"><%= analysis[:properties][:total_properties] %></div>
+            <div class="stat-label">Total Declarations</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card stat-card">
+          <div class="card-body">
+            <div class="stat-number"><%= analysis[:properties][:unique_properties] %></div>
+            <div class="stat-label">Unique Properties</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card stat-card">
+          <div class="card-body">
+            <div class="stat-number"><%= analysis[:colors][:unique_colors] %></div>
+            <div class="stat-label">Unique Colors</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Analysis Tabs -->
+    <div class="row">
+      <div class="col">
+        <ul class="nav nav-tabs mb-4" id="analysisTabs" role="tablist">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="properties-tab" data-bs-toggle="tab" data-bs-target="#properties" type="button" role="tab" aria-controls="properties" aria-selected="true">
+              Top Properties
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="colors-tab" data-bs-toggle="tab" data-bs-target="#colors" type="button" role="tab" aria-controls="colors" aria-selected="false">
+              Colors
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="specificity-tab" data-bs-toggle="tab" data-bs-target="#specificity" type="button" role="tab" aria-controls="specificity" aria-selected="false">
+              Specificity
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="important-tab" data-bs-toggle="tab" data-bs-target="#important" type="button" role="tab" aria-controls="important" aria-selected="false">
+              !important
+            </button>
+          </li>
+        </ul>
+
+        <div class="tab-content" id="analysisTabsContent">
+          <!-- Top Properties Tab -->
+          <div class="tab-pane fade show active" id="properties" role="tabpanel" aria-labelledby="properties-tab">
+            <h3 class="mb-4">Top <%= options[:top] %> Most Used Properties</h3>
+
+            <div class="table-responsive">
+              <table class="table table-hover">
+                <thead class="table-light">
+                  <tr>
+                    <th style="width: 5%">#</th>
+                    <th style="width: 25%">Property</th>
+                    <th style="width: 15%">Count</th>
+                    <th style="width: 15%">Percentage</th>
+                    <th style="width: 40%">Usage</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% analysis[:properties][:top_properties].each_with_index do |prop, index| %>
+                    <tr class="property-row">
+                      <td class="text-muted"><%= index + 1 %></td>
+                      <td>
+                        <code class="text-primary"><%= prop[:name] %></code>
+                      </td>
+                      <td>
+                        <strong><%= prop[:count] %></strong>
+                      </td>
+                      <td>
+                        <%= prop[:percentage] %>%
+                      </td>
+                      <td>
+                        <div class="progress">
+                          <div class="progress-bar" role="progressbar"
+                               style="width: <%= prop[:percentage] %>%"
+                               aria-valuenow="<%= prop[:percentage] %>"
+                               aria-valuemin="0"
+                               aria-valuemax="100">
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td></td>
+                      <td colspan="4">
+                        <details>
+                          <summary class="text-muted" style="cursor: pointer;">
+                            Show examples (<%= prop[:examples].length %>)
+                          </summary>
+                          <div class="mt-2">
+                            <% prop[:examples].each do |example| %>
+                              <div class="example-box">
+                                <span class="text-muted"><%= example[:selector] %></span>
+                                { <strong><%= prop[:name] %></strong>: <%= example[:value] %><% if example[:important] %><span class="badge bg-danger badge-important">!important</span><% end %>; }
+                                <% unless example[:media].empty? %>
+                                  <span class="badge bg-secondary ms-2"><%= example[:media].join(', ') %></span>
+                                <% end %>
+                              </div>
+                            <% end %>
+                          </div>
+                        </details>
+                      </td>
+                    </tr>
+                  <% end %>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Colors Tab -->
+          <div class="tab-pane fade" id="colors" role="tabpanel" aria-labelledby="colors-tab">
+            <h3 class="mb-4">Color Palette (<%= analysis[:colors][:unique_colors] %> unique colors)</h3>
+
+            <div class="table-responsive">
+              <table class="table table-hover">
+                <thead class="table-light">
+                  <tr>
+                    <th style="width: 10%">Swatch</th>
+                    <th style="width: 25%">Color</th>
+                    <th style="width: 15%">Count</th>
+                    <th style="width: 15%">Percentage</th>
+                    <th style="width: 35%">Usage</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% analysis[:colors][:colors].first(50).each do |color_data| %>
+                    <tr class="color-row">
+                      <td>
+                        <div class="color-swatch" style="background-color: <%= color_data[:hex] %>" title="<%= color_data[:color] %>"></div>
+                      </td>
+                      <td>
+                        <code class="text-dark"><%= color_data[:color] %></code>
+                      </td>
+                      <td>
+                        <strong><%= color_data[:count] %></strong>
+                      </td>
+                      <td>
+                        <%= color_data[:percentage] %>%
+                      </td>
+                      <td>
+                        <div class="progress">
+                          <div class="progress-bar bg-secondary" role="progressbar"
+                               style="width: <%= color_data[:percentage] %>%"
+                               aria-valuenow="<%= color_data[:percentage] %>"
+                               aria-valuemin="0"
+                               aria-valuemax="100">
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td></td>
+                      <td colspan="4">
+                        <details>
+                          <summary class="text-muted" style="cursor: pointer;">
+                            Show examples (<%= color_data[:examples].length %>)
+                          </summary>
+                          <div class="mt-2">
+                            <% color_data[:examples].each do |example| %>
+                              <div class="example-box">
+                                <span class="text-muted"><%= example[:selector] %></span>
+                                { <strong><%= example[:property] %></strong>: <%= example[:original_value] %>; }
+                                <% unless example[:media].empty? %>
+                                  <span class="badge bg-secondary ms-2"><%= example[:media].join(', ') %></span>
+                                <% end %>
+                              </div>
+                            <% end %>
+                          </div>
+                        </details>
+                      </td>
+                    </tr>
+                  <% end %>
+                </tbody>
+              </table>
+            </div>
+
+            <% if analysis[:colors][:unique_colors] > 50 %>
+              <div class="alert alert-info mt-3">
+                Showing top 50 of <%= analysis[:colors][:unique_colors] %> colors
+              </div>
+            <% end %>
+          </div>
+
+          <!-- Specificity Tab -->
+          <div class="tab-pane fade" id="specificity" role="tabpanel" aria-labelledby="specificity-tab">
+            <h3 class="mb-4">Specificity Analysis</h3>
+
+            <!-- Statistics Cards -->
+            <div class="row mb-4">
+              <div class="col-md-3">
+                <div class="card text-center">
+                  <div class="card-body">
+                    <h5 class="card-title text-primary"><%= analysis[:specificity][:average_specificity] %></h5>
+                    <p class="card-text text-muted small">Average Specificity</p>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-3">
+                <div class="card text-center">
+                  <div class="card-body">
+                    <h5 class="card-title text-danger"><%= analysis[:specificity][:max_specificity] %></h5>
+                    <p class="card-text text-muted small">Highest Specificity</p>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-3">
+                <div class="card text-center">
+                  <div class="card-body">
+                    <h5 class="card-title text-success"><%= analysis[:specificity][:min_specificity] %></h5>
+                    <p class="card-text text-muted small">Lowest Specificity</p>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-3">
+                <div class="card text-center">
+                  <div class="card-body">
+                    <h5 class="card-title text-warning"><%= analysis[:specificity][:high_specificity_count] %></h5>
+                    <p class="card-text text-muted small">High Specificity (>100)</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Specificity Distribution -->
+            <div class="card mb-4">
+              <div class="card-header">
+                <h5 class="mb-0">Specificity Distribution</h5>
+              </div>
+              <div class="card-body">
+                <div class="row text-center">
+                  <div class="col-md-3">
+                    <div class="mb-2">
+                      <span class="badge bg-success" style="font-size: 1rem; padding: 0.5rem 1rem;">
+                        <%= analysis[:specificity][:categories][:low] %>
+                      </span>
+                    </div>
+                    <small class="text-muted">Low (0-10)<br>Element selectors</small>
+                  </div>
+                  <div class="col-md-3">
+                    <div class="mb-2">
+                      <span class="badge bg-info" style="font-size: 1rem; padding: 0.5rem 1rem;">
+                        <%= analysis[:specificity][:categories][:medium] %>
+                      </span>
+                    </div>
+                    <small class="text-muted">Medium (11-100)<br>Class selectors</small>
+                  </div>
+                  <div class="col-md-3">
+                    <div class="mb-2">
+                      <span class="badge bg-warning" style="font-size: 1rem; padding: 0.5rem 1rem;">
+                        <%= analysis[:specificity][:categories][:high] %>
+                      </span>
+                    </div>
+                    <small class="text-muted">High (101-1000)<br>ID selectors</small>
+                  </div>
+                  <div class="col-md-3">
+                    <div class="mb-2">
+                      <span class="badge bg-danger" style="font-size: 1rem; padding: 0.5rem 1rem;">
+                        <%= analysis[:specificity][:categories][:very_high] %>
+                      </span>
+                    </div>
+                    <small class="text-muted">Very High (>1000)<br>Multiple IDs</small>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Top 20 Highest Specificity Selectors -->
+            <h4 class="mb-3">Top 20 Highest Specificity Selectors</h4>
+            <div class="table-responsive">
+              <table class="table table-hover">
+                <thead class="table-light">
+                  <tr>
+                    <th style="width: 10%">Rank</th>
+                    <th style="width: 15%">Specificity</th>
+                    <th style="width: 50%">Selector</th>
+                    <th style="width: 15%">Declarations</th>
+                    <th style="width: 10%">Media</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% analysis[:specificity][:top_20_highest].each_with_index do |item, index| %>
+                    <%
+                      badge_class = if item[:specificity] > 1000
+                                      'bg-danger'
+                                    elsif item[:specificity] > 100
+                                      'bg-warning'
+                                    elsif item[:specificity] > 10
+                                      'bg-info'
+                                    else
+                                      'bg-success'
+                                    end
+                    %>
+                    <tr>
+                      <td class="text-muted"><%= index + 1 %></td>
+                      <td>
+                        <span class="badge <%= badge_class %>"><%= item[:specificity] %></span>
+                      </td>
+                      <td>
+                        <code style="font-size: 0.875rem;"><%= item[:selector] %></code>
+                      </td>
+                      <td class="text-center">
+                        <%= item[:declaration_count] %>
+                      </td>
+                      <td>
+                        <% unless item[:media].empty? %>
+                          <span class="badge bg-secondary" style="font-size: 0.75rem;"><%= item[:media].first %></span>
+                        <% end %>
+                      </td>
+                    </tr>
+                  <% end %>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- !important Tab -->
+          <div class="tab-pane fade" id="important" role="tabpanel" aria-labelledby="important-tab">
+            <h3 class="mb-4">!important Usage Analysis</h3>
+
+            <!-- Statistics Cards -->
+            <div class="row mb-4">
+              <div class="col-md-3">
+                <div class="card text-center">
+                  <div class="card-body">
+                    <h5 class="card-title text-danger"><%= analysis[:important][:important_count] %></h5>
+                    <p class="card-text text-muted small">!important Declarations</p>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-3">
+                <div class="card text-center">
+                  <div class="card-body">
+                    <h5 class="card-title text-warning"><%= analysis[:important][:important_percentage] %>%</h5>
+                    <p class="card-text text-muted small">Of All Declarations</p>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-3">
+                <div class="card text-center">
+                  <div class="card-body">
+                    <h5 class="card-title text-info"><%= analysis[:important][:properties_using_important] %></h5>
+                    <p class="card-text text-muted small">Properties Affected</p>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-3">
+                <div class="card text-center">
+                  <div class="card-body">
+                    <h5 class="card-title text-primary"><%= analysis[:important][:selectors_using_important] %></h5>
+                    <p class="card-text text-muted small">Selectors Using It</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Top Properties Using !important -->
+            <h4 class="mb-3 mt-4">Top Properties Using !important</h4>
+            <div class="table-responsive">
+              <table class="table table-hover">
+                <thead class="table-light">
+                  <tr>
+                    <th style="width: 10%">Rank</th>
+                    <th style="width: 40%">Property</th>
+                    <th style="width: 20%">Count</th>
+                    <th style="width: 30%">% of !important</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% analysis[:important][:top_properties].first(10).each_with_index do |prop, index| %>
+                    <tr>
+                      <td class="text-muted"><%= index + 1 %></td>
+                      <td>
+                        <code class="text-primary"><%= prop[:property] %></code>
+                      </td>
+                      <td>
+                        <strong><%= prop[:count] %></strong>
+                      </td>
+                      <td>
+                        <div class="progress">
+                          <div class="progress-bar bg-danger" role="progressbar"
+                               style="width: <%= prop[:percentage] %>%"
+                               aria-valuenow="<%= prop[:percentage] %>"
+                               aria-valuemin="0"
+                               aria-valuemax="100">
+                            <%= prop[:percentage] %>%
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  <% end %>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Top Selectors Using !important -->
+            <h4 class="mb-3 mt-4">Top Selectors Using !important</h4>
+            <div class="table-responsive">
+              <table class="table table-hover">
+                <thead class="table-light">
+                  <tr>
+                    <th style="width: 10%">Rank</th>
+                    <th style="width: 70%">Selector</th>
+                    <th style="width: 20%">!important Count</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% analysis[:important][:top_selectors].first(20).each_with_index do |sel, index| %>
+                    <tr>
+                      <td class="text-muted"><%= index + 1 %></td>
+                      <td>
+                        <code style="font-size: 0.875rem;"><%= sel[:selector] %></code>
+                      </td>
+                      <td>
+                        <span class="badge bg-danger"><%= sel[:count] %></span>
+                      </td>
+                    </tr>
+                  <% end %>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- All !important Declarations -->
+            <% if analysis[:important][:important_count] <= 50 %>
+              <h4 class="mb-3 mt-4">All !important Declarations (<%= analysis[:important][:important_count] %>)</h4>
+              <div class="table-responsive">
+                <table class="table table-hover table-sm">
+                  <thead class="table-light">
+                    <tr>
+                      <th style="width: 40%">Selector</th>
+                      <th style="width: 25%">Property</th>
+                      <th style="width: 25%">Value</th>
+                      <th style="width: 10%">Media</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <% analysis[:important][:all_important].each do |item| %>
+                      <tr>
+                        <td>
+                          <code style="font-size: 0.75rem;"><%= item[:selector] %></code>
+                        </td>
+                        <td>
+                          <code class="text-primary"><%= item[:property] %></code>
+                        </td>
+                        <td>
+                          <code class="text-muted" style="font-size: 0.75rem;"><%= item[:value] %></code>
+                        </td>
+                        <td>
+                          <% unless item[:media].empty? %>
+                            <span class="badge bg-secondary" style="font-size: 0.65rem;"><%= item[:media].first %></span>
+                          <% end %>
+                        </td>
+                      </tr>
+                    <% end %>
+                  </tbody>
+                </table>
+              </div>
+            <% else %>
+              <div class="alert alert-info mt-4">
+                <%= analysis[:important][:important_count] %> !important declarations found. Showing top properties and selectors above.
+              </div>
+            <% end %>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="mt-5 pt-4 border-top text-center text-muted">
+      <p>
+        Generated by <a href="https://github.com/anthropics/cataract" target="_blank">Cataract CSS Parser</a>
+      </p>
+    </footer>
+  </div>
+
+  <!-- Bootstrap JS (optional, for interactive components) -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

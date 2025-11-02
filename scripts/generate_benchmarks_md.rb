@@ -15,7 +15,6 @@ class BenchmarkDocGenerator
     @results_dir = results_dir
     @output_path = output_path
     @metadata = load_metadata
-    @premailer_data = load_benchmark_data('premailer')
     @parsing_data = load_benchmark_data('parsing')
     @serialization_data = load_benchmark_data('serialization')
     @specificity_data = load_benchmark_data('specificity')
@@ -25,7 +24,7 @@ class BenchmarkDocGenerator
 
   def generate
     # Check if we have any data to generate
-    if !@premailer_data && !@parsing_data && !@serialization_data &&
+    if !@parsing_data && !@serialization_data &&
        !@specificity_data && !@merging_data && !@yjit_data
       puts '⚠ Warning: No benchmark data found. Run benchmarks first: rake benchmark'
       puts 'Available data files:'
@@ -41,7 +40,6 @@ class BenchmarkDocGenerator
     File.write(@output_path, output)
     puts '✓ Generated BENCHMARKS.md'
     puts '  Included benchmarks:'
-    puts '    - Premailer' if @premailer_data
     puts '    - Parsing' if @parsing_data
     puts '    - Serialization' if @serialization_data
     puts '    - Specificity' if @specificity_data
@@ -49,7 +47,6 @@ class BenchmarkDocGenerator
     puts '    - YJIT' if @yjit_data
 
     missing = []
-    missing << 'Premailer' unless @premailer_data
     missing << 'Parsing' unless @parsing_data
     missing << 'Serialization' unless @serialization_data
     missing << 'Specificity' unless @specificity_data
@@ -129,7 +126,7 @@ class BenchmarkDocGenerator
   end
 
   # Access instance variables for ERB
-  attr_reader :metadata, :premailer_data, :parsing_data, :serialization_data,
+  attr_reader :metadata, :parsing_data, :serialization_data,
               :specificity_data, :merging_data, :yjit_data
 end
 

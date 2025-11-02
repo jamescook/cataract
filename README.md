@@ -112,34 +112,6 @@ sheet.each_selector(specificity: 10..100) { |sel, decls, spec, media| ... }  # C
 sheet.each_selector(specificity: ..10) { |sel, decls, spec, media| ... }     # Low specificity (<= 10)
 ```
 
-### Drop-in Replacement for Premailer
-
-Cataract can be used as a drop-in replacement for [css_parser](https://github.com/premailer/css_parser) in [Premailer](https://github.com/premailer/premailer):
-
-```ruby
-require 'cataract'
-require 'premailer'
-
-# Enable Cataract as css_parser replacement
-Cataract.mimic_CssParser!
-
-# Use Premailer as normal - it will now use Cataract under the hood
-premailer = Premailer.new(html, with_html_string: true)
-output = premailer.to_inline_css
-
-# Restore original css_parser if needed
-Cataract.restore_CssParser!
-```
-
-The compatibility layer supports all css_parser APIs used by Premailer, including:
-- `add_block!`, `load_string!`, `load_file!`, `load_uri!`
-- `each_selector`, `find_rule_sets`
-- `add_rule!` with media type support
-- Shorthand expansion (`expand_shorthand!`)
-- Rule merging
-
-**Note**: Cataract provides this compatibility layer specifically for Premailer integration. For new projects, we recommend using Cataract's native API directly (see Basic Parsing above).
-
 See [BENCHMARKS.md](BENCHMARKS.md) for detailed performance comparisons.
 
 ## CSS Support

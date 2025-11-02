@@ -14,32 +14,6 @@ Comprehensive performance comparison between Cataract and css_parser gem.
 - **OS**: <%= metadata['os'] %>
 - **Generated**: <%= metadata['timestamp'] %>
 
-<%- if premailer_data -%>
-<details>
-<summary><h2>Premailer Integration</h2></summary>
-
-Drop-in replacement performance for Premailer email CSS inlining.
-
-<%- cataract_result = premailer_data['results'].find { |r| r['name'].include?('cataract') } -%>
-<%- css_parser_result = premailer_data['results'].find { |r| r['name'].include?('css_parser') } -%>
-<%- speedup = premailer_data['metadata']['speedups']['avg'] -%>
-
-| Parser | Speed | Time per operation |
-|--------|-------|-------------------|
-| css_parser | <%= format_ips(css_parser_result, short: true) %> | <%= format_time_per_op(css_parser_result) %> |
-| **Cataract** | **<%= format_ips(cataract_result, short: true) %>** | **<%= format_time_per_op(cataract_result) %>** |
-| **Speedup** | **<%= format_speedup(speedup) %>** | |
-
-### Key Takeaways
-- Cataract provides **<%= format_speedup(speedup) %>** CSS inlining for email templates
-- Drop-in replacement for Premailer with zero code changes
-- Zero code changes required - just call `Cataract.mimic_CssParser!`
-
-</details>
-
----
-<%- end -%>
-
 <%- if parsing_data -%>
 <details>
 <summary><h2>CSS Parsing</h2></summary>
@@ -190,10 +164,6 @@ Impact of Ruby's YJIT JIT compiler on Ruby-side operations. The C extension perf
 
 | Category | Min Speedup | Max Speedup | Avg Speedup |
 |----------|-------------|-------------|-------------|
-<%- if premailer_data && premailer_data['metadata']['speedup'] -%>
-<%- speedup = premailer_data['metadata']['speedup'] -%>
-| **Premailer Integration** | <%= format_speedup(speedup) %> | <%= format_speedup(speedup) %> | <%= format_speedup(speedup) %> |
-<%- end -%>
 <%- if parsing_data && parsing_data['metadata']['speedups'] -%>
 <%- sp = parsing_data['metadata']['speedups'] -%>
 | **Parsing** | <%= format_speedup(sp['min']) %> | <%= format_speedup(sp['max']) %> | <%= format_speedup(sp['avg']) %> |
@@ -220,7 +190,6 @@ Impact of Ruby's YJIT JIT compiler on Ruby-side operations. The C extension perf
 
 ### Use Cases
 
-- **Email inlining** (Premailer): Drop-in replacement for css_parser
 - **Large CSS files**: Handles complex stylesheets efficiently
 - **Specificity calculations**: Optimized for selector analysis
 - **High-volume processing**: Reduced allocations minimize GC pressure
@@ -239,7 +208,6 @@ rake benchmark:parsing
 rake benchmark:serialization
 rake benchmark:specificity
 rake benchmark:merging
-rake benchmark:premailer
 rake benchmark:yjit
 
 # Generate documentation
@@ -251,4 +219,3 @@ rake benchmark:generate_docs
 - All benchmarks use benchmark-ips with 3s warmup and 5-10s measurement periods
 - Measurements are median i/s (iterations per second) with standard deviation
 - css_parser gem must be installed for comparison benchmarks
-- Premailer benchmark requires premailer gem

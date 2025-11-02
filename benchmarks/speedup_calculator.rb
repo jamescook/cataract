@@ -72,10 +72,6 @@ class SpeedupCalculator
       ->(result) { result['name'].include?('cataract') }
     end
 
-    def self.premailer
-      ->(result) { result['name'].include?('premailer') }
-    end
-
     def self.with_yjit
       ->(result) { result['name'].include?('YJIT') && !result['name'].include?('no YJIT') }
     end
