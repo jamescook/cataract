@@ -37,7 +37,6 @@ task :benchmark do
   Rake::Task['benchmark:specificity'].invoke
   Rake::Task['benchmark:merging'].invoke
   Rake::Task['benchmark:yjit'].invoke
-  Rake::Task['benchmark:premailer'].invoke
   puts "\n#{'-' * 80}"
   puts 'All benchmarks complete!'
   puts 'Generate documentation with: rake benchmark:generate_docs'
@@ -67,12 +66,6 @@ namespace :benchmark do
   task :merging do
     puts 'Running merging benchmark...'
     ruby 'benchmarks/benchmark_merging.rb'
-  end
-
-  desc 'Benchmark Premailer with css_parser vs Cataract'
-  task :premailer do
-    puts 'Running premailer benchmark...'
-    ruby 'benchmarks/benchmark_premailer.rb'
   end
 
   desc 'Benchmark Ruby-side operations with YJIT on vs off'

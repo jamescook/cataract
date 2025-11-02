@@ -20,6 +20,7 @@ typedef enum {
 VALUE parse_css_impl(VALUE css_string, int depth, VALUE parent_media_query);
 VALUE parse_media_query(const char *query_str, long query_len);
 VALUE parse_declarations_string(const char *start, const char *end);
+static char* copy_without_comments(const char *start, const char *end, long *out_len);
 
 // Context for merging hash callbacks
 struct merge_hash_ctx {
@@ -80,21 +81,40 @@ void capture_declarations_fn(
                  (ptrdiff_t)(decl_start - css_string_base), (ptrdiff_t)(p - css_string_base),
                  (int)(end - start), start);
 
+    // Fast path: check if there are any comments in the declaration block
+    int has_comments = 0;
+    for (const char *check = start; check + 1 < end; check++) {
+        if (*check == '/' && *(check + 1) == '*') {
+            has_comments = 1;
+            break;
+        }
+    }
+
+    // If there are comments, strip them first (rare case)
+    char *clean_buffer = NULL;
+    const char *clean_end = end;
+    if (has_comments) {
+        long clean_len;
+        clean_buffer = copy_without_comments(start, end, &clean_len);
+        start = clean_buffer;
+        clean_end = clean_buffer + clean_len;
+    }
+
     // Simple C-level parser for declarations
     // Input: "color: red; background: blue !important"
     // Output: Array of Declarations::Value structs
     const char *pos = start;
-    while (pos < end) {
+    while (pos < clean_end) {
         // Skip whitespace and semicolons
-        while (pos < end && (IS_WHITESPACE(*pos) || *pos == ';')) {
+        while (pos < clean_end && (IS_WHITESPACE(*pos) || *pos == ';')) {
             pos++;
         }
-        if (pos >= end) break;
+        if (pos >= clean_end) break;
 
         // Find property (up to colon)
         const char *prop_start = pos;
-        while (pos < end && *pos != ':') pos++;
-        if (pos >= end) break;  // No colon found
+        while (pos < clean_end && *pos != ':') pos++;
+        if (pos >= clean_end) break;  // No colon found
 
         const char *prop_end = pos;
         // Trim whitespace from property
@@ -104,7 +124,7 @@ void capture_declarations_fn(
         pos++;  // Skip colon
 
         // Skip whitespace after colon
-        while (pos < end && IS_WHITESPACE(*pos)) {
+        while (pos < clean_end && IS_WHITESPACE(*pos)) {
             pos++;
         }
 
@@ -112,7 +132,7 @@ void capture_declarations_fn(
         // Handle parentheses: semicolons inside () don't terminate the value
         const char *val_start = pos;
         int paren_depth = 0;
-        while (pos < end) {
+        while (pos < clean_end) {
             if (*pos == '(') {
                 paren_depth++;
             } else if (*pos == ')') {
@@ -195,7 +215,12 @@ void capture_declarations_fn(
                          (ptrdiff_t)(prop_start - css_string_base));
         }
 
-        if (pos < end && *pos == ';') pos++;  // Skip semicolon if present
+        if (pos < clean_end && *pos == ';') pos++;  // Skip semicolon if present
+    }
+
+    // Free temporary buffer if allocated
+    if (clean_buffer) {
+        xfree(clean_buffer);
     }
 
     // Reset for next rule
@@ -360,33 +385,82 @@ VALUE parse_media_query(const char *query_str, long query_len) {
     return result;
 }
 
+// Helper: Copy string segment skipping comments
+// Allocates new buffer and returns it with new length
+static char* copy_without_comments(const char *start, const char *end, long *out_len) {
+    long max_len = end - start;
+    char *buffer = ALLOC_N(char, max_len);
+    char *write_pos = buffer;
+    const char *read_pos = start;
+
+    while (read_pos < end) {
+        // Check for comment start
+        if (read_pos + 1 < end && *read_pos == '/' && *(read_pos + 1) == '*') {
+            // Skip past comment
+            read_pos += 2;
+            while (read_pos + 1 < end) {
+                if (*read_pos == '*' && *(read_pos + 1) == '/') {
+                    read_pos += 2;
+                    break;
+                }
+                read_pos++;
+            }
+        } else {
+            // Copy character
+            *write_pos++ = *read_pos++;
+        }
+    }
+
+    *out_len = write_pos - buffer;
+    return buffer;
+}
+
 // Parse declarations string into array of Declarations::Value structs
 // Used by parse_declarations Ruby wrapper
 VALUE parse_declarations_string(const char *start, const char *end) {
     VALUE declarations = rb_ary_new();
 
+    // Fast path: check if there are any comments
+    int has_comments = 0;
+    for (const char *check = start; check + 1 < end; check++) {
+        if (*check == '/' && *(check + 1) == '*') {
+            has_comments = 1;
+            break;
+        }
+    }
+
+    // If there are comments, strip them first (rare case)
+    char *clean_buffer = NULL;
+    const char *clean_end = end;
+    if (has_comments) {
+        long clean_len;
+        clean_buffer = copy_without_comments(start, end, &clean_len);
+        start = clean_buffer;
+        clean_end = clean_buffer + clean_len;
+    }
+
     const char *pos = start;
-    while (pos < end) {
+    while (pos < clean_end) {
         // Skip whitespace and semicolons
-        while (pos < end && (IS_WHITESPACE(*pos) || *pos == ';')) pos++;
-        if (pos >= end) break;
+        while (pos < clean_end && (IS_WHITESPACE(*pos) || *pos == ';')) pos++;
+        if (pos >= clean_end) break;
 
         // Find property (up to colon)
         const char *prop_start = pos;
-        while (pos < end && *pos != ':') pos++;
-        if (pos >= end) break;  // No colon found
+        while (pos < clean_end && *pos != ':') pos++;
+        if (pos >= clean_end) break;  // No colon found
 
         const char *prop_end = pos;
         trim_trailing(prop_start, &prop_end);
         trim_leading(&prop_start, prop_end);
 
         pos++;  // Skip colon
-        trim_leading(&pos, end);
+        trim_leading(&pos, clean_end);
 
         // Find value (up to semicolon or end), handling parentheses
         const char *val_start = pos;
         int paren_depth = 0;
-        while (pos < end) {
+        while (pos < clean_end) {
             if (*pos == '(') paren_depth++;
             else if (*pos == ')') paren_depth--;
             else if (*pos == ';' && paren_depth == 0) break;
@@ -434,6 +508,11 @@ VALUE parse_declarations_string(const char *start, const char *end) {
 
             rb_ary_push(declarations, decl);
         }
+    }
+
+    // Free temporary buffer if allocated
+    if (clean_buffer) {
+        xfree(clean_buffer);
     }
 
     return declarations;
