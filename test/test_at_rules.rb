@@ -29,8 +29,9 @@ class TestAtRules < Minitest::Test
     rule = @sheet.each_selector.first
 
     assert_equal '@font-face', rule[0]
-    assert_includes rule[1], 'font-family'
-    assert_includes rule[1], 'src'
+    # rule[1] is now a Declarations object, check for properties properly
+    assert rule[1].key?('font-family')
+    assert rule[1].key?('src')
   end
 
   def test_font_face_with_descriptors

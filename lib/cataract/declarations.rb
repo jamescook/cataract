@@ -3,6 +3,7 @@
 module Cataract
   # Container for CSS property declarations with merge and cascade support
   class Declarations
+    include Enumerable
     def initialize(properties = {})
       case properties
       when Array
@@ -21,15 +22,14 @@ module Cataract
     end
 
     # Property access
-    # Returns value with trailing semicolon (css_parser compatibility)
+    # Returns value without trailing semicolon
     def get_property(property)
       prop = normalize_property(property)
       val = find_value(prop)
       return nil if val.nil?
 
-      # css_parser includes trailing semicolon in values
       suffix = val.important ? ' !important' : ''
-      "#{val.value}#{suffix};"
+      "#{val.value}#{suffix}"
     end
     alias [] get_property
 
@@ -37,12 +37,17 @@ module Cataract
       prop = normalize_property(property)
 
       # Parse !important and strip trailing semicolons (css_parser compatibility)
-      value_str = value.to_s.strip
+      clean_value = value.to_s.strip
       # Remove trailing semicolons (guard to avoid allocation when no semicolon present)
-      value_str = value_str.sub(/;+$/, '') if value_str.end_with?(';')
+      # value_str = value_str.sub(/;+$/, '') if value_str.end_with?(';')
+      clean_value.sub!(/;+$/, '') if clean_value.end_with?(';')
 
-      is_important = value_str.end_with?('!important')
-      clean_value = is_important ? value_str.sub(/\s*!important\s*$/, '').strip : value_str.strip
+      is_important = clean_value.end_with?('!important')
+      if is_important
+        clean_value.sub!(/\s*!important\s*$/, '').strip!
+      else
+        clean_value.strip!
+      end
 
       # Reject malformed declarations with no value (e.g., "color: !important")
       # css_parser silently ignores these
@@ -109,6 +114,9 @@ module Cataract
       "#{declarations.join('; ')};"
     end
 
+    # Enable implicit string conversion for comparisons
+    alias to_str to_s
+
     def to_h
       result = {}
       each do |property, value, is_important|
@@ -146,9 +154,16 @@ module Cataract
     end
 
     def ==(other)
-      return false unless other.is_a?(Declarations)
-
-      @values == other.instance_variable_get(:@values)
+      case other
+      when Declarations
+        # Compare arrays of Value structs
+        to_a == other.to_a
+      when String
+        # Allow string comparison for convenience
+        to_s == other
+      else
+        false
+      end
     end
 
     private

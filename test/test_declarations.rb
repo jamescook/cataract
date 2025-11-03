@@ -11,8 +11,8 @@ class TestDeclarations < Minitest::Test
     decl['color'] = 'red'
     decl['background'] = 'blue'
 
-    assert_equal 'red;', decl['color']
-    assert_equal 'blue;', decl['background']
+    assert_equal 'red', decl['color']
+    assert_equal 'blue', decl['background']
     assert_equal 2, decl.size
     refute_empty decl
   end
@@ -23,7 +23,7 @@ class TestDeclarations < Minitest::Test
     decl['color'] = 'red !important'
     decl['background'] = 'blue'
 
-    assert_equal 'red !important;', decl['color']
+    assert_equal 'red !important', decl['color']
     assert decl.important?('color')
     refute decl.important?('background')
 
@@ -36,8 +36,8 @@ class TestDeclarations < Minitest::Test
                                         'background' => 'blue !important'
                                       })
 
-    assert_equal 'red;', decl['color']
-    assert_equal 'blue !important;', decl['background']
+    assert_equal 'red', decl['color']
+    assert_equal 'blue !important', decl['background']
     refute decl.important?('color')
     assert decl.important?('background')
   end
@@ -78,12 +78,12 @@ class TestDeclarations < Minitest::Test
     # Test non-mutating merge
     merged = decl1.merge(decl2)
 
-    assert_equal 'blue !important;', merged['color']
-    assert_equal '10px;', merged['margin']
-    assert_equal '5px;', merged['padding']
+    assert_equal 'blue !important', merged['color']
+    assert_equal '10px', merged['margin']
+    assert_equal '5px', merged['padding']
 
     # Original should be unchanged
-    assert_equal 'red;', decl1['color']
+    assert_equal 'red', decl1['color']
     assert_nil decl1['padding']
   end
 
@@ -92,9 +92,9 @@ class TestDeclarations < Minitest::Test
 
     merged = decl.merge({ 'background' => 'blue', 'margin' => '10px' })
 
-    assert_equal 'red;', merged['color']
-    assert_equal 'blue;', merged['background']
-    assert_equal '10px;', merged['margin']
+    assert_equal 'red', merged['color']
+    assert_equal 'blue', merged['background']
+    assert_equal '10px', merged['margin']
 
     # Original unchanged
     assert_nil decl['background']
@@ -106,8 +106,8 @@ class TestDeclarations < Minitest::Test
     decl['background'] = 'blue'
 
     # Should mutate original
-    assert_equal 'red;', decl['color']
-    assert_equal 'blue;', decl['background']
+    assert_equal 'red', decl['color']
+    assert_equal 'blue', decl['background']
   end
 
   def test_equality
@@ -139,8 +139,8 @@ class TestDeclarations < Minitest::Test
     refute decl.key?('margin')
 
     # After deletion, remaining properties are accessible
-    assert_equal 'red;', decl['color']
-    assert_equal '5px;', decl['padding']
+    assert_equal 'red', decl['color']
+    assert_equal '5px', decl['padding']
   end
 
   def test_to_h

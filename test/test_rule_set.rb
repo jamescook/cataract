@@ -12,23 +12,23 @@ class TestRuleSet < Minitest::Test
 
     rs['background-color'] = 'red'
 
-    assert_equal 'red;', rs['background-color']
+    assert_equal 'red', rs['background-color']
 
     rs['background-color'] = 'blue !important;'
 
-    assert_equal 'blue !important;', rs['background-color']
+    assert_equal 'blue !important', rs['background-color']
   end
 
   def test_getting_property_values
     rs = Cataract::RuleSet.new(selectors: '#content p, a', block: 'color: #fff;')
 
-    assert_equal '#fff;', rs['color']
+    assert_equal '#fff', rs['color']
   end
 
   def test_getting_property_value_ignoring_case
     rs = Cataract::RuleSet.new(selectors: '#content p, a', block: 'color: #fff;')
 
-    assert_equal '#fff;', rs['  ColoR ']
+    assert_equal '#fff', rs['  ColoR ']
   end
 
   def test_each_selector
@@ -77,8 +77,8 @@ class TestRuleSet < Minitest::Test
     rs = Cataract::RuleSet.new(selectors: 'div', block: 'background-image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAiCAMAAAB7);' \
                                                         'background-repeat: no-repeat')
 
-    assert_equal 'url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAiCAMAAAB7);', rs['background-image']
-    assert_equal 'no-repeat;', rs['background-repeat']
+    assert_equal 'url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAiCAMAAAB7)', rs['background-image']
+    assert_equal 'no-repeat', rs['background-repeat']
   end
 
   def test_each_declaration_with_newlines
@@ -180,12 +180,12 @@ class TestRuleSet < Minitest::Test
     # Non-mutating merge
     merged = rule1.merge(rule2)
 
-    assert_equal 'blue;', merged['color']
-    assert_equal '10px;', merged['margin']
-    assert_equal '5px;', merged['padding']
+    assert_equal 'blue', merged['color']
+    assert_equal '10px', merged['margin']
+    assert_equal '5px', merged['padding']
 
     # Original unchanged (returns empty string for missing properties)
-    assert_equal 'red;', rule1['color']
+    assert_equal 'red', rule1['color']
     assert_equal '', rule1['padding']
   end
 
@@ -198,8 +198,8 @@ class TestRuleSet < Minitest::Test
     rule['background'] = 'blue'
 
     # Should mutate original
-    assert_equal 'red;', rule['color']
-    assert_equal 'blue;', rule['background']
+    assert_equal 'red', rule['color']
+    assert_equal 'blue', rule['background']
   end
 
   def test_merge_with_declarations
@@ -211,8 +211,8 @@ class TestRuleSet < Minitest::Test
     decl = Cataract::Declarations.new({ 'margin' => '10px' })
     merged = rule.merge(decl)
 
-    assert_equal 'red;', merged['color']
-    assert_equal '10px;', merged['margin']
+    assert_equal 'red', merged['color']
+    assert_equal '10px', merged['margin']
   end
 
   def test_equality
@@ -246,7 +246,7 @@ class TestRuleSet < Minitest::Test
 
     # Original unchanged (returns empty string for missing properties)
     assert_equal '', rule['background']
-    assert_equal 'blue;', duped['background']
+    assert_equal 'blue', duped['background']
   end
 
   def test_to_h
@@ -283,7 +283,7 @@ class TestRuleSet < Minitest::Test
     rule.delete_property('margin')
 
     refute rule.has_property?('margin')
-    assert_equal 'red;', rule['color']
+    assert_equal 'red', rule['color']
   end
 
   def test_empty?
@@ -308,21 +308,21 @@ class TestRuleSet < Minitest::Test
     rule.expand_shorthand!
 
     # Should expand margin
-    assert_equal '10px;', rule['margin-top']
-    assert_equal '20px;', rule['margin-right']
-    assert_equal '10px;', rule['margin-bottom']
-    assert_equal '20px;', rule['margin-left']
+    assert_equal '10px', rule['margin-top']
+    assert_equal '20px', rule['margin-right']
+    assert_equal '10px', rule['margin-bottom']
+    assert_equal '20px', rule['margin-left']
 
     # Should expand padding
-    assert_equal '5px;', rule['padding-top']
-    assert_equal '5px;', rule['padding-right']
-    assert_equal '5px;', rule['padding-bottom']
-    assert_equal '5px;', rule['padding-left']
+    assert_equal '5px', rule['padding-top']
+    assert_equal '5px', rule['padding-right']
+    assert_equal '5px', rule['padding-bottom']
+    assert_equal '5px', rule['padding-left']
 
     # Should expand border
-    assert_equal '1px;', rule['border-top-width']
-    assert_equal 'solid;', rule['border-top-style']
-    assert_equal 'black;', rule['border-top-color']
+    assert_equal '1px', rule['border-top-width']
+    assert_equal 'solid', rule['border-top-style']
+    assert_equal 'black', rule['border-top-color']
 
     # Original shorthands should be removed (returns empty string for missing properties)
     assert_equal '', rule['margin']

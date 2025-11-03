@@ -91,7 +91,7 @@ class MergingBenchmark < BenchmarkHarness
     parser.add_block!(css)
     rule_sets = []
     parser.each_selector do |selector, declarations, _specificity|
-      rule_sets << CssParser::RuleSet.new(selector, declarations)
+      rule_sets << CssParser::RuleSet.new(selectors: selector, block: declarations)
     end
 
     benchmark(key) do |x|

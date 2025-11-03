@@ -80,7 +80,9 @@ class TestStylesheet < Minitest::Test
     sheet = Cataract::Stylesheet.new
     sheet.add_block!('p { color: red;', fix_braces: true)
 
-    assert_equal 'color: red;', sheet.find_by_selector('p').join
+    declarations = sheet.find_by_selector('p').first
+    assert_kind_of Cataract::Declarations, declarations
+    assert_equal 'color: red;', declarations  # String comparison via ==
   end
 
   def test_round_trip
@@ -182,9 +184,11 @@ body { color: red; }'
 
     sheet.each_selector do |selector, declarations, specificity, media_types|
       assert_equal 'body', selector
-      assert_kind_of String, declarations
-      assert_includes declarations, 'color: red'
-      assert_includes declarations, 'margin: 10px'
+      assert_kind_of Cataract::Declarations, declarations
+      assert declarations.key?('color')
+      assert declarations.key?('margin')
+      assert_equal 'red', declarations['color']
+      assert_equal '10px', declarations['margin']
       assert_kind_of Integer, specificity
       assert_equal [:all], media_types
     end
@@ -195,7 +199,8 @@ body { color: red; }'
     sheet = Cataract.parse_css(css)
 
     sheet.each_selector do |_selector, declarations, _specificity, _media_types|
-      assert_includes declarations, '!important'
+      assert declarations.important?('color')
+      assert_equal 'blue !important', declarations['color']
     end
   end
 
@@ -685,10 +690,19 @@ body { color: red; }'
 
     stylesheet = Cataract::Stylesheet.parse(css)
 
-    assert_equal 'margin: 0px;', stylesheet.find_by_selector('body').join(' ')
-    assert_equal 'margin: 0px; padding: 0px;', stylesheet.find_by_selector('p').join(' ')
-    assert_equal 'color: red;', stylesheet.find_by_selector('.content').join(' ')
-    assert_equal 'font: 12px/normal sans-serif;', stylesheet.find_by_selector('#content').join(' ')
+    # find_by_selector returns array of Declarations objects
+    body_decls = stylesheet.find_by_selector('body')
+    assert_equal 1, body_decls.size
+    assert_equal 'margin: 0px;', body_decls.first
+
+    p_decls = stylesheet.find_by_selector('p')
+    assert_equal 2, p_decls.size
+    # Compare using Declarations objects
+    assert_equal Cataract::Declarations.new('margin: 0px'), p_decls[0]
+    assert_equal Cataract::Declarations.new('padding: 0px'), p_decls[1]
+
+    assert_equal 'color: red;', stylesheet.find_by_selector('.content').first
+    assert_equal 'font: 12px/normal sans-serif;', stylesheet.find_by_selector('#content').first
   end
 
   # ============================================================================
@@ -699,7 +713,7 @@ body { color: red; }'
     sheet = Cataract::Stylesheet.new
     sheet.add_rule!(selector: 'div', declarations: 'color: blue')
 
-    assert_equal 'color: blue;', sheet.find_by_selector('div').join(' ')
+    assert_equal 'color: blue;', sheet.find_by_selector('div').first
   end
 
   def test_adding_a_rule_set
@@ -707,7 +721,7 @@ body { color: red; }'
     rs = Cataract::RuleSet.new(selector: 'div', declarations: 'color: blue')
     sheet.add_rule_set!(rs)
 
-    assert_equal 'color: blue;', sheet.find_by_selector('div').join(' ')
+    assert_equal 'color: blue;', sheet.find_by_selector('div').first
   end
 
   def test_removing_a_rule_set
@@ -717,7 +731,7 @@ body { color: red; }'
     rs2 = Cataract::RuleSet.new(selector: 'div', declarations: 'color: blue')
     sheet.remove_rule_set!(rs2)
 
-    assert_equal '', sheet.find_by_selector('div').join(' ')
+    assert_empty sheet.find_by_selector('div')
   end
 
   def test_converting_to_hash
