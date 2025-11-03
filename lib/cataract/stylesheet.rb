@@ -1,15 +1,61 @@
 # frozen_string_literal: true
 
 module Cataract
-  # Unified CSS stylesheet class - combines parsing, mutation, and querying
-  # This merges the functionality of the old Parser and Stylesheet classes
+  # Represents a parsed CSS stylesheet with support for querying, mutation, and serialization.
+  #
+  # A Stylesheet contains CSS rules organized by media queries. It provides methods for:
+  # - Parsing CSS from strings, files, or URIs
+  # - Querying rules by selector, specificity, or property
+  # - Adding and removing rules
+  # - Serializing back to CSS strings
+  #
+  # Stylesheets are mutable - you can parse multiple CSS sources into the same stylesheet
+  # and they will be merged together.
+  #
+  # @example Basic usage
+  #   # Parse from string
+  #   sheet = Stylesheet.parse("body { color: red; }")
+  #
+  #   # Query rules
+  #   sheet.each_selector { |sel, decls, spec, media| puts "#{sel}: #{decls}" }
+  #
+  #   # Add more rules
+  #   sheet.add_block!("h1 { color: blue; }")
+  #
+  #   # Serialize back to CSS
+  #   puts sheet.to_s
+  #
+  # @see Cataract.parse_css Convenience method for parsing
+  # @see RuleSet Individual CSS rule representation
   class Stylesheet
+    # @return [String, nil] The @charset declaration from the CSS, if present
     attr_reader :charset
 
-    # Create an empty stylesheet
-    # Options:
-    #   - import: false (default) or true/hash for @import resolution
-    #   - io_exceptions: true (default) - raise exceptions on I/O errors
+    # Create a new empty stylesheet.
+    #
+    # @param options [Hash] Configuration options
+    # @option options [Boolean, Hash] :import (false) Enable @import resolution.
+    #   Pass true for defaults, or a hash with:
+    #   - :allowed_schemes [Array<String>] URI schemes to allow (default: ['https'])
+    #   - :extensions [Array<String>] File extensions to allow (default: ['css'])
+    #   - :max_depth [Integer] Maximum import nesting (default: 5)
+    #   - :base_path [String] Base directory for relative imports
+    # @option options [Boolean] :io_exceptions (true) Whether to raise exceptions
+    #   on I/O errors (file not found, network errors, etc.)
+    #
+    # @example Create empty stylesheet
+    #   sheet = Stylesheet.new
+    #   sheet.parse("body { color: red; }")
+    #
+    # @example With import resolution
+    #   sheet = Stylesheet.new(import: true)
+    #   sheet.parse("@import 'style.css';")
+    #
+    # @example With custom import options
+    #   sheet = Stylesheet.new(import: {
+    #     allowed_schemes: ['https', 'file'],
+    #     base_path: '/path/to/css'
+    #   })
     def initialize(options = {})
       @options = {
         import: false,
@@ -22,52 +68,107 @@ module Cataract
       @charset = nil
     end
 
-    # Class-level constructor: Parse CSS string
+    # Parse a CSS string and return a new Stylesheet.
     #
-    # @param css [String] CSS string to parse
-    # @param options [Hash] Options (import:, io_exceptions:)
-    # @return [NewStylesheet] Populated stylesheet
+    # This is a convenience class method that creates a new Stylesheet
+    # and parses the CSS in one step.
     #
-    # @example
-    #   sheet = NewStylesheet.parse("body { color: red; }")
-    #   sheet = NewStylesheet.parse(css, imports: true)
+    # @param css [String] The CSS string to parse
+    # @param options [Hash] Options passed to Stylesheet.new
+    # @option options [Boolean, Hash] :import (false) Enable @import resolution
+    # @option options [Boolean] :io_exceptions (true) Raise exceptions on I/O errors
+    # @return [Stylesheet] A new Stylesheet containing the parsed CSS
+    # @raise [IOError] If import resolution fails and io_exceptions is enabled
     #
+    # @example Parse simple CSS
+    #   sheet = Stylesheet.parse("body { color: red; }")
+    #   sheet.size #=> 1
+    #
+    # @example Parse with imports
+    #   sheet = Stylesheet.parse("@import 'style.css';", import: true)
+    #
+    # @see #parse Instance method for parsing into existing stylesheet
     def self.parse(css, **options)
       sheet = new(options)
       sheet.parse(css)
       sheet
     end
 
-    # Class-level constructor: Load CSS from file
+    # Load CSS from a file and return a new Stylesheet.
     #
-    # @param filename [String] Path to CSS file
-    # @param base_dir [String] Base directory for relative paths
-    # @param options [Hash] Options (import:, io_exceptions:)
-    # @return [NewStylesheet] Populated stylesheet
+    # Reads the file and parses its contents. If import resolution is enabled,
+    # the file's directory is used as the base path for resolving relative imports.
     #
+    # @param filename [String] Path to the CSS file
+    # @param base_dir [String] Base directory for resolving the filename (default: '.')
+    # @param options [Hash] Options passed to Stylesheet.new
+    # @option options [Boolean, Hash] :import (false) Enable @import resolution
+    # @option options [Boolean] :io_exceptions (true) Raise exceptions on I/O errors
+    # @return [Stylesheet] A new Stylesheet containing the parsed CSS
+    # @raise [IOError] If the file doesn't exist and io_exceptions is enabled
+    #
+    # @example Load a CSS file
+    #   sheet = Stylesheet.load_file('style.css')
+    #
+    # @example Load with relative base directory
+    #   sheet = Stylesheet.load_file('components/button.css', 'assets/css')
+    #
+    # @see #load_file! Instance method for loading into existing stylesheet
     def self.load_file(filename, base_dir = '.', **options)
       sheet = new(options)
       sheet.load_file!(filename, base_dir)
       sheet
     end
 
-    # Class-level constructor: Load CSS from URI
+    # Load CSS from a URI and return a new Stylesheet.
     #
-    # @param uri [String] URI to load CSS from (http://, https://, file://)
-    # @param options [Hash] Options (import:, io_exceptions:, base_uri:)
-    # @return [NewStylesheet] Populated stylesheet
+    # Supports http://, https://, and file:// URIs. Network requests use
+    # open-uri with a 10 second timeout and follow redirects.
     #
+    # @param uri [String] URI to load CSS from (http://, https://, or file://)
+    # @param options [Hash] Options passed to Stylesheet.new
+    # @option options [Boolean, Hash] :import (false) Enable @import resolution
+    # @option options [Boolean] :io_exceptions (true) Raise exceptions on I/O errors
+    # @return [Stylesheet] A new Stylesheet containing the parsed CSS
+    # @raise [IOError] If the URI can't be loaded and io_exceptions is enabled
+    # @raise [ArgumentError] If the URI scheme is not supported
+    #
+    # @example Load from HTTPS
+    #   sheet = Stylesheet.load_uri('https://example.com/style.css')
+    #
+    # @example Load local file
+    #   sheet = Stylesheet.load_uri('file:///path/to/style.css')
+    #
+    # @see #load_uri! Instance method for loading into existing stylesheet
     def self.load_uri(uri, **options)
       sheet = new(options)
       sheet.load_uri!(uri, options)
       sheet
     end
 
-    # Parse CSS and merge into this stylesheet
+    # Parse CSS and merge into this stylesheet.
     #
-    # @param css_string [String] CSS to parse
-    # @return [self] Returns self for chaining
+    # Parses the CSS string and adds all rules to this stylesheet. If @import
+    # resolution is enabled (via constructor options), imports will be resolved
+    # before parsing.
     #
+    # This method can be called multiple times to parse and accumulate CSS from
+    # multiple sources into the same stylesheet.
+    #
+    # @param css_string [String] The CSS string to parse
+    # @return [self] Returns self for method chaining
+    # @raise [IOError] If import resolution fails and io_exceptions is enabled
+    #
+    # @example Parse CSS into existing stylesheet
+    #   sheet = Stylesheet.new
+    #   sheet.parse("body { color: red; }")
+    #   sheet.parse("h1 { color: blue; }")
+    #   sheet.size #=> 2
+    #
+    # @example Method chaining
+    #   sheet = Stylesheet.new.parse("body { color: red; }").parse("h1 { color: blue; }")
+    #
+    # @see .parse Class method that creates a new stylesheet
     def parse(css_string)
       # Resolve @import statements if configured in constructor
       css_to_parse = if @options[:import]
@@ -93,24 +194,34 @@ module Cataract
       self
     end
 
-    # Get declarations by selector.
+    # Find all declaration blocks for a specific selector.
     #
-    # css_parser compatibility method. Uses each_selector internally.
+    # Searches the stylesheet for rules matching the exact selector and returns
+    # an array of Declarations objects. Useful for finding what styles apply to
+    # a specific selector.
     #
-    # +media_types+ are optional, and can be a symbol or an array of symbols.
-    # The default value is <tt>:all</tt>.
+    # @param selector [String] The CSS selector to search for (must match exactly)
+    # @param media_types [Symbol, Array<Symbol>] Media type(s) to filter by (default: :all)
+    #   Use :all to search all media queries, or specify :screen, :print, etc.
+    # @return [Array<Declarations>] Array of Declarations objects
+    #   Returns empty array if selector not found.
     #
-    # ==== Examples
-    #  find_by_selector('#content')
-    #  => ['font-size: 13px', 'line-height: 1.2']
+    # @example Find styles for an ID selector
+    #   decls = sheet.find_by_selector('#content').first
+    #   decls['font-size']  #=> "13px"
+    #   decls.to_s          #=> "font-size: 13px; line-height: 1.2;"
     #
-    #  find_by_selector('#content', [:screen, :handheld])
-    #  => ['font-size: 13px', 'line-height: 1.2']
+    # @example Find styles in specific media types
+    #   decls = sheet.find_by_selector('#content', [:screen, :handheld])
     #
-    #  find_by_selector('#content', :print)
-    #  => ['font-size: 11pt', 'line-height: 1.2']
+    # @example Check if property exists
+    #   decls = sheet.find_by_selector('body').first
+    #   decls.key?('color')  #=> true
     #
-    # Returns an array of declaration strings.
+    # @example Using array access syntax (alias)
+    #   sheet['#content']  #=> [#<Declarations...>]
+    #
+    # @see #each_selector For more advanced filtering options
     def find_by_selector(selector, media_types = :all)
       matching_declarations = []
 
@@ -122,25 +233,70 @@ module Cataract
     end
     alias [] find_by_selector
 
-    # Iterate over each selector across all rules
-    # Yields: selector, declarations_string, specificity, media_types
+    # Iterate over each selector in the stylesheet with optional filtering.
+    #
+    # This is the primary method for querying CSS rules. It yields each selector
+    # along with its declarations, specificity, and media types. Supports powerful
+    # filtering by media type, specificity, property name, and property value.
     #
     # @param media [Symbol, Array<Symbol>] Media type(s) to filter by (default: :all)
-    # @param specificity [Integer, Range] Filter by specificity (exact value or range)
+    #   Use :all for all media types, or filter by :screen, :print, etc.
+    # @param specificity [Integer, Range] Filter by specificity value
+    #   Pass an integer for exact match, or a Range like 100.. for minimum specificity
     # @param property [String] Filter by CSS property name (e.g., 'color', 'position')
+    #   Only yields selectors that have this property
     # @param property_value [String] Filter by CSS property value (e.g., 'relative', 'red')
-    # @yield [selector, declarations_string, specificity, media_types]
-    # @return [Enumerator] if no block given
+    #   Only yields selectors that have this value (for any property)
+    # @yield [selector, declarations, specificity, media_types] Yields for each matching rule
+    # @yieldparam selector [String] The CSS selector (e.g., "body", ".class", "#id")
+    # @yieldparam declarations [Declarations] Declarations object with all CSS properties
+    # @yieldparam specificity [Integer] Specificity value (higher = more specific)
+    # @yieldparam media_types [Array<Symbol>] Media types for this rule (e.g., [:screen, :print])
+    # @return [Enumerator] If no block given, returns an Enumerator
     #
-    # Examples:
-    #   sheet.each_selector { |sel, decls, spec, media| ... }  # All selectors
-    #   sheet.each_selector(media: :print) { |sel, decls, spec, media| ... }  # Only print media
-    #   sheet.each_selector(specificity: 10) { |sel, decls, spec, media| ... }  # Exact specificity
-    #   sheet.each_selector(specificity: 100..) { |sel, decls, spec, media| ... }  # High specificity (>= 100)
-    #   sheet.each_selector(property: 'color') { |sel, decls, spec, media| ... }  # Any selector with 'color'
-    #   sheet.each_selector(property_value: 'relative') { |sel, decls, spec, media| ... }  # Any property with value 'relative'
-    #   sheet.each_selector(property: 'position', property_value: 'relative') { |sel, decls, spec, media| ... }  # Specific property-value
-    #   sheet.each_selector(property: 'color', specificity: 100.., media: :print) { |sel, decls, spec, media| ... }  # Combined filters
+    # @example Iterate all selectors
+    #   sheet.each_selector do |sel, decls, spec, media|
+    #     puts "#{sel}: #{decls['color']}"
+    #   end
+    #
+    # @example Access declaration properties
+    #   sheet.each_selector do |sel, decls, spec, media|
+    #     puts decls['color']        # Get value
+    #     puts decls.key?('margin')  # Check existence
+    #     puts decls.important?('color')  # Check !important
+    #   end
+    #
+    # @example Filter by media type
+    #   sheet.each_selector(media: :print) { |sel, decls, spec, media| ... }
+    #
+    # @example Filter by exact specificity
+    #   sheet.each_selector(specificity: 10) { |sel, decls, spec, media| ... }
+    #
+    # @example Filter by minimum specificity (using Range)
+    #   sheet.each_selector(specificity: 100..) { |sel, decls, spec, media| ... }
+    #
+    # @example Find selectors with a specific property
+    #   sheet.each_selector(property: 'color') { |sel, decls, spec, media| ... }
+    #
+    # @example Find selectors with a specific value
+    #   sheet.each_selector(property_value: 'relative') { |sel, decls, spec, media| ... }
+    #
+    # @example Iterate over declaration properties
+    #   sheet.each_selector do |sel, decls, spec, media|
+    #     decls.each { |prop, val, important| puts "#{prop}: #{val}" }
+    #   end
+    #
+    # @example Combine filters
+    #   sheet.each_selector(property: 'position', property_value: 'relative') { |sel, decls, spec, media| ... }
+    #
+    # @example Complex filter with multiple criteria
+    #   sheet.each_selector(property: 'color', specificity: 100.., media: :print) { |sel, decls, spec, media| ... }
+    #
+    # @example Use as Enumerator
+    #   selectors = sheet.each_selector(media: :print).to_a
+    #
+    # @see #find_by_selector For simpler selector lookup
+    # @see Declarations For the declarations object API
     def each_selector(media: :all, specificity: nil, property: nil, property_value: nil)
       unless block_given?
         return enum_for(:each_selector, media: media, specificity: specificity, property: property,
@@ -204,23 +360,48 @@ module Cataract
             next unless has_match
           end
 
-          # Convert declarations to string using C function for performance
-          declarations_str = Cataract.declarations_to_s(rule.declarations)
+          # Wrap declarations in Declarations object for user-facing API
+          declarations_obj = Declarations.new(rule.declarations)
 
           # Return the group's media_types, not from the rule
-          yield rule.selector, declarations_str, rule.specificity, group[:media_types]
+          yield rule.selector, declarations_obj, rule.specificity, group[:media_types]
         end
       end
     end
 
-    # Add a block of CSS with optional auto-fixing
+    # Parse and add a CSS block to this stylesheet.
     #
-    # Options:
-    #   - fix_braces: Auto-close missing braces (default: false)
-    #   - media_types: Force all rules to have specific media types (default: nil - use parsed media types)
+    # This method parses a CSS string and adds all rules to the stylesheet.
+    # Optionally auto-fixes malformed CSS and overrides media types.
     #
-    # @return [self] Returns self for chaining
+    # @param css_string [String] The CSS string to parse and add
+    # @param fix_braces [Boolean] Auto-close missing closing braces (default: false)
+    #   If true, automatically adds closing braces for unbalanced CSS blocks
+    # @param media_types [Symbol, Array<Symbol>] Override media types for all added rules (default: nil)
+    #   When nil, uses media types from CSS (e.g., @media queries)
+    #   When specified, forces all rules to use these media types instead
+    # @return [self] Returns self for method chaining
     #
+    # @example Add CSS block
+    #   sheet = Stylesheet.new
+    #   sheet.add_block!("body { color: red; }")
+    #   sheet.add_block!("h1 { color: blue; }")
+    #
+    # @example Fix malformed CSS
+    #   sheet.add_block!("body { color: red;", fix_braces: true)
+    #   # Automatically closes the missing brace
+    #
+    # @example Override media types
+    #   sheet.add_block!("body { color: red; }", media_types: :print)
+    #   # Rule is added as print media, even if CSS had no @media query
+    #
+    # @example Force all rules to specific media
+    #   css = "@media screen { body { color: red; } }"
+    #   sheet.add_block!(css, media_types: :print)
+    #   # Ignores @media screen, adds as print media instead
+    #
+    # @see #parse For parsing without auto-fixing
+    # @see #load_string! Alias for this method
     def add_block!(css_string, fix_braces: false, media_types: nil)
       css_to_parse = css_string
 
@@ -284,6 +465,26 @@ module Cataract
 
     alias load_string! add_block!
 
+    # Get all declarations from the stylesheet after applying CSS cascade rules.
+    #
+    # This method flattens all rules from all media queries and applies CSS
+    # cascade rules (specificity, importance, order) to compute the final
+    # declarations. The result is cached until the stylesheet is modified.
+    #
+    # @return [Array<Declarations::Value>] Array of declaration values after cascade
+    #   Returns empty array if stylesheet is empty.
+    #
+    # @example Get all declarations
+    #   sheet = Stylesheet.parse("body { color: red; } body { margin: 10px; }")
+    #   decls = sheet.declarations
+    #   # Returns declarations merged by cascade rules
+    #
+    # @example Declarations respect specificity
+    #   sheet = Stylesheet.parse(".test { color: red; } #test { color: blue; }")
+    #   decls = sheet.declarations
+    #   # Blue color wins due to higher specificity
+    #
+    # @see Cataract.merge For direct access to merge functionality
     def declarations
       # Flatten all rules for cascade
       all_rules = []
@@ -291,6 +492,33 @@ module Cataract
       @declarations ||= Cataract.apply_cascade(all_rules)
     end
 
+    # Add a single CSS rule to the stylesheet.
+    #
+    # This method creates and adds a rule with the specified selector and declarations.
+    # Unlike add_block!, this operates on structured data rather than parsing CSS strings.
+    #
+    # @param selector [String] The CSS selector (e.g., "body", ".class", "#id")
+    # @param declarations [String, Declarations, Hash] The CSS declarations
+    #   Can be a declaration string ("color: red; margin: 10px"),
+    #   a Declarations object, or a Hash ({ "color" => "red" })
+    # @param media_types [Symbol, Array<Symbol>] Media types for this rule (default: [:all])
+    #   Use :all for no media query, or specify :screen, :print, etc.
+    # @return [RuleSet] The created RuleSet object
+    #
+    # @example Add rule with string declarations
+    #   sheet.add_rule!(selector: "body", declarations: "color: red; margin: 10px")
+    #
+    # @example Add rule with hash declarations
+    #   sheet.add_rule!(selector: ".button", declarations: { "color" => "blue", "padding" => "10px" })
+    #
+    # @example Add rule with specific media types
+    #   sheet.add_rule!(selector: "body", declarations: "font-size: 12pt", media_types: :print)
+    #
+    # @example Add rule with multiple media types
+    #   sheet.add_rule!(selector: ".mobile", declarations: "width: 100%", media_types: [:screen, :handheld])
+    #
+    # @see #add_block! For parsing CSS strings
+    # @see #add_rule_set! For adding RuleSet objects
     def add_rule!(selector:, declarations:, media_types: [:all])
       # Convert declarations to Declarations object if needed
       decls = declarations.is_a?(Declarations) ? declarations : Declarations.new(declarations)
@@ -335,6 +563,27 @@ module Cataract
       end
     end
 
+    # Add a RuleSet object to the stylesheet.
+    #
+    # This method takes an existing RuleSet object (typically from another stylesheet
+    # or created manually) and adds it to this stylesheet. The RuleSet's selector,
+    # declarations, and media types are preserved.
+    #
+    # @param rule_set [RuleSet] The RuleSet object to add
+    # @return [self] Returns self for method chaining
+    #
+    # @example Add RuleSet from another stylesheet
+    #   sheet1 = Stylesheet.parse("body { color: red; }")
+    #   sheet2 = Stylesheet.new
+    #   sheet1.each_rule_set { |rs, _media| sheet2.add_rule_set!(rs) }
+    #
+    # @example Copy rules between stylesheets
+    #   source = Stylesheet.parse("h1 { color: blue; } p { margin: 10px; }")
+    #   target = Stylesheet.new
+    #   source.each_rule_set { |rs| target.add_rule_set!(rs) }
+    #
+    # @see #add_rule! For adding rules from raw data
+    # @see #each_rule_set For iterating RuleSets
     def add_rule_set!(rule_set)
       # Convert RuleSet to Rule struct
       rule = Cataract::Rule.new(
@@ -356,6 +605,21 @@ module Cataract
       self
     end
 
+    # Remove a specific RuleSet from the stylesheet.
+    #
+    # Removes rules that match both the selector and declarations of the given
+    # RuleSet. The comparison is exact - both selector and all declarations must match.
+    #
+    # @param rule_set [RuleSet] The RuleSet to remove
+    # @return [self] Returns self for method chaining
+    #
+    # @example Remove a specific rule
+    #   sheet = Stylesheet.parse("body { color: red; } h1 { color: blue; }")
+    #   sheet.each_rule_set do |rs, _media|
+    #     sheet.remove_rule_set!(rs) if rs.selector == "body"
+    #   end
+    #
+    # @see #remove_rules! For removing by criteria (more flexible)
     def remove_rule_set!(rule_set)
       # Iterate through each media query group
       @rule_groups.each_value do |group|
@@ -369,7 +633,31 @@ module Cataract
       self
     end
 
-    # Remove rules matching criteria
+    # Remove rules matching the given criteria.
+    #
+    # This is a flexible method for removing rules based on selector and/or media types.
+    # If multiple criteria are specified, rules must match ALL of them to be removed.
+    #
+    # @param selector [String, nil] Selector to match (exact match required)
+    #   If nil, selector is not used as a filter
+    # @param media_types [Symbol, Array<Symbol>, nil] Media type(s) to filter by
+    #   If nil, all media types are searched
+    #   Use :all to match rules with no media query
+    # @return [self] Returns self for method chaining
+    #
+    # @example Remove all rules for a selector
+    #   sheet.remove_rules!(selector: "body")
+    #
+    # @example Remove all print rules
+    #   sheet.remove_rules!(media_types: :print)
+    #
+    # @example Remove specific selector in specific media
+    #   sheet.remove_rules!(selector: "#header", media_types: :screen)
+    #
+    # @example Remove rules across multiple media types
+    #   sheet.remove_rules!(selector: ".mobile-only", media_types: [:screen, :handheld])
+    #
+    # @see #remove_rule_set! For removing specific RuleSet objects
     def remove_rules!(selector: nil, media_types: nil)
       # Normalize media_types filter
       filter_media_types = (Array(media_types).map(&:to_sym) if media_types)
@@ -396,14 +684,32 @@ module Cataract
       self
     end
 
-    # Load CSS from a URI (http://, https://, or file://)
+    # Load CSS from a URI and add to this stylesheet.
     #
-    # Options:
-    #   - base_uri: Base URI for resolving relative imports
-    #   - media_types: Array of media types (e.g., [:screen, :print])
+    # Supports http://, https://, and file:// URIs. Network requests follow
+    # redirects and have a timeout. If the stylesheet was created with import
+    # resolution enabled, the URI's directory will be used as the base path.
     #
-    # @return [self] Returns self for chaining
+    # @param uri [String] URI to load CSS from (http://, https://, or file://)
+    # @param options [Hash] Additional options
+    # @option options [String] :base_uri Base URI for resolving relative imports (deprecated)
+    # @option options [Symbol, Array<Symbol>] :media_types Media types (not currently implemented)
+    # @return [self] Returns self for method chaining
+    # @raise [IOError] If the URI can't be loaded and io_exceptions is enabled
+    # @raise [ArgumentError] If the URI scheme is not supported
     #
+    # @example Load from HTTPS
+    #   sheet = Stylesheet.new
+    #   sheet.load_uri!('https://example.com/style.css')
+    #
+    # @example Load local file via file:// URI
+    #   sheet.load_uri!('file:///path/to/style.css')
+    #
+    # @example Load multiple URIs
+    #   sheet.load_uri!('https://example.com/base.css')
+    #   sheet.load_uri!('https://example.com/theme.css')
+    #
+    # @see .load_uri Class method that creates a new stylesheet
     def load_uri!(uri, options = {})
       require 'uri'
       require 'net/http'
@@ -453,15 +759,33 @@ module Cataract
       self
     end
 
-    # Load CSS from a local file
+    # Load CSS from a local file and add to this stylesheet.
     #
-    # Arguments:
-    #   - filename: Path to CSS file
-    #   - base_dir: Base directory for resolving relative paths (default: current directory)
-    #   - media_types: Media type symbol or array (not yet implemented for filtering)
+    # Reads the file and parses its contents. If import resolution is enabled
+    # (via constructor options), the file's directory is used as the base path
+    # for resolving relative @import statements.
     #
-    # @return [self] Returns self for chaining
+    # @param filename [String] Path to the CSS file
+    # @param base_dir [String] Base directory for resolving the filename (default: '.')
+    #   The filename is resolved relative to this directory
+    # @param _media_types [Symbol, Array<Symbol>] Media types (not currently implemented, reserved for future use)
+    # @return [self] Returns self for method chaining
+    # @raise [IOError] If the file doesn't exist and io_exceptions is enabled
     #
+    # @example Load a CSS file
+    #   sheet = Stylesheet.new
+    #   sheet.load_file!('style.css')
+    #
+    # @example Load with relative base directory
+    #   sheet.load_file!('components/button.css', 'assets/css')
+    #   # Loads from assets/css/components/button.css
+    #
+    # @example Load multiple files
+    #   sheet.load_file!('base.css')
+    #   sheet.load_file!('theme.css')
+    #   sheet.load_file!('responsive.css')
+    #
+    # @see .load_file Class method that creates a new stylesheet
     def load_file!(filename, base_dir = '.', _media_types = :all)
       # Normalize file path and convert to file:// URI
       file_path = File.expand_path(filename, base_dir)
@@ -471,8 +795,31 @@ module Cataract
       load_uri!(file_uri)
     end
 
-    # Convert to nested hash structure
-    # Returns: { 'media_type' => { 'selector' => { 'property' => 'value' } } }
+    # Convert stylesheet to nested hash structure.
+    #
+    # Returns a hash organized by media type, then selector, then property.
+    # This is useful for inspecting the stylesheet structure or converting
+    # to JSON for serialization.
+    #
+    # @return [Hash] Nested hash: { 'media_type' => { 'selector' => { 'property' => 'value' } } }
+    #   Media types become top-level keys (as strings)
+    #   Selectors become second-level keys
+    #   Properties become third-level keys with their values
+    #   Important declarations include ' !important' suffix
+    #
+    # @example Convert to hash
+    #   sheet = Stylesheet.parse("body { color: red; } @media print { body { color: black; } }")
+    #   sheet.to_h
+    #   #=> {
+    #   #     "all" => { "body" => { "color" => "red" } },
+    #   #     "print" => { "body" => { "color" => "black" } }
+    #   #   }
+    #
+    # @example Convert to JSON
+    #   require 'json'
+    #   sheet.to_h.to_json
+    #
+    # @see #to_s For CSS string serialization
     def to_h
       result = {}
 
@@ -498,23 +845,84 @@ module Cataract
       result
     end
 
+    # Get the total number of rules in the stylesheet.
+    #
+    # Counts all rules across all media query groups.
+    #
+    # @return [Integer] The total number of rules
+    #
+    # @example Count rules
+    #   sheet = Stylesheet.parse("body { color: red; } h1 { color: blue; }")
+    #   sheet.size #=> 2
+    #
+    # @example Empty stylesheet
+    #   Stylesheet.new.size #=> 0
+    #
+    # @see #empty? For checking if stylesheet has no rules
+    # @see #length Alias for this method
+    # @see #rules_count Alias for this method
     def size
       @rule_groups.values.sum { |group| group[:rules].length }
     end
     alias length size
     alias rules_count size
 
+    # Check if the stylesheet has no rules.
+    #
+    # @return [Boolean] true if stylesheet has no rules, false otherwise
+    #
+    # @example Check if empty
+    #   Stylesheet.new.empty? #=> true
+    #   Stylesheet.parse("body { color: red; }").empty? #=> false
+    #
+    # @see #size For getting the number of rules
     def empty?
       @rule_groups.empty? || @rule_groups.values.all? { |group| group[:rules].empty? }
     end
 
+    # Remove all rules from the stylesheet.
+    #
+    # Clears all rules and resets the @charset. The stylesheet can be reused
+    # by parsing new CSS after calling this method.
+    #
+    # @return [self] Returns self for method chaining
+    #
+    # @example Clear stylesheet
+    #   sheet = Stylesheet.parse("body { color: red; }")
+    #   sheet.size #=> 1
+    #   sheet.clear!
+    #   sheet.size #=> 0
+    #
+    # @example Reuse after clearing
+    #   sheet.clear!.parse("h1 { color: blue; }")
+    #
+    # @see #empty? For checking if empty
     def clear!
       @rule_groups = {}
       @charset = nil
       self
     end
 
-    # Get array of all selectors, optionally filtered by media type
+    # Get array of all selectors, optionally filtered by media type.
+    #
+    # Returns a flat array of all selectors in the stylesheet. Unlike each_selector,
+    # this does not return declarations or other metadata - just the selector strings.
+    #
+    # @param media_types [Symbol, Array<Symbol>] Media type(s) to filter by (default: :all)
+    #   Use :all for all media types, or specify :screen, :print, etc.
+    # @return [Array<String>] Array of selector strings
+    #
+    # @example Get all selectors
+    #   sheet = Stylesheet.parse("body { color: red; } h1 { color: blue; }")
+    #   sheet.selectors #=> ["body", "h1"]
+    #
+    # @example Get selectors for specific media
+    #   sheet.selectors(:print) #=> ["body", "h1", ".print-only"]
+    #
+    # @example Get selectors for multiple media types
+    #   sheet.selectors([:screen, :handheld]) #=> [".mobile", ".desktop"]
+    #
+    # @see #each_selector For iterating with full rule information
     def selectors(media_types = :all)
       query_media_types = Array(media_types).map(&:to_sym)
       result = []
@@ -534,10 +942,33 @@ module Cataract
       result
     end
 
-    # Iterate through RuleSet objects.
+    # Iterate through RuleSet objects with optional media type filtering.
     #
-    # +media_types+ can be a symbol or an array of symbols.
-    # Yields each rule set along with its media types.
+    # This method yields RuleSet objects, which wrap the raw Rule structs with
+    # a user-friendly API. Each RuleSet provides access to the selector,
+    # declarations, specificity, and media types.
+    #
+    # @param media_types [Symbol, Array<Symbol>] Media type(s) to filter by (default: :all)
+    #   Use :all for all media types, or specify :screen, :print, etc.
+    # @yield [rule_set, media_types] Yields each RuleSet with its media types
+    # @yieldparam rule_set [RuleSet] The RuleSet object
+    # @yieldparam media_types [Array<Symbol>] Media types for this rule
+    # @return [Enumerator] If no block given, returns an Enumerator
+    #
+    # @example Iterate all rule sets
+    #   sheet.each_rule_set { |rs, media| puts "#{rs.selector} (#{media.join(', ')})" }
+    #
+    # @example Filter by media type
+    #   sheet.each_rule_set(:print) { |rs, media| puts rs.to_s }
+    #
+    # @example Copy rules to another stylesheet
+    #   source.each_rule_set { |rs| target.add_rule_set!(rs) }
+    #
+    # @example Use as Enumerator
+    #   rule_sets = sheet.each_rule_set.to_a
+    #
+    # @see #each_selector For simpler iteration (yields strings instead of objects)
+    # @see RuleSet For the RuleSet API
     def each_rule_set(media_types = :all) # :yields: rule_set, media_types
       return enum_for(:each_rule_set, media_types) unless block_given?
 
@@ -565,12 +996,30 @@ module Cataract
       end
     end
 
-    # Finds the rule sets that match the given selectors.
+    # Find RuleSets matching any of the given selectors.
     #
-    # +selectors+ is an array of selector strings.
-    # +media_types+ can be a symbol or an array of symbols.
+    # Searches the stylesheet for rules with selectors that match any of the
+    # provided selectors. Selectors are normalized (whitespace is collapsed)
+    # before comparison.
     #
-    # Returns an array of RuleSet objects that match any of the given selectors.
+    # @param selectors [String, Array<String>] Selector(s) to search for
+    #   Can be a single selector string or an array of selectors
+    # @param media_types [Symbol, Array<Symbol>] Media type(s) to filter by (default: :all)
+    # @return [Array<RuleSet>] Array of matching RuleSet objects (no duplicates)
+    #
+    # @example Find rules for a selector
+    #   sheet.find_rule_sets("body")
+    #   #=> [#<RuleSet selector="body" ...>]
+    #
+    # @example Find rules for multiple selectors
+    #   sheet.find_rule_sets(["body", "h1", "p"])
+    #   #=> [#<RuleSet ...>, #<RuleSet ...>, ...]
+    #
+    # @example Filter by media type
+    #   sheet.find_rule_sets(["body", "h1"], :print)
+    #
+    # @see #find_by_selector For finding declaration strings
+    # @see #each_rule_set For iterating all RuleSets
     def find_rule_sets(selectors, media_types = :all)
       rule_sets = []
       # Normalize selectors for comparison
@@ -587,12 +1036,39 @@ module Cataract
       rule_sets
     end
 
-    # Expand shorthand properties in a declarations string
-    # Returns a hash of longhand properties
+    # Expand CSS shorthand properties to their longhand equivalents.
     #
-    # Example:
+    # This class method parses a declarations string and expands any shorthand
+    # properties (like 'margin', 'padding', 'border', 'font', etc.) into their
+    # longhand equivalents. Later declarations override earlier ones, following
+    # CSS cascade rules.
+    #
+    # Supported shorthands:
+    # - margin, padding (4-value expansion)
+    # - border, border-top/right/bottom/left, border-color/style/width
+    # - font, list-style, background
+    #
+    # @param declarations_string [String] CSS declarations to expand
+    # @return [Hash] Hash of longhand property names to values
+    #   Keys are property names (strings), values include !important if present
+    #
+    # @example Expand margin shorthand
+    #   Stylesheet.expand_shorthand("margin: 10px;")
+    #   #=> {"margin-top" => "10px", "margin-right" => "10px", "margin-bottom" => "10px", "margin-left" => "10px"}
+    #
+    # @example Later declarations override
     #   Stylesheet.expand_shorthand("margin: 10px; margin-top: 20px;")
-    #   => {"margin-top" => "20px", "margin-right" => "10px", "margin-bottom" => "10px", "margin-left" => "10px"}
+    #   #=> {"margin-top" => "20px", "margin-right" => "10px", "margin-bottom" => "10px", "margin-left" => "10px"}
+    #
+    # @example Preserve !important
+    #   Stylesheet.expand_shorthand("margin: 10px !important;")
+    #   #=> {"margin-top" => "10px !important", "margin-right" => "10px !important", ...}
+    #
+    # @example Complex border shorthand
+    #   Stylesheet.expand_shorthand("border: 1px solid red;")
+    #   #=> {"border-top-width" => "1px", "border-top-style" => "solid", "border-top-color" => "red", ...}
+    #
+    # @see #expand_shorthand Instance method (delegates to class method)
     def self.expand_shorthand(declarations_string)
       # Parse the declarations string directly using C function
       raw_declarations = Cataract.parse_declarations(declarations_string)
@@ -653,25 +1129,76 @@ module Cataract
       result
     end
 
+    # Expand CSS shorthand properties to their longhand equivalents.
+    #
+    # Instance method that delegates to the class method.
+    #
+    # @param declarations_string [String] CSS declarations to expand
+    # @return [Hash] Hash of longhand property names to values
+    #
+    # @example Expand shorthand
+    #   sheet.expand_shorthand("margin: 10px;")
+    #   #=> {"margin-top" => "10px", "margin-right" => "10px", ...}
+    #
+    # @see .expand_shorthand Class method with full documentation
     def expand_shorthand(declarations_string)
       self.class.expand_shorthand(declarations_string)
     end
 
-    # Compact format
+    # Serialize stylesheet to compact CSS string.
     #
-    # @param which_media [Symbol, Array<Symbol>] Media type filter (:all, :screen, :print, etc.)
-    #   When :all (default), outputs ALL rules regardless of media type
+    # Converts the stylesheet back to CSS format. All rules are on single lines
+    # with minimal whitespace. Media queries are preserved. Optionally filter
+    # by media type to export only specific media rules.
+    #
+    # @param which_media [Symbol, Array<Symbol>] Media type filter (default: :all)
+    #   When :all, outputs ALL rules regardless of media type
+    #   When specified, only outputs rules for matching media types
     #   Can be an array to match multiple media types
-    # @return [String] CSS stylesheet as a string
+    # @return [String] CSS stylesheet as a compact string
+    #
+    # @example Serialize entire stylesheet
+    #   sheet.to_s
+    #   #=> "body{color:red;}h1{color:blue;}"
+    #
+    # @example Serialize only print styles
+    #   sheet.to_s(:print)
+    #   #=> "@media print{body{font-size:12pt;}}"
+    #
+    # @example Serialize multiple media types
+    #   sheet.to_s([:screen, :handheld])
+    #
+    # @see #to_formatted_s For human-readable formatted output
+    # @see #to_css Alias for this method
     def to_s(which_media = :all)
       serialize_with_media_filter(which_media, formatted: false)
     end
 
-    # Multi-line format with 2-space indentation
+    # Serialize stylesheet to formatted CSS string with indentation.
     #
-    # @param which_media [Symbol, Array<Symbol>] Media type filter (:all, :screen, :print, etc.)
+    # Converts the stylesheet to CSS format with human-readable formatting:
+    # - Each rule on its own line
+    # - Declarations indented with 2 spaces
+    # - Media queries properly formatted
+    # - Consistent spacing and line breaks
+    #
+    # @param which_media [Symbol, Array<Symbol>] Media type filter (default: :all)
+    #   When :all, outputs ALL rules regardless of media type
+    #   When specified, only outputs rules for matching media types
     #   Can be an array to match multiple media types
     # @return [String] CSS stylesheet as a formatted string
+    #
+    # @example Serialize with formatting
+    #   sheet.to_formatted_s
+    #   #=> "body {\n  color: red;\n}\n\nh1 {\n  color: blue;\n}\n"
+    #
+    # @example Format only print styles
+    #   sheet.to_formatted_s(:print)
+    #
+    # @example Format multiple media types
+    #   sheet.to_formatted_s([:screen, :handheld])
+    #
+    # @see #to_s For compact output without formatting
     def to_formatted_s(which_media = :all)
       serialize_with_media_filter(which_media, formatted: true)
     end
@@ -694,6 +1221,12 @@ module Cataract
         resolved_info = @resolved ? ", #{@resolved.length} declarations resolved" : ''
         "#<Cataract::Stylesheet #{total_rules} rules: #{preview}#{more}#{resolved_info}>"
       end
+    end
+
+    # Expose rule groups for C merge implementation
+    # @api private
+    def rule_groups
+      @rule_groups
     end
 
     private

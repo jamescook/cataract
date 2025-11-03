@@ -252,7 +252,9 @@ class TestShorthandExpansion < Minitest::Test
 
   def test_mixed_shorthand_and_longhand
     @sheet.parse('div { margin: 10px; margin-top: 20px; }')
-    declarations = @sheet.expand_shorthand(@sheet.each_selector.first[1])
+    # each_selector now yields Declarations object, convert to string for expand_shorthand
+    declarations_obj = @sheet.each_selector.first[1]
+    declarations = @sheet.expand_shorthand(declarations_obj.to_s)
 
     # Longhand should override shorthand value
     assert_equal '20px', declarations['margin-top']

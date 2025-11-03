@@ -29,8 +29,10 @@ class TestRealWorld < Minitest::Test
 
       found = true
 
-      assert_includes declarations, 'padding: 0', 'Should have padding declaration'
-      assert_includes declarations, 'border-style: none', 'Should have border-style declaration'
+      assert declarations.key?('padding'), 'Should have padding declaration'
+      assert_equal '0', declarations['padding']
+      assert declarations.key?('border-style'), 'Should have border-style declaration'
+      assert_equal 'none', declarations['border-style']
     end
 
     assert found, 'Should find ::-moz-focus-inner selector'
@@ -47,7 +49,7 @@ class TestRealWorld < Minitest::Test
 
       found = true
 
-      assert_includes declarations, 'background-color:', 'Should have background-color'
+      assert declarations.key?('background-color'), 'Should have background-color'
     end
 
     assert found, 'Should find ::-webkit-slider-thumb:active selector'
@@ -109,8 +111,8 @@ class TestRealWorld < Minitest::Test
     sheet.each_selector do |selector, declarations, _specificity, _media_types|
       next unless selector == ':root'
 
-      # :root should have CSS custom properties
-      custom_props_found = declarations.include?('--bs-')
+      # :root should have CSS custom properties (check if any property starts with '--bs-')
+      custom_props_found = declarations.any? { |prop, _val, _important| prop.start_with?('--bs-') }
       break if custom_props_found
     end
 
@@ -123,7 +125,8 @@ class TestRealWorld < Minitest::Test
 
     calc_found = false
     sheet.each_selector do |_selector, declarations, _specificity, _media_types|
-      if declarations.include?('calc(')
+      # Check if any declaration value contains 'calc('
+      if declarations.any? { |_prop, val, _important| val.to_s.include?('calc(') }
         calc_found = true
         break
       end
