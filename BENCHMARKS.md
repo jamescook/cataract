@@ -15,27 +15,6 @@ Comprehensive performance comparison between Cataract and css_parser gem.
 - **Generated**: 2025-10-30T16:01:15-05:00
 
 <details>
-<summary><h2>Premailer Integration</h2></summary>
-
-Drop-in replacement performance for Premailer email CSS inlining.
-
-
-| Parser | Speed | Time per operation |
-|--------|-------|-------------------|
-| css_parser | 122.9 i/s | 8.13 ms |
-| **Cataract** | **2.57K i/s** | **388.86 μs** |
-| **Speedup** | **20.92x faster** | |
-
-### Key Takeaways
-- Cataract provides **20.92x faster** CSS inlining for email templates
-- Drop-in replacement for Premailer with zero code changes
-- Zero code changes required - just call `Cataract.mimic_CssParser!`
-
-</details>
-
----
-
-<details>
 <summary><h2>CSS Parsing</h2></summary>
 
 Performance of parsing CSS into internal data structures.
@@ -47,18 +26,18 @@ Time to parse CSS into internal data structures
 
 | Parser | Speed | Time per operation |
 |--------|-------|-------------------|
-| css_parser | 6.25K i/s | 160.07 μs |
-| **Cataract** | **67.74K i/s** | **14.76 μs** |
-| **Speedup** | **10.84x faster** | |
+| css_parser | 6.27K i/s | 159.47 μs |
+| **Cataract** | **65.25K i/s** | **15.33 μs** |
+| **Speedup** | **10.41x faster** | |
 
 ### Medium CSS with @media (139 lines, 1.6KB)
 
 
 | Parser | Speed | Time per operation |
 |--------|-------|-------------------|
-| css_parser | 3.44K i/s | 290.31 μs |
-| **Cataract** | **44.04K i/s** | **22.71 μs** |
-| **Speedup** | **12.79x faster** | |
+| css_parser | 3.29K i/s | 303.61 μs |
+| **Cataract** | **42.52K i/s** | **23.52 μs** |
+| **Speedup** | **12.91x faster** | |
 
 
 </details>
@@ -77,18 +56,18 @@ Time to convert parsed CSS back to string format
 
 | Parser | Speed | Time per operation |
 |--------|-------|-------------------|
-| css_parser | 34.1 i/s | 29.3 ms |
-| **Cataract** | **675.9 i/s** | **1.48 ms** |
-| **Speedup** | **19.81x faster** | |
+| css_parser | 34.0 i/s | 29.41 ms |
+| **Cataract** | **714.8 i/s** | **1.4 ms** |
+| **Speedup** | **21.02x faster** | |
 
 ### Media Type Filtering (print only)
 
 
 | Parser | Speed | Time per operation |
 |--------|-------|-------------------|
-| css_parser | 3.84K i/s | 260.38 μs |
-| **Cataract** | **216.54K i/s** | **4.62 μs** |
-| **Speedup** | **56.38x faster** | |
+| css_parser | 4.06K i/s | 246.56 μs |
+| **Cataract** | **232.22K i/s** | **4.31 μs** |
+| **Speedup** | **57.26x faster** | |
 
 
 </details>
@@ -104,14 +83,14 @@ Time to calculate CSS selector specificity values
 
 | Test Case | Speedup |
 |-----------|---------|
-| Simple Selectors | **21.19x faster** |
-| Compound Selectors | **30.45x faster** |
-| Combinators | **28.63x faster** |
-| Pseudo-classes & Pseudo-elements | **45.45x faster** |
-| :not() Pseudo-class (CSS3) | **23.52x faster** |
-| Complex Real-world Selectors | **49.29x faster** |
+| Simple Selectors | **22.03x faster** |
+| Compound Selectors | **30.55x faster** |
+| Combinators | **28.34x faster** |
+| Pseudo-classes & Pseudo-elements | **46.06x faster** |
+| :not() Pseudo-class (CSS3) | **23.64x faster** |
+| Complex Real-world Selectors | **49.17x faster** |
 
-**Summary:** 21.19x faster to 49.29x faster (avg 33.09x faster)
+**Summary:** 22.03x faster to 49.17x faster (avg 33.3x faster)
 
 </details>
 
@@ -126,13 +105,14 @@ Time to merge multiple CSS rule sets with same selector
 
 | Test Case | Speedup |
 |-----------|---------|
-| Simple properties | **2.79x faster** |
-| Cascade with specificity | **4.05x faster** |
-| Important declarations | **4.24x faster** |
-| Shorthand expansion | **3.02x faster** |
-| Complex merging | **2.31x faster** |
+| No shorthand properties (large) | **3.38x faster** |
+| Simple properties | **3.5x faster** |
+| Cascade with specificity | **5.72x faster** |
+| Important declarations | **5.84x faster** |
+| Shorthand expansion | **3.8x faster** |
+| Complex merging | **2.78x faster** |
 
-**Summary:** 2.31x faster to 4.24x faster (avg 3.28x faster)
+**Summary:** 2.78x faster to 5.84x faster (avg 4.17x faster)
 
 ### What's Being Tested
 - Specificity-based CSS cascade (ID > class > element)
@@ -155,10 +135,10 @@ Ruby-side operations with and without YJIT
 
 | Operation | Without YJIT | With YJIT | YJIT Improvement |
 |-----------|--------------|-----------|------------------|
-| property access | 220.91K i/s | 310.69K i/s | **1.41x faster** (41% faster) |
-| declaration merging | 195.44K i/s | 317.55K i/s | **1.62x faster** (62% faster) |
-| to_s generation | 231.39K i/s | 374.58K i/s | **1.62x faster** (62% faster) |
-| parse + iterate | 85.71K i/s | 103.7K i/s | **1.21x faster** (21% faster) |
+| property access | 227.18K i/s | 322.32K i/s | **1.42x faster** (42% faster) |
+| declaration merging | 204.26K i/s | 337.81K i/s | **1.65x faster** (65% faster) |
+| to_s generation | 242.66K i/s | 391.16K i/s | **1.61x faster** (61% faster) |
+| parse + iterate | 121.52K i/s | 142.77K i/s | **1.17x faster** (17% faster) |
 
 ### Key Takeaways
 - YJIT provides significant performance boost for Ruby-side operations
@@ -176,10 +156,10 @@ Ruby-side operations with and without YJIT
 
 | Category | Min Speedup | Max Speedup | Avg Speedup |
 |----------|-------------|-------------|-------------|
-| **Parsing** | 10.84x faster | 12.79x faster | 11.81x faster |
-| **Serialization** | 19.81x faster | 56.38x faster | 38.09x faster |
-| **Specificity** | 21.19x faster | 49.29x faster | 33.09x faster |
-| **Merging** | 2.31x faster | 4.24x faster | 3.28x faster |
+| **Parsing** | 10.41x faster | 12.91x faster | 11.66x faster |
+| **Serialization** | 21.02x faster | 57.26x faster | 39.14x faster |
+| **Specificity** | 22.03x faster | 49.17x faster | 33.3x faster |
+| **Merging** | 2.78x faster | 5.84x faster | 4.17x faster |
 
 ### Implementation Notes
 
@@ -190,7 +170,6 @@ Ruby-side operations with and without YJIT
 
 ### Use Cases
 
-- **Email inlining** (Premailer): Drop-in replacement for css_parser
 - **Large CSS files**: Handles complex stylesheets efficiently
 - **Specificity calculations**: Optimized for selector analysis
 - **High-volume processing**: Reduced allocations minimize GC pressure
