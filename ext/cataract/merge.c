@@ -41,6 +41,16 @@ static VALUE str_font_weight = Qnil;
 static VALUE str_font_size = Qnil;
 static VALUE str_line_height = Qnil;
 static VALUE str_font_family = Qnil;
+static VALUE str_list_style = Qnil;
+static VALUE str_list_style_type = Qnil;
+static VALUE str_list_style_position = Qnil;
+static VALUE str_list_style_image = Qnil;
+static VALUE str_background = Qnil;
+static VALUE str_background_color = Qnil;
+static VALUE str_background_image = Qnil;
+static VALUE str_background_repeat = Qnil;
+static VALUE str_background_attachment = Qnil;
+static VALUE str_background_position = Qnil;
 
 // Context for expanded property iteration
 struct expand_context {
@@ -168,6 +178,20 @@ void init_merge_constants(void) {
     str_line_height = rb_str_freeze(USASCII_STR("line-height"));
     str_font_family = rb_str_freeze(USASCII_STR("font-family"));
 
+    // List-style properties
+    str_list_style = rb_str_freeze(USASCII_STR("list-style"));
+    str_list_style_type = rb_str_freeze(USASCII_STR("list-style-type"));
+    str_list_style_position = rb_str_freeze(USASCII_STR("list-style-position"));
+    str_list_style_image = rb_str_freeze(USASCII_STR("list-style-image"));
+
+    // Background properties
+    str_background = rb_str_freeze(USASCII_STR("background"));
+    str_background_color = rb_str_freeze(USASCII_STR("background-color"));
+    str_background_image = rb_str_freeze(USASCII_STR("background-image"));
+    str_background_repeat = rb_str_freeze(USASCII_STR("background-repeat"));
+    str_background_attachment = rb_str_freeze(USASCII_STR("background-attachment"));
+    str_background_position = rb_str_freeze(USASCII_STR("background-position"));
+
     // Register all strings with GC so they're never collected
     rb_gc_register_mark_object(str_margin);
     rb_gc_register_mark_object(str_margin_top);
@@ -202,6 +226,16 @@ void init_merge_constants(void) {
     rb_gc_register_mark_object(str_font_size);
     rb_gc_register_mark_object(str_line_height);
     rb_gc_register_mark_object(str_font_family);
+    rb_gc_register_mark_object(str_list_style);
+    rb_gc_register_mark_object(str_list_style_type);
+    rb_gc_register_mark_object(str_list_style_position);
+    rb_gc_register_mark_object(str_list_style_image);
+    rb_gc_register_mark_object(str_background);
+    rb_gc_register_mark_object(str_background_color);
+    rb_gc_register_mark_object(str_background_image);
+    rb_gc_register_mark_object(str_background_repeat);
+    rb_gc_register_mark_object(str_background_attachment);
+    rb_gc_register_mark_object(str_background_position);
 }
 
 // Helper macros to extract property data from properties_hash
@@ -221,6 +255,11 @@ void init_merge_constants(void) {
 #define GET_PROP_DATA_STR(hash, str_prop) \
     rb_hash_aref(hash, str_prop)
 
+// Helper macro to check if a property's !important flag matches a reference
+#define CHECK_IMPORTANT_MATCH(hash, str_prop, ref_important) \
+    ({ VALUE _pd = GET_PROP_DATA_STR(hash, str_prop); \
+       NIL_P(_pd) ? 1 : (RTEST(rb_hash_aref(_pd, ID2SYM(id_important))) == ref_important); })
+
 // Macro to create shorthand from 4-sided properties (margin, padding, border-width/style/color)
 // Reduces repetitive code by encapsulating the common pattern:
 // 1. Get 4 longhand values (top, right, bottom, left)
@@ -236,33 +275,50 @@ void init_merge_constants(void) {
         VALUE _left = GET_PROP_VALUE_STR(hash, str_left); \
         \
         if (!NIL_P(_top) && !NIL_P(_right) && !NIL_P(_bottom) && !NIL_P(_left)) { \
-            VALUE _props = rb_hash_new(); \
-            rb_hash_aset(_props, str_top, _top); \
-            rb_hash_aset(_props, str_right, _right); \
-            rb_hash_aset(_props, str_bottom, _bottom); \
-            rb_hash_aset(_props, str_left, _left); \
+            /* Check that all properties have the same !important flag */ \
+            VALUE _top_data = GET_PROP_DATA_STR(hash, str_top); \
+            VALUE _right_data = GET_PROP_DATA_STR(hash, str_right); \
+            VALUE _bottom_data = GET_PROP_DATA_STR(hash, str_bottom); \
+            VALUE _left_data = GET_PROP_DATA_STR(hash, str_left); \
             \
-            VALUE _shorthand_value = creator_func(Qnil, _props); \
-            if (!NIL_P(_shorthand_value)) { \
-                VALUE _top_data = GET_PROP_DATA_STR(hash, str_top); \
-                VALUE _important = rb_hash_aref(_top_data, ID2SYM(id_important)); \
-                int _specificity = NUM2INT(rb_hash_aref(_top_data, ID2SYM(id_specificity))); \
+            VALUE _top_imp = rb_hash_aref(_top_data, ID2SYM(id_important)); \
+            VALUE _right_imp = rb_hash_aref(_right_data, ID2SYM(id_important)); \
+            VALUE _bottom_imp = rb_hash_aref(_bottom_data, ID2SYM(id_important)); \
+            VALUE _left_imp = rb_hash_aref(_left_data, ID2SYM(id_important)); \
+            \
+            int _top_is_imp = RTEST(_top_imp); \
+            int _right_is_imp = RTEST(_right_imp); \
+            int _bottom_is_imp = RTEST(_bottom_imp); \
+            int _left_is_imp = RTEST(_left_imp); \
+            \
+            /* Only create shorthand if all have same !important flag */ \
+            if (_top_is_imp == _right_is_imp && _top_is_imp == _bottom_is_imp && _top_is_imp == _left_is_imp) { \
+                VALUE _props = rb_hash_new(); \
+                rb_hash_aset(_props, str_top, _top); \
+                rb_hash_aset(_props, str_right, _right); \
+                rb_hash_aset(_props, str_bottom, _bottom); \
+                rb_hash_aset(_props, str_left, _left); \
                 \
-                VALUE _shorthand_data = rb_hash_new(); \
-                rb_hash_aset(_shorthand_data, ID2SYM(id_value), _shorthand_value); \
-                rb_hash_aset(_shorthand_data, ID2SYM(id_specificity), INT2NUM(_specificity)); \
-                rb_hash_aset(_shorthand_data, ID2SYM(id_important), _important); \
-                rb_hash_aset(_shorthand_data, ID2SYM(id_struct_class), vstruct); \
-                rb_hash_aset(hash, str_shorthand, _shorthand_data); \
-                \
-                rb_hash_delete(hash, str_top); \
-                rb_hash_delete(hash, str_right); \
-                rb_hash_delete(hash, str_bottom); \
-                rb_hash_delete(hash, str_left); \
-                \
-                RB_GC_GUARD(_shorthand_value); \
+                VALUE _shorthand_value = creator_func(Qnil, _props); \
+                if (!NIL_P(_shorthand_value)) { \
+                    int _specificity = NUM2INT(rb_hash_aref(_top_data, ID2SYM(id_specificity))); \
+                    \
+                    VALUE _shorthand_data = rb_hash_new(); \
+                    rb_hash_aset(_shorthand_data, ID2SYM(id_value), _shorthand_value); \
+                    rb_hash_aset(_shorthand_data, ID2SYM(id_specificity), INT2NUM(_specificity)); \
+                    rb_hash_aset(_shorthand_data, ID2SYM(id_important), _top_imp); \
+                    rb_hash_aset(_shorthand_data, ID2SYM(id_struct_class), vstruct); \
+                    rb_hash_aset(hash, str_shorthand, _shorthand_data); \
+                    \
+                    rb_hash_delete(hash, str_top); \
+                    rb_hash_delete(hash, str_right); \
+                    rb_hash_delete(hash, str_bottom); \
+                    rb_hash_delete(hash, str_left); \
+                    \
+                    RB_GC_GUARD(_shorthand_value); \
+                } \
+                RB_GC_GUARD(_props); \
             } \
-            RB_GC_GUARD(_props); \
         } \
     } while(0)
 
@@ -460,33 +516,42 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
     VALUE border_color = GET_PROP_VALUE_STR(properties_hash, str_border_color);
 
     if (!NIL_P(border_width) || !NIL_P(border_style) || !NIL_P(border_color)) {
-        VALUE border_props = rb_hash_new();
-        if (!NIL_P(border_width)) rb_hash_aset(border_props, str_border_width, border_width);
-        if (!NIL_P(border_style)) rb_hash_aset(border_props, str_border_style, border_style);
-        if (!NIL_P(border_color)) rb_hash_aset(border_props, str_border_color, border_color);
+        // Use first available property's metadata as reference
+        VALUE border_data_src = !NIL_P(border_width) ? GET_PROP_DATA_STR(properties_hash, str_border_width) :
+                                !NIL_P(border_style) ? GET_PROP_DATA_STR(properties_hash, str_border_style) :
+                                GET_PROP_DATA_STR(properties_hash, str_border_color);
+        VALUE border_important = rb_hash_aref(border_data_src, ID2SYM(id_important));
+        int border_is_important = RTEST(border_important);
 
-        VALUE border_shorthand = cataract_create_border_shorthand(Qnil, border_props);
-        if (!NIL_P(border_shorthand)) {
-            // Use first available property's metadata
-            VALUE border_data_src = !NIL_P(border_width) ? GET_PROP_DATA_STR(properties_hash, str_border_width) :
-                                    !NIL_P(border_style) ? GET_PROP_DATA_STR(properties_hash, str_border_style) :
-                                    GET_PROP_DATA_STR(properties_hash, str_border_color);
-            VALUE border_important = rb_hash_aref(border_data_src, ID2SYM(id_important));
-            int border_spec = NUM2INT(rb_hash_aref(border_data_src, ID2SYM(id_specificity)));
+        // Check that all present properties have the same !important flag
+        int important_match = CHECK_IMPORTANT_MATCH(properties_hash, str_border_width, border_is_important) &&
+                             CHECK_IMPORTANT_MATCH(properties_hash, str_border_style, border_is_important) &&
+                             CHECK_IMPORTANT_MATCH(properties_hash, str_border_color, border_is_important);
 
-            VALUE border_data = rb_hash_new();
-            rb_hash_aset(border_data, ID2SYM(id_value), border_shorthand);
-            rb_hash_aset(border_data, ID2SYM(id_specificity), INT2NUM(border_spec));
-            rb_hash_aset(border_data, ID2SYM(id_important), border_important);
-            rb_hash_aset(border_data, ID2SYM(id_struct_class), value_struct);
-            rb_hash_aset(properties_hash, str_border, border_data);
+        if (important_match) {
+            VALUE border_props = rb_hash_new();
+            if (!NIL_P(border_width)) rb_hash_aset(border_props, str_border_width, border_width);
+            if (!NIL_P(border_style)) rb_hash_aset(border_props, str_border_style, border_style);
+            if (!NIL_P(border_color)) rb_hash_aset(border_props, str_border_color, border_color);
 
-            if (!NIL_P(border_width)) rb_hash_delete(properties_hash, str_border_width);
-            if (!NIL_P(border_style)) rb_hash_delete(properties_hash, str_border_style);
-            if (!NIL_P(border_color)) rb_hash_delete(properties_hash, str_border_color);
+            VALUE border_shorthand = cataract_create_border_shorthand(Qnil, border_props);
+            if (!NIL_P(border_shorthand)) {
+                int border_spec = NUM2INT(rb_hash_aref(border_data_src, ID2SYM(id_specificity)));
+
+                VALUE border_data = rb_hash_new();
+                rb_hash_aset(border_data, ID2SYM(id_value), border_shorthand);
+                rb_hash_aset(border_data, ID2SYM(id_specificity), INT2NUM(border_spec));
+                rb_hash_aset(border_data, ID2SYM(id_important), border_important);
+                rb_hash_aset(border_data, ID2SYM(id_struct_class), value_struct);
+                rb_hash_aset(properties_hash, str_border, border_data);
+
+                if (!NIL_P(border_width)) rb_hash_delete(properties_hash, str_border_width);
+                if (!NIL_P(border_style)) rb_hash_delete(properties_hash, str_border_style);
+                if (!NIL_P(border_color)) rb_hash_delete(properties_hash, str_border_color);
+            }
+            RB_GC_GUARD(border_props);
+            RB_GC_GUARD(border_shorthand);
         }
-        RB_GC_GUARD(border_props);
-        RB_GC_GUARD(border_shorthand);
     }
 
     // Try to create font shorthand
@@ -500,38 +565,161 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
         VALUE font_weight = GET_PROP_VALUE_STR(properties_hash, str_font_weight);
         VALUE line_height = GET_PROP_VALUE_STR(properties_hash, str_line_height);
 
-        VALUE font_props = rb_hash_new();
-        if (!NIL_P(font_style)) rb_hash_aset(font_props, str_font_style, font_style);
-        if (!NIL_P(font_variant)) rb_hash_aset(font_props, str_font_variant, font_variant);
-        if (!NIL_P(font_weight)) rb_hash_aset(font_props, str_font_weight, font_weight);
-        rb_hash_aset(font_props, str_font_size, font_size);
-        if (!NIL_P(line_height)) rb_hash_aset(font_props, str_line_height, line_height);
-        rb_hash_aset(font_props, str_font_family, font_family);
+        // Get metadata from font-size as reference
+        VALUE size_data = GET_PROP_DATA_STR(properties_hash, str_font_size);
+        VALUE font_important = rb_hash_aref(size_data, ID2SYM(id_important));
+        int font_is_important = RTEST(font_important);
 
-        VALUE font_shorthand = cataract_create_font_shorthand(Qnil, font_props);
-        if (!NIL_P(font_shorthand)) {
-            // Find max specificity and check if any are important
-            VALUE size_data = GET_PROP_DATA_STR(properties_hash, str_font_size);
-            VALUE font_important = rb_hash_aref(size_data, ID2SYM(id_important));
-            int font_spec = NUM2INT(rb_hash_aref(size_data, ID2SYM(id_specificity)));
+        // Check that all present properties have the same !important flag
+        int important_match = CHECK_IMPORTANT_MATCH(properties_hash, str_font_style, font_is_important) &&
+                             CHECK_IMPORTANT_MATCH(properties_hash, str_font_variant, font_is_important) &&
+                             CHECK_IMPORTANT_MATCH(properties_hash, str_font_weight, font_is_important) &&
+                             CHECK_IMPORTANT_MATCH(properties_hash, str_line_height, font_is_important) &&
+                             CHECK_IMPORTANT_MATCH(properties_hash, str_font_family, font_is_important);
 
-            VALUE font_data = rb_hash_new();
-            rb_hash_aset(font_data, ID2SYM(id_value), font_shorthand);
-            rb_hash_aset(font_data, ID2SYM(id_specificity), INT2NUM(font_spec));
-            rb_hash_aset(font_data, ID2SYM(id_important), font_important);
-            rb_hash_aset(font_data, ID2SYM(id_struct_class), value_struct);
-            rb_hash_aset(properties_hash, str_font, font_data);
+        if (important_match) {
+            VALUE font_props = rb_hash_new();
+            if (!NIL_P(font_style)) rb_hash_aset(font_props, str_font_style, font_style);
+            if (!NIL_P(font_variant)) rb_hash_aset(font_props, str_font_variant, font_variant);
+            if (!NIL_P(font_weight)) rb_hash_aset(font_props, str_font_weight, font_weight);
+            rb_hash_aset(font_props, str_font_size, font_size);
+            if (!NIL_P(line_height)) rb_hash_aset(font_props, str_line_height, line_height);
+            rb_hash_aset(font_props, str_font_family, font_family);
 
-            // Remove longhand properties
-            if (!NIL_P(font_style)) rb_hash_delete(properties_hash, str_font_style);
-            if (!NIL_P(font_variant)) rb_hash_delete(properties_hash, str_font_variant);
-            if (!NIL_P(font_weight)) rb_hash_delete(properties_hash, str_font_weight);
-            rb_hash_delete(properties_hash, str_font_size);
-            if (!NIL_P(line_height)) rb_hash_delete(properties_hash, str_line_height);
-            rb_hash_delete(properties_hash, str_font_family);
+            VALUE font_shorthand = cataract_create_font_shorthand(Qnil, font_props);
+            if (!NIL_P(font_shorthand)) {
+                int font_spec = NUM2INT(rb_hash_aref(size_data, ID2SYM(id_specificity)));
+
+                VALUE font_data = rb_hash_new();
+                rb_hash_aset(font_data, ID2SYM(id_value), font_shorthand);
+                rb_hash_aset(font_data, ID2SYM(id_specificity), INT2NUM(font_spec));
+                rb_hash_aset(font_data, ID2SYM(id_important), font_important);
+                rb_hash_aset(font_data, ID2SYM(id_struct_class), value_struct);
+                rb_hash_aset(properties_hash, str_font, font_data);
+
+                // Remove longhand properties
+                if (!NIL_P(font_style)) rb_hash_delete(properties_hash, str_font_style);
+                if (!NIL_P(font_variant)) rb_hash_delete(properties_hash, str_font_variant);
+                if (!NIL_P(font_weight)) rb_hash_delete(properties_hash, str_font_weight);
+                rb_hash_delete(properties_hash, str_font_size);
+                if (!NIL_P(line_height)) rb_hash_delete(properties_hash, str_line_height);
+                rb_hash_delete(properties_hash, str_font_family);
+            }
+            RB_GC_GUARD(font_props);
+            RB_GC_GUARD(font_shorthand);
         }
-        RB_GC_GUARD(font_props);
-        RB_GC_GUARD(font_shorthand);
+    }
+
+    // Try to create list-style shorthand
+    VALUE list_style_type = GET_PROP_VALUE_STR(properties_hash, str_list_style_type);
+    VALUE list_style_position = GET_PROP_VALUE_STR(properties_hash, str_list_style_position);
+    VALUE list_style_image = GET_PROP_VALUE_STR(properties_hash, str_list_style_image);
+
+    // List-style shorthand requires at least 2 properties
+    int list_style_count = (!NIL_P(list_style_type) ? 1 : 0) +
+                           (!NIL_P(list_style_position) ? 1 : 0) +
+                           (!NIL_P(list_style_image) ? 1 : 0);
+
+    if (list_style_count >= 2) {
+        // Use first available property's metadata as reference
+        VALUE list_style_data_src = !NIL_P(list_style_type) ? GET_PROP_DATA_STR(properties_hash, str_list_style_type) :
+                                    !NIL_P(list_style_position) ? GET_PROP_DATA_STR(properties_hash, str_list_style_position) :
+                                    GET_PROP_DATA_STR(properties_hash, str_list_style_image);
+        VALUE list_style_important = rb_hash_aref(list_style_data_src, ID2SYM(id_important));
+        int list_style_is_important = RTEST(list_style_important);
+
+        // Check that all present properties have the same !important flag
+        int important_match = CHECK_IMPORTANT_MATCH(properties_hash, str_list_style_type, list_style_is_important) &&
+                             CHECK_IMPORTANT_MATCH(properties_hash, str_list_style_position, list_style_is_important) &&
+                             CHECK_IMPORTANT_MATCH(properties_hash, str_list_style_image, list_style_is_important);
+
+        if (important_match) {
+            VALUE list_style_props = rb_hash_new();
+            if (!NIL_P(list_style_type)) rb_hash_aset(list_style_props, str_list_style_type, list_style_type);
+            if (!NIL_P(list_style_position)) rb_hash_aset(list_style_props, str_list_style_position, list_style_position);
+            if (!NIL_P(list_style_image)) rb_hash_aset(list_style_props, str_list_style_image, list_style_image);
+
+            VALUE list_style_shorthand = cataract_create_list_style_shorthand(Qnil, list_style_props);
+            if (!NIL_P(list_style_shorthand)) {
+                int list_style_spec = NUM2INT(rb_hash_aref(list_style_data_src, ID2SYM(id_specificity)));
+
+                VALUE list_style_data = rb_hash_new();
+                rb_hash_aset(list_style_data, ID2SYM(id_value), list_style_shorthand);
+                rb_hash_aset(list_style_data, ID2SYM(id_specificity), INT2NUM(list_style_spec));
+                rb_hash_aset(list_style_data, ID2SYM(id_important), list_style_important);
+                rb_hash_aset(list_style_data, ID2SYM(id_struct_class), value_struct);
+                rb_hash_aset(properties_hash, str_list_style, list_style_data);
+
+                // Remove longhand properties
+                if (!NIL_P(list_style_type)) rb_hash_delete(properties_hash, str_list_style_type);
+                if (!NIL_P(list_style_position)) rb_hash_delete(properties_hash, str_list_style_position);
+                if (!NIL_P(list_style_image)) rb_hash_delete(properties_hash, str_list_style_image);
+            }
+            RB_GC_GUARD(list_style_props);
+            RB_GC_GUARD(list_style_shorthand);
+        }
+    }
+
+    // Try to create background shorthand
+    VALUE background_color = GET_PROP_VALUE_STR(properties_hash, str_background_color);
+    VALUE background_image = GET_PROP_VALUE_STR(properties_hash, str_background_image);
+    VALUE background_repeat = GET_PROP_VALUE_STR(properties_hash, str_background_repeat);
+    VALUE background_attachment = GET_PROP_VALUE_STR(properties_hash, str_background_attachment);
+    VALUE background_position = GET_PROP_VALUE_STR(properties_hash, str_background_position);
+
+    // Background shorthand requires at least 2 properties
+    int background_count = (!NIL_P(background_color) ? 1 : 0) +
+                          (!NIL_P(background_image) ? 1 : 0) +
+                          (!NIL_P(background_repeat) ? 1 : 0) +
+                          (!NIL_P(background_attachment) ? 1 : 0) +
+                          (!NIL_P(background_position) ? 1 : 0);
+
+    if (background_count >= 2) {
+        // Use first available property's metadata as reference
+        VALUE background_data_src = !NIL_P(background_color) ? GET_PROP_DATA_STR(properties_hash, str_background_color) :
+                                   !NIL_P(background_image) ? GET_PROP_DATA_STR(properties_hash, str_background_image) :
+                                   !NIL_P(background_repeat) ? GET_PROP_DATA_STR(properties_hash, str_background_repeat) :
+                                   !NIL_P(background_attachment) ? GET_PROP_DATA_STR(properties_hash, str_background_attachment) :
+                                   GET_PROP_DATA_STR(properties_hash, str_background_position);
+        VALUE background_important = rb_hash_aref(background_data_src, ID2SYM(id_important));
+        int background_is_important = RTEST(background_important);
+
+        // Check that all present properties have the same !important flag
+        int important_match = CHECK_IMPORTANT_MATCH(properties_hash, str_background_color, background_is_important) &&
+                             CHECK_IMPORTANT_MATCH(properties_hash, str_background_image, background_is_important) &&
+                             CHECK_IMPORTANT_MATCH(properties_hash, str_background_repeat, background_is_important) &&
+                             CHECK_IMPORTANT_MATCH(properties_hash, str_background_attachment, background_is_important) &&
+                             CHECK_IMPORTANT_MATCH(properties_hash, str_background_position, background_is_important);
+
+        if (important_match) {
+            VALUE background_props = rb_hash_new();
+            if (!NIL_P(background_color)) rb_hash_aset(background_props, str_background_color, background_color);
+            if (!NIL_P(background_image)) rb_hash_aset(background_props, str_background_image, background_image);
+            if (!NIL_P(background_repeat)) rb_hash_aset(background_props, str_background_repeat, background_repeat);
+            if (!NIL_P(background_attachment)) rb_hash_aset(background_props, str_background_attachment, background_attachment);
+            if (!NIL_P(background_position)) rb_hash_aset(background_props, str_background_position, background_position);
+
+            VALUE background_shorthand = cataract_create_background_shorthand(Qnil, background_props);
+            if (!NIL_P(background_shorthand)) {
+                int background_spec = NUM2INT(rb_hash_aref(background_data_src, ID2SYM(id_specificity)));
+
+                VALUE background_data = rb_hash_new();
+                rb_hash_aset(background_data, ID2SYM(id_value), background_shorthand);
+                rb_hash_aset(background_data, ID2SYM(id_specificity), INT2NUM(background_spec));
+                rb_hash_aset(background_data, ID2SYM(id_important), background_important);
+                rb_hash_aset(background_data, ID2SYM(id_struct_class), value_struct);
+                rb_hash_aset(properties_hash, str_background, background_data);
+
+                // Remove longhand properties
+                if (!NIL_P(background_color)) rb_hash_delete(properties_hash, str_background_color);
+                if (!NIL_P(background_image)) rb_hash_delete(properties_hash, str_background_image);
+                if (!NIL_P(background_repeat)) rb_hash_delete(properties_hash, str_background_repeat);
+                if (!NIL_P(background_attachment)) rb_hash_delete(properties_hash, str_background_attachment);
+                if (!NIL_P(background_position)) rb_hash_delete(properties_hash, str_background_position);
+            }
+            RB_GC_GUARD(background_props);
+            RB_GC_GUARD(background_shorthand);
+        }
     }
 
     #undef GET_PROP_VALUE

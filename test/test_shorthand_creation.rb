@@ -4,307 +4,228 @@
 require 'minitest/autorun'
 require_relative '../lib/cataract'
 
-# Test creating shorthand properties from longhand
-# This is the inverse of shorthand expansion
+# Test creating shorthand properties from longhand through merge operations
+# When all longhand properties for a shorthand are present, merge should
+# automatically create the shorthand property.
 class TestShorthandCreation < Minitest::Test
-  # Margin shorthand creation
-  def test_create_margin_all_same
-    input = {
-      'margin-top' => '10px',
-      'margin-right' => '10px',
-      'margin-bottom' => '10px',
-      'margin-left' => '10px'
-    }
-    result = Cataract.create_margin_shorthand(input)
+  # Helper to parse CSS with longhand properties and merge to trigger shorthand creation
+  def parse_and_merge(css)
+    sheet = Cataract.parse_css(css)
+    merged = Cataract.merge(sheet)
+    Cataract::Declarations.new(merged)
+  end
 
-    assert_equal '10px', result
+  # ===========================================================================
+  # Margin Shorthand Creation
+  # ===========================================================================
+
+  def test_create_margin_all_same
+    decls = parse_and_merge('.test { margin-top: 10px; margin-right: 10px; margin-bottom: 10px; margin-left: 10px }')
+
+    # Should create shorthand when all sides are the same
+    assert_equal '10px', decls['margin']
   end
 
   def test_create_margin_vertical_horizontal
-    input = {
-      'margin-top' => '10px',
-      'margin-right' => '20px',
-      'margin-bottom' => '10px',
-      'margin-left' => '20px'
-    }
-    result = Cataract.create_margin_shorthand(input)
+    decls = parse_and_merge('.test { margin-top: 10px; margin-right: 20px; margin-bottom: 10px; margin-left: 20px }')
 
-    assert_equal '10px 20px', result
+    # Should create 2-value shorthand
+    assert_equal '10px 20px', decls['margin']
   end
 
   def test_create_margin_top_horizontal_bottom
-    input = {
-      'margin-top' => '10px',
-      'margin-right' => '20px',
-      'margin-bottom' => '30px',
-      'margin-left' => '20px'
-    }
-    result = Cataract.create_margin_shorthand(input)
+    decls = parse_and_merge('.test { margin-top: 10px; margin-right: 20px; margin-bottom: 30px; margin-left: 20px }')
 
-    assert_equal '10px 20px 30px', result
+    # Should create 3-value shorthand
+    assert_equal '10px 20px 30px', decls['margin']
   end
 
   def test_create_margin_all_different
-    input = {
-      'margin-top' => '10px',
-      'margin-right' => '20px',
-      'margin-bottom' => '30px',
-      'margin-left' => '40px'
-    }
-    result = Cataract.create_margin_shorthand(input)
+    decls = parse_and_merge('.test { margin-top: 10px; margin-right: 20px; margin-bottom: 30px; margin-left: 40px }')
 
-    assert_equal '10px 20px 30px 40px', result
+    # Should create 4-value shorthand
+    assert_equal '10px 20px 30px 40px', decls['margin']
   end
 
   def test_create_margin_missing_side
-    input = {
-      'margin-top' => '10px',
-      'margin-right' => '20px',
-      'margin-bottom' => '30px'
-      # margin-left missing
-    }
-    result = Cataract.create_margin_shorthand(input)
+    decls = parse_and_merge('.test { margin-top: 10px; margin-right: 20px; margin-bottom: 30px }')
 
-    assert_nil result, 'Should return nil if not all sides present'
+    # Should NOT create shorthand if not all sides present - keeps longhands
+    assert_nil decls['margin']
+    assert_equal '10px', decls['margin-top']
+    assert_equal '20px', decls['margin-right']
+    assert_equal '30px', decls['margin-bottom']
   end
 
-  # Padding shorthand creation (same logic as margin)
-  def test_create_padding_all_same
-    input = {
-      'padding-top' => '5px',
-      'padding-right' => '5px',
-      'padding-bottom' => '5px',
-      'padding-left' => '5px'
-    }
-    result = Cataract.create_padding_shorthand(input)
+  # ===========================================================================
+  # Padding Shorthand Creation
+  # ===========================================================================
 
-    assert_equal '5px', result
+  def test_create_padding_all_same
+    decls = parse_and_merge('.test { padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px }')
+
+    assert_equal '5px', decls['padding']
   end
 
   def test_create_padding_vertical_horizontal
-    input = {
-      'padding-top' => '10px',
-      'padding-right' => '20px',
-      'padding-bottom' => '10px',
-      'padding-left' => '20px'
-    }
-    result = Cataract.create_padding_shorthand(input)
+    decls = parse_and_merge('.test { padding-top: 10px; padding-right: 20px; padding-bottom: 10px; padding-left: 20px }')
 
-    assert_equal '10px 20px', result
+    assert_equal '10px 20px', decls['padding']
   end
 
-  # Border-width shorthand creation (from individual sides)
+  # ===========================================================================
+  # Border Shorthand Creation
+  # ===========================================================================
+  # Per W3C spec: border shorthand requires style, optionally width and color
+
   def test_create_border_width_all_same
-    input = {
-      'border-top-width' => '1px',
-      'border-right-width' => '1px',
-      'border-bottom-width' => '1px',
-      'border-left-width' => '1px'
-    }
-    result = Cataract.create_border_width_shorthand(input)
+    decls = parse_and_merge('.test { border-top-width: 1px; border-right-width: 1px; border-bottom-width: 1px; border-left-width: 1px }')
 
-    assert_equal '1px', result
+    # Width-only creates border-width shorthand (border requires style)
+    assert_equal '1px', decls['border-width']
+    assert_nil decls['border']
   end
 
-  def test_create_border_width_different
-    input = {
-      'border-top-width' => '1px',
-      'border-right-width' => '2px',
-      'border-bottom-width' => '3px',
-      'border-left-width' => '4px'
-    }
-    result = Cataract.create_border_width_shorthand(input)
+  def test_create_border_width_vertical_horizontal
+    decls = parse_and_merge('.test { border-top-width: 1px; border-right-width: 2px; border-bottom-width: 1px; border-left-width: 2px }')
 
-    assert_equal '1px 2px 3px 4px', result
+    # When widths differ, creates border-width shorthand
+    assert_equal '1px 2px', decls['border-width']
   end
 
-  # Border-style shorthand creation (from individual sides)
   def test_create_border_style_all_same
-    input = {
-      'border-top-style' => 'solid',
-      'border-right-style' => 'solid',
-      'border-bottom-style' => 'solid',
-      'border-left-style' => 'solid'
-    }
-    result = Cataract.create_border_style_shorthand(input)
+    decls = parse_and_merge('.test { border-top-style: solid; border-right-style: solid; border-bottom-style: solid; border-left-style: solid }')
 
-    assert_equal 'solid', result
+    # Style-only can create full border shorthand
+    assert_equal 'solid', decls['border']
   end
 
-  # Border-color shorthand creation (from individual sides)
+  def test_create_border_style_vertical_horizontal
+    decls = parse_and_merge('.test { border-top-style: solid; border-right-style: dashed; border-bottom-style: solid; border-left-style: dashed }')
+
+    # When styles differ, creates border-style shorthand
+    assert_equal 'solid dashed', decls['border-style']
+  end
+
   def test_create_border_color_all_same
-    input = {
-      'border-top-color' => 'black',
-      'border-right-color' => 'black',
-      'border-bottom-color' => 'black',
-      'border-left-color' => 'black'
-    }
-    result = Cataract.create_border_color_shorthand(input)
+    decls = parse_and_merge('.test { border-top-color: red; border-right-color: red; border-bottom-color: red; border-left-color: red }')
 
-    assert_equal 'black', result
+    # Color-only creates border-color shorthand (border requires style)
+    assert_equal 'red', decls['border-color']
+    assert_nil decls['border']
   end
 
-  # Border shorthand creation (from border-width, border-style, border-color)
-  def test_create_border_full
-    input = {
-      'border-width' => '1px',
-      'border-style' => 'solid',
-      'border-color' => 'black'
-    }
-    result = Cataract.create_border_shorthand(input)
+  def test_create_border_color_vertical_horizontal
+    decls = parse_and_merge('.test { border-top-color: red; border-right-color: blue; border-bottom-color: red; border-left-color: blue }')
 
-    assert_equal '1px solid black', result
+    # When colors differ, creates border-color shorthand
+    assert_equal 'red blue', decls['border-color']
+  end
+
+  # ===========================================================================
+  # Border Full Shorthand Creation
+  # ===========================================================================
+
+  def test_create_border_full
+    # When all sides have same width, style, and color, should create border shorthand
+    decls = parse_and_merge('.test { border-top-width: 1px; border-top-style: solid; border-top-color: red; border-right-width: 1px; border-right-style: solid; border-right-color: red; border-bottom-width: 1px; border-bottom-style: solid; border-bottom-color: red; border-left-width: 1px; border-left-style: solid; border-left-color: red }')
+
+    assert_equal '1px solid red', decls['border']
   end
 
   def test_create_border_partial
-    input = {
-      'border-width' => '2px',
-      'border-style' => 'dashed'
-      # border-color missing
-    }
-    result = Cataract.create_border_shorthand(input)
+    # When sides differ, should create border-width/style/color shorthands but not full border
+    decls = parse_and_merge('.test { border-top-width: 1px; border-top-style: solid; border-top-color: red; border-right-width: 2px; border-right-style: dashed; border-right-color: blue; border-bottom-width: 1px; border-bottom-style: solid; border-bottom-color: red; border-left-width: 2px; border-left-style: dashed; border-left-color: blue }')
 
-    assert_equal '2px dashed', result, 'Should combine available properties'
+    # Should have individual shorthands but not full border
+    assert_equal '1px 2px', decls['border-width']
+    assert_equal 'solid dashed', decls['border-style']
+    assert_equal 'red blue', decls['border-color']
+    assert_nil decls['border']
   end
 
-  def test_create_border_missing_all
-    input = {}
-    result = Cataract.create_border_shorthand(input)
+  # ===========================================================================
+  # Background Shorthand Creation
+  # ===========================================================================
 
-    assert_nil result, 'Should return nil if no border properties'
-  end
-
-  # Real-world case from bootstrap.css: .form-control-plaintext
-  # Has: border: solid transparent; border-width: 1px 0;
-  # After merge: border-width becomes "1px 0", border-style becomes "solid", border-color becomes "transparent"
-  # Should NOT create border shorthand because border-width has multiple values
-  def test_create_border_multivalue_width_should_fail
-    input = {
-      'border-width' => '1px 0',
-      'border-style' => 'solid',
-      'border-color' => 'transparent'
-    }
-    result = Cataract.create_border_shorthand(input)
-
-    assert_nil result, 'Should return nil when border-width has multiple values (1px 0)'
-  end
-
-  def test_create_border_multivalue_style_should_fail
-    input = {
-      'border-width' => '1px',
-      'border-style' => 'solid dashed',
-      'border-color' => 'black'
-    }
-    result = Cataract.create_border_shorthand(input)
-
-    assert_nil result, 'Should return nil when border-style has multiple values'
-  end
-
-  def test_create_border_multivalue_color_should_fail
-    input = {
-      'border-width' => '2px',
-      'border-style' => 'solid',
-      'border-color' => 'red blue'
-    }
-    result = Cataract.create_border_shorthand(input)
-
-    assert_nil result, 'Should return nil when border-color has multiple values'
-  end
-
-  # Background shorthand creation
   def test_create_background_color_only
-    input = {
-      'background-color' => 'red'
-    }
-    result = Cataract.create_background_shorthand(input)
+    decls = parse_and_merge('.test { background-color: white }')
 
-    assert_equal 'red', result
+    # Single background property doesn't create shorthand
+    assert_equal 'white', decls['background-color']
+    assert_nil decls['background']
   end
 
-  def test_create_background_multiple
-    input = {
-      'background-color' => 'black',
-      'background-image' => 'none'
-    }
-    result = Cataract.create_background_shorthand(input)
+  def test_create_background_multiple_properties
+    decls = parse_and_merge('.test { background-color: red; background-image: url(img.png); background-repeat: no-repeat }')
 
-    assert_equal 'black none', result
+    # Multiple background properties should create shorthand
+    assert_equal 'red url(img.png) no-repeat', decls['background']
   end
 
-  def test_create_background_full
-    input = {
-      'background-color' => 'white',
-      'background-image' => 'url(bg.png)',
-      'background-repeat' => 'no-repeat',
-      'background-position' => 'center'
-    }
-    result = Cataract.create_background_shorthand(input)
+  # ===========================================================================
+  # Font Shorthand Creation
+  # ===========================================================================
 
-    assert_equal 'white url(bg.png) no-repeat center', result
+  def test_create_font_basic
+    # Font shorthand requires at minimum: font-size and font-family
+    decls = parse_and_merge('.test { font-size: 12px; font-family: Arial }')
+
+    assert_equal '12px Arial', decls['font']
   end
 
-  # Font shorthand creation
-  def test_create_font_minimal
-    input = {
-      'font-size' => '12px',
-      'font-family' => 'Arial'
-    }
-    result = Cataract.create_font_shorthand(input)
+  def test_create_font_with_line_height
+    decls = parse_and_merge('.test { font-size: 14px; line-height: 1.5; font-family: Arial }')
 
-    assert_equal '12px Arial', result
+    # Should create font shorthand with line-height
+    assert_equal '14px/1.5 Arial', decls['font']
   end
 
-  def test_create_font_with_weight
-    input = {
-      'font-weight' => 'bold',
-      'font-size' => '14px',
-      'font-family' => 'Helvetica'
-    }
-    result = Cataract.create_font_shorthand(input)
+  def test_create_font_with_style_weight
+    decls = parse_and_merge('.test { font-style: italic; font-weight: bold; font-size: 16px; font-family: Arial }')
 
-    assert_equal 'bold 14px Helvetica', result
+    # Should include style and weight
+    assert_equal 'italic bold 16px Arial', decls['font']
   end
 
-  def test_create_font_full
-    input = {
-      'font-style' => 'italic',
-      'font-weight' => 'bold',
-      'font-size' => '16px',
-      'line-height' => '1.5',
-      'font-family' => 'Georgia, serif'
-    }
-    result = Cataract.create_font_shorthand(input)
+  # ===========================================================================
+  # List-Style Shorthand Creation
+  # ===========================================================================
 
-    assert_equal 'italic bold 16px/1.5 Georgia, serif', result
-  end
+  def test_create_list_style_single
+    decls = parse_and_merge('.test { list-style-type: square }')
 
-  def test_create_font_missing_required
-    input = {
-      'font-weight' => 'bold'
-      # missing font-size and font-family (required)
-    }
-    result = Cataract.create_font_shorthand(input)
-
-    assert_nil result, 'Should return nil without required properties'
-  end
-
-  # List-style shorthand creation
-  def test_create_list_style_type_only
-    input = {
-      'list-style-type' => 'disc'
-    }
-    result = Cataract.create_list_style_shorthand(input)
-
-    assert_equal 'disc', result
+    # Single property doesn't create shorthand
+    assert_equal 'square', decls['list-style-type']
+    assert_nil decls['list-style']
   end
 
   def test_create_list_style_multiple
-    input = {
-      'list-style-type' => 'square',
-      'list-style-position' => 'inside'
-    }
-    result = Cataract.create_list_style_shorthand(input)
+    decls = parse_and_merge('.test { list-style-type: square; list-style-position: inside }')
 
-    assert_equal 'square inside', result
+    # Multiple properties should create shorthand
+    assert_equal 'square inside', decls['list-style']
+  end
+
+  # ===========================================================================
+  # Edge Cases
+  # ===========================================================================
+
+  def test_important_prevents_shorthand_creation
+    # If properties have different !important flags, cannot create shorthand
+    decls = parse_and_merge('.test { margin-top: 10px !important; margin-right: 10px; margin-bottom: 10px; margin-left: 10px }')
+
+    # Should keep longhands when !important flags differ
+    assert_nil decls['margin']
+    assert_equal '10px !important', decls['margin-top']
+    assert_equal '10px', decls['margin-right']
+  end
+
+  def test_all_important_creates_shorthand
+    # If all have !important, can create shorthand with !important
+    decls = parse_and_merge('.test { margin-top: 10px !important; margin-right: 10px !important; margin-bottom: 10px !important; margin-left: 10px !important }')
+
+    # Should create shorthand with !important
+    assert_equal '10px !important', decls['margin']
   end
 end

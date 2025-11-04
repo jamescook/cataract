@@ -299,34 +299,4 @@ class TestRuleSet < Minitest::Test
     assert_empty rule
   end
 
-  def test_expand_shorthand!
-    rule = Cataract::RuleSet.new(
-      selector: 'div',
-      block: 'margin: 10px 20px; padding: 5px; border: 1px solid black;'
-    )
-
-    rule.expand_shorthand!
-
-    # Should expand margin
-    assert_equal '10px', rule['margin-top']
-    assert_equal '20px', rule['margin-right']
-    assert_equal '10px', rule['margin-bottom']
-    assert_equal '20px', rule['margin-left']
-
-    # Should expand padding
-    assert_equal '5px', rule['padding-top']
-    assert_equal '5px', rule['padding-right']
-    assert_equal '5px', rule['padding-bottom']
-    assert_equal '5px', rule['padding-left']
-
-    # Should expand border
-    assert_equal '1px', rule['border-top-width']
-    assert_equal 'solid', rule['border-top-style']
-    assert_equal 'black', rule['border-top-color']
-
-    # Original shorthands should be removed (returns empty string for missing properties)
-    assert_equal '', rule['margin']
-    assert_equal '', rule['padding']
-    assert_equal '', rule['border']
-  end
 end

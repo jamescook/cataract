@@ -175,10 +175,16 @@ static VALUE rules_to_s(VALUE self, VALUE rules_array) {
 }
 
 /*
- * Convert array of Declarations::Value structs to CSS string (internal)
+ * Convert array of Declarations::Value structs to CSS string
  * Format: "prop: value; prop2: value2 !important; "
+ *
+ * This is the core serialization logic used by both:
+ * - Declarations#to_s (instance method)
+ * - Internal C serialization (stylesheet.c)
+ *
+ * Exported (non-static) so stylesheet.c can call it
  */
-VALUE declarations_to_s(VALUE self, VALUE declarations_array) {
+VALUE declarations_array_to_s(VALUE declarations_array) {
     Check_Type(declarations_array, T_ARRAY);
 
     long len = RARRAY_LEN(declarations_array);
@@ -229,6 +235,20 @@ VALUE declarations_to_s(VALUE self, VALUE declarations_array) {
     return result;
 }
 
+/*
+ * Instance method: Declarations#to_s
+ * Converts declarations to CSS string
+ *
+ * @return [String] CSS declarations like "color: red; margin: 10px !important;"
+ */
+static VALUE declarations_to_s_method(VALUE self) {
+    // Get @values instance variable (array of Declarations::Value structs)
+    VALUE values = rb_ivar_get(self, rb_intern("@values"));
+
+    // Call core serialization function
+    return declarations_array_to_s(values);
+}
+
 void Init_cataract() {
     VALUE module = rb_define_module("Cataract");
 
@@ -254,6 +274,9 @@ void Init_cataract() {
         NULL
     );
 
+    // Add methods to Declarations class
+    rb_define_method(cDeclarations, "to_s", declarations_to_s_method, 0);
+
     // Define Cataract::Rule = Struct.new(:selector, :declarations, :specificity)
     // Note: media_query removed - media info now stored at group level in hash structure
     cRule = rb_struct_define_under(
@@ -270,34 +293,57 @@ void Init_cataract() {
     rb_define_module_function(module, "calculate_specificity", calculate_specificity, 1);
     rb_define_module_function(module, "merge_rules", cataract_merge_wrapper, 1);
     rb_define_module_function(module, "apply_cascade", cataract_merge_wrapper, 1);  // Alias with better name
-    rb_define_module_function(module, "rules_to_s", rules_to_s, 1);
-    rb_define_module_function(module, "split_value", cataract_split_value, 1);
-    rb_define_module_function(module, "expand_margin", cataract_expand_margin, 1);
-    rb_define_module_function(module, "expand_padding", cataract_expand_padding, 1);
-    rb_define_module_function(module, "expand_border_color", cataract_expand_border_color, 1);
-    rb_define_module_function(module, "expand_border_style", cataract_expand_border_style, 1);
-    rb_define_module_function(module, "expand_border_width", cataract_expand_border_width, 1);
-    rb_define_module_function(module, "expand_border", cataract_expand_border, 1);
-    rb_define_module_function(module, "expand_border_side", cataract_expand_border_side, 2);
-    rb_define_module_function(module, "expand_font", cataract_expand_font, 1);
-    rb_define_module_function(module, "expand_list_style", cataract_expand_list_style, 1);
-    rb_define_module_function(module, "expand_background", cataract_expand_background, 1);
+    /* @api private */
+    rb_define_module_function(module, "_rules_to_s", rules_to_s, 1);
+
+    /* @api private */
+    rb_define_module_function(module, "_split_value", cataract_split_value, 1);
+    /* @api private */
+    rb_define_module_function(module, "_expand_margin", cataract_expand_margin, 1);
+    /* @api private */
+    rb_define_module_function(module, "_expand_padding", cataract_expand_padding, 1);
+    /* @api private */
+    rb_define_module_function(module, "_expand_border_color", cataract_expand_border_color, 1);
+    /* @api private */
+    rb_define_module_function(module, "_expand_border_style", cataract_expand_border_style, 1);
+    /* @api private */
+    rb_define_module_function(module, "_expand_border_width", cataract_expand_border_width, 1);
+    /* @api private */
+    rb_define_module_function(module, "_expand_border", cataract_expand_border, 1);
+    /* @api private */
+    rb_define_module_function(module, "_expand_border_side", cataract_expand_border_side, 2);
+    /* @api private */
+    rb_define_module_function(module, "_expand_font", cataract_expand_font, 1);
+    /* @api private */
+    rb_define_module_function(module, "_expand_list_style", cataract_expand_list_style, 1);
+    /* @api private */
+    rb_define_module_function(module, "_expand_background", cataract_expand_background, 1);
 
     // Shorthand creation (inverse of expansion)
-    rb_define_module_function(module, "create_margin_shorthand", cataract_create_margin_shorthand, 1);
-    rb_define_module_function(module, "create_padding_shorthand", cataract_create_padding_shorthand, 1);
-    rb_define_module_function(module, "create_border_width_shorthand", cataract_create_border_width_shorthand, 1);
-    rb_define_module_function(module, "create_border_style_shorthand", cataract_create_border_style_shorthand, 1);
-    rb_define_module_function(module, "create_border_color_shorthand", cataract_create_border_color_shorthand, 1);
-    rb_define_module_function(module, "create_border_shorthand", cataract_create_border_shorthand, 1);
-    rb_define_module_function(module, "create_background_shorthand", cataract_create_background_shorthand, 1);
-    rb_define_module_function(module, "create_font_shorthand", cataract_create_font_shorthand, 1);
-    rb_define_module_function(module, "create_list_style_shorthand", cataract_create_list_style_shorthand, 1);
+    /* @api private */
+    rb_define_module_function(module, "_create_margin_shorthand", cataract_create_margin_shorthand, 1);
+    /* @api private */
+    rb_define_module_function(module, "_create_padding_shorthand", cataract_create_padding_shorthand, 1);
+    /* @api private */
+    rb_define_module_function(module, "_create_border_width_shorthand", cataract_create_border_width_shorthand, 1);
+    /* @api private */
+    rb_define_module_function(module, "_create_border_style_shorthand", cataract_create_border_style_shorthand, 1);
+    /* @api private */
+    rb_define_module_function(module, "_create_border_color_shorthand", cataract_create_border_color_shorthand, 1);
+    /* @api private */
+    rb_define_module_function(module, "_create_border_shorthand", cataract_create_border_shorthand, 1);
+    /* @api private */
+    rb_define_module_function(module, "_create_background_shorthand", cataract_create_background_shorthand, 1);
+    /* @api private */
+    rb_define_module_function(module, "_create_font_shorthand", cataract_create_font_shorthand, 1);
+    /* @api private */
+    rb_define_module_function(module, "_create_list_style_shorthand", cataract_create_list_style_shorthand, 1);
 
     // Serialization
-    rb_define_module_function(module, "declarations_to_s", declarations_to_s, 1);
-    rb_define_module_function(module, "stylesheet_to_s_c", stylesheet_to_s_c, 2);
-    rb_define_module_function(module, "stylesheet_to_formatted_s_c", stylesheet_to_formatted_s_c, 2);
+    /* @api private */
+    rb_define_module_function(module, "_stylesheet_to_s_c", stylesheet_to_s_c, 2);
+    /* @api private */
+    rb_define_module_function(module, "_stylesheet_to_formatted_s_c", stylesheet_to_formatted_s_c, 2);
 
     // Import scanning
     rb_define_module_function(module, "extract_imports", extract_imports, 1);

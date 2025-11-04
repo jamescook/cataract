@@ -39,7 +39,7 @@ class TestParser < Minitest::Test
     sheet.parse('.existing { color: blue }')
 
     # Add a new rule
-    new_rule = sheet.add_rule!(
+    new_rule = sheet.add_rule(
       selector: '.new',
       declarations: { 'color' => 'red', 'margin' => '10px !important' }
     )

@@ -738,8 +738,10 @@ VALUE cataract_create_border_shorthand(VALUE self, VALUE properties) {
     VALUE style = rb_hash_aref(properties, STR_NEW_CSTR("border-style"));
     VALUE color = rb_hash_aref(properties, STR_NEW_CSTR("border-color"));
 
-    // Need at least one property
-    if (NIL_P(width) && NIL_P(style) && NIL_P(color)) {
+    // Per W3C spec, border shorthand requires style at minimum
+    // Valid: "border: solid", "border: 1px solid", "border: 1px solid red"
+    // Invalid: "border: 1px", "border: red"
+    if (NIL_P(style)) {
         return Qnil;
     }
 
@@ -748,7 +750,7 @@ VALUE cataract_create_border_shorthand(VALUE self, VALUE properties) {
     if (!NIL_P(width) && strchr(RSTRING_PTR(width), ' ') != NULL) {
         return Qnil;
     }
-    if (!NIL_P(style) && strchr(RSTRING_PTR(style), ' ') != NULL) {
+    if (strchr(RSTRING_PTR(style), ' ') != NULL) {
         return Qnil;
     }
     if (!NIL_P(color) && strchr(RSTRING_PTR(color), ' ') != NULL) {
@@ -762,11 +764,11 @@ VALUE cataract_create_border_shorthand(VALUE self, VALUE properties) {
         rb_str_append(result, width);
         first = 0;
     }
-    if (!NIL_P(style)) {
-        if (!first) rb_str_cat2(result, " ");
-        rb_str_append(result, style);
-        first = 0;
-    }
+    // Style is required, always present
+    if (!first) rb_str_cat2(result, " ");
+    rb_str_append(result, style);
+    first = 0;
+
     if (!NIL_P(color)) {
         if (!first) rb_str_cat2(result, " ");
         rb_str_append(result, color);

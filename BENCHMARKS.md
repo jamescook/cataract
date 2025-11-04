@@ -105,14 +105,14 @@ Time to merge multiple CSS rule sets with same selector
 
 | Test Case | Speedup |
 |-----------|---------|
-| No shorthand properties (large) | **3.38x faster** |
-| Simple properties | **3.5x faster** |
-| Cascade with specificity | **5.72x faster** |
-| Important declarations | **5.84x faster** |
-| Shorthand expansion | **3.8x faster** |
-| Complex merging | **2.78x faster** |
+| No shorthand properties (large) | **3.34x faster** |
+| Simple properties | **3.42x faster** |
+| Cascade with specificity | **5.19x faster** |
+| Important declarations | **5.37x faster** |
+| Shorthand expansion | **3.65x faster** |
+| Complex merging | **2.65x faster** |
 
-**Summary:** 2.78x faster to 5.84x faster (avg 4.17x faster)
+**Summary:** 2.65x faster to 5.37x faster (avg 3.94x faster)
 
 ### What's Being Tested
 - Specificity-based CSS cascade (ID > class > element)
@@ -159,7 +159,7 @@ Ruby-side operations with and without YJIT
 | **Parsing** | 10.41x faster | 12.91x faster | 11.66x faster |
 | **Serialization** | 21.02x faster | 57.26x faster | 39.14x faster |
 | **Specificity** | 22.03x faster | 49.17x faster | 33.3x faster |
-| **Merging** | 2.78x faster | 5.84x faster | 4.17x faster |
+| **Merging** | 2.65x faster | 5.37x faster | 3.94x faster |
 
 ### Implementation Notes
 

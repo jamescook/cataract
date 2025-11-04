@@ -45,7 +45,7 @@ class TestStylesheet < Minitest::Test
 
     assert_equal 1, sheet.size
 
-    sheet.add_block!('div { margin: 10px; }')
+    sheet.add_block('div { margin: 10px; }')
 
     assert_equal 2, sheet.size
 
@@ -78,7 +78,7 @@ class TestStylesheet < Minitest::Test
 
   def test_add_block_with_fix_braces
     sheet = Cataract::Stylesheet.new
-    sheet.add_block!('p { color: red;', fix_braces: true)
+    sheet.add_block('p { color: red;', fix_braces: true)
 
     declarations = sheet.find_by_selector('p').first
     assert_kind_of Cataract::Declarations, declarations
@@ -706,12 +706,12 @@ body { color: red; }'
   end
 
   # ============================================================================
-  # Mutation tests - add_rule!, add_rule_set!, remove_rule_set!
+  # Mutation tests - add_rule, add_rule_set!, remove_rule_set!
   # ============================================================================
 
   def test_adding_a_rule
     sheet = Cataract::Stylesheet.new
-    sheet.add_rule!(selector: 'div', declarations: 'color: blue')
+    sheet.add_rule(selector: 'div', declarations: 'color: blue')
 
     assert_equal 'color: blue;', sheet.find_by_selector('div').first
   end
@@ -813,24 +813,6 @@ body { color: red; }'
     assert_includes selectors, '.header'
   end
 
-  def test_expand_shorthand_class_method
-    result = Cataract::Stylesheet.expand_shorthand('margin: 10px 20px;')
-
-    assert_equal '10px', result['margin-top']
-    assert_equal '20px', result['margin-right']
-    assert_equal '10px', result['margin-bottom']
-    assert_equal '20px', result['margin-left']
-  end
-
-  def test_expand_shorthand_instance_method
-    sheet = Cataract::Stylesheet.new
-    result = sheet.expand_shorthand('padding: 5px;')
-
-    assert_equal '5px', result['padding-top']
-    assert_equal '5px', result['padding-right']
-    assert_equal '5px', result['padding-bottom']
-    assert_equal '5px', result['padding-left']
-  end
 
   def test_to_css_alias
     sheet = Cataract::Stylesheet.parse('body { color: red; }')
