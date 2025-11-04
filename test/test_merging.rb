@@ -123,7 +123,6 @@ class TestMerging < Minitest::Test
     merged = Cataract.merge(rules)
     # background shorthand should be created from multiple properties
     background = find_property(merged, 'background')
-
     assert_equal 'black none', background
   end
 
@@ -196,7 +195,6 @@ class TestMerging < Minitest::Test
     # After expansion and re-creation, background shorthand should be marked !important
     # Normal background-color cannot override !important
     background = find_property(merged, 'background')
-
     assert_equal 'black none !important', background
     # The !important background wins, normal background-color is ignored
     assert_nil find_property(merged, 'background-color')
