@@ -20,6 +20,11 @@ class MergingBenchmark < BenchmarkHarness
     {
       'test_cases' => [
         {
+          'name' => 'No shorthand properties (large)',
+          'key' => 'no_shorthand',
+          'css' => (".test { color: red; background-color: blue; display: block; position: relative; width: 100px; height: 50px; }\n" * 100)
+        },
+        {
           'name' => 'Simple properties',
           'key' => 'simple',
           'css' => ".test { color: black; margin: 10px; }\n.test { padding: 5px; }"
