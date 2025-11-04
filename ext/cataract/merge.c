@@ -1,10 +1,46 @@
 #include "cataract.h"
 
-// Cache frequently used symbol IDs (initialized in cataract_merge)
+// Cache frequently used symbol IDs (initialized in init_merge_constants)
 static ID id_value = 0;
 static ID id_specificity = 0;
 static ID id_important = 0;
 static ID id_struct_class = 0;
+
+// Cached property name strings (frozen, never GC'd)
+// Initialized in init_merge_constants() at module load time
+static VALUE str_margin = Qnil;
+static VALUE str_margin_top = Qnil;
+static VALUE str_margin_right = Qnil;
+static VALUE str_margin_bottom = Qnil;
+static VALUE str_margin_left = Qnil;
+static VALUE str_padding = Qnil;
+static VALUE str_padding_top = Qnil;
+static VALUE str_padding_right = Qnil;
+static VALUE str_padding_bottom = Qnil;
+static VALUE str_padding_left = Qnil;
+static VALUE str_border_width = Qnil;
+static VALUE str_border_top_width = Qnil;
+static VALUE str_border_right_width = Qnil;
+static VALUE str_border_bottom_width = Qnil;
+static VALUE str_border_left_width = Qnil;
+static VALUE str_border_style = Qnil;
+static VALUE str_border_top_style = Qnil;
+static VALUE str_border_right_style = Qnil;
+static VALUE str_border_bottom_style = Qnil;
+static VALUE str_border_left_style = Qnil;
+static VALUE str_border_color = Qnil;
+static VALUE str_border_top_color = Qnil;
+static VALUE str_border_right_color = Qnil;
+static VALUE str_border_bottom_color = Qnil;
+static VALUE str_border_left_color = Qnil;
+static VALUE str_border = Qnil;
+static VALUE str_font = Qnil;
+static VALUE str_font_style = Qnil;
+static VALUE str_font_variant = Qnil;
+static VALUE str_font_weight = Qnil;
+static VALUE str_font_size = Qnil;
+static VALUE str_line_height = Qnil;
+static VALUE str_font_family = Qnil;
 
 // Context for expanded property iteration
 struct expand_context {
@@ -77,6 +113,97 @@ static int merge_build_result_callback(VALUE property, VALUE prop_data, VALUE re
     return ST_CONTINUE;
 }
 
+// Initialize cached property strings (called once at module init)
+void init_merge_constants(void) {
+    // Initialize symbol IDs
+    id_value = rb_intern("value");
+    id_specificity = rb_intern("specificity");
+    id_important = rb_intern("important");
+    id_struct_class = rb_intern("_struct_class");
+
+    // Margin properties
+    str_margin = rb_str_freeze(USASCII_STR("margin"));
+    str_margin_top = rb_str_freeze(USASCII_STR("margin-top"));
+    str_margin_right = rb_str_freeze(USASCII_STR("margin-right"));
+    str_margin_bottom = rb_str_freeze(USASCII_STR("margin-bottom"));
+    str_margin_left = rb_str_freeze(USASCII_STR("margin-left"));
+
+    // Padding properties
+    str_padding = rb_str_freeze(USASCII_STR("padding"));
+    str_padding_top = rb_str_freeze(USASCII_STR("padding-top"));
+    str_padding_right = rb_str_freeze(USASCII_STR("padding-right"));
+    str_padding_bottom = rb_str_freeze(USASCII_STR("padding-bottom"));
+    str_padding_left = rb_str_freeze(USASCII_STR("padding-left"));
+
+    // Border-width properties
+    str_border_width = rb_str_freeze(USASCII_STR("border-width"));
+    str_border_top_width = rb_str_freeze(USASCII_STR("border-top-width"));
+    str_border_right_width = rb_str_freeze(USASCII_STR("border-right-width"));
+    str_border_bottom_width = rb_str_freeze(USASCII_STR("border-bottom-width"));
+    str_border_left_width = rb_str_freeze(USASCII_STR("border-left-width"));
+
+    // Border-style properties
+    str_border_style = rb_str_freeze(USASCII_STR("border-style"));
+    str_border_top_style = rb_str_freeze(USASCII_STR("border-top-style"));
+    str_border_right_style = rb_str_freeze(USASCII_STR("border-right-style"));
+    str_border_bottom_style = rb_str_freeze(USASCII_STR("border-bottom-style"));
+    str_border_left_style = rb_str_freeze(USASCII_STR("border-left-style"));
+
+    // Border-color properties
+    str_border_color = rb_str_freeze(USASCII_STR("border-color"));
+    str_border_top_color = rb_str_freeze(USASCII_STR("border-top-color"));
+    str_border_right_color = rb_str_freeze(USASCII_STR("border-right-color"));
+    str_border_bottom_color = rb_str_freeze(USASCII_STR("border-bottom-color"));
+    str_border_left_color = rb_str_freeze(USASCII_STR("border-left-color"));
+
+    // Border shorthand
+    str_border = rb_str_freeze(USASCII_STR("border"));
+
+    // Font properties
+    str_font = rb_str_freeze(USASCII_STR("font"));
+    str_font_style = rb_str_freeze(USASCII_STR("font-style"));
+    str_font_variant = rb_str_freeze(USASCII_STR("font-variant"));
+    str_font_weight = rb_str_freeze(USASCII_STR("font-weight"));
+    str_font_size = rb_str_freeze(USASCII_STR("font-size"));
+    str_line_height = rb_str_freeze(USASCII_STR("line-height"));
+    str_font_family = rb_str_freeze(USASCII_STR("font-family"));
+
+    // Register all strings with GC so they're never collected
+    rb_gc_register_mark_object(str_margin);
+    rb_gc_register_mark_object(str_margin_top);
+    rb_gc_register_mark_object(str_margin_right);
+    rb_gc_register_mark_object(str_margin_bottom);
+    rb_gc_register_mark_object(str_margin_left);
+    rb_gc_register_mark_object(str_padding);
+    rb_gc_register_mark_object(str_padding_top);
+    rb_gc_register_mark_object(str_padding_right);
+    rb_gc_register_mark_object(str_padding_bottom);
+    rb_gc_register_mark_object(str_padding_left);
+    rb_gc_register_mark_object(str_border_width);
+    rb_gc_register_mark_object(str_border_top_width);
+    rb_gc_register_mark_object(str_border_right_width);
+    rb_gc_register_mark_object(str_border_bottom_width);
+    rb_gc_register_mark_object(str_border_left_width);
+    rb_gc_register_mark_object(str_border_style);
+    rb_gc_register_mark_object(str_border_top_style);
+    rb_gc_register_mark_object(str_border_right_style);
+    rb_gc_register_mark_object(str_border_bottom_style);
+    rb_gc_register_mark_object(str_border_left_style);
+    rb_gc_register_mark_object(str_border_color);
+    rb_gc_register_mark_object(str_border_top_color);
+    rb_gc_register_mark_object(str_border_right_color);
+    rb_gc_register_mark_object(str_border_bottom_color);
+    rb_gc_register_mark_object(str_border_left_color);
+    rb_gc_register_mark_object(str_border);
+    rb_gc_register_mark_object(str_font);
+    rb_gc_register_mark_object(str_font_style);
+    rb_gc_register_mark_object(str_font_variant);
+    rb_gc_register_mark_object(str_font_weight);
+    rb_gc_register_mark_object(str_font_size);
+    rb_gc_register_mark_object(str_line_height);
+    rb_gc_register_mark_object(str_font_family);
+}
+
 // Helper macros to extract property data from properties_hash
 // Note: These use id_value, id_specificity, id_important which are initialized in cataract_merge
 #define GET_PROP_VALUE(hash, prop_name) \
@@ -86,30 +213,38 @@ static int merge_build_result_callback(VALUE property, VALUE prop_data, VALUE re
 #define GET_PROP_DATA(hash, prop_name) \
     rb_hash_aref(hash, USASCII_STR(prop_name))
 
+// Versions that accept cached VALUE strings instead of string literals
+#define GET_PROP_VALUE_STR(hash, str_prop) \
+    ({ VALUE pd = rb_hash_aref(hash, str_prop); \
+       NIL_P(pd) ? Qnil : rb_hash_aref(pd, ID2SYM(id_value)); })
+
+#define GET_PROP_DATA_STR(hash, str_prop) \
+    rb_hash_aref(hash, str_prop)
+
 // Macro to create shorthand from 4-sided properties (margin, padding, border-width/style/color)
 // Reduces repetitive code by encapsulating the common pattern:
 // 1. Get 4 longhand values (top, right, bottom, left)
 // 2. Check if all 4 exist
 // 3. Call shorthand creator function
 // 4. Add shorthand to properties_hash and remove longhands
-// Note: All parameters must be string literals so USASCII_STR can use sizeof at compile time
-#define TRY_CREATE_FOUR_SIDED_SHORTHAND(hash, top_lit, right_lit, bottom_lit, left_lit, shorthand_lit, creator_func, vstruct) \
+// Note: Uses cached static strings (VALUE) for property names - no runtime allocation
+#define TRY_CREATE_FOUR_SIDED_SHORTHAND(hash, str_top, str_right, str_bottom, str_left, str_shorthand, creator_func, vstruct) \
     do { \
-        VALUE _top = GET_PROP_VALUE(hash, top_lit); \
-        VALUE _right = GET_PROP_VALUE(hash, right_lit); \
-        VALUE _bottom = GET_PROP_VALUE(hash, bottom_lit); \
-        VALUE _left = GET_PROP_VALUE(hash, left_lit); \
+        VALUE _top = GET_PROP_VALUE_STR(hash, str_top); \
+        VALUE _right = GET_PROP_VALUE_STR(hash, str_right); \
+        VALUE _bottom = GET_PROP_VALUE_STR(hash, str_bottom); \
+        VALUE _left = GET_PROP_VALUE_STR(hash, str_left); \
         \
         if (!NIL_P(_top) && !NIL_P(_right) && !NIL_P(_bottom) && !NIL_P(_left)) { \
             VALUE _props = rb_hash_new(); \
-            rb_hash_aset(_props, USASCII_STR(top_lit), _top); \
-            rb_hash_aset(_props, USASCII_STR(right_lit), _right); \
-            rb_hash_aset(_props, USASCII_STR(bottom_lit), _bottom); \
-            rb_hash_aset(_props, USASCII_STR(left_lit), _left); \
+            rb_hash_aset(_props, str_top, _top); \
+            rb_hash_aset(_props, str_right, _right); \
+            rb_hash_aset(_props, str_bottom, _bottom); \
+            rb_hash_aset(_props, str_left, _left); \
             \
             VALUE _shorthand_value = creator_func(Qnil, _props); \
             if (!NIL_P(_shorthand_value)) { \
-                VALUE _top_data = GET_PROP_DATA(hash, top_lit); \
+                VALUE _top_data = GET_PROP_DATA_STR(hash, str_top); \
                 VALUE _important = rb_hash_aref(_top_data, ID2SYM(id_important)); \
                 int _specificity = NUM2INT(rb_hash_aref(_top_data, ID2SYM(id_specificity))); \
                 \
@@ -118,12 +253,12 @@ static int merge_build_result_callback(VALUE property, VALUE prop_data, VALUE re
                 rb_hash_aset(_shorthand_data, ID2SYM(id_specificity), INT2NUM(_specificity)); \
                 rb_hash_aset(_shorthand_data, ID2SYM(id_important), _important); \
                 rb_hash_aset(_shorthand_data, ID2SYM(id_struct_class), vstruct); \
-                rb_hash_aset(hash, USASCII_STR(shorthand_lit), _shorthand_data); \
+                rb_hash_aset(hash, str_shorthand, _shorthand_data); \
                 \
-                rb_hash_delete(hash, USASCII_STR(top_lit)); \
-                rb_hash_delete(hash, USASCII_STR(right_lit)); \
-                rb_hash_delete(hash, USASCII_STR(bottom_lit)); \
-                rb_hash_delete(hash, USASCII_STR(left_lit)); \
+                rb_hash_delete(hash, str_top); \
+                rb_hash_delete(hash, str_right); \
+                rb_hash_delete(hash, str_bottom); \
+                rb_hash_delete(hash, str_left); \
                 \
                 RB_GC_GUARD(_shorthand_value); \
             } \
@@ -292,50 +427,50 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
     }
 
     // Create shorthand from longhand properties
-    // Use helper macro to reduce repetitive code (uses USASCII_STR for compile-time optimization)
+    // Uses cached static strings to avoid runtime allocation
 
     // Try to create margin shorthand
     TRY_CREATE_FOUR_SIDED_SHORTHAND(properties_hash,
-        "margin-top", "margin-right", "margin-bottom", "margin-left",
-        "margin", cataract_create_margin_shorthand, value_struct);
+        str_margin_top, str_margin_right, str_margin_bottom, str_margin_left,
+        str_margin, cataract_create_margin_shorthand, value_struct);
 
     // Try to create padding shorthand
     TRY_CREATE_FOUR_SIDED_SHORTHAND(properties_hash,
-        "padding-top", "padding-right", "padding-bottom", "padding-left",
-        "padding", cataract_create_padding_shorthand, value_struct);
+        str_padding_top, str_padding_right, str_padding_bottom, str_padding_left,
+        str_padding, cataract_create_padding_shorthand, value_struct);
 
     // Create border-width from individual sides
     TRY_CREATE_FOUR_SIDED_SHORTHAND(properties_hash,
-        "border-top-width", "border-right-width", "border-bottom-width", "border-left-width",
-        "border-width", cataract_create_border_width_shorthand, value_struct);
+        str_border_top_width, str_border_right_width, str_border_bottom_width, str_border_left_width,
+        str_border_width, cataract_create_border_width_shorthand, value_struct);
 
     // Create border-style from individual sides
     TRY_CREATE_FOUR_SIDED_SHORTHAND(properties_hash,
-        "border-top-style", "border-right-style", "border-bottom-style", "border-left-style",
-        "border-style", cataract_create_border_style_shorthand, value_struct);
+        str_border_top_style, str_border_right_style, str_border_bottom_style, str_border_left_style,
+        str_border_style, cataract_create_border_style_shorthand, value_struct);
 
     // Create border-color from individual sides
     TRY_CREATE_FOUR_SIDED_SHORTHAND(properties_hash,
-        "border-top-color", "border-right-color", "border-bottom-color", "border-left-color",
-        "border-color", cataract_create_border_color_shorthand, value_struct);
+        str_border_top_color, str_border_right_color, str_border_bottom_color, str_border_left_color,
+        str_border_color, cataract_create_border_color_shorthand, value_struct);
 
     // Now create border shorthand from border-{width,style,color}
-    VALUE border_width = GET_PROP_VALUE(properties_hash, "border-width");
-    VALUE border_style = GET_PROP_VALUE(properties_hash, "border-style");
-    VALUE border_color = GET_PROP_VALUE(properties_hash, "border-color");
+    VALUE border_width = GET_PROP_VALUE_STR(properties_hash, str_border_width);
+    VALUE border_style = GET_PROP_VALUE_STR(properties_hash, str_border_style);
+    VALUE border_color = GET_PROP_VALUE_STR(properties_hash, str_border_color);
 
     if (!NIL_P(border_width) || !NIL_P(border_style) || !NIL_P(border_color)) {
         VALUE border_props = rb_hash_new();
-        if (!NIL_P(border_width)) rb_hash_aset(border_props, USASCII_STR("border-width"), border_width);
-        if (!NIL_P(border_style)) rb_hash_aset(border_props, USASCII_STR("border-style"), border_style);
-        if (!NIL_P(border_color)) rb_hash_aset(border_props, USASCII_STR("border-color"), border_color);
+        if (!NIL_P(border_width)) rb_hash_aset(border_props, str_border_width, border_width);
+        if (!NIL_P(border_style)) rb_hash_aset(border_props, str_border_style, border_style);
+        if (!NIL_P(border_color)) rb_hash_aset(border_props, str_border_color, border_color);
 
         VALUE border_shorthand = cataract_create_border_shorthand(Qnil, border_props);
         if (!NIL_P(border_shorthand)) {
             // Use first available property's metadata
-            VALUE border_data_src = !NIL_P(border_width) ? GET_PROP_DATA(properties_hash, "border-width") :
-                                    !NIL_P(border_style) ? GET_PROP_DATA(properties_hash, "border-style") :
-                                    GET_PROP_DATA(properties_hash, "border-color");
+            VALUE border_data_src = !NIL_P(border_width) ? GET_PROP_DATA_STR(properties_hash, str_border_width) :
+                                    !NIL_P(border_style) ? GET_PROP_DATA_STR(properties_hash, str_border_style) :
+                                    GET_PROP_DATA_STR(properties_hash, str_border_color);
             VALUE border_important = rb_hash_aref(border_data_src, ID2SYM(id_important));
             int border_spec = NUM2INT(rb_hash_aref(border_data_src, ID2SYM(id_specificity)));
 
@@ -344,39 +479,39 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
             rb_hash_aset(border_data, ID2SYM(id_specificity), INT2NUM(border_spec));
             rb_hash_aset(border_data, ID2SYM(id_important), border_important);
             rb_hash_aset(border_data, ID2SYM(id_struct_class), value_struct);
-            rb_hash_aset(properties_hash, USASCII_STR("border"), border_data);
+            rb_hash_aset(properties_hash, str_border, border_data);
 
-            if (!NIL_P(border_width)) rb_hash_delete(properties_hash, USASCII_STR("border-width"));
-            if (!NIL_P(border_style)) rb_hash_delete(properties_hash, USASCII_STR("border-style"));
-            if (!NIL_P(border_color)) rb_hash_delete(properties_hash, USASCII_STR("border-color"));
+            if (!NIL_P(border_width)) rb_hash_delete(properties_hash, str_border_width);
+            if (!NIL_P(border_style)) rb_hash_delete(properties_hash, str_border_style);
+            if (!NIL_P(border_color)) rb_hash_delete(properties_hash, str_border_color);
         }
         RB_GC_GUARD(border_props);
         RB_GC_GUARD(border_shorthand);
     }
 
     // Try to create font shorthand
-    VALUE font_size = GET_PROP_VALUE(properties_hash, "font-size");
-    VALUE font_family = GET_PROP_VALUE(properties_hash, "font-family");
+    VALUE font_size = GET_PROP_VALUE_STR(properties_hash, str_font_size);
+    VALUE font_family = GET_PROP_VALUE_STR(properties_hash, str_font_family);
 
     // Font shorthand requires at least font-size and font-family
     if (!NIL_P(font_size) && !NIL_P(font_family)) {
-        VALUE font_style = GET_PROP_VALUE(properties_hash, "font-style");
-        VALUE font_variant = GET_PROP_VALUE(properties_hash, "font-variant");
-        VALUE font_weight = GET_PROP_VALUE(properties_hash, "font-weight");
-        VALUE line_height = GET_PROP_VALUE(properties_hash, "line-height");
+        VALUE font_style = GET_PROP_VALUE_STR(properties_hash, str_font_style);
+        VALUE font_variant = GET_PROP_VALUE_STR(properties_hash, str_font_variant);
+        VALUE font_weight = GET_PROP_VALUE_STR(properties_hash, str_font_weight);
+        VALUE line_height = GET_PROP_VALUE_STR(properties_hash, str_line_height);
 
         VALUE font_props = rb_hash_new();
-        if (!NIL_P(font_style)) rb_hash_aset(font_props, STR_NEW_CSTR("font-style"), font_style);
-        if (!NIL_P(font_variant)) rb_hash_aset(font_props, STR_NEW_CSTR("font-variant"), font_variant);
-        if (!NIL_P(font_weight)) rb_hash_aset(font_props, STR_NEW_CSTR("font-weight"), font_weight);
-        rb_hash_aset(font_props, STR_NEW_CSTR("font-size"), font_size);
-        if (!NIL_P(line_height)) rb_hash_aset(font_props, STR_NEW_CSTR("line-height"), line_height);
-        rb_hash_aset(font_props, STR_NEW_CSTR("font-family"), font_family);
+        if (!NIL_P(font_style)) rb_hash_aset(font_props, str_font_style, font_style);
+        if (!NIL_P(font_variant)) rb_hash_aset(font_props, str_font_variant, font_variant);
+        if (!NIL_P(font_weight)) rb_hash_aset(font_props, str_font_weight, font_weight);
+        rb_hash_aset(font_props, str_font_size, font_size);
+        if (!NIL_P(line_height)) rb_hash_aset(font_props, str_line_height, line_height);
+        rb_hash_aset(font_props, str_font_family, font_family);
 
         VALUE font_shorthand = cataract_create_font_shorthand(Qnil, font_props);
         if (!NIL_P(font_shorthand)) {
             // Find max specificity and check if any are important
-            VALUE size_data = GET_PROP_DATA(properties_hash, "font-size");
+            VALUE size_data = GET_PROP_DATA_STR(properties_hash, str_font_size);
             VALUE font_important = rb_hash_aref(size_data, ID2SYM(id_important));
             int font_spec = NUM2INT(rb_hash_aref(size_data, ID2SYM(id_specificity)));
 
@@ -385,15 +520,15 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
             rb_hash_aset(font_data, ID2SYM(id_specificity), INT2NUM(font_spec));
             rb_hash_aset(font_data, ID2SYM(id_important), font_important);
             rb_hash_aset(font_data, ID2SYM(id_struct_class), value_struct);
-            rb_hash_aset(properties_hash, USASCII_STR("font"), font_data);
+            rb_hash_aset(properties_hash, str_font, font_data);
 
             // Remove longhand properties
-            if (!NIL_P(font_style)) rb_hash_delete(properties_hash, USASCII_STR("font-style"));
-            if (!NIL_P(font_variant)) rb_hash_delete(properties_hash, USASCII_STR("font-variant"));
-            if (!NIL_P(font_weight)) rb_hash_delete(properties_hash, USASCII_STR("font-weight"));
-            rb_hash_delete(properties_hash, USASCII_STR("font-size"));
-            if (!NIL_P(line_height)) rb_hash_delete(properties_hash, USASCII_STR("line-height"));
-            rb_hash_delete(properties_hash, USASCII_STR("font-family"));
+            if (!NIL_P(font_style)) rb_hash_delete(properties_hash, str_font_style);
+            if (!NIL_P(font_variant)) rb_hash_delete(properties_hash, str_font_variant);
+            if (!NIL_P(font_weight)) rb_hash_delete(properties_hash, str_font_weight);
+            rb_hash_delete(properties_hash, str_font_size);
+            if (!NIL_P(line_height)) rb_hash_delete(properties_hash, str_line_height);
+            rb_hash_delete(properties_hash, str_font_family);
         }
         RB_GC_GUARD(font_props);
         RB_GC_GUARD(font_shorthand);
