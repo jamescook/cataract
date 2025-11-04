@@ -45,6 +45,9 @@ module Cataract
       @declarations[property] || ''
     end
 
+    # Alias for [] to avoid conflicts with Struct's [] accessor in Rule class
+    alias property []
+
     def []=(property, value)
       @declarations[property] = value
     end
