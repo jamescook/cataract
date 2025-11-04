@@ -192,6 +192,7 @@ VALUE stylesheet_to_formatted_s_c(VALUE self, VALUE rules_array, VALUE charset);
 VALUE extract_imports(VALUE self, VALUE css_string);
 
 // Merge/cascade functions (merge.c)
+void init_merge_constants(void);
 VALUE cataract_merge(VALUE self, VALUE rules_array);
 VALUE cataract_merge_wrapper(VALUE self, VALUE input);
 

@@ -232,6 +232,9 @@ VALUE declarations_to_s(VALUE self, VALUE declarations_array) {
 void Init_cataract() {
     VALUE module = rb_define_module("Cataract");
 
+    // Initialize merge constants (cached strings and symbol IDs)
+    init_merge_constants();
+
     // Define error class hierarchy
     eCataractError = rb_define_class_under(module, "Error", rb_eStandardError);
     eParseError = rb_define_class_under(module, "ParseError", eCataractError);
