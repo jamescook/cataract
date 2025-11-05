@@ -288,6 +288,9 @@ void Init_cataract() {
         NULL
     );
 
+    // Define Cataract::Stylesheet class (Ruby side will reopen and add methods)
+    rb_define_class_under(module, "Stylesheet", rb_cObject);
+
     rb_define_module_function(module, "parse_css", parse_css, 1);
     rb_define_module_function(module, "parse_declarations", parse_declarations, 1);
     rb_define_module_function(module, "calculate_specificity", calculate_specificity, 1);
@@ -381,6 +384,9 @@ void Init_cataract() {
     // compiler optimizations that affect the generated code.
 
     rb_define_const(module, "COMPILE_FLAGS", compile_flags);
+
+    // Initialize color conversion module
+    Init_color_conversion(module);
 }
 
 // NOTE: shorthand_expander.c and value_splitter.c are now compiled separately (not included)

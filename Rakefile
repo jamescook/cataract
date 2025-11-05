@@ -172,19 +172,20 @@ begin
   desc 'Generate example CSS analysis for documentation'
   task :generate_example do
     puts 'Generating GitHub CSS analysis example...'
-    # Generate to doc root so it's accessible but not processed by YARD
-    system('ruby examples/css_analyzer.rb https://github.com -o doc/github_analysis.html')
-  end
-
-  YARD::Rake::YardocTask.new(:doc) do |t|
-    t.files = ['lib/**/*.rb', 'ext/**/*.c', '-', 'doc/files/EXAMPLE.md']
-    t.options = ['--output-dir', 'doc', '--readme', 'README.md', '--title', 'Cataract - Fast CSS Parser']
+    # Generate with file. prefix for YARD compatibility
+    system('ruby examples/css_analyzer.rb https://github.com -o docs/file.github_analysis.html')
   end
 
   desc 'Generate documentation and open in browser'
-  task :docs => [:generate_example, :doc] do
-    system('open doc/index.html') if RUBY_PLATFORM =~ /darwin/
-    system('xdg-open doc/index.html') if RUBY_PLATFORM =~ /linux/
+  task :docs => :generate_example do
+    # Generate YARD documentation
+    YARD::CLI::Yardoc.run('--output-dir', 'docs', '--readme', 'README.md',
+                          '--title', 'Cataract - Fast CSS Parser',
+                          'lib/**/*.rb', 'ext/**/*.c', '-', 'docs/files/EXAMPLE.md')
+
+    # Open in browser
+    system('open docs/index.html') if RUBY_PLATFORM =~ /darwin/
+    system('xdg-open docs/index.html') if RUBY_PLATFORM =~ /linux/
   end
 
   desc 'List undocumented code'
