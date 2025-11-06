@@ -49,6 +49,7 @@ Layout/LineLength:
   Exclude:
     - 'benchmarks/**/*'
     - 'test/**/*'
+    - 'scripts/**/*'
     - '*.gemspec'
   AllowedPatterns:
     - '^\s*#'  # Allow long comment lines
