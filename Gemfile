@@ -18,8 +18,9 @@ gem 'simplecov', require: false
 gem 'simplecov-cobertura', require: false
 gem 'webmock', '~> 3.0' # for testing URL loading
 
+gem 'overcommit', '~> 0.64', group: :development
 gem 'rubocop', '~> 1.81', group: :development
-gem 'rubocop-performance', '~> 1.26', group: :development
 gem 'rubocop-minitest', '~> 0.38.2', group: :development
+gem 'rubocop-performance', '~> 1.26', group: :development
 
 gem 'yard', '~> 0.9', group: :development
