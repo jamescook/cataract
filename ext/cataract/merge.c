@@ -57,7 +57,7 @@ struct expand_context {
     VALUE properties_hash;
     int specificity;
     VALUE important;
-    VALUE value_struct;
+    VALUE declaration_struct;
 };
 
 // Callback for rb_hash_foreach - process expanded properties and apply cascade
@@ -77,7 +77,7 @@ static int merge_expanded_callback(VALUE exp_prop, VALUE exp_value, VALUE ctx_va
         rb_hash_aset(prop_data, ID2SYM(id_value), exp_value);
         rb_hash_aset(prop_data, ID2SYM(id_specificity), INT2NUM(ctx->specificity));
         rb_hash_aset(prop_data, ID2SYM(id_important), ctx->important);
-        rb_hash_aset(prop_data, ID2SYM(id_struct_class), ctx->value_struct);
+        rb_hash_aset(prop_data, ID2SYM(id_struct_class), ctx->declaration_struct);
         rb_hash_aset(ctx->properties_hash, exp_prop, prop_data);
     } else {
         VALUE existing_spec = rb_hash_aref(existing, ID2SYM(id_specificity));
@@ -111,13 +111,13 @@ static int merge_expanded_callback(VALUE exp_prop, VALUE exp_value, VALUE ctx_va
 
 // Callback for rb_hash_foreach - builds result array from properties hash
 static int merge_build_result_callback(VALUE property, VALUE prop_data, VALUE result_ary) {
-    // Get Declarations::Value struct class (cached in prop_data for efficiency)
-    VALUE value_struct = rb_hash_aref(prop_data, ID2SYM(id_struct_class));
+    // Get Declaration struct class (cached in prop_data for efficiency)
+    VALUE declaration_struct = rb_hash_aref(prop_data, ID2SYM(id_struct_class));
     VALUE value = rb_hash_aref(prop_data, ID2SYM(id_value));
     VALUE important = rb_hash_aref(prop_data, ID2SYM(id_important));
 
-    // Create Declarations::Value struct
-    VALUE decl_struct = rb_struct_new(value_struct, property, value, important);
+    // Create Declaration struct
+    VALUE decl_struct = rb_struct_new(declaration_struct, property, value, important);
     rb_ary_push(result_ary, decl_struct);
 
     return ST_CONTINUE;
@@ -324,7 +324,7 @@ void init_merge_constants(void) {
 
 // Merge CSS rules according to cascade rules
 // Input: array of parsed rules from parse_css
-// Output: array of Declarations::Value structs (merged and with shorthand recreated)
+// Output: array of Declaration structs (merged and with shorthand recreated)
 VALUE cataract_merge(VALUE self, VALUE rules_array) {
     Check_Type(rules_array, T_ARRAY);
 
@@ -341,10 +341,9 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
         return rb_ary_new();
     }
 
-    // Get Declarations::Value struct class once
+    // Get Declaration struct class once
     VALUE cataract_module = rb_const_get(rb_cObject, rb_intern("Cataract"));
-    VALUE declarations_class = rb_const_get(cataract_module, rb_intern("Declarations"));
-    VALUE value_struct = rb_const_get(declarations_class, rb_intern("Value"));
+    VALUE declaration_struct = rb_const_get(cataract_module, rb_intern("Declaration"));
 
     // Use Ruby hash for temporary storage: property => {value:, specificity:, important:, _struct_class:}
     VALUE properties_hash = rb_hash_new();
@@ -375,7 +374,7 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
         for (long j = 0; j < num_decls; j++) {
             VALUE decl = RARRAY_AREF(declarations, j);
 
-            // Extract property, value, important from Declarations::Value struct
+            // Extract property, value, important from Declaration struct
             VALUE property = rb_struct_aref(decl, INT2FIX(DECL_PROPERTY));
             VALUE value = rb_struct_aref(decl, INT2FIX(DECL_VALUE));
             VALUE important = rb_struct_aref(decl, INT2FIX(DECL_IMPORTANT));
@@ -424,7 +423,7 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
                 ctx.properties_hash = properties_hash;
                 ctx.specificity = specificity;
                 ctx.important = important;
-                ctx.value_struct = value_struct;
+                ctx.declaration_struct = declaration_struct;
 
                 rb_hash_foreach(expanded, merge_expanded_callback, (VALUE)&ctx);
 
@@ -441,7 +440,7 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
                 rb_hash_aset(prop_data, ID2SYM(id_value), value);
                 rb_hash_aset(prop_data, ID2SYM(id_specificity), INT2NUM(specificity));
                 rb_hash_aset(prop_data, ID2SYM(id_important), important);
-                rb_hash_aset(prop_data, ID2SYM(id_struct_class), value_struct);
+                rb_hash_aset(prop_data, ID2SYM(id_struct_class), declaration_struct);
                 rb_hash_aset(properties_hash, property, prop_data);
             } else {
                 // Property exists - check cascade rules
@@ -488,27 +487,27 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
     // Try to create margin shorthand
     TRY_CREATE_FOUR_SIDED_SHORTHAND(properties_hash,
         str_margin_top, str_margin_right, str_margin_bottom, str_margin_left,
-        str_margin, cataract_create_margin_shorthand, value_struct);
+        str_margin, cataract_create_margin_shorthand, declaration_struct);
 
     // Try to create padding shorthand
     TRY_CREATE_FOUR_SIDED_SHORTHAND(properties_hash,
         str_padding_top, str_padding_right, str_padding_bottom, str_padding_left,
-        str_padding, cataract_create_padding_shorthand, value_struct);
+        str_padding, cataract_create_padding_shorthand, declaration_struct);
 
     // Create border-width from individual sides
     TRY_CREATE_FOUR_SIDED_SHORTHAND(properties_hash,
         str_border_top_width, str_border_right_width, str_border_bottom_width, str_border_left_width,
-        str_border_width, cataract_create_border_width_shorthand, value_struct);
+        str_border_width, cataract_create_border_width_shorthand, declaration_struct);
 
     // Create border-style from individual sides
     TRY_CREATE_FOUR_SIDED_SHORTHAND(properties_hash,
         str_border_top_style, str_border_right_style, str_border_bottom_style, str_border_left_style,
-        str_border_style, cataract_create_border_style_shorthand, value_struct);
+        str_border_style, cataract_create_border_style_shorthand, declaration_struct);
 
     // Create border-color from individual sides
     TRY_CREATE_FOUR_SIDED_SHORTHAND(properties_hash,
         str_border_top_color, str_border_right_color, str_border_bottom_color, str_border_left_color,
-        str_border_color, cataract_create_border_color_shorthand, value_struct);
+        str_border_color, cataract_create_border_color_shorthand, declaration_struct);
 
     // Now create border shorthand from border-{width,style,color}
     VALUE border_width = GET_PROP_VALUE_STR(properties_hash, str_border_width);
@@ -542,7 +541,7 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
                 rb_hash_aset(border_data, ID2SYM(id_value), border_shorthand);
                 rb_hash_aset(border_data, ID2SYM(id_specificity), INT2NUM(border_spec));
                 rb_hash_aset(border_data, ID2SYM(id_important), border_important);
-                rb_hash_aset(border_data, ID2SYM(id_struct_class), value_struct);
+                rb_hash_aset(border_data, ID2SYM(id_struct_class), declaration_struct);
                 rb_hash_aset(properties_hash, str_border, border_data);
 
                 if (!NIL_P(border_width)) rb_hash_delete(properties_hash, str_border_width);
@@ -594,7 +593,7 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
                 rb_hash_aset(font_data, ID2SYM(id_value), font_shorthand);
                 rb_hash_aset(font_data, ID2SYM(id_specificity), INT2NUM(font_spec));
                 rb_hash_aset(font_data, ID2SYM(id_important), font_important);
-                rb_hash_aset(font_data, ID2SYM(id_struct_class), value_struct);
+                rb_hash_aset(font_data, ID2SYM(id_struct_class), declaration_struct);
                 rb_hash_aset(properties_hash, str_font, font_data);
 
                 // Remove longhand properties
@@ -647,7 +646,7 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
                 rb_hash_aset(list_style_data, ID2SYM(id_value), list_style_shorthand);
                 rb_hash_aset(list_style_data, ID2SYM(id_specificity), INT2NUM(list_style_spec));
                 rb_hash_aset(list_style_data, ID2SYM(id_important), list_style_important);
-                rb_hash_aset(list_style_data, ID2SYM(id_struct_class), value_struct);
+                rb_hash_aset(list_style_data, ID2SYM(id_struct_class), declaration_struct);
                 rb_hash_aset(properties_hash, str_list_style, list_style_data);
 
                 // Remove longhand properties
@@ -707,7 +706,7 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
                 rb_hash_aset(background_data, ID2SYM(id_value), background_shorthand);
                 rb_hash_aset(background_data, ID2SYM(id_specificity), INT2NUM(background_spec));
                 rb_hash_aset(background_data, ID2SYM(id_important), background_important);
-                rb_hash_aset(background_data, ID2SYM(id_struct_class), value_struct);
+                rb_hash_aset(background_data, ID2SYM(id_struct_class), declaration_struct);
                 rb_hash_aset(properties_hash, str_background, background_data);
 
                 // Remove longhand properties

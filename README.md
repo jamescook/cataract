@@ -251,7 +251,7 @@ Cataract uses a high-performance C implementation for CSS parsing and serializat
 
 Each `Rule` is a struct containing:
 - `selector`: The CSS selector string
-- `declarations`: Array of `Declarations::Value` structs (property, value, important flag)
+- `declarations`: Array of `Declaration` structs (property, value, important flag)
 - `specificity`: Calculated CSS specificity (cached)
 
 Implementation details:

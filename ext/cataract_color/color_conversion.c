@@ -1489,7 +1489,7 @@ static int convert_expanded_property_callback(VALUE prop_name, VALUE prop_value,
             prop_value = ctx->formatter(color, ctx->use_modern_syntax);
         }
 
-        VALUE new_decl = rb_struct_new(cDeclarationsValue, prop_name, prop_value, ctx->important, NULL);
+        VALUE new_decl = rb_struct_new(cDeclaration, prop_name, prop_value, ctx->important, NULL);
         rb_ary_push(ctx->new_declarations, new_decl);
     }
 
@@ -1519,14 +1519,14 @@ static int process_rule_group_callback(VALUE media_key, VALUE group, VALUE arg) 
 
         // Get declarations array from the rule struct
         // Rule = Struct.new(:selector, :declarations, :specificity)
-        // where declarations is an Array of Declarations::Value structs
+        // where declarations is an Array of Declaration structs
         VALUE declarations = rb_struct_aref(rule, INT2FIX(RULE_DECLARATIONS));
 
         if (NIL_P(declarations) || TYPE(declarations) != T_ARRAY) {
             continue;
         }
 
-        // Iterate through each Declarations::Value struct in the array
+        // Iterate through each Declaration struct in the array
         long decl_count = RARRAY_LEN(declarations);
 
         // Build new declarations array with expanded and converted values
@@ -1535,7 +1535,7 @@ static int process_rule_group_callback(VALUE media_key, VALUE group, VALUE arg) 
         for (long j = 0; j < decl_count; j++) {
             VALUE decl_struct = rb_ary_entry(declarations, j);
 
-            // Declarations::Value = Struct.new(:property, :value, :important)
+            // Declaration = Struct.new(:property, :value, :important)
             VALUE property = rb_struct_aref(decl_struct, INT2FIX(DECL_PROPERTY));
             VALUE value = rb_struct_aref(decl_struct, INT2FIX(DECL_VALUE));
             VALUE important = rb_struct_aref(decl_struct, INT2FIX(DECL_IMPORTANT));
@@ -1571,7 +1571,7 @@ static int process_rule_group_callback(VALUE media_key, VALUE group, VALUE arg) 
                 DEBUG_PRINTF("Creating new decl with property='%s' value='%s'\n",
                         StringValueCStr(property), StringValueCStr(converted_multi));
                 // Successfully converted multi-value property
-                VALUE new_decl = rb_struct_new(cDeclarationsValue, property, converted_multi, important, NULL);
+                VALUE new_decl = rb_struct_new(cDeclaration, property, converted_multi, important, NULL);
                 rb_ary_push(new_declarations, new_decl);
                 DEBUG_PRINTF("Pushed new_decl to new_declarations\n");
                 continue;
@@ -1599,7 +1599,7 @@ static int process_rule_group_callback(VALUE media_key, VALUE group, VALUE arg) 
                     rb_ary_push(new_declarations, decl_struct);
                 } else {
                     VALUE new_value = ctx->formatter(color, ctx->use_modern_syntax);
-                    VALUE new_decl = rb_struct_new(cDeclarationsValue, property, new_value, important, NULL);
+                    VALUE new_decl = rb_struct_new(cDeclaration, property, new_value, important, NULL);
                     rb_ary_push(new_declarations, new_decl);
                 }
             } else {

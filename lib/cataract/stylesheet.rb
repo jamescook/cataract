@@ -471,7 +471,7 @@ module Cataract
     # cascade rules (specificity, importance, order) to compute the final
     # declarations. The result is cached until the stylesheet is modified.
     #
-    # @return [Array<Declarations::Value>] Array of declaration values after cascade
+    # @return [Array<Declaration>] Array of declaration values after cascade
     #   Returns empty array if stylesheet is empty.
     #
     # @example Get all declarations

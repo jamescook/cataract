@@ -57,29 +57,25 @@
         <div class="clear"></div>
       </div>
 
-      <div id="content"><div id='filecontents'>
-<h1 id="label-Cataract">Cataract</h1>
+      <div id="content"><div id='filecontents'><h1 id="cataract">Cataract</h1>
 
 <p>A high-performance CSS parser with C extensions for accurate parsing of complex CSS structures.</p>
 
 <p><a href="https://codecov.io/github/jamescook/cataract"><img src="https://codecov.io/github/jamescook/cataract/graph/badge.svg?token=1PTVV1QTV5" alt="codecov"></a></p>
 
-<h2 id="label-Features">Features</h2>
-<ul><li>
-<p><strong>C Extension</strong>: Performance-focused C implementation for parsing and serialization</p>
-</li><li>
-<p><strong>CSS2 Support</strong>: Selectors, combinators, pseudo-classes, pseudo-elements, @media queries</p>
-</li><li>
-<p><strong>CSS3 Support</strong>: Attribute selectors (<code>^=</code>, <code>$=</code>, <code>*=</code>)</p>
-</li><li>
-<p><strong>Specificity Calculation</strong>: Automatic CSS specificity computation</p>
-</li><li>
-<p><strong>Media Query Filtering</strong>: Query rules by media type</p>
-</li><li>
-<p><strong>Zero Runtime Dependencies</strong>: Pure C extension with no runtime gem dependencies</p>
-</li></ul>
+<h2 id="features">Features</h2>
 
-<h2 id="label-Installation">Installation</h2>
+<ul>
+<li><strong>C Extension</strong>: Performance-focused C implementation for parsing and serialization</li>
+<li><strong>CSS2 Support</strong>: Selectors, combinators, pseudo-classes, pseudo-elements, @media queries</li>
+<li><strong>CSS3 Support</strong>: Attribute selectors (<code>^=</code>, <code>$=</code>, <code>*=</code>)</li>
+<li><strong>CSS Color Level 4</strong>: Supports hex, rgb, hsl, hwb, oklab, oklch, and named colors with high precision</li>
+<li><strong>Specificity Calculation</strong>: Automatic CSS specificity computation</li>
+<li><strong>Media Query Filtering</strong>: Query rules by media type</li>
+<li><strong>Zero Runtime Dependencies</strong>: Pure C extension with no runtime gem dependencies</li>
+</ul>
+
+<h2 id="installation">Installation</h2>
 
 <p>Add this line to your Gemfile:</p>
 
@@ -88,17 +84,18 @@
 
 <p>Or install directly:</p>
 
-<pre class="code ruby"><code class="ruby"><span class='id identifier rubyid_gem'>gem</span> <span class='id identifier rubyid_install'>install</span> <span class='id identifier rubyid_cataract'>cataract</span>
+<pre class="code bash"><code class="bash">gem install cataract
 </code></pre>
 
-<h3 id="label-Requirements">Requirements</h3>
-<ul><li>
-<p>Ruby &gt;= 3.1.0</p>
-</li></ul>
+<h3 id="requirements">Requirements</h3>
 
-<h2 id="label-Usage">Usage</h2>
+<ul>
+<li>Ruby &gt;= 3.1.0</li>
+</ul>
 
-<h3 id="label-Basic+Parsing">Basic Parsing</h3>
+<h2 id="usage">Usage</h2>
+
+<h3 id="basic-parsing">Basic Parsing</h3>
 
 <pre class="code ruby"><code class="ruby"><span class='id identifier rubyid_require'>require</span> <span class='tstring'><span class='tstring_beg'>&#39;</span><span class='tstring_content'>cataract</span><span class='tstring_end'>&#39;</span></span>
 
@@ -139,7 +136,7 @@
 <span class='comment'># =&gt; 3
 </span></code></pre>
 
-<h3 id="label-Advanced+Filtering+with+each_selector">Advanced Filtering with each_selector</h3>
+<h3 id="advanced-filtering-with-each_selector">Advanced Filtering with each_selector</h3>
 
 <p>The <code>Stylesheet#each_selector</code> method provides powerful filtering capabilities for CSS analysis:</p>
 
@@ -175,13 +172,169 @@ sheet.each_selector(specificity: 10..100) { |sel, decls, spec, media| ... }  # C
 sheet.each_selector(specificity: ..10) { |sel, decls, spec, media| ... }     # Low specificity (&lt;= 10)
 </code></pre>
 
-<p>See <a href="BENCHMARKS_md.html">BENCHMARKS.md</a> for detailed performance comparisons.</p>
+<p>See <a href="BENCHMARKS.md">BENCHMARKS.md</a> for detailed performance comparisons.</p>
 
-<h2 id="label-CSS+Support">CSS Support</h2>
+<h2 id="css-support">CSS Support</h2>
 
-<p>Cataract aims to support all CSS specifications including: - <strong>Selectors</strong>: All CSS2/CSS3 selectors (type, class, ID, attribute, pseudo-classes, pseudo-elements, combinators) - <strong>At-rules</strong>: <code>@media</code>, <code>@font-face</code>, <code>@keyframes</code>, <code>@supports</code>, <code>@page</code>, <code>@layer</code>, <code>@container</code>, <code>@property</code>, <code>@scope</code>, <code>@counter-style</code> - <strong>Media Queries</strong>: Full support including nested queries and media features - <strong>Special syntax</strong>: Data URIs, <code>calc()</code>, <code>url()</code>, CSS functions with parentheses - <strong>!important</strong>: Full support with correct cascade behavior</p>
+<p>Cataract aims to support all CSS specifications including:</p>
 
-<h3 id="label-40import+Support"><code>@import</code> Support</h3>
+<ul>
+<li><strong>Selectors</strong>: All CSS2/CSS3 selectors (type, class, ID, attribute, pseudo-classes, pseudo-elements, combinators)</li>
+<li><strong>At-rules</strong>: <code>@media</code>, <code>@font-face</code>, <code>@keyframes</code>, <code>@supports</code>, <code>@page</code>, <code>@layer</code>, <code>@container</code>, <code>@property</code>, <code>@scope</code>, <code>@counter-style</code></li>
+<li><strong>Media Queries</strong>: Full support including nested queries and media features</li>
+<li><strong>Special syntax</strong>: Data URIs, <code>calc()</code>, <code>url()</code>, CSS functions with parentheses</li>
+<li><strong>!important</strong>: Full support with correct cascade behavior</li>
+</ul>
+
+<h3 id="color-conversion">Color Conversion</h3>
+
+<p>Cataract supports converting colors between multiple CSS color formats with high precision.</p>
+
+<p><strong>Note:</strong> Color conversion is an optional extension. Load it explicitly to reduce memory footprint:</p>
+
+<pre class="code ruby"><code class="ruby"><span class='id identifier rubyid_require'>require</span> <span class='tstring'><span class='tstring_beg'>&#39;</span><span class='tstring_content'>cataract</span><span class='tstring_end'>&#39;</span></span>
+<span class='id identifier rubyid_require'>require</span> <span class='tstring'><span class='tstring_beg'>&#39;</span><span class='tstring_content'>cataract/color_conversion</span><span class='tstring_end'>&#39;</span></span>
+
+<span class='comment'># Convert hex to RGB
+</span><span class='id identifier rubyid_sheet'>sheet</span> <span class='op'>=</span> <span class='const'><span class='object_link'><a href="Cataract.html" title="Cataract (module)">Cataract</a></span></span><span class='period'>.</span><span class='id identifier rubyid_parse_css'><span class='object_link'><a href="Cataract.html#parse_css-class_method" title="Cataract.parse_css (method)">parse_css</a></span></span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&#39;</span><span class='tstring_content'>.button { color: #ff0000; background: #00ff00; }</span><span class='tstring_end'>&#39;</span></span><span class='rparen'>)</span>
+<span class='id identifier rubyid_sheet'>sheet</span><span class='period'>.</span><span class='id identifier rubyid_convert_colors!'>convert_colors!</span><span class='lparen'>(</span><span class='label'>from:</span> <span class='symbol'>:hex</span><span class='comma'>,</span> <span class='label'>to:</span> <span class='symbol'>:rgb</span><span class='rparen'>)</span>
+<span class='id identifier rubyid_sheet'>sheet</span><span class='period'>.</span><span class='id identifier rubyid_to_css'>to_css</span>
+<span class='comment'># =&gt; &quot;.button { color: rgb(255 0 0); background: rgb(0 255 0); }&quot;
+</span>
+<span class='comment'># Convert RGB to HSL for easier color manipulation
+</span><span class='id identifier rubyid_sheet'>sheet</span> <span class='op'>=</span> <span class='const'><span class='object_link'><a href="Cataract.html" title="Cataract (module)">Cataract</a></span></span><span class='period'>.</span><span class='id identifier rubyid_parse_css'><span class='object_link'><a href="Cataract.html#parse_css-class_method" title="Cataract.parse_css (method)">parse_css</a></span></span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&#39;</span><span class='tstring_content'>.card { color: rgb(255, 128, 0); }</span><span class='tstring_end'>&#39;</span></span><span class='rparen'>)</span>
+<span class='id identifier rubyid_sheet'>sheet</span><span class='period'>.</span><span class='id identifier rubyid_convert_colors!'>convert_colors!</span><span class='lparen'>(</span><span class='label'>from:</span> <span class='symbol'>:rgb</span><span class='comma'>,</span> <span class='label'>to:</span> <span class='symbol'>:hsl</span><span class='rparen'>)</span>
+<span class='id identifier rubyid_sheet'>sheet</span><span class='period'>.</span><span class='id identifier rubyid_to_css'>to_css</span>
+<span class='comment'># =&gt; &quot;.card { color: hsl(30, 100%, 50%); }&quot;
+</span>
+<span class='comment'># Convert to Oklab for perceptually uniform colors
+</span><span class='id identifier rubyid_sheet'>sheet</span> <span class='op'>=</span> <span class='const'><span class='object_link'><a href="Cataract.html" title="Cataract (module)">Cataract</a></span></span><span class='period'>.</span><span class='id identifier rubyid_parse_css'><span class='object_link'><a href="Cataract.html#parse_css-class_method" title="Cataract.parse_css (method)">parse_css</a></span></span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&#39;</span><span class='tstring_content'>.gradient { background: linear-gradient(#ff0000, #0000ff); }</span><span class='tstring_end'>&#39;</span></span><span class='rparen'>)</span>
+<span class='id identifier rubyid_sheet'>sheet</span><span class='period'>.</span><span class='id identifier rubyid_convert_colors!'>convert_colors!</span><span class='lparen'>(</span><span class='label'>to:</span> <span class='symbol'>:oklab</span><span class='rparen'>)</span>
+<span class='id identifier rubyid_sheet'>sheet</span><span class='period'>.</span><span class='id identifier rubyid_to_css'>to_css</span>
+<span class='comment'># =&gt; &quot;.gradient { background: linear-gradient(oklab(0.6280 0.2249 0.1258), oklab(0.4520 -0.0325 -0.3115)); }&quot;
+</span>
+<span class='comment'># Auto-detect source format and convert all colors
+</span><span class='id identifier rubyid_sheet'>sheet</span> <span class='op'>=</span> <span class='const'><span class='object_link'><a href="Cataract.html" title="Cataract (module)">Cataract</a></span></span><span class='period'>.</span><span class='id identifier rubyid_parse_css'><span class='object_link'><a href="Cataract.html#parse_css-class_method" title="Cataract.parse_css (method)">parse_css</a></span></span><span class='lparen'>(</span><span class='heredoc_beg'>&lt;&lt;~CSS</span><span class='rparen'>)</span>
+<span class='tstring_content'>  .mixed {
+</span><span class='tstring_content'>    color: #ff0000;
+</span><span class='tstring_content'>    background: rgb(0, 255, 0);
+</span><span class='tstring_content'>    border-color: hsl(240, 100%, 50%);
+</span><span class='tstring_content'>  }
+</span><span class='heredoc_end'>CSS
+</span><span class='id identifier rubyid_sheet'>sheet</span><span class='period'>.</span><span class='id identifier rubyid_convert_colors!'>convert_colors!</span><span class='lparen'>(</span><span class='label'>to:</span> <span class='symbol'>:hex</span><span class='rparen'>)</span>  <span class='comment'># Converts all formats to hex
+</span></code></pre>
+
+<h4 id="supported-color-formats">Supported Color Formats</h4>
+
+<table><thead>
+<tr>
+<th>Format</th>
+<th>From</th>
+<th>To</th>
+<th>Alpha</th>
+<th>Example</th>
+<th>Notes</th>
+</tr>
+</thead><tbody>
+<tr>
+<td><strong>hex</strong></td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td><code>#ff0000</code>, <code>#f00</code>, <code>#ff000080</code></td>
+<td>3, 6, or 8 digit hex</td>
+</tr>
+<tr>
+<td><strong>rgb</strong></td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td><code>rgb(255 0 0)</code>, <code>rgb(255, 0, 0)</code></td>
+<td>Modern &amp; legacy syntax</td>
+</tr>
+<tr>
+<td><strong>hsl</strong></td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td><code>hsl(0, 100%, 50%)</code></td>
+<td>Hue, saturation, lightness</td>
+</tr>
+<tr>
+<td><strong>hwb</strong></td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td><code>hwb(0 0% 0%)</code></td>
+<td>Hue, whiteness, blackness</td>
+</tr>
+<tr>
+<td><strong>oklab</strong></td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td><code>oklab(0.628 0.225 0.126)</code></td>
+<td>Perceptually uniform color space</td>
+</tr>
+<tr>
+<td><strong>oklch</strong></td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td><code>oklch(0.628 0.258 29.2)</code></td>
+<td>Cylindrical Oklab (LCh)</td>
+</tr>
+<tr>
+<td><strong>lab</strong></td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td><code>lab(53.2% 80.1 67.2)</code></td>
+<td>CIE L*a*b* color space (D50)</td>
+</tr>
+<tr>
+<td><strong>lch</strong></td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td><code>lch(53.2% 104.5 40)</code></td>
+<td>Cylindrical Lab (polar coordinates)</td>
+</tr>
+<tr>
+<td><strong>named</strong></td>
+<td>✓</td>
+<td>✓</td>
+<td>–</td>
+<td><code>red</code>, <code>blue</code>, <code>rebeccapurple</code></td>
+<td>147 CSS named colors</td>
+</tr>
+<tr>
+<td><strong>color()</strong></td>
+<td>–</td>
+<td>–</td>
+<td>–</td>
+<td><code>color(display-p3 1 0 0)</code></td>
+<td>Absolute color spaces (planned)</td>
+</tr>
+</tbody></table>
+
+<p><strong>Format aliases:</strong></p>
+
+<ul>
+<li><code>:rgba</code> → uses <code>rgb()</code> syntax with alpha</li>
+<li><code>:hsla</code> → uses <code>hsl()</code> syntax with alpha</li>
+<li><code>:hwba</code> → uses <code>hwb()</code> syntax with alpha</li>
+</ul>
+
+<p><strong>Limitations:</strong></p>
+
+<ul>
+<li>Math functions (<code>calc()</code>, <code>min()</code>, <code>max()</code>, <code>clamp()</code>) are not evaluated and will be preserved unchanged</li>
+<li>CSS Color Level 5 features (<code>none</code>, <code>infinity</code>, relative color syntax with <code>from</code>) are preserved but not converted</li>
+<li>Unknown or future color functions are passed through unchanged</li>
+</ul>
+
+<h3 id="import-support"><code>@import</code> Support</h3>
 
 <p><code>@import</code> statements can be resolved with security controls:</p>
 
@@ -201,24 +354,31 @@ sheet.each_selector(specificity: ..10) { |sel, decls, spec, media| ... }     # L
 </span><span class='rbrace'>}</span><span class='rparen'>)</span>
 </code></pre>
 
-<p><strong>Security note</strong>: Import resolution includes protections against: - Unauthorized schemes (file://, data://, etc.) - Non-CSS file extensions - Circular references - Excessive nesting depth</p>
+<p><strong>Security note</strong>: Import resolution includes protections against:</p>
 
-<h2 id="label-Development">Development</h2>
+<ul>
+<li>Unauthorized schemes (file://, data://, etc.)</li>
+<li>Non-CSS file extensions</li>
+<li>Circular references</li>
+<li>Excessive nesting depth</li>
+</ul>
 
-<pre class="code ruby"><code class="ruby"><span class='comment'># Install dependencies
-</span><span class='id identifier rubyid_bundle'>bundle</span> <span class='id identifier rubyid_install'>install</span>
+<h2 id="development">Development</h2>
 
-<span class='comment'># Compile the C extension
-</span><span class='id identifier rubyid_rake'>rake</span> <span class='id identifier rubyid_compile'>compile</span>
+<pre class="code bash"><code class="bash"># Install dependencies
+bundle install
 
-<span class='comment'># Run tests
-</span><span class='id identifier rubyid_rake'>rake</span> <span class='id identifier rubyid_test'>test</span>
+# Compile the C extension
+rake compile
 
-<span class='comment'># Run benchmarks
-</span><span class='id identifier rubyid_rake'>rake</span> <span class='id identifier rubyid_benchmark'>benchmark</span>
+# Run tests
+rake test
+
+# Run benchmarks
+rake benchmark
 </code></pre>
 
-<h2 id="label-How+It+Works">How It Works</h2>
+<h2 id="how-it-works">How It Works</h2>
 
 <p>Cataract uses a high-performance C implementation for CSS parsing and serialization. The parser processes CSS into an internal data structure organized by media queries:</p>
 
@@ -235,25 +395,38 @@ sheet.each_selector(specificity: ..10) { |sel, decls, spec, media| ... }     # L
 }
 </code></pre>
 
-<p>Each <code>Rule</code> is a struct containing: - <code>selector</code>: The CSS selector string - <code>declarations</code>: Array of <code>Declarations::Value</code> structs (property, value, important flag) - <code>specificity</code>: Calculated CSS specificity (cached)</p>
+<p>Each <code>Rule</code> is a struct containing:</p>
 
-<p>Implementation details: - <strong>C implementation</strong>: Critical paths implemented in C (parsing, merging, serialization) - <strong>Efficient media query handling</strong>: Rules grouped by media query for O(1) lookups - <strong>Memory efficient</strong>: Minimal allocations, reuses string buffers where possible - <strong>Comprehensive</strong>: Handles complex CSS including nested media queries, data URIs, calc() functions</p>
+<ul>
+<li><code>selector</code>: The CSS selector string</li>
+<li><code>declarations</code>: Array of <code>Declaration</code> structs (property, value, important flag)</li>
+<li><code>specificity</code>: Calculated CSS specificity (cached)</li>
+</ul>
 
-<h2 id="label-Development+Notes">Development Notes</h2>
+<p>Implementation details:</p>
+
+<ul>
+<li><strong>C implementation</strong>: Critical paths implemented in C (parsing, merging, serialization)</li>
+<li><strong>Efficient media query handling</strong>: Rules grouped by media query for O(1) lookups</li>
+<li><strong>Memory efficient</strong>: Minimal allocations, reuses string buffers where possible</li>
+<li><strong>Comprehensive</strong>: Handles complex CSS including nested media queries, data URIs, calc() functions</li>
+</ul>
+
+<h2 id="development-notes">Development Notes</h2>
 
 <p>Significant portions of this codebase were generated with assistance from <a href="https://claude.com/claude-code">Claude Code</a>, including the benchmark infrastructure, test suite, and documentation generation system.</p>
 
-<h2 id="label-License">License</h2>
+<h2 id="license">License</h2>
 
 <p>MIT</p>
 
-<h2 id="label-Contributing">Contributing</h2>
+<h2 id="contributing">Contributing</h2>
 
-<p>Bug reports and pull requests are welcome on GitHub at <a href="https://github.com/jamescook/cataract">github.com/jamescook/cataract</a>.</p>
+<p>Bug reports and pull requests are welcome on GitHub at <a href="https://github.com/jamescook/cataract">https://github.com/jamescook/cataract</a>.</p>
 </div></div>
 
       <div id="footer">
-  Generated on Tue Nov  4 13:33:24 2025 by
+  Generated on Thu Nov  6 14:47:37 2025 by
   <a href="https://yardoc.org" title="Yay! A Ruby Documentation Tool" target="_parent">yard</a>
   0.9.37 (ruby-3.4.5).
 </div>

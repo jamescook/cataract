@@ -8,7 +8,7 @@
 // Global struct class references (defined in cataract.c, declared extern here)
 // ============================================================================
 
-extern VALUE cDeclarationsValue;
+extern VALUE cDeclaration;
 extern VALUE cRule;
 
 // Error class references
@@ -26,7 +26,7 @@ extern VALUE eSizeError;
 #define RULE_DECLARATIONS 1
 #define RULE_SPECIFICITY 2
 
-// Declarations::Value struct field indices (property, value, important)
+// Declaration struct field indices (property, value, important)
 #define DECL_PROPERTY 0
 #define DECL_VALUE 1
 #define DECL_IMPORTANT 2

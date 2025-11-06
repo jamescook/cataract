@@ -136,7 +136,7 @@ merged = Cataract.merge(sheet)</code></pre>
     
   
     
-      <strong class="classes">Classes:</strong> <span class='object_link'><a href="Cataract/Declarations.html" title="Cataract::Declarations (class)">Declarations</a></span>, <span class='object_link'><a href="Cataract/DepthError.html" title="Cataract::DepthError (class)">DepthError</a></span>, <span class='object_link'><a href="Cataract/Error.html" title="Cataract::Error (class)">Error</a></span>, <span class='object_link'><a href="Cataract/ImportError.html" title="Cataract::ImportError (class)">ImportError</a></span>, <span class='object_link'><a href="Cataract/ParseError.html" title="Cataract::ParseError (class)">ParseError</a></span>, <span class='object_link'><a href="Cataract/Rule.html" title="Cataract::Rule (class)">Rule</a></span>, <span class='object_link'><a href="Cataract/RuleSet.html" title="Cataract::RuleSet (class)">RuleSet</a></span>, <span class='object_link'><a href="Cataract/SizeError.html" title="Cataract::SizeError (class)">SizeError</a></span>, <span class='object_link'><a href="Cataract/Stylesheet.html" title="Cataract::Stylesheet (class)">Stylesheet</a></span>
+      <strong class="classes">Classes:</strong> <span class='object_link'><a href="Cataract/ColorConversionError.html" title="Cataract::ColorConversionError (class)">ColorConversionError</a></span>, <span class='object_link'><a href="Cataract/Declarations.html" title="Cataract::Declarations (class)">Declarations</a></span>, <span class='object_link'><a href="Cataract/DepthError.html" title="Cataract::DepthError (class)">DepthError</a></span>, <span class='object_link'><a href="Cataract/Error.html" title="Cataract::Error (class)">Error</a></span>, <span class='object_link'><a href="Cataract/ImportError.html" title="Cataract::ImportError (class)">ImportError</a></span>, <span class='object_link'><a href="Cataract/ParseError.html" title="Cataract::ParseError (class)">ParseError</a></span>, <span class='object_link'><a href="Cataract/Rule.html" title="Cataract::Rule (class)">Rule</a></span>, <span class='object_link'><a href="Cataract/RuleSet.html" title="Cataract::RuleSet (class)">RuleSet</a></span>, <span class='object_link'><a href="Cataract/SizeError.html" title="Cataract::SizeError (class)">SizeError</a></span>, <span class='object_link'><a href="Cataract/Stylesheet.html" title="Cataract::Stylesheet (class)">Stylesheet</a></span>
     
   
 </p>
@@ -773,7 +773,7 @@ merged = Cataract.merge(sheet)</code></pre>
         <li class="public ">
   <span class="summary_signature">
     
-      <a href="#merge-class_method" title="merge (class method)">.<strong>merge</strong>(rules)  &#x21d2; Array&lt;Declarations::Value&gt; </a>
+      <a href="#merge-class_method" title="merge (class method)">.<strong>merge</strong>(rules)  &#x21d2; Array&lt;Declaration&gt; </a>
     
 
     
@@ -867,7 +867,7 @@ merged = Cataract.merge(sheet)</code></pre>
         <li class="public ">
   <span class="summary_signature">
     
-      <a href="#parse_declarations-class_method" title="parse_declarations (class method)">.<strong>parse_declarations</strong>(declarations_string)  &#x21d2; Array&lt;Declarations::Value&gt; </a>
+      <a href="#parse_declarations-class_method" title="parse_declarations (class method)">.<strong>parse_declarations</strong>(declarations_string)  &#x21d2; Array&lt;Declarations&gt; </a>
     
 
     
@@ -1626,6 +1626,7 @@ static VALUE rules_to_s(VALUE self, VALUE rules_array) {
       <pre class="lines">
 
 
+760
 761
 762
 763
@@ -1642,11 +1643,10 @@ static VALUE rules_to_s(VALUE self, VALUE rules_array) {
 774
 775
 776
-777
-778</pre>
+777</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'ext/cataract/merge.c', line 761</span>
+      <pre class="code"><span class="info file"># File 'ext/cataract/merge.c', line 760</span>
 
 VALUE cataract_merge_wrapper(VALUE self, VALUE input) {
     // Check if input is a hash (new structure from Stylesheet)
@@ -1709,7 +1709,7 @@ VALUE cataract_merge_wrapper(VALUE self, VALUE input) {
       <div class="method_details ">
   <h3 class="signature " id="merge-class_method">
   
-    .<strong>merge</strong>(rules)  &#x21d2; <tt>Array&lt;Declarations::Value&gt;</tt> 
+    .<strong>merge</strong>(rules)  &#x21d2; <tt>Array&lt;Declaration&gt;</tt> 
   
 
   
@@ -1796,7 +1796,7 @@ VALUE cataract_merge_wrapper(VALUE self, VALUE input) {
     <li>
       
       
-        <span class='type'>(<tt>Array&lt;Declarations::Value&gt;</tt>)</span>
+        <span class='type'>(<tt>Array&lt;Declaration&gt;</tt>)</span>
       
       
       
@@ -1882,6 +1882,7 @@ VALUE cataract_merge_wrapper(VALUE self, VALUE input) {
       <pre class="lines">
 
 
+760
 761
 762
 763
@@ -1898,11 +1899,10 @@ VALUE cataract_merge_wrapper(VALUE self, VALUE input) {
 774
 775
 776
-777
-778</pre>
+777</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'ext/cataract/merge.c', line 761</span>
+      <pre class="code"><span class="info file"># File 'ext/cataract/merge.c', line 760</span>
 
 VALUE cataract_merge_wrapper(VALUE self, VALUE input) {
     // Check if input is a hash (new structure from Stylesheet)
@@ -2003,7 +2003,7 @@ VALUE cataract_merge_wrapper(VALUE self, VALUE input) {
       <div class="method_details ">
   <h3 class="signature " id="parse_declarations-class_method">
   
-    .<strong>parse_declarations</strong>(declarations_string)  &#x21d2; <tt>Array&lt;Declarations::Value&gt;</tt> 
+    .<strong>parse_declarations</strong>(declarations_string)  &#x21d2; <tt>Array&lt;<span class='object_link'><a href="Cataract/Declarations.html" title="Cataract::Declarations (class)">Declarations</a></span>&gt;</tt> 
   
 
   
@@ -2045,7 +2045,7 @@ VALUE cataract_merge_wrapper(VALUE self, VALUE input) {
     <li>
       
       
-        <span class='type'>(<tt>Array&lt;Declarations::Value&gt;</tt>)</span>
+        <span class='type'>(<tt>Array&lt;<span class='object_link'><a href="Cataract/Declarations.html" title="Cataract::Declarations (class)">Declarations</a></span>&gt;</tt>)</span>
       
       
       
@@ -2114,7 +2114,7 @@ static VALUE parse_declarations(VALUE self, VALUE declarations_string) {
 </div>
 
       <div id="footer">
-  Generated on Tue Nov  4 13:33:24 2025 by
+  Generated on Thu Nov  6 14:47:37 2025 by
   <a href="https://yardoc.org" title="Yay! A Ruby Documentation Tool" target="_parent">yard</a>
   0.9.37 (ruby-3.4.5).
 </div>

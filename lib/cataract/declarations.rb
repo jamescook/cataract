@@ -8,7 +8,7 @@ module Cataract
     def initialize(properties = {})
       case properties
       when Array
-        # Array of Declarations::Value structs from C parser - store directly
+        # Array of Declaration structs from C parser - store directly
         @values = properties
       when Hash
         # Hash from user - convert to internal storage
@@ -58,8 +58,8 @@ module Cataract
       # Properties from C parser are already normalized, so direct comparison
       existing_index = @values.find_index { |v| v.property == prop }
 
-      # Create a new Value struct
-      new_val = Declarations::Value.new(prop, clean_value, is_important)
+      # Create a new Declaration struct
+      new_val = Cataract::Declaration.new(prop, clean_value, is_important)
 
       if existing_index
         @values[existing_index] = new_val
@@ -119,7 +119,7 @@ module Cataract
       result
     end
 
-    # Return array of Declarations::Value structs (for creating Rule structs)
+    # Return array of Declaration structs (for creating Rule structs)
     def to_a
       @values
     end

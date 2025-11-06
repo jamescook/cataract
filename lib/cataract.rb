@@ -79,7 +79,7 @@ module Cataract
   #
   # @param rules [Array<Rule>, Stylesheet, Enumerator] Rules to merge.
   #   Can be an array of Rule structs, a Stylesheet object, or an Enumerator.
-  # @return [Array<Declarations::Value>] Array of merged declaration values.
+  # @return [Array<Declaration>] Array of merged declaration values.
   #   Returns empty array if input is nil or empty.
   #
   # Merge rules:

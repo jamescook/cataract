@@ -3,7 +3,7 @@
 #include "cataract.h"
 
 // Global struct class definitions (declared extern in cataract.h)
-VALUE cDeclarationsValue;
+VALUE cDeclaration;
 VALUE cRule;
 
 // Error class definitions (declared extern in cataract.h)
@@ -80,7 +80,7 @@ static VALUE parse_css_internal(VALUE self, VALUE css_string, int depth) {
  * Ruby-facing wrapper for parse_declarations
  *
  * @param declarations_string [String] CSS declarations like "color: red; margin: 10px"
- * @return [Array<Declarations::Value>] Array of parsed declaration structs
+ * @return [Array<Declaration>] Array of parsed declaration structs
  */
 static VALUE parse_declarations(VALUE self, VALUE declarations_string) {
     Check_Type(declarations_string, T_STRING);
@@ -175,7 +175,7 @@ static VALUE rules_to_s(VALUE self, VALUE rules_array) {
 }
 
 /*
- * Convert array of Declarations::Value structs to CSS string
+ * Convert array of Declaration structs to CSS string
  * Format: "prop: value; prop2: value2 !important; "
  *
  * This is the core serialization logic used by both:
@@ -198,10 +198,10 @@ VALUE declarations_array_to_s(VALUE declarations_array) {
     for (long i = 0; i < len; i++) {
         VALUE decl = rb_ary_entry(declarations_array, i);
 
-        // Validate this is a Declarations::Value struct
-        if (!RB_TYPE_P(decl, T_STRUCT) || rb_obj_class(decl) != cDeclarationsValue) {
+        // Validate this is a Declaration struct
+        if (!RB_TYPE_P(decl, T_STRUCT) || rb_obj_class(decl) != cDeclaration) {
             rb_raise(rb_eTypeError,
-                     "Expected array of Declarations::Value structs, got %s at index %ld",
+                     "Expected array of Declaration structs, got %s at index %ld",
                      rb_obj_classname(decl), i);
         }
 
@@ -242,7 +242,7 @@ VALUE declarations_array_to_s(VALUE declarations_array) {
  * @return [String] CSS declarations like "color: red; margin: 10px !important;"
  */
 static VALUE declarations_to_s_method(VALUE self) {
-    // Get @values instance variable (array of Declarations::Value structs)
+    // Get @values instance variable (array of Declaration structs)
     VALUE values = rb_ivar_get(self, rb_intern("@values"));
 
     // Call core serialization function
@@ -264,10 +264,10 @@ void Init_cataract() {
     // Define Cataract::Declarations class (Ruby side will add methods)
     VALUE cDeclarations = rb_define_class_under(module, "Declarations", rb_cObject);
 
-    // Define Cataract::Declarations::Value = Struct.new(:property, :value, :important)
-    cDeclarationsValue = rb_struct_define_under(
-        cDeclarations,
-        "Value",
+    // Define Cataract::Declaration = Struct.new(:property, :value, :important)
+    cDeclaration = rb_struct_define_under(
+        module,
+        "Declaration",
         "property",
         "value",
         "important",

@@ -54,7 +54,7 @@ static int merge_hash_callback(VALUE key, VALUE inner_group, VALUE arg) {
 // CSS Parsing Helper Functions
 // ============================================================================
 
-// Parse declaration block and extract Declaration::Value structs
+// Parse declaration block and extract Declaration structs
 void capture_declarations_fn(
     const char **decl_start_ptr,
     const char *p,
@@ -102,7 +102,7 @@ void capture_declarations_fn(
 
     // Simple C-level parser for declarations
     // Input: "color: red; background: blue !important"
-    // Output: Array of Declarations::Value structs
+    // Output: Array of Declaration structs
     const char *pos = start;
     while (pos < clean_end) {
         // Skip whitespace and semicolons
@@ -196,9 +196,9 @@ void capture_declarations_fn(
             DEBUG_PRINTF("[capture_declarations] Found: property='%s' value='%s' important=%d\n",
                          RSTRING_PTR(property), RSTRING_PTR(value), is_important);
 
-            // Create Declarations::Value struct
+            // Create Declaration struct
             VALUE decl = rb_struct_new(
-                cDeclarationsValue,
+                cDeclaration,
                 property,
                 value,
                 is_important ? Qtrue : Qfalse
@@ -415,7 +415,7 @@ static char* copy_without_comments(const char *start, const char *end, long *out
     return buffer;
 }
 
-// Parse declarations string into array of Declarations::Value structs
+// Parse declarations string into array of Declaration structs
 // Used by parse_declarations Ruby wrapper
 VALUE parse_declarations_string(const char *start, const char *end) {
     VALUE declarations = rb_ary_new();
@@ -502,8 +502,8 @@ VALUE parse_declarations_string(const char *start, const char *end) {
             VALUE property = lowercase_property(property_raw);
             VALUE value = rb_utf8_str_new(val_start, val_len);
 
-            // Create Declarations::Value struct
-            VALUE decl = rb_struct_new(cDeclarationsValue,
+            // Create Declaration struct
+            VALUE decl = rb_struct_new(cDeclaration,
                 property, value, is_important ? Qtrue : Qfalse);
 
             rb_ary_push(declarations, decl);

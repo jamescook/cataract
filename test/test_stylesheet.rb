@@ -63,7 +63,7 @@ class TestStylesheet < Minitest::Test
     declarations = sheet.declarations
 
     assert_kind_of Array, declarations
-    assert(declarations.all?(Cataract::Declarations::Value))
+    assert(declarations.all?(Cataract::Declaration))
   end
 
   def test_stylesheet_inspect
