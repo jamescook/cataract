@@ -121,10 +121,10 @@ class TestMerging < Minitest::Test
     CSS
 
     merged = Cataract.merge(rules)
-    # NOTE: background shorthand creation is not implemented yet, will be added later
-    # For now, we expect longhand properties
-    assert_equal 'black', find_property(merged, 'background-color')
-    assert_equal 'none', find_property(merged, 'background-image')
+    # background shorthand should be created from multiple properties
+    background = find_property(merged, 'background')
+
+    assert_equal 'black none', background
   end
 
   # Test merging dimensions (margin expansion then merge)
@@ -193,8 +193,13 @@ class TestMerging < Minitest::Test
     CSS
 
     merged = Cataract.merge(rules)
-    # After expansion, background-color should be marked !important
-    assert_equal 'black !important', find_property(merged, 'background-color')
+    # After expansion and re-creation, background shorthand should be marked !important
+    # Normal background-color cannot override !important
+    background = find_property(merged, 'background')
+
+    assert_equal 'black none !important', background
+    # The !important background wins, normal background-color is ignored
+    assert_nil find_property(merged, 'background-color')
   end
 
   # Test empty merge (single rule)

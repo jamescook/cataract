@@ -164,3 +164,34 @@ task fuzz: :compile do
   # Use system with ENV.to_h to preserve environment variables like FUZZ_GC_STRESS
   system(ENV.to_h, RbConfig.ruby, '-Ilib', 'test/fuzz_css_parser.rb', iterations)
 end
+
+# Documentation generation with YARD
+begin
+  require 'yard'
+
+  desc 'Generate example CSS analysis for documentation'
+  task :generate_example do
+    puts 'Generating GitHub CSS analysis example...'
+    # Generate with file. prefix for YARD compatibility
+    system('ruby examples/css_analyzer.rb https://github.com -o docs/file.github_analysis.html')
+  end
+
+  desc 'Generate documentation and open in browser'
+  task docs: :generate_example do
+    # Generate YARD documentation
+    YARD::CLI::Yardoc.run('--output-dir', 'docs', '--readme', 'README.md',
+                          '--title', 'Cataract - Fast CSS Parser',
+                          'lib/**/*.rb', 'ext/**/*.c', '-', 'docs/files/EXAMPLE.md')
+
+    # Open in browser
+    system('open docs/index.html') if RUBY_PLATFORM.include?('darwin')
+    system('xdg-open docs/index.html') if RUBY_PLATFORM.include?('linux')
+  end
+
+  desc 'List undocumented code'
+  task :undoc do
+    system('yard stats --list-undoc')
+  end
+rescue LoadError
+  # YARD not available - skip doc tasks
+end

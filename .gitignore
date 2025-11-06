@@ -39,7 +39,3 @@ test/fuzz_crash_*.log
 # Benchmark results
 benchmarks/.results/
 benchmarks/.benchmark_results/
-
-# Documentation
-doc/
-.yardoc

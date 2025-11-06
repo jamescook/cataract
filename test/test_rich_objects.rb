@@ -25,12 +25,12 @@ class TestParser < Minitest::Test
     # Test individual rules
     header_rule = rules.find { |r| r.selector == '.header' }
 
-    assert_equal 'blue', header_rule['color']
-    assert_equal 'large', header_rule['font-size']
+    assert_equal 'blue', header_rule.property('color')
+    assert_equal 'large', header_rule.property('font-size')
 
     nav_rule = rules.find { |r| r.selector == '#nav' }
 
-    assert_equal 'red !important', nav_rule['background']
+    assert_equal 'red !important', nav_rule.property('background')
     assert Cataract::Declarations.new(nav_rule.declarations).important?('background')
   end
 
@@ -39,21 +39,21 @@ class TestParser < Minitest::Test
     sheet.parse('.existing { color: blue }')
 
     # Add a new rule
-    new_rule = sheet.add_rule!(
+    new_rule = sheet.add_rule(
       selector: '.new',
       declarations: { 'color' => 'red', 'margin' => '10px !important' }
     )
 
     assert_equal 2, sheet.rules_count
     assert_equal '.new', new_rule.selector
-    assert_equal 'red', new_rule['color']
+    assert_equal 'red', new_rule.property('color')
     assert new_rule.declarations.important?('margin')
 
     # Verify it's in the rules
     new_rule_found = sheet.rules.find { |r| r.selector == '.new' }
 
     assert new_rule_found
-    assert_equal 'red', new_rule_found['color']
+    assert_equal 'red', new_rule_found.property('color')
   end
 
   def test_parser_find_by_selector

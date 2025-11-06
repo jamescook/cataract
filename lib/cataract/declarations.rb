@@ -102,17 +102,9 @@ module Cataract
     end
 
     # Convert to CSS string
-    # css_parser format: includes trailing semicolon
-    def to_s
-      return '' if empty?
-
-      declarations = []
-      each do |property, value, is_important|
-        suffix = is_important ? ' !important' : ''
-        declarations << "#{property}: #{value}#{suffix}"
-      end
-      "#{declarations.join('; ')};"
-    end
+    # Implemented in C for performance (see ext/cataract/cataract.c)
+    # Format: "color: red; margin: 10px !important;"
+    # Note: C implementation defined via rb_define_method
 
     # Enable implicit string conversion for comparisons
     alias to_str to_s

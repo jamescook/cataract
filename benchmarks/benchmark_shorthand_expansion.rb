@@ -42,7 +42,7 @@ if CSS_PARSER_AVAILABLE
   puts '--- Sanity Check: Comparing Outputs ---'
 
   # Test margin expansion
-  cataract_result = Cataract.expand_margin('10px 20px 30px 40px')
+  cataract_result = Cataract._expand_margin('10px 20px 30px 40px')
   css_parser_rs = CssParser::RuleSet.new(block: 'margin: 10px 20px 30px 40px')
   css_parser_rs.expand_shorthand!
   css_parser_result = {}
@@ -58,7 +58,7 @@ if CSS_PARSER_AVAILABLE
   end
 
   # Test border expansion
-  cataract_result = Cataract.expand_border('1px solid red')
+  cataract_result = Cataract._expand_border('1px solid red')
   css_parser_rs = CssParser::RuleSet.new(block: 'border: 1px solid red')
   css_parser_rs.expand_shorthand!
   css_parser_result = {}
@@ -82,7 +82,7 @@ Benchmark.ips do |x|
   x.config(time: 5, warmup: 2)
 
   x.report('Cataract (C)') do
-    Cataract.expand_margin('10px 20px 30px 40px')
+    Cataract._expand_margin('10px 20px 30px 40px')
   end
 
   if CSS_PARSER_AVAILABLE
@@ -101,7 +101,7 @@ Benchmark.ips do |x|
   x.config(time: 5, warmup: 2)
 
   x.report('Cataract (C)') do
-    Cataract.expand_margin('10px calc(100% - 20px)')
+    Cataract._expand_margin('10px calc(100% - 20px)')
   end
 
   if CSS_PARSER_AVAILABLE
@@ -120,7 +120,7 @@ Benchmark.ips do |x|
   x.config(time: 5, warmup: 2)
 
   x.report('Cataract (C)') do
-    Cataract.expand_margin('10px !important')
+    Cataract._expand_margin('10px !important')
   end
 
   if CSS_PARSER_AVAILABLE
@@ -139,7 +139,7 @@ Benchmark.ips do |x|
   x.config(time: 5, warmup: 2)
 
   x.report('Cataract (C)') do
-    Cataract.expand_border('1px solid red')
+    Cataract._expand_border('1px solid red')
   end
 
   if CSS_PARSER_AVAILABLE
@@ -158,7 +158,7 @@ Benchmark.ips do |x|
   x.config(time: 5, warmup: 2)
 
   x.report('Cataract (C)') do
-    Cataract.expand_font("bold 14px/1.5 'Helvetica Neue', sans-serif")
+    Cataract._expand_font("bold 14px/1.5 'Helvetica Neue', sans-serif")
   end
 
   if CSS_PARSER_AVAILABLE

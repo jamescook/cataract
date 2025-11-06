@@ -7,7 +7,7 @@ require_relative '../lib/cataract'
 # Test serializing declarations back to CSS string
 class TestDeclarationsToS < Minitest::Test
   def test_empty_array
-    result = Cataract.declarations_to_s([])
+    result = Cataract::Declarations.new([]).to_s
 
     assert_equal '', result
   end
@@ -16,21 +16,21 @@ class TestDeclarationsToS < Minitest::Test
     sheet = Cataract.parse_css(File.read('test/fixtures/bootstrap.css'))
     # Get declarations from first rule
     first_rule = sheet.rules.first
-    result = Cataract.declarations_to_s(first_rule.declarations)
+    result = Cataract::Declarations.new(first_rule.declarations).to_s
     # Bootstrap's first rule should have some declarations
     assert_predicate result.length, :positive?
   end
 
   def test_single_declaration
     decl = Cataract::Declarations::Value.new('color', 'red', false)
-    result = Cataract.declarations_to_s([decl])
+    result = Cataract::Declarations.new([decl]).to_s
 
     assert_equal 'color: red;', result
   end
 
   def test_single_declaration_with_important
     decl = Cataract::Declarations::Value.new('color', 'red', true)
-    result = Cataract.declarations_to_s([decl])
+    result = Cataract::Declarations.new([decl]).to_s
 
     assert_equal 'color: red !important;', result
   end
@@ -41,7 +41,7 @@ class TestDeclarationsToS < Minitest::Test
       Cataract::Declarations::Value.new('margin', '10px', false),
       Cataract::Declarations::Value.new('padding', '5px', false)
     ]
-    result = Cataract.declarations_to_s(decls)
+    result = Cataract::Declarations.new(decls).to_s
 
     assert_equal 'color: red; margin: 10px; padding: 5px;', result
   end
@@ -52,7 +52,7 @@ class TestDeclarationsToS < Minitest::Test
       Cataract::Declarations::Value.new('margin', '10px', false),
       Cataract::Declarations::Value.new('background', 'blue', true)
     ]
-    result = Cataract.declarations_to_s(decls)
+    result = Cataract::Declarations.new(decls).to_s
 
     assert_equal 'color: red !important; margin: 10px; background: blue !important;', result
   end
@@ -64,7 +64,7 @@ class TestDeclarationsToS < Minitest::Test
     CSS
 
     merged = Cataract.merge(rules)
-    result = Cataract.declarations_to_s(merged)
+    result = Cataract::Declarations.new(merged).to_s
 
     # Should contain all three properties
     assert_includes result, 'color: black'
@@ -78,7 +78,7 @@ class TestDeclarationsToS < Minitest::Test
     CSS
 
     merged = Cataract.merge(rules)
-    result = Cataract.declarations_to_s(merged)
+    result = Cataract::Declarations.new(merged).to_s
 
     assert_includes result, 'color: black !important'
     assert_includes result, 'margin: 10px;'
@@ -89,7 +89,7 @@ class TestDeclarationsToS < Minitest::Test
       Cataract::Declarations::Value.new('font', 'bold 14px/1.5 Arial, sans-serif', false),
       Cataract::Declarations::Value.new('background', 'url(image.png) no-repeat center', false)
     ]
-    result = Cataract.declarations_to_s(decls)
+    result = Cataract::Declarations.new(decls).to_s
 
     assert_includes result, 'font: bold 14px/1.5 Arial, sans-serif'
     assert_includes result, 'background: url(image.png) no-repeat center'

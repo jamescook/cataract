@@ -45,6 +45,9 @@ module Cataract
       @declarations[property] || ''
     end
 
+    # Alias for [] to avoid conflicts with Struct's [] accessor in Rule class
+    alias property []
+
     def []=(property, value)
       @declarations[property] = value
     end
@@ -147,20 +150,6 @@ module Cataract
     # css_parser compatibility: return declarations as string
     def declarations_to_s
       @declarations.to_s
-    end
-
-    # Expand all shorthand properties in-place
-    # Modifies the RuleSet's declarations by replacing shorthands with longhands
-    # Returns self for chaining
-    def expand_shorthand!
-      # Convert current declarations to string and expand using Stylesheet class method
-      expanded = Stylesheet.expand_shorthand(@declarations.to_s)
-
-      # Clear current declarations and replace with expanded
-      @declarations.instance_variable_get(:@values).clear
-      expanded.each { |prop, value| @declarations[prop] = value }
-
-      self
     end
 
     # css_parser compatibility: create shorthand properties from longhand
