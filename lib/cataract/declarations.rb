@@ -4,6 +4,7 @@ module Cataract
   # Container for CSS property declarations with merge and cascade support
   class Declarations
     include Enumerable
+
     def initialize(properties = {})
       case properties
       when Array
