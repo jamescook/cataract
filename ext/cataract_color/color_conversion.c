@@ -137,6 +137,7 @@
 static int is_hex_digit(char c);
 static int hex_char_to_int(char c);
 static VALUE expand_property_if_needed(VALUE property_name, VALUE value);
+VALUE rb_stylesheet_convert_colors(int argc, VALUE *argv, VALUE self);
 
 // Parser function signature: format → IR
 typedef struct color_ir (*color_parser_fn)(VALUE color_value);

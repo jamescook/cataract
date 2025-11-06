@@ -245,8 +245,6 @@ void finish_rule_fn(
 // Specificity calculator (specificity.c)
 VALUE calculate_specificity(VALUE self, VALUE selector_string);
 
-// Color conversion (color_conversion.c)
-void Init_color_conversion(VALUE mCataract);
-VALUE rb_stylesheet_convert_colors(int argc, VALUE *argv, VALUE self);
+// NOTE: Color conversion moved to separate extension (ext/cataract_color/)
 
 #endif // CATARACT_H

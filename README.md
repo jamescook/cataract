@@ -126,10 +126,13 @@ Cataract aims to support all CSS specifications including:
 
 ### Color Conversion
 
-Cataract supports converting colors between multiple CSS color formats with high precision:
+Cataract supports converting colors between multiple CSS color formats with high precision.
+
+**Note:** Color conversion is an optional extension. Load it explicitly to reduce memory footprint:
 
 ```ruby
 require 'cataract'
+require 'cataract/color_conversion'
 
 # Convert hex to RGB
 sheet = Cataract.parse_css('.button { color: #ff0000; background: #00ff00; }')

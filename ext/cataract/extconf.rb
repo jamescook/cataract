@@ -14,13 +14,9 @@ require 'mkmf'
 # - specificity.c (selector specificity calculator)
 # - merge.c (CSS cascade and merge logic)
 # - import_scanner.c (@import statement extraction)
-# - color_conversion.c (color format conversion)
-# - color_conversion_oklab.c (Oklab color space conversions)
-# - color_conversion_lab.c (CIE L*a*b* color space conversions)
-# - color_conversion_named.c (CSS named colors)
+# NOTE: Color conversion is now a separate extension (ext/cataract_color/)
 $objs = ['cataract.o', 'shorthand_expander.o', 'value_splitter.o', 'stylesheet.o', 'css_parser.o', 'specificity.o',
-         'merge.o', 'import_scanner.o', 'color_conversion.o', 'color_conversion_oklab.o', 'color_conversion_lab.o',
-         'color_conversion_named.o']
+         'merge.o', 'import_scanner.o']
 
 # Enable debug mode for CI testing (checks debug printf statements)
 if ENV['CATARACT_DEBUG']

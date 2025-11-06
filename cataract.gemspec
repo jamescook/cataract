@@ -29,5 +29,6 @@ Gem::Specification.new do |spec|
   spec.require_paths = ['lib']
 
   # C extension configuration
-  spec.extensions = ['ext/cataract/extconf.rb']
+  # Two separate extensions: core parser and optional color conversion
+  spec.extensions = ['ext/cataract/extconf.rb', 'ext/cataract_color/extconf.rb']
 end
