@@ -138,8 +138,8 @@ task :lint do
 
   puts 'Running clang-tidy on C code...'
 
-  # Find all .c files in ext/cataract/
-  c_files = Dir.glob('ext/cataract/*.c')
+  # Find all .c files in ext/cataract/ and ext/cataract_color/
+  c_files = Dir.glob('ext/cataract/*.c') + Dir.glob('ext/cataract_color/*.c')
 
   # Run clang-tidy on each file
   # Note: clang-tidy uses the .clang-tidy config file automatically
@@ -152,7 +152,8 @@ task :lint do
     system(clang_tidy, '--quiet', file, '--',
            "-I#{ruby_include}",
            "-I#{ruby_arch_include}",
-           '-Iext/cataract')
+           '-Iext/cataract',
+           '-Iext/cataract_color')
   end
 
   if success
@@ -163,12 +164,12 @@ task :lint do
 end
 
 # Fuzz testing
-desc 'Run fuzzer to test parser robustness'
+desc 'Run fuzzer to test parser robustness (including color conversion)'
 task fuzz: :compile do
   iterations = ENV['ITERATIONS'] || '10000'
   puts "Running CSS parser fuzzer (#{iterations} iterations)..."
   # Use system with ENV.to_h to preserve environment variables like FUZZ_GC_STRESS
-  system(ENV.to_h, RbConfig.ruby, '-Ilib', 'test/fuzz_css_parser.rb', iterations)
+  system(ENV.to_h, RbConfig.ruby, '-Ilib', 'scripts/fuzzer/run.rb', iterations)
 end
 
 # Documentation generation with YARD
