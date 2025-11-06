@@ -1,0 +1,2124 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>
+  Module: Cataract
+  
+    &mdash; Cataract - Fast CSS Parser
+  
+</title>
+
+  <link rel="stylesheet" href="css/style.css" type="text/css" />
+
+  <link rel="stylesheet" href="css/common.css" type="text/css" />
+
+<script type="text/javascript">
+  pathId = "Cataract";
+  relpath = '';
+</script>
+
+
+  <script type="text/javascript" charset="utf-8" src="js/jquery.js"></script>
+
+  <script type="text/javascript" charset="utf-8" src="js/app.js"></script>
+
+
+  </head>
+  <body>
+    <div class="nav_wrap">
+      <iframe id="nav" src="class_list.html?1"></iframe>
+      <div id="resizer"></div>
+    </div>
+
+    <div id="main" tabindex="-1">
+      <div id="header">
+        <div id="menu">
+  
+    <a href="_index.html">Index (C)</a> &raquo;
+    
+    
+    <span class="title">Cataract</span>
+  
+</div>
+
+        <div id="search">
+  
+    <a class="full_list_link" id="class_list_link"
+        href="class_list.html">
+
+        <svg width="24" height="24">
+          <rect x="0" y="4" width="24" height="4" rx="1" ry="1"></rect>
+          <rect x="0" y="12" width="24" height="4" rx="1" ry="1"></rect>
+          <rect x="0" y="20" width="24" height="4" rx="1" ry="1"></rect>
+        </svg>
+    </a>
+  
+</div>
+        <div class="clear"></div>
+      </div>
+
+      <div id="content"><h1>Module: Cataract
+  
+  
+  
+</h1>
+<div class="box_info">
+  
+
+  
+  
+  
+  
+  
+
+  
+
+  
+  <dl>
+    <dt>Defined in:</dt>
+    <dd>lib/cataract.rb<span class="defines">,<br />
+  lib/cataract/rule.rb,<br /> lib/cataract/version.rb,<br /> lib/cataract/rule_set.rb,<br /> lib/cataract/stylesheet.rb,<br /> lib/cataract/declarations.rb,<br /> lib/cataract/import_resolver.rb,<br /> ext/cataract/cataract.c</span>
+</dd>
+  </dl>
+  
+</div>
+
+<h2>Overview</h2><div class="docstring">
+  <div class="discussion">
+    
+<p>Cataract is a high-performance CSS parser written in C with a Ruby interface.</p>
+
+<p>It provides fast CSS parsing, rule querying, cascade merging, and serialization. Designed for performance-critical applications that need to process large amounts of CSS.</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+  <div class="examples">
+    <h4 class="tag_title">Examples:</h4>
+    
+      
+        <h5 class="example_title"><div class='inline'>
+<p>Basic usage</p>
+</div></h5>
+      
+      <pre class="example code"><code>require &#39;cataract&#39;
+
+# Parse CSS
+sheet = Cataract.parse_css(&quot;body { color: red; } h1 { color: blue; }&quot;)
+
+# Query rules
+sheet.each_selector { |selector, declarations, specificity, media| ... }
+
+# Merge with cascade rules
+merged = Cataract.merge(sheet)</code></pre>
+    
+  </div>
+
+
+  <p class="tag_title">See Also:</p>
+  <ul class="see">
+    
+      <li><span class='object_link'><a href="Cataract/Stylesheet.html" title="Cataract::Stylesheet (class)">Main class for working with parsed CSS</a></span></li>
+    
+      <li><span class='object_link'><a href="Cataract/RuleSet.html" title="Cataract::RuleSet (class)">Represents individual CSS rules</a></span></li>
+    
+  </ul>
+
+</div><h2>Defined Under Namespace</h2>
+<p class="children">
+  
+    
+      <strong class="modules">Modules:</strong> <span class='object_link'><a href="Cataract/ImportResolver.html" title="Cataract::ImportResolver (module)">ImportResolver</a></span>
+    
+  
+    
+      <strong class="classes">Classes:</strong> <span class='object_link'><a href="Cataract/Declarations.html" title="Cataract::Declarations (class)">Declarations</a></span>, <span class='object_link'><a href="Cataract/DepthError.html" title="Cataract::DepthError (class)">DepthError</a></span>, <span class='object_link'><a href="Cataract/Error.html" title="Cataract::Error (class)">Error</a></span>, <span class='object_link'><a href="Cataract/ImportError.html" title="Cataract::ImportError (class)">ImportError</a></span>, <span class='object_link'><a href="Cataract/ParseError.html" title="Cataract::ParseError (class)">ParseError</a></span>, <span class='object_link'><a href="Cataract/Rule.html" title="Cataract::Rule (class)">Rule</a></span>, <span class='object_link'><a href="Cataract/RuleSet.html" title="Cataract::RuleSet (class)">RuleSet</a></span>, <span class='object_link'><a href="Cataract/SizeError.html" title="Cataract::SizeError (class)">SizeError</a></span>, <span class='object_link'><a href="Cataract/Stylesheet.html" title="Cataract::Stylesheet (class)">Stylesheet</a></span>
+    
+  
+</p>
+
+  
+    <h2>
+      Constant Summary
+      <small><a href="#" class="constants_summary_toggle">collapse</a></small>
+    </h2>
+
+    <dl class="constants">
+      
+        <dt id="VERSION-constant" class="">VERSION =
+          
+        </dt>
+        <dd><pre class="code"><span class='tstring'><span class='tstring_beg'>&#39;</span><span class='tstring_content'>0.1.0</span><span class='tstring_end'>&#39;</span></span></pre></dd>
+      
+        <dt id="STRING_ALLOC_MODE-constant" class="">STRING_ALLOC_MODE =
+          
+        </dt>
+        <dd><pre class="code"><span class='const'>ID2SYM</span><span class='lparen'>(</span><span class='id identifier rubyid_rb_intern'>rb_intern</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>buffer</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span><span class='rparen'>)</span></pre></dd>
+      
+        <dt id="COMPILE_FLAGS-constant" class="">COMPILE_FLAGS =
+          <div class="docstring">
+  <div class="discussion">
+    
+<p>compiler optimizations that affect the generated code.</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+        </dt>
+        <dd><pre class="code"><span class='id identifier rubyid_compile_flags'>compile_flags</span></pre></dd>
+      
+    </dl>
+  
+
+
+
+
+
+
+
+  
+    <h2>
+      Class Method Summary
+      <small><a href="#" class="summary_toggle">collapse</a></small>
+    </h2>
+
+    <ul class="summary">
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#_create_background_shorthand-class_method" title="_create_background_shorthand (class method)">.<strong>_create_background_shorthand</strong>  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#_create_border_color_shorthand-class_method" title="_create_border_color_shorthand (class method)">.<strong>_create_border_color_shorthand</strong>  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#_create_border_shorthand-class_method" title="_create_border_shorthand (class method)">.<strong>_create_border_shorthand</strong>  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#_create_border_style_shorthand-class_method" title="_create_border_style_shorthand (class method)">.<strong>_create_border_style_shorthand</strong>  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#_create_border_width_shorthand-class_method" title="_create_border_width_shorthand (class method)">.<strong>_create_border_width_shorthand</strong>  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#_create_font_shorthand-class_method" title="_create_font_shorthand (class method)">.<strong>_create_font_shorthand</strong>  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#_create_list_style_shorthand-class_method" title="_create_list_style_shorthand (class method)">.<strong>_create_list_style_shorthand</strong>  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#_create_margin_shorthand-class_method" title="_create_margin_shorthand (class method)">.<strong>_create_margin_shorthand</strong>  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#_create_padding_shorthand-class_method" title="_create_padding_shorthand (class method)">.<strong>_create_padding_shorthand</strong>  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#_expand_background-class_method" title="_expand_background (class method)">.<strong>_expand_background</strong>  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#_expand_border-class_method" title="_expand_border (class method)">.<strong>_expand_border</strong>  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#_expand_border_color-class_method" title="_expand_border_color (class method)">.<strong>_expand_border_color</strong>  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#_expand_border_side-class_method" title="_expand_border_side (class method)">.<strong>_expand_border_side</strong>  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#_expand_border_style-class_method" title="_expand_border_style (class method)">.<strong>_expand_border_style</strong>  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#_expand_border_width-class_method" title="_expand_border_width (class method)">.<strong>_expand_border_width</strong>  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#_expand_font-class_method" title="_expand_font (class method)">.<strong>_expand_font</strong>  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#_expand_list_style-class_method" title="_expand_list_style (class method)">.<strong>_expand_list_style</strong>  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#_expand_margin-class_method" title="_expand_margin (class method)">.<strong>_expand_margin</strong>  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#_expand_padding-class_method" title="_expand_padding (class method)">.<strong>_expand_padding</strong>  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#_rules_to_s-class_method" title="_rules_to_s (class method)">.<strong>_rules_to_s</strong>(rules_array)  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'>
+<p>Convert array of Rule structs to full CSS string Format: “selector { prop: value; }nselector2 { prop: value; }”.</p>
+</div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#_split_value-class_method" title="_split_value (class method)">.<strong>_split_value</strong>  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#_stylesheet_to_formatted_s_c-class_method" title="_stylesheet_to_formatted_s_c (class method)">.<strong>_stylesheet_to_formatted_s_c</strong>  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#_stylesheet_to_s_c-class_method" title="_stylesheet_to_s_c (class method)">.<strong>_stylesheet_to_s_c</strong>  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#apply_cascade-class_method" title="apply_cascade (class method)">.<strong>apply_cascade</strong>(input)  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'>
+<p>This is called from Ruby as Cataract.merge_rules.</p>
+</div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#calculate_specificity-class_method" title="calculate_specificity (class method)">.<strong>calculate_specificity</strong>  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#extract_imports-class_method" title="extract_imports (class method)">.<strong>extract_imports</strong>  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'>
+<p>Import scanning.</p>
+</div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#merge-class_method" title="merge (class method)">.<strong>merge</strong>(rules)  &#x21d2; Array&lt;Declarations::Value&gt; </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'>
+<p>Merge multiple CSS rules according to CSS cascade rules.</p>
+</div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#merge_rules-class_method" title="merge_rules (class method)">.<strong>merge_rules</strong>(input)  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'>
+<p>This is called from Ruby as Cataract.merge_rules.</p>
+</div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#parse_css-class_method" title="parse_css (class method)">.<strong>parse_css</strong>(css_string)  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'>
+<p>Public wrapper for Ruby - starts at depth 0.</p>
+</div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#parse_css_internal-class_method" title="parse_css_internal (class method)">.<strong>parse_css_internal</strong>  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'></div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#parse_declarations-class_method" title="parse_declarations (class method)">.<strong>parse_declarations</strong>(declarations_string)  &#x21d2; Array&lt;Declarations::Value&gt; </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'>
+<p>Ruby-facing wrapper for parse_declarations.</p>
+</div></span>
+  
+</li>
+
+      
+    </ul>
+  
+
+
+
+  <div id="class_method_details" class="method_details_list">
+    <h2>Class Method Details</h2>
+
+    
+      <div class="method_details first">
+  <h3 class="signature first" id="_create_background_shorthand-class_method">
+  
+    .<strong>_create_background_shorthand</strong>  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="_create_border_color_shorthand-class_method">
+  
+    .<strong>_create_border_color_shorthand</strong>  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="_create_border_shorthand-class_method">
+  
+    .<strong>_create_border_shorthand</strong>  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="_create_border_style_shorthand-class_method">
+  
+    .<strong>_create_border_style_shorthand</strong>  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="_create_border_width_shorthand-class_method">
+  
+    .<strong>_create_border_width_shorthand</strong>  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="_create_font_shorthand-class_method">
+  
+    .<strong>_create_font_shorthand</strong>  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="_create_list_style_shorthand-class_method">
+  
+    .<strong>_create_list_style_shorthand</strong>  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="_create_margin_shorthand-class_method">
+  
+    .<strong>_create_margin_shorthand</strong>  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="_create_padding_shorthand-class_method">
+  
+    .<strong>_create_padding_shorthand</strong>  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="_expand_background-class_method">
+  
+    .<strong>_expand_background</strong>  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="_expand_border-class_method">
+  
+    .<strong>_expand_border</strong>  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="_expand_border_color-class_method">
+  
+    .<strong>_expand_border_color</strong>  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="_expand_border_side-class_method">
+  
+    .<strong>_expand_border_side</strong>  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="_expand_border_style-class_method">
+  
+    .<strong>_expand_border_style</strong>  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="_expand_border_width-class_method">
+  
+    .<strong>_expand_border_width</strong>  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="_expand_font-class_method">
+  
+    .<strong>_expand_font</strong>  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="_expand_list_style-class_method">
+  
+    .<strong>_expand_list_style</strong>  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="_expand_margin-class_method">
+  
+    .<strong>_expand_margin</strong>  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="_expand_padding-class_method">
+  
+    .<strong>_expand_padding</strong>  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="_rules_to_s-class_method">
+  
+    .<strong>_rules_to_s</strong>(rules_array)  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    
+<p>Convert array of Rule structs to full CSS string Format: “selector { prop: value; }nselector2 { prop: value; }”</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+117
+118
+119
+120
+121
+122
+123
+124
+125
+126
+127
+128
+129
+130
+131
+132
+133
+134
+135
+136
+137
+138
+139
+140
+141
+142
+143
+144
+145
+146
+147
+148
+149
+150
+151
+152
+153
+154
+155
+156
+157
+158
+159
+160
+161
+162
+163
+164
+165
+166
+167
+168
+169
+170
+171
+172
+173
+174
+175</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'ext/cataract/cataract.c', line 117</span>
+
+static VALUE rules_to_s(VALUE self, VALUE rules_array) {
+    Check_Type(rules_array, T_ARRAY);
+
+    long len = RARRAY_LEN(rules_array);
+    if (len == 0) {
+        return rb_str_new_cstr(&quot;&quot;);
+    }
+
+    // Estimate: ~100 chars per rule (selector + declarations)
+    VALUE result = rb_str_buf_new(len * 100);
+
+    for (long i = 0; i &lt; len; i++) {
+        VALUE rule = rb_ary_entry(rules_array, i);
+
+        // Validate this is a Rule struct
+        if (!RB_TYPE_P(rule, T_STRUCT)) {
+            rb_raise(rb_eTypeError,
+                     &quot;Expected array of Rule structs, got %s at index %ld&quot;,
+                     rb_obj_classname(rule), i);
+        }
+
+        // Extract: selector, declarations, specificity, media_query
+        VALUE selector = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR));
+        VALUE declarations = rb_struct_aref(rule, INT2FIX(RULE_DECLARATIONS));
+
+        // Append selector
+        rb_str_buf_append(result, selector);
+        rb_str_buf_cat2(result, &quot; { &quot;);
+
+        // Serialize each declaration
+        long decl_len = RARRAY_LEN(declarations);
+        for (long j = 0; j &lt; decl_len; j++) {
+            VALUE decl = rb_ary_entry(declarations, j);
+
+            VALUE property = rb_struct_aref(decl, INT2FIX(DECL_PROPERTY));
+            VALUE value = rb_struct_aref(decl, INT2FIX(DECL_VALUE));
+            VALUE important = rb_struct_aref(decl, INT2FIX(DECL_IMPORTANT));
+
+            rb_str_buf_append(result, property);
+            rb_str_buf_cat2(result, &quot;: &quot;);
+            rb_str_buf_append(result, value);
+
+            if (RTEST(important)) {
+                rb_str_buf_cat2(result, &quot; !important&quot;);
+            }
+
+            rb_str_buf_cat2(result, &quot;; &quot;);
+        }
+
+        rb_str_buf_cat2(result, &quot;}\n&quot;);
+
+        RB_GC_GUARD(rule);
+        RB_GC_GUARD(selector);
+        RB_GC_GUARD(declarations);
+    }
+
+    RB_GC_GUARD(result);
+    return result;
+}</pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="_split_value-class_method">
+  
+    .<strong>_split_value</strong>  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="_stylesheet_to_formatted_s_c-class_method">
+  
+    .<strong>_stylesheet_to_formatted_s_c</strong>  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="_stylesheet_to_s_c-class_method">
+  
+    .<strong>_stylesheet_to_s_c</strong>  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="apply_cascade-class_method">
+  
+    .<strong>apply_cascade</strong>(input)  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    
+<p>This is called from Ruby as Cataract.merge_rules</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+761
+762
+763
+764
+765
+766
+767
+768
+769
+770
+771
+772
+773
+774
+775
+776
+777
+778</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'ext/cataract/merge.c', line 761</span>
+
+VALUE cataract_merge_wrapper(VALUE self, VALUE input) {
+    // Check if input is a hash (new structure from Stylesheet)
+    if (TYPE(input) == T_HASH) {
+        // Flatten hash structure to array
+        VALUE rules_array = rb_ary_new();
+        struct flatten_hash_ctx ctx = { rules_array };
+        rb_hash_foreach(input, flatten_hash_callback, (VALUE)&amp;ctx);
+
+        // Call the original merge function
+        VALUE result = cataract_merge(self, rules_array);
+
+        RB_GC_GUARD(rules_array);
+        return result;
+    }
+
+    // Input is already an array - call original function directly
+    return cataract_merge(self, input);
+}</pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="calculate_specificity-class_method">
+  
+    .<strong>calculate_specificity</strong>  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="extract_imports-class_method">
+  
+    .<strong>extract_imports</strong>  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    
+<p>Import scanning</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="merge-class_method">
+  
+    .<strong>merge</strong>(rules)  &#x21d2; <tt>Array&lt;Declarations::Value&gt;</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    
+<p>Merge multiple CSS rules according to CSS cascade rules.</p>
+
+<p>Takes multiple rules (typically with the same selector) and merges their declarations according to CSS cascade rules. This is useful for computing the final computed style for an element.</p>
+
+<p>Merge rules:</p>
+<ol><li>
+<p>Higher specificity wins</p>
+</li><li>
+<p>!important declarations win over non-important</p>
+</li><li>
+<p>Later declarations with same specificity and importance win</p>
+</li><li>
+<p>Shorthand properties are created from longhand when possible (e.g., margin-* -&gt; margin)</p>
+</li></ol>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+  <div class="examples">
+    <h4 class="tag_title">Examples:</h4>
+    
+      
+        <h5 class="example_title"><div class='inline'>
+<p>Merge rules from a stylesheet</p>
+</div></h5>
+      
+      <pre class="example code"><code><span class='id identifier rubyid_sheet'>sheet</span> <span class='op'>=</span> <span class='const'><span class='object_link'><a href="" title="Cataract (module)">Cataract</a></span></span><span class='period'>.</span><span class='id identifier rubyid_parse_css'><span class='object_link'><a href="#parse_css-class_method" title="Cataract.parse_css (method)">parse_css</a></span></span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>.test { color: red; } #test { color: blue; }</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span>
+<span class='id identifier rubyid_merged'>merged</span> <span class='op'>=</span> <span class='const'><span class='object_link'><a href="" title="Cataract (module)">Cataract</a></span></span><span class='period'>.</span><span class='id identifier rubyid_merge'>merge</span><span class='lparen'>(</span><span class='id identifier rubyid_sheet'>sheet</span><span class='rparen'>)</span>
+<span class='comment'># merged contains declarations with blue color (higher specificity)</span></code></pre>
+    
+      
+        <h5 class="example_title"><div class='inline'>
+<p>Merge rules with !important</p>
+</div></h5>
+      
+      <pre class="example code"><code><span class='id identifier rubyid_sheet'>sheet</span> <span class='op'>=</span> <span class='const'><span class='object_link'><a href="" title="Cataract (module)">Cataract</a></span></span><span class='period'>.</span><span class='id identifier rubyid_parse_css'><span class='object_link'><a href="#parse_css-class_method" title="Cataract.parse_css (method)">parse_css</a></span></span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>.test { color: red !important; } #test { color: blue; }</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span>
+<span class='id identifier rubyid_merged'>merged</span> <span class='op'>=</span> <span class='const'><span class='object_link'><a href="" title="Cataract (module)">Cataract</a></span></span><span class='period'>.</span><span class='id identifier rubyid_merge'>merge</span><span class='lparen'>(</span><span class='id identifier rubyid_sheet'>sheet</span><span class='rparen'>)</span>
+<span class='comment'># merged contains red color (!important wins despite lower specificity)</span></code></pre>
+    
+      
+        <h5 class="example_title"><div class='inline'>
+<p>Merge creates shorthand properties</p>
+</div></h5>
+      
+      <pre class="example code"><code><span class='id identifier rubyid_sheet'>sheet</span> <span class='op'>=</span> <span class='const'><span class='object_link'><a href="" title="Cataract (module)">Cataract</a></span></span><span class='period'>.</span><span class='id identifier rubyid_parse_css'><span class='object_link'><a href="#parse_css-class_method" title="Cataract.parse_css (method)">parse_css</a></span></span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>.test { margin-top: 10px; margin-right: 10px; margin-bottom: 10px; margin-left: 10px; }</span><span class='tstring_end'>&quot;</span></span><span class='rparen'>)</span>
+<span class='id identifier rubyid_merged'>merged</span> <span class='op'>=</span> <span class='const'><span class='object_link'><a href="" title="Cataract (module)">Cataract</a></span></span><span class='period'>.</span><span class='id identifier rubyid_merge'>merge</span><span class='lparen'>(</span><span class='id identifier rubyid_sheet'>sheet</span><span class='rparen'>)</span>
+<span class='comment'># merged contains &quot;margin: 10px&quot; shorthand instead of four longhand properties</span></code></pre>
+    
+  </div>
+<p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>rules</span>
+      
+      
+        <span class='type'>(<tt>Array&lt;<span class='object_link'><a href="Cataract/Rule.html" title="Cataract::Rule (class)">Rule</a></span>&gt;</tt>, <tt><span class='object_link'><a href="Cataract/Stylesheet.html" title="Cataract::Stylesheet (class)">Stylesheet</a></span></tt>, <tt>Enumerator</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'>
+<p>Rules to merge. Can be an array of Rule structs, a Stylesheet object, or an Enumerator.</p>
+</div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Array&lt;Declarations::Value&gt;</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'>
+<p>Array of merged declaration values. Returns empty array if input is nil or empty.</p>
+</div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+103
+104
+105
+106
+107
+108
+109
+110
+111
+112
+113
+114
+115
+116
+117
+118</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/cataract.rb', line 103</span>
+
+<span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_merge'>merge</span><span class='lparen'>(</span><span class='id identifier rubyid_rules'>rules</span><span class='rparen'>)</span>
+  <span class='kw'>return</span> <span class='lbracket'>[</span><span class='rbracket'>]</span> <span class='kw'>if</span> <span class='id identifier rubyid_rules'>rules</span><span class='period'>.</span><span class='id identifier rubyid_nil?'>nil?</span> <span class='op'>||</span> <span class='id identifier rubyid_rules'>rules</span><span class='period'>.</span><span class='id identifier rubyid_empty?'>empty?</span>
+
+  <span class='comment'># Accept both Stylesheet and Array for convenience
+</span>  <span class='id identifier rubyid_input'>input</span> <span class='op'>=</span> <span class='kw'>if</span> <span class='id identifier rubyid_rules'>rules</span><span class='period'>.</span><span class='id identifier rubyid_is_a?'>is_a?</span><span class='lparen'>(</span><span class='const'><span class='object_link'><a href="Cataract/Stylesheet.html" title="Cataract::Stylesheet (class)">Stylesheet</a></span></span><span class='rparen'>)</span>
+            <span class='comment'># Pass hash structure directly to C - it will flatten efficiently
+</span>            <span class='id identifier rubyid_rules'>rules</span><span class='period'>.</span><span class='id identifier rubyid_rule_groups'>rule_groups</span>
+          <span class='kw'>elsif</span> <span class='id identifier rubyid_rules'>rules</span><span class='period'>.</span><span class='id identifier rubyid_is_a?'>is_a?</span><span class='lparen'>(</span><span class='const'>Enumerator</span><span class='rparen'>)</span>
+            <span class='id identifier rubyid_rules'>rules</span><span class='period'>.</span><span class='id identifier rubyid_to_a'>to_a</span>
+          <span class='kw'>else</span>
+            <span class='id identifier rubyid_rules'>rules</span>
+          <span class='kw'>end</span>
+
+  <span class='comment'># Call C implementation for performance (handles both hash and array)
+</span>  <span class='const'><span class='object_link'><a href="" title="Cataract (module)">Cataract</a></span></span><span class='period'>.</span><span class='id identifier rubyid_merge_rules'><span class='object_link'><a href="#merge_rules-class_method" title="Cataract.merge_rules (method)">merge_rules</a></span></span><span class='lparen'>(</span><span class='id identifier rubyid_input'>input</span><span class='rparen'>)</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="merge_rules-class_method">
+  
+    .<strong>merge_rules</strong>(input)  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    
+<p>This is called from Ruby as Cataract.merge_rules</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+761
+762
+763
+764
+765
+766
+767
+768
+769
+770
+771
+772
+773
+774
+775
+776
+777
+778</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'ext/cataract/merge.c', line 761</span>
+
+VALUE cataract_merge_wrapper(VALUE self, VALUE input) {
+    // Check if input is a hash (new structure from Stylesheet)
+    if (TYPE(input) == T_HASH) {
+        // Flatten hash structure to array
+        VALUE rules_array = rb_ary_new();
+        struct flatten_hash_ctx ctx = { rules_array };
+        rb_hash_foreach(input, flatten_hash_callback, (VALUE)&amp;ctx);
+
+        // Call the original merge function
+        VALUE result = cataract_merge(self, rules_array);
+
+        RB_GC_GUARD(rules_array);
+        return result;
+    }
+
+    // Input is already an array - call original function directly
+    return cataract_merge(self, input);
+}</pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="parse_css-class_method">
+  
+    .<strong>parse_css</strong>(css_string)  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    
+<p>Public wrapper for Ruby - starts at depth 0</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+64
+65
+66
+67
+68
+69</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/cataract.rb', line 64</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_parse_css'>parse_css</span><span class='lparen'>(</span><span class='id identifier rubyid_css'>css</span><span class='comma'>,</span> <span class='label'>imports:</span> <span class='kw'>false</span><span class='rparen'>)</span>
+  <span class='comment'># Resolve @import statements if requested
+</span>  <span class='id identifier rubyid_css'>css</span> <span class='op'>=</span> <span class='const'><span class='object_link'><a href="Cataract/ImportResolver.html" title="Cataract::ImportResolver (module)">ImportResolver</a></span></span><span class='period'>.</span><span class='id identifier rubyid_resolve'><span class='object_link'><a href="Cataract/ImportResolver.html#resolve-class_method" title="Cataract::ImportResolver.resolve (method)">resolve</a></span></span><span class='lparen'>(</span><span class='id identifier rubyid_css'>css</span><span class='comma'>,</span> <span class='id identifier rubyid_imports'>imports</span><span class='rparen'>)</span> <span class='kw'>if</span> <span class='id identifier rubyid_imports'>imports</span>
+
+  <span class='const'><span class='object_link'><a href="Cataract/Stylesheet.html" title="Cataract::Stylesheet (class)">Stylesheet</a></span></span><span class='period'>.</span><span class='id identifier rubyid_parse'><span class='object_link'><a href="Cataract/Stylesheet.html#parse-class_method" title="Cataract::Stylesheet.parse (method)">parse</a></span></span><span class='lparen'>(</span><span class='id identifier rubyid_css'>css</span><span class='rparen'>)</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="parse_css_internal-class_method">
+  
+    .<strong>parse_css_internal</strong>  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+32</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/cataract.rb', line 32</span>
+
+<span class='kw'>alias</span> <span class='id identifier rubyid_parse_css_internal'>parse_css_internal</span> <span class='id identifier rubyid_parse_css'>parse_css</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="parse_declarations-class_method">
+  
+    .<strong>parse_declarations</strong>(declarations_string)  &#x21d2; <tt>Array&lt;Declarations::Value&gt;</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    
+<p>Ruby-facing wrapper for parse_declarations</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>declarations_string</span>
+      
+      
+        <span class='type'>(<tt>String</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'>
+<p>CSS declarations like “color: red; margin: 10px”</p>
+</div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Array&lt;Declarations::Value&gt;</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'>
+<p>Array of parsed declaration structs</p>
+</div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+85
+86
+87
+88
+89
+90
+91
+92
+93
+94
+95
+96
+97
+98
+99
+100
+101
+102</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'ext/cataract/cataract.c', line 85</span>
+
+static VALUE parse_declarations(VALUE self, VALUE declarations_string) {
+    Check_Type(declarations_string, T_STRING);
+
+    const char *input = RSTRING_PTR(declarations_string);
+    long input_len = RSTRING_LEN(declarations_string);
+
+    // Strip outer braces and whitespace (css_parser compatibility)
+    const char *start = input;
+    const char *end = input + input_len;
+
+    while (start &lt; end &amp;&amp; (IS_WHITESPACE(*start) || *start == &#39;{&#39;)) start++;
+    while (end &gt; start &amp;&amp; (IS_WHITESPACE(*(end-1)) || *(end-1) == &#39;}&#39;)) end--;
+
+    VALUE result = parse_declarations_string(start, end);
+
+    RB_GC_GUARD(result);
+    return result;
+}</pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+  </div>
+
+</div>
+
+      <div id="footer">
+  Generated on Tue Nov  4 13:33:24 2025 by
+  <a href="https://yardoc.org" title="Yay! A Ruby Documentation Tool" target="_parent">yard</a>
+  0.9.37 (ruby-3.4.5).
+</div>
+
+    </div>
+  </body>
+</html>
