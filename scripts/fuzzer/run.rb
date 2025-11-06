@@ -204,62 +204,62 @@ def mutate(css)
     -> { ".test { color: #{'#' * rand(20)}ff0000; }" }, # Multiple hash symbols
     -> { ".test { color: #\x00\x00\x00; }" }, # Null bytes in hex
     -> { ".test { color: ##{'f' * rand(100)}; }" }, # Extremely long hex
-    -> { ".test { color: #-ff0000; }" }, # Negative hex
-    -> { ".test { color: #ff00; }" }, # Wrong length (5 chars)
+    -> { '.test { color: #-ff0000; }' }, # Negative hex
+    -> { '.test { color: #ff00; }' }, # Wrong length (5 chars)
 
     # RGB/RGBA chaos
     -> { ".test { color: rgb(#{-rand(999)}, #{-rand(999)}, #{-rand(999)}); }" }, # Negative RGB
-    -> { ".test { color: rgb(NaN, Infinity, -Infinity); }" }, # Special float values
-    -> { ".test { color: rgb(1e999, 1e999, 1e999); }" }, # Scientific notation overflow
+    -> { '.test { color: rgb(NaN, Infinity, -Infinity); }' }, # Special float values
+    -> { '.test { color: rgb(1e999, 1e999, 1e999); }' }, # Scientific notation overflow
     -> { ".test { color: rgba(255, 0, 0, #{rand(999)}); }" }, # Alpha > 1
     -> { ".test { color: rgb(255 0 0 / #{-rand(10)}); }" }, # Negative alpha
-    -> { ".test { color: rgb(#{('(' * rand(10))}255, 0, 0#{(')' * rand(10))}); }" }, # Paren chaos
+    -> { ".test { color: rgb(#{'(' * rand(10)}255, 0, 0#{')' * rand(10)}); }" }, # Paren chaos
     -> { ".test { color: rgb(\x00, \x00, \x00); }" }, # Null bytes in RGB
-    -> { ".test { color: rgb(255,,,,,0,,,0); }" }, # Multiple commas
-    -> { ".test { color: rgb(255 255 255 255 255); }" }, # Too many values
+    -> { '.test { color: rgb(255,,,,,0,,,0); }' }, # Multiple commas
+    -> { '.test { color: rgb(255 255 255 255 255); }' }, # Too many values
 
     # HSL/HSLA chaos
-    -> { ".test { color: hsl(#{rand(99999)}deg, 100%, 50%); }" }, # Huge hue
+    -> { ".test { color: hsl(#{rand(99_999)}deg, 100%, 50%); }" }, # Huge hue
     -> { ".test { color: hsl(-#{rand(999)}deg, #{-rand(999)}%, #{-rand(999)}%); }" }, # All negative
     -> { ".test { color: hsl(0, #{rand(9999)}%, #{rand(9999)}%); }" }, # Percentage overflow
-    -> { ".test { color: hsl(NaN, NaN%, NaN%); }" }, # NaN values
+    -> { '.test { color: hsl(NaN, NaN%, NaN%); }' }, # NaN values
     -> { ".test { color: hsla(0, 100%, 50%, \x00); }" }, # Null byte alpha
-    -> { ".test { color: hsl(0turn, 100%, 50%); }" }, # Units on saturation/lightness
-    -> { ".test { color: hsl(0 0 0); }" }, # Missing percentage signs
+    -> { '.test { color: hsl(0turn, 100%, 50%); }' }, # Units on saturation/lightness
+    -> { '.test { color: hsl(0 0 0); }' }, # Missing percentage signs
 
     # HWB chaos
-    -> { ".test { color: hwb(#{rand(99999)} #{rand(999)}% #{rand(999)}%); }" }, # Huge values
+    -> { ".test { color: hwb(#{rand(99_999)} #{rand(999)}% #{rand(999)}%); }" }, # Huge values
     -> { ".test { color: hwb(0 #{-rand(999)}% #{-rand(999)}%); }" }, # Negative whiteness/blackness
-    -> { ".test { color: hwb(0 200% 200%); }" }, # Both > 100%
+    -> { '.test { color: hwb(0 200% 200%); }' }, # Both > 100%
     -> { ".test { color: hwb(\x00 \x00 \x00); }" }, # Null bytes
 
     # Oklab/Oklch chaos
     -> { ".test { color: oklab(#{rand(999)} #{rand(999)} #{rand(999)}); }" }, # Huge Oklab values
     -> { ".test { color: oklab(#{-rand(99)} #{-rand(99)} #{-rand(99)}); }" }, # All negative
-    -> { ".test { color: oklab(L L L); }" }, # Non-numeric
-    -> { ".test { color: oklch(#{rand(999)} #{rand(999)} #{rand(99999)}); }" }, # Huge oklch
+    -> { '.test { color: oklab(L L L); }' }, # Non-numeric
+    -> { ".test { color: oklch(#{rand(999)} #{rand(999)} #{rand(99_999)}); }" }, # Huge oklch
     -> { ".test { color: oklch(0.5 0.2 #{-rand(999)}); }" }, # Negative hue
     -> { ".test { color: oklab(\x00 \x00 \x00); }" }, # Null bytes in oklab
-    -> { ".test { color: oklch(1 1 #{('(' * rand(10))}360#{(')' * rand(10))}); }" }, # Paren chaos
+    -> { ".test { color: oklch(1 1 #{'(' * rand(10)}360#{')' * rand(10)}); }" }, # Paren chaos
 
     # Lab/LCH chaos
     -> { ".test { color: lab(#{rand(999)}% #{rand(9999)} #{rand(9999)}); }" }, # Huge lab values
     -> { ".test { color: lab(-#{rand(999)}% #{-rand(999)} #{-rand(999)}); }" }, # Negative everything
-    -> { ".test { color: lch(#{rand(999)}% #{rand(999)} #{rand(99999)}); }" }, # Huge lch
+    -> { ".test { color: lch(#{rand(999)}% #{rand(999)} #{rand(99_999)}); }" }, # Huge lch
     -> { ".test { color: lch(50% -#{rand(999)} 0); }" }, # Negative chroma
     -> { ".test { color: lab(\x00% \x00 \x00); }" }, # Null bytes in lab
 
     # Alpha channel chaos (all formats)
-    -> { css.gsub(/\/\s*[\d.]+\s*\)/, "/ #{rand(999)} )") }, # Alpha > 1 everywhere
-    -> { css.gsub(/\/\s*[\d.]+\s*\)/, "/ -#{rand(10)} )") }, # Negative alpha everywhere
-    -> { css.gsub(/\/\s*[\d.]+\s*\)/, "/ NaN )") }, # NaN alpha
-    -> { css.gsub(/\/\s*[\d.]+\s*\)/, "/ \x00 )") }, # Null byte alpha
+    -> { css.gsub(%r{/\s*[\d.]+\s*\)}, "/ #{rand(999)} )") }, # Alpha > 1 everywhere
+    -> { css.gsub(%r{/\s*[\d.]+\s*\)}, "/ -#{rand(10)} )") }, # Negative alpha everywhere
+    -> { css.gsub(%r{/\s*[\d.]+\s*\)}, '/ NaN )') }, # NaN alpha
+    -> { css.gsub(%r{/\s*[\d.]+\s*\)}, "/ \x00 )") }, # Null byte alpha
 
     # Mixed color function chaos
-    -> { ".test { color: rgb(oklab(0.5 0 0)); }" }, # Nested color functions
-    -> { ".test { color: hsl(lab(50% 0 0)); }" }, # Wrong nesting
-    -> { ".test { color: #rgb(255,0,0); }" }, # Hash + function
-    -> { ".test { color: lab rgb hsl hwb oklab; }" }, # Function names as values
+    -> { '.test { color: rgb(oklab(0.5 0 0)); }' }, # Nested color functions
+    -> { '.test { color: hsl(lab(50% 0 0)); }' }, # Wrong nesting
+    -> { '.test { color: #rgb(255,0,0); }' }, # Hash + function
+    -> { '.test { color: lab rgb hsl hwb oklab; }' }, # Function names as values
 
     # Binary corruption
     lambda {
@@ -276,20 +276,20 @@ def mutate(css)
 
     # Pure garbage
     -> { Array.new(rand(1000)) { rand(256).chr }.join.force_encoding('UTF-8') }, # Random bytes
-    -> { "\xFF\xFE" + css }, # BOM corruption
+    -> { "\xFF\xFE#{css}" }, # BOM corruption
     -> { css.tr('a-z', "\x00-\x1A") }, # Control characters
 
     # Parenthesis hell
     -> { css + ('(' * rand(100)) }, # Unmatched open parens
     -> { css + (')' * rand(100)) }, # Unmatched close parens
-    -> { css.gsub(/\(/, '((((').gsub(/\)/, '))))') }, # Paren explosion
+    -> { css.gsub('(', '((((').gsub(')', '))))') }, # Paren explosion
     -> { css.tr('({[', '(((').tr(')}]', ')))') }, # All brackets to parens
     -> { "((((((((#{css}))))))))" }, # Deep wrapping
-    -> { css.gsub(/;/, '();();();') }, # Parens in weird places
+    -> { css.gsub(';', '();();();') }, # Parens in weird places
 
     # Semicolon/colon chaos
-    -> { css.gsub(/:/, ':::') }, # Triple colons
-    -> { css.gsub(/;/, ';;;;') }, # Quadruple semicolons
+    -> { css.gsub(':', ':::') }, # Triple colons
+    -> { css.gsub(';', ';;;;') }, # Quadruple semicolons
     -> { css.tr(':;', ';:') }, # Swap colons and semicolons
     -> { css.gsub(/[;:]/, '') }, # Remove all delimiters
 
@@ -298,23 +298,23 @@ def mutate(css)
     -> { css.gsub(/./) { |c| c + (' ' * rand(10)) } }, # Excessive spaces
     -> { css.gsub(/\s/, "\n\n\n\n") }, # Newline explosion
     -> { css.gsub(/\s/, "\t\t\t") }, # Tab explosion
-    -> { "\r\n" * rand(100) + css }, # Windows line endings spam
+    -> { ("\r\n" * rand(100)) + css }, # Windows line endings spam
 
     # Comment corruption
     -> { css.gsub('/*', '/*' * rand(5)) }, # Nested comment starts
     -> { "/*#{css}" }, # Unclosed comment
     -> { css.gsub('*/', '') }, # Remove comment ends
-    -> { css.gsub(/[^\/]/, '/**/') }, # Comment EVERYTHING
+    -> { css.gsub(%r{[^/]}, '/**/') }, # Comment EVERYTHING
 
     # Backslash chaos (escape sequences)
     -> { css.gsub(/.{1,3}/) { |m| rand < 0.2 ? "\\#{m}" : m } }, # Random escapes
-    -> { '\\' * rand(50) + css }, # Backslash prefix
+    -> { ('\\' * rand(50)) + css }, # Backslash prefix
     -> { css.gsub(/[{};:]/, '\\\\\\\\\1') }, # Escape important chars
 
     # Unicode chaos
-    -> { css + "\u{FEFF}" * rand(10) }, # Zero-width no-break space
-    -> { css + "\u{200B}" * rand(10) }, # Zero-width space
-    -> { css.gsub(/\w/) { |c| c + "\u{0301}" } }, # Combining diacritics
+    -> { css + ("\u{FEFF}" * rand(10)) }, # Zero-width no-break space
+    -> { css + ("\u{200B}" * rand(10)) }, # Zero-width space
+    -> { css.gsub(/\w/) { |c| "#{c}́" } }, # Combining diacritics
 
     # Length extremes
     -> { css * rand(10) }, # Repeat entire CSS
@@ -468,7 +468,7 @@ ITERATIONS.times do |i|
 
   # Send to worker subprocess
   result, error, crashed_input, stderr_output, merge_tested, to_s_tested, color_converted = parse_in_worker(stdin, stdout, stderr,
-                                                                                           wait_thr, input, last_input)
+                                                                                                            wait_thr, input, last_input)
   last_input = input
 
   case result
