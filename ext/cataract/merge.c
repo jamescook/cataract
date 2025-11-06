@@ -258,7 +258,7 @@ void init_merge_constants(void) {
 // Helper macro to check if a property's !important flag matches a reference
 #define CHECK_IMPORTANT_MATCH(hash, str_prop, ref_important) \
     ({ VALUE _pd = GET_PROP_DATA_STR(hash, str_prop); \
-       NIL_P(_pd) ? 1 : (RTEST(rb_hash_aref(_pd, ID2SYM(id_important))) == ref_important); })
+       NIL_P(_pd) ? 1 : (RTEST(rb_hash_aref(_pd, ID2SYM(id_important))) == (ref_important)); })
 
 // Macro to create shorthand from 4-sided properties (margin, padding, border-width/style/color)
 // Reduces repetitive code by encapsulating the common pattern:

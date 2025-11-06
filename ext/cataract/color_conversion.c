@@ -205,7 +205,7 @@ static int hex_char_to_int(char c) {
 // Macro to check if a string contains unparseable content and preserve it if found
 // Sets has_unparseable to 1 if content should be preserved, 0 otherwise
 #define HAS_UNPARSEABLE_CONTENT(str, len, has_unparseable) do { \
-    has_unparseable = 0; \
+    (has_unparseable) = 0; \
     if ((str) != NULL && (len) >= 4) { \
         static const char *unparseable[] = { \
             "calc(", "min(", "max(", "clamp(", "var(", \
@@ -218,11 +218,11 @@ static int hex_char_to_int(char c) {
             size_t _kw_len = strlen(_kw); \
             for (long _j = 0; _j <= (len) - (long)_kw_len; _j++) { \
                 if (strncmp((str) + _j, _kw, _kw_len) == 0) { \
-                    has_unparseable = 1; \
+                    (has_unparseable) = 1; \
                     break; \
                 } \
             } \
-            if (has_unparseable) break; \
+            if ((has_unparseable)) break; \
         } \
     } \
 } while(0)
@@ -1217,11 +1217,7 @@ static VALUE convert_value_with_colors(VALUE value, color_parser_fn parser, colo
 
     RB_GC_GUARD(value);  // Prevent GC of value while we hold input pointer
 
-    if (found_color) {
-        DEBUG_PRINTF("Returning result='%s'\n", StringValueCStr(result));
-    } else {
-        DEBUG_PRINTF("Returning Qnil (no colors found)\n");
-    }
+    DEBUG_PRINTF("Returning %s\n", found_color ? "result" : "Qnil (no colors found)");
 
     return found_color ? result : Qnil;
 }
