@@ -23,3 +23,4 @@ end
 
 require 'minitest/autorun'
 require 'cataract'
+require 'cataract/color_conversion' # Load color conversion extension for tests

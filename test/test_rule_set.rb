@@ -298,5 +298,4 @@ class TestRuleSet < Minitest::Test
 
     assert_empty rule
   end
-
 end

@@ -8,10 +8,16 @@ require 'rake/clean'
 begin
   require 'rake/extensiontask'
 
-  # Configure the extension
+  # Configure the main extension
   Rake::ExtensionTask.new('cataract') do |ext|
     ext.lib_dir = 'lib/cataract'
     ext.ext_dir = 'ext/cataract'
+  end
+
+  # Configure the color conversion extension (optional, loaded on-demand)
+  Rake::ExtensionTask.new('cataract_color') do |ext|
+    ext.lib_dir = 'lib/cataract'
+    ext.ext_dir = 'ext/cataract_color'
   end
 end
 

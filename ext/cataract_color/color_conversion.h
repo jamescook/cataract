@@ -89,6 +89,12 @@ struct color_ir {
     ((remaining) >= 6 && (p)[0] == 'o' && (p)[1] == 'k' && (p)[2] == 'l' && \
      (p)[3] == 'c' && (p)[4] == 'h' && (p)[5] == '(')
 
+#define STARTS_WITH_LAB(p, remaining) \
+    ((remaining) >= 4 && (p)[0] == 'l' && (p)[1] == 'a' && (p)[2] == 'b' && (p)[3] == '(')
+
+#define STARTS_WITH_LCH(p, remaining) \
+    ((remaining) >= 4 && (p)[0] == 'l' && (p)[1] == 'c' && (p)[2] == 'h' && (p)[3] == '(')
+
 // Macros for formatting color values
 #define FORMAT_RGB_MODERN(buf, red, green, blue) \
     snprintf(buf, sizeof(buf), "rgb(%d %d %d)", red, green, blue)
@@ -118,5 +124,13 @@ struct color_ir {
     snprintf(buf, sizeof(buf), "rgb(%.3f%% %.3f%% %.3f%%)", r_pct, g_pct, b_pct)
 #define FORMAT_RGB_PERCENT_ALPHA(buf, r_pct, g_pct, b_pct, alpha) \
     snprintf(buf, sizeof(buf), "rgb(%.3f%% %.3f%% %.3f%% / %.10g)", r_pct, g_pct, b_pct, alpha)
+#define FORMAT_LAB(buf, l, a, b) \
+    snprintf(buf, sizeof(buf), "lab(%.4f%% %.4f %.4f)", l, a, b)
+#define FORMAT_LAB_ALPHA(buf, l, a, b, alpha) \
+    snprintf(buf, sizeof(buf), "lab(%.4f%% %.4f %.4f / %.10g)", l, a, b, alpha)
+#define FORMAT_LCH(buf, l, c, h) \
+    snprintf(buf, sizeof(buf), "lch(%.4f%% %.4f %.3f)", l, c, h)
+#define FORMAT_LCH_ALPHA(buf, l, c, h, alpha) \
+    snprintf(buf, sizeof(buf), "lch(%.4f%% %.4f %.3f / %.10g)", l, c, h, alpha)
 
 #endif // COLOR_CONVERSION_H
