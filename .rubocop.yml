@@ -71,3 +71,8 @@ Style/FrozenStringLiteralComment:
   Enabled: true
   Exclude:
     - 'test/**/*'
+
+# Allow numbers in test method names - they represent actual values being tested
+Naming/VariableNumber:
+  Exclude:
+    - 'test/**/*'

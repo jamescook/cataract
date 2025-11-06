@@ -177,15 +177,15 @@ begin
   end
 
   desc 'Generate documentation and open in browser'
-  task :docs => :generate_example do
+  task docs: :generate_example do
     # Generate YARD documentation
     YARD::CLI::Yardoc.run('--output-dir', 'docs', '--readme', 'README.md',
                           '--title', 'Cataract - Fast CSS Parser',
                           'lib/**/*.rb', 'ext/**/*.c', '-', 'docs/files/EXAMPLE.md')
 
     # Open in browser
-    system('open docs/index.html') if RUBY_PLATFORM =~ /darwin/
-    system('xdg-open docs/index.html') if RUBY_PLATFORM =~ /linux/
+    system('open docs/index.html') if RUBY_PLATFORM.include?('darwin')
+    system('xdg-open docs/index.html') if RUBY_PLATFORM.include?('linux')
   end
 
   desc 'List undocumented code'

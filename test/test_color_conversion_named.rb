@@ -17,6 +17,7 @@ class TestColorConversionNamed < Minitest::Test
       '.test { color: red; }',
       from: :named, to: :hex
     )
+
     assert_equal '#ff0000', decls['color']
   end
 
@@ -25,6 +26,7 @@ class TestColorConversionNamed < Minitest::Test
       '.test { color: blue; }',
       from: :named, to: :hex
     )
+
     assert_equal '#0000ff', decls['color']
   end
 
@@ -51,6 +53,7 @@ class TestColorConversionNamed < Minitest::Test
       '.test { color: cornflowerblue; }',
       from: :named, to: :hex
     )
+
     assert_equal '#6495ed', decls['color']
   end
 
@@ -59,6 +62,7 @@ class TestColorConversionNamed < Minitest::Test
       '.test { color: hotpink; }',
       from: :named, to: :hex
     )
+
     assert_equal '#ff69b4', decls['color']
   end
 
@@ -67,6 +71,7 @@ class TestColorConversionNamed < Minitest::Test
       '.test { color: teal; }',
       from: :named, to: :hex
     )
+
     assert_equal '#008080', decls['color']
   end
 
@@ -84,6 +89,7 @@ class TestColorConversionNamed < Minitest::Test
       '.test { color: papayawhip; }',
       from: :named, to: :hex
     )
+
     assert_equal '#ffefd5', decls['color']
   end
 
@@ -92,6 +98,7 @@ class TestColorConversionNamed < Minitest::Test
       '.test { color: darkslateblue; }',
       from: :named, to: :hex
     )
+
     assert_equal '#483d8b', decls['color']
   end
 
@@ -101,6 +108,7 @@ class TestColorConversionNamed < Minitest::Test
       '.test { color: DarkSlateBlue; }',
       from: :named, to: :hex
     )
+
     assert_equal '#483d8b', decls['color']
   end
 
@@ -114,6 +122,7 @@ class TestColorConversionNamed < Minitest::Test
       '.test { color: grey; }',
       from: :named, to: :hex
     )
+
     assert_equal '#808080', decls1['color']
     assert_equal '#808080', decls2['color']
   end
@@ -124,6 +133,7 @@ class TestColorConversionNamed < Minitest::Test
       '.test { color: red; }',
       from: :named, to: :rgb
     )
+
     assert_equal 'rgb(255 0 0)', decls['color']
   end
 
@@ -133,6 +143,7 @@ class TestColorConversionNamed < Minitest::Test
       '.test { color: red; }',
       from: :named, to: :hsl
     )
+
     assert_equal 'hsl(0, 100%, 50%)', decls['color']
   end
 
@@ -142,6 +153,7 @@ class TestColorConversionNamed < Minitest::Test
       '.test { color: red; }',
       from: :named, to: :oklab
     )
+
     assert_equal 'oklab(0.6280 0.2249 0.1258)', decls['color']
   end
 
@@ -151,6 +163,7 @@ class TestColorConversionNamed < Minitest::Test
       '.test { color: teal; }',
       to: :hex
     )
+
     assert_equal '#008080', decls['color']
   end
 
@@ -160,6 +173,7 @@ class TestColorConversionNamed < Minitest::Test
       '.test { border-color: red blue green yellow; }',
       from: :named, to: :hex
     )
+
     assert_equal '#ff0000 #0000ff #008000 #ffff00', decls['border-color']
   end
 

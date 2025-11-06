@@ -17,6 +17,7 @@ class TestColorConversionHwb < Minitest::Test
       '.test { color: rgb(255, 0, 0) }',
       from: :rgb, to: :hwb
     )
+
     assert_equal 'hwb(0 0% 0%)', decls['color']
   end
 
@@ -25,6 +26,7 @@ class TestColorConversionHwb < Minitest::Test
       '.test { color: #ff0000 }',
       from: :hex, to: :hwb
     )
+
     assert_equal 'hwb(0 0% 0%)', decls['color']
   end
 
@@ -34,6 +36,6 @@ class TestColorConversionHwb < Minitest::Test
       to: :hwba
     )
     # :hwba should produce hwb() with alpha
-    assert_match(/^hwb\(\d+ \d+% \d+% \/ 0\.50/, decls['color'])
+    assert_match(%r{^hwb\(\d+ \d+% \d+% / 0\.50}, decls['color'])
   end
 end

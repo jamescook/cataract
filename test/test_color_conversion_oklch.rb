@@ -82,6 +82,7 @@ class TestColorConversionOklch < Minitest::Test
       '.test { color: #ff0000; }',
       from: :hex, to: :oklch
     )
+
     assert_equal 'oklch(0.6280 0.2577 29.234)', decls['color']
   end
 
@@ -110,7 +111,8 @@ class TestColorConversionOklch < Minitest::Test
       '.test { color: oklch(50% 0.2 0 / 0.5); }',
       from: :oklch, to: :rgb
     )
-    assert_match(/rgba?\(.* \/ 0\.5\)/, decls['color'])
+
+    assert_match(%r{rgba?\(.* / 0\.5\)}, decls['color'])
   end
 
   def test_oklch_alpha_percentage
@@ -118,7 +120,8 @@ class TestColorConversionOklch < Minitest::Test
       '.test { color: oklch(50% 0.2 0 / 50%); }',
       from: :oklch, to: :rgb
     )
-    assert_match(/rgba?\(.* \/ 0\.5\)/, decls['color'])
+
+    assert_match(%r{rgba?\(.* / 0\.5\)}, decls['color'])
   end
 
   # Edge cases
@@ -139,6 +142,7 @@ class TestColorConversionOklch < Minitest::Test
       '.test { color: oklch(50% -0.1 0); }',
       from: :oklch, to: :oklch
     )
+
     assert_match(/oklch\(0\.5000 0\.0000/, decls['color'])
   end
 
@@ -152,6 +156,7 @@ class TestColorConversionOklch < Minitest::Test
       '.test { color: oklch(50% 0.2 0); }',
       from: :oklch, to: :rgb
     )
+
     assert_equal decls1['color'], decls2['color']
   end
 
@@ -164,6 +169,7 @@ class TestColorConversionOklch < Minitest::Test
       '.test { color: oklch(50% 0.2 90); }',
       from: :oklch, to: :rgb
     )
+
     assert_equal decls1['color'], decls2['color']
   end
 
@@ -177,6 +183,7 @@ class TestColorConversionOklch < Minitest::Test
       '.test { color: oklch(50% 0.2 270); }',
       from: :oklch, to: :rgb
     )
+
     assert_equal decls1['color'], decls2['color']
   end
 
@@ -187,6 +194,7 @@ class TestColorConversionOklch < Minitest::Test
       '.test { color: oklch(50% 0.2 0); }',
       from: :oklch, to: :oklch
     )
+
     assert_match(/oklch\(0\.5000/, decls['color'])
   end
 
@@ -207,6 +215,7 @@ class TestColorConversionOklch < Minitest::Test
       '.test { color: oklch(50% 0.2 0); }',
       to: :hex
     )
+
     assert_match(/^#[0-9a-f]{6}$/, decls['color'])
   end
 
@@ -229,7 +238,8 @@ class TestColorConversionOklch < Minitest::Test
       '.test { border-color: oklch(50% 0.2 0) oklch(50% 0.2 90) oklch(50% 0.2 180) oklch(50% 0.2 270); }',
       from: :oklch, to: :hex
     )
-    colors = decls['border-color'].split(' ')
+    colors = decls['border-color'].split
+
     assert_equal 4, colors.length
     colors.each { |color| assert_match(/^#[0-9a-f]{6}$/, color) }
   end

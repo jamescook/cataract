@@ -20,6 +20,7 @@ class TestColorConversionOklabW3c < Minitest::Test
       '.test { color: oklab(51.975% -0.1403 0.10768) }',
       from: :oklab, to: :hex
     )
+
     assert_equal '#008000', decls['color']
   end
 
@@ -30,6 +31,7 @@ class TestColorConversionOklabW3c < Minitest::Test
       '.test { color: oklab(0% 0 0) }',
       from: :oklab, to: :hex
     )
+
     assert_equal '#000000', decls['color']
   end
 
@@ -40,6 +42,7 @@ class TestColorConversionOklabW3c < Minitest::Test
       '.test { color: oklab(100% 0 0) }',
       from: :oklab, to: :hex
     )
+
     assert_equal '#ffffff', decls['color']
   end
 

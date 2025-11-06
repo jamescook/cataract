@@ -58,12 +58,12 @@ if __FILE__ == $PROGRAM_NAME
   total_time = Process.clock_gettime(Process::CLOCK_MONOTONIC) - total_start
   analysis_time = Process.clock_gettime(Process::CLOCK_MONOTONIC) - analysis_start
 
-  $stderr.puts "\n=== Timing ==="
+  warn "\n=== Timing ==="
   if analyzer.timings[:fetch]
-    $stderr.puts "Fetch webpage: #{format('%.3f', analyzer.timings[:fetch])}s"
-    $stderr.puts "Premailer parse: #{format('%.3f', analyzer.timings[:premailer_parse])}s"
-    $stderr.puts "Cataract parse: #{format('%.3f', analyzer.timings[:cataract_parse])}s"
+    warn "Fetch webpage: #{format('%.3f', analyzer.timings[:fetch])}s"
+    warn "Premailer parse: #{format('%.3f', analyzer.timings[:premailer_parse])}s"
+    warn "Cataract parse: #{format('%.3f', analyzer.timings[:cataract_parse])}s"
   end
-  $stderr.puts "Analysis & report: #{format('%.3f', analysis_time)}s"
-  $stderr.puts "Total: #{format('%.3f', total_time)}s"
+  warn "Analysis & report: #{format('%.3f', analysis_time)}s"
+  warn "Total: #{format('%.3f', total_time)}s"
 end

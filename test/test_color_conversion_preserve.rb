@@ -18,6 +18,7 @@ class TestColorConversionPreserve < Minitest::Test
       '.test { color: calc(255 * 0.5); }',
       to: :hex
     )
+
     assert_equal 'calc(255 * 0.5)', decls['color']
   end
 
@@ -26,6 +27,7 @@ class TestColorConversionPreserve < Minitest::Test
       '.test { color: lab(calc(50% + 10%) 20 30); }',
       to: :hex
     )
+
     assert_equal 'lab(calc(50% + 10%) 20 30)', decls['color']
   end
 
@@ -34,6 +36,7 @@ class TestColorConversionPreserve < Minitest::Test
       '.test { color: lab(none 20 30); }',
       to: :hex
     )
+
     assert_equal 'lab(none 20 30)', decls['color']
   end
 
@@ -42,6 +45,7 @@ class TestColorConversionPreserve < Minitest::Test
       '.test { color: oklch(none none none); }',
       to: :hex
     )
+
     assert_equal 'oklch(none none none)', decls['color']
   end
 
@@ -50,6 +54,7 @@ class TestColorConversionPreserve < Minitest::Test
       '.test { color: currentcolor; }',
       to: :hex
     )
+
     assert_equal 'currentcolor', decls['color']
   end
 
@@ -58,6 +63,7 @@ class TestColorConversionPreserve < Minitest::Test
       '.test { color: transparent; }',
       to: :hex
     )
+
     assert_equal 'transparent', decls['color']
   end
 
@@ -86,6 +92,7 @@ class TestColorConversionPreserve < Minitest::Test
       '.test { color: future-color-function(1 2 3); }',
       to: :hex
     )
+
     assert_equal 'future-color-function(1 2 3)', decls['color']
   end
 

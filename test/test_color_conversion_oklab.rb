@@ -74,6 +74,7 @@ class TestColorConversionOklab < Minitest::Test
       '.test { color: rgb(255, 0, 0) }',
       from: :rgb, to: :oklab
     )
+
     assert_equal 'oklab(0.6280 0.2249 0.1258)', decls['color']
   end
 
@@ -82,6 +83,7 @@ class TestColorConversionOklab < Minitest::Test
       '.test { color: hsl(0, 100%, 50%) }',
       from: :hsl, to: :oklab
     )
+
     assert_equal 'oklab(0.6280 0.2249 0.1258)', decls['color']
   end
 
@@ -90,6 +92,7 @@ class TestColorConversionOklab < Minitest::Test
       '.test { color: hwb(0 0% 0%) }',
       from: :hwb, to: :oklab
     )
+
     assert_equal 'oklab(0.6280 0.2249 0.1258)', decls['color']
   end
 
@@ -142,8 +145,7 @@ class TestColorConversionOklab < Minitest::Test
     CSS
     sheet.convert_colors!(to: :oklab)
 
-    rules_array = []
-    sheet.rules.each { |rule| rules_array << rule }
+    rules_array = sheet.rules.map { |rule| rule }
 
     decls_red = Cataract::Declarations.new(rules_array[0].declarations)
     decls_green = Cataract::Declarations.new(rules_array[1].declarations)

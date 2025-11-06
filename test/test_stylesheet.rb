@@ -81,8 +81,9 @@ class TestStylesheet < Minitest::Test
     sheet.add_block('p { color: red;', fix_braces: true)
 
     declarations = sheet.find_by_selector('p').first
+
     assert_kind_of Cataract::Declarations, declarations
-    assert_equal 'color: red;', declarations  # String comparison via ==
+    assert_equal 'color: red;', declarations # String comparison via ==
   end
 
   def test_round_trip
@@ -692,10 +693,12 @@ body { color: red; }'
 
     # find_by_selector returns array of Declarations objects
     body_decls = stylesheet.find_by_selector('body')
+
     assert_equal 1, body_decls.size
     assert_equal 'margin: 0px;', body_decls.first
 
     p_decls = stylesheet.find_by_selector('p')
+
     assert_equal 2, p_decls.size
     # Compare using Declarations objects
     assert_equal Cataract::Declarations.new('margin: 0px'), p_decls[0]
@@ -812,7 +815,6 @@ body { color: red; }'
     assert_includes selectors, 'body'
     assert_includes selectors, '.header'
   end
-
 
   def test_to_css_alias
     sheet = Cataract::Stylesheet.parse('body { color: red; }')

@@ -17,6 +17,7 @@ class TestColorConversionRgb < Minitest::Test
       '.test { color: #fff }',
       from: :hex, to: :rgb, variant: :modern
     )
+
     assert_equal 'rgb(255 255 255)', decls['color']
   end
 
@@ -25,6 +26,7 @@ class TestColorConversionRgb < Minitest::Test
       '.test { color: #fff }',
       from: :hex, to: :rgb, variant: :legacy
     )
+
     assert_equal 'rgb(255, 255, 255)', decls['color']
   end
 
@@ -33,6 +35,7 @@ class TestColorConversionRgb < Minitest::Test
       '.test { color: #ff0000 }',
       from: :hex, to: :rgb, variant: :modern
     )
+
     assert_equal 'rgb(255 0 0)', decls['color']
   end
 
@@ -41,6 +44,7 @@ class TestColorConversionRgb < Minitest::Test
       '.test { color: #ff0000 }',
       from: :hex, to: :rgb, variant: :modern
     )
+
     assert_equal 'rgb(255 0 0)', decls['color']
   end
 
@@ -49,6 +53,7 @@ class TestColorConversionRgb < Minitest::Test
       '.test { color: #FF0000 }',
       from: :hex, to: :rgb, variant: :modern
     )
+
     assert_equal 'rgb(255 0 0)', decls['color']
   end
 
@@ -58,9 +63,11 @@ class TestColorConversionRgb < Minitest::Test
       from: :hex, to: :rgb, variant: :modern
     )
     result = decls['color']
-    assert_match(/^rgb\(255 0 0 \/ (0\.50\d*)\)$/, result)
+
+    assert_match(%r{^rgb\(255 0 0 / (0\.50\d*)\)$}, result)
     # Extract and validate alpha value (0x80 / 255 ≈ 0.502)
-    alpha = result[/\/ ([\d.]+)\)/, 1].to_f
+    alpha = result[%r{/ ([\d.]+)\)}, 1].to_f
+
     assert_in_delta 0.502, alpha, 0.001
   end
 
@@ -70,9 +77,11 @@ class TestColorConversionRgb < Minitest::Test
       from: :hex, to: :rgb, variant: :legacy
     )
     result = decls['color']
+
     assert_match(/^rgba\(255, 0, 0, (0\.50\d*)\)$/, result)
     # Extract and validate alpha value (0x80 / 255 ≈ 0.502)
     alpha = result[/, ([\d.]+)\)/, 1].to_f
+
     assert_in_delta 0.502, alpha, 0.001
   end
 
@@ -81,6 +90,7 @@ class TestColorConversionRgb < Minitest::Test
       '.test { color: #ff000000 }',
       from: :hex, to: :rgb, variant: :modern
     )
+
     assert_equal 'rgb(255 0 0 / 0)', decls['color']
   end
 
@@ -89,6 +99,7 @@ class TestColorConversionRgb < Minitest::Test
       '.test { color: #ff0000ff }',
       from: :hex, to: :rgb, variant: :modern
     )
+
     assert_equal 'rgb(255 0 0 / 1)', decls['color']
   end
 
@@ -113,8 +124,7 @@ class TestColorConversionRgb < Minitest::Test
     CSS
     sheet.convert_colors!(from: :hex, to: :rgb, variant: :modern)
 
-    rules_array = []
-    sheet.rules.each { |rule| rules_array << rule }
+    rules_array = sheet.rules.map { |rule| rule }
 
     decls_one = Cataract::Declarations.new(rules_array[0].declarations)
     decls_two = Cataract::Declarations.new(rules_array[1].declarations)
@@ -128,6 +138,7 @@ class TestColorConversionRgb < Minitest::Test
       '.test { color: hsl(0, 100%, 50%) }',
       from: :hsl, to: :rgb, variant: :modern
     )
+
     assert_equal 'rgb(255 0 0)', decls['color']
   end
 
@@ -136,6 +147,7 @@ class TestColorConversionRgb < Minitest::Test
       '.test { color: hwb(0 0% 0%) }',
       from: :hwb, to: :rgb, variant: :modern
     )
+
     assert_equal 'rgb(255 0 0)', decls['color']
   end
 
@@ -144,6 +156,7 @@ class TestColorConversionRgb < Minitest::Test
       '.test { color: #ff0000 }',
       to: :rgb, variant: :modern
     )
+
     assert_equal 'rgb(255 0 0)', decls['color']
   end
 
@@ -152,6 +165,7 @@ class TestColorConversionRgb < Minitest::Test
       '.test { border-color: #e9ecef #e9ecef #dee2e6; }',
       to: :rgb, variant: :modern
     )
+
     assert_equal 'rgb(233 236 239) rgb(233 236 239) rgb(222 226 230)', decls['border-color']
   end
 
@@ -160,6 +174,7 @@ class TestColorConversionRgb < Minitest::Test
       '.test { border-color: #ff0000 #00ff00 #0000ff #ffff00; }',
       to: :rgb, variant: :modern
     )
+
     assert_equal 'rgb(255 0 0) rgb(0 255 0) rgb(0 0 255) rgb(255 255 0)', decls['border-color']
   end
 
@@ -169,6 +184,7 @@ class TestColorConversionRgb < Minitest::Test
       '.test { box-shadow: 0 0 10px #ff0000; }',
       to: :rgb, variant: :modern
     )
+
     assert_equal '0 0 10px rgb(255 0 0)', decls['box-shadow']
   end
 
@@ -178,6 +194,7 @@ class TestColorConversionRgb < Minitest::Test
       '.test { box-shadow: 0 0 10px #ff0000, 0 0 20px #00ff00; }',
       to: :rgb, variant: :modern
     )
+
     assert_equal '0 0 10px rgb(255 0 0), 0 0 20px rgb(0 255 0)', decls['box-shadow']
   end
 
@@ -196,6 +213,6 @@ class TestColorConversionRgb < Minitest::Test
       to: :rgb
     )
     # :rgb should produce rgb(... / alpha) not rgba()
-    assert_match(/^rgb\(\d+ \d+ \d+ \/ 0\.50/, decls['color'])
+    assert_match(%r{^rgb\(\d+ \d+ \d+ / 0\.50}, decls['color'])
   end
 end

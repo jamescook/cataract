@@ -17,6 +17,7 @@ class TestColorConversionHsl < Minitest::Test
       '.test { color: #ff0000 }',
       from: :hex, to: :hsl
     )
+
     assert_equal 'hsl(0, 100%, 50%)', decls['color']
   end
 
@@ -25,6 +26,7 @@ class TestColorConversionHsl < Minitest::Test
       '.test { color: #00ff00 }',
       from: :hex, to: :hsl
     )
+
     assert_equal 'hsl(120, 100%, 50%)', decls['color']
   end
 
@@ -33,6 +35,7 @@ class TestColorConversionHsl < Minitest::Test
       '.test { color: #0000ff }',
       from: :hex, to: :hsl
     )
+
     assert_equal 'hsl(240, 100%, 50%)', decls['color']
   end
 
@@ -41,6 +44,7 @@ class TestColorConversionHsl < Minitest::Test
       '.test { color: #ffffff }',
       from: :hex, to: :hsl
     )
+
     assert_equal 'hsl(0, 0%, 100%)', decls['color']
   end
 
@@ -49,6 +53,7 @@ class TestColorConversionHsl < Minitest::Test
       '.test { color: #000000 }',
       from: :hex, to: :hsl
     )
+
     assert_equal 'hsl(0, 0%, 0%)', decls['color']
   end
 
@@ -57,6 +62,7 @@ class TestColorConversionHsl < Minitest::Test
       '.test { color: #808080 }',
       from: :hex, to: :hsl
     )
+
     assert_equal 'hsl(0, 0%, 50%)', decls['color']
   end
 
@@ -65,6 +71,7 @@ class TestColorConversionHsl < Minitest::Test
       '.test { color: rgb(255, 0, 0) }',
       from: :rgb, to: :hsl
     )
+
     assert_equal 'hsl(0, 100%, 50%)', decls['color']
   end
 
@@ -73,6 +80,7 @@ class TestColorConversionHsl < Minitest::Test
       '.test { color: hwb(0 0% 0%) }',
       from: :hwb, to: :hsl
     )
+
     assert_equal 'hsl(0, 100%, 50%)', decls['color']
   end
 
@@ -84,8 +92,7 @@ class TestColorConversionHsl < Minitest::Test
     CSS
     sheet.convert_colors!(to: :hsl)
 
-    rules_array = []
-    sheet.rules.each { |rule| rules_array << rule }
+    rules_array = sheet.rules.map { |rule| rule }
 
     decls_red = Cataract::Declarations.new(rules_array[0].declarations)
     decls_green = Cataract::Declarations.new(rules_array[1].declarations)

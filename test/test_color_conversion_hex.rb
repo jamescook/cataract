@@ -17,6 +17,7 @@ class TestColorConversionHex < Minitest::Test
       '.test { color: rgb(255 255 255) }',
       from: :rgb, to: :hex
     )
+
     assert_equal '#ffffff', decls['color']
   end
 
@@ -25,6 +26,7 @@ class TestColorConversionHex < Minitest::Test
       '.test { color: rgb(0, 0, 0) }',
       from: :rgb, to: :hex
     )
+
     assert_equal '#000000', decls['color']
   end
 
@@ -33,6 +35,7 @@ class TestColorConversionHex < Minitest::Test
       '.test { color: rgb(255 0 0) }',
       from: :rgb, to: :hex
     )
+
     assert_equal '#ff0000', decls['color']
   end
 
@@ -41,6 +44,7 @@ class TestColorConversionHex < Minitest::Test
       '.test { color: rgb(255, 0, 0) }',
       from: :rgb, to: :hex
     )
+
     assert_equal '#ff0000', decls['color']
   end
 
@@ -67,6 +71,7 @@ class TestColorConversionHex < Minitest::Test
       '.test { color: rgba(255, 0, 0, 0) }',
       from: :rgb, to: :hex
     )
+
     assert_equal '#ff000000', decls['color']
   end
 
@@ -75,6 +80,7 @@ class TestColorConversionHex < Minitest::Test
       '.test { color: rgba(255, 0, 0, 1.0) }',
       from: :rgb, to: :hex
     )
+
     assert_equal '#ff0000ff', decls['color']
   end
 
@@ -92,6 +98,7 @@ class TestColorConversionHex < Minitest::Test
       '.test { color: hsl(0, 100%, 50%) }',
       from: :hsl, to: :hex
     )
+
     assert_equal '#ff0000', decls['color']
   end
 
@@ -100,6 +107,7 @@ class TestColorConversionHex < Minitest::Test
       '.test { color: hsl(120, 100%, 50%) }',
       from: :hsl, to: :hex
     )
+
     assert_equal '#00ff00', decls['color']
   end
 
@@ -108,6 +116,7 @@ class TestColorConversionHex < Minitest::Test
       '.test { color: hsl(240, 100%, 50%) }',
       from: :hsl, to: :hex
     )
+
     assert_equal '#0000ff', decls['color']
   end
 
@@ -116,6 +125,7 @@ class TestColorConversionHex < Minitest::Test
       '.test { color: hsl(0, 100%, 50%, 0.5) }',
       from: :hsl, to: :hex
     )
+
     assert_equal '#ff000080', decls['color']
   end
 
@@ -124,6 +134,7 @@ class TestColorConversionHex < Minitest::Test
       '.test { color: hwb(0 0% 0%) }',
       from: :hwb, to: :hex
     )
+
     assert_equal '#ff0000', decls['color']
   end
 
@@ -132,6 +143,7 @@ class TestColorConversionHex < Minitest::Test
       '.test { color: hwb(120 0% 0%) }',
       from: :hwb, to: :hex
     )
+
     assert_equal '#00ff00', decls['color']
   end
 
@@ -140,6 +152,7 @@ class TestColorConversionHex < Minitest::Test
       '.test { color: hwb(240 0% 0%) }',
       from: :hwb, to: :hex
     )
+
     assert_equal '#0000ff', decls['color']
   end
 
@@ -149,6 +162,7 @@ class TestColorConversionHex < Minitest::Test
       '.test { color: hwb(0 50% 0%) }',
       from: :hwb, to: :hex
     )
+
     assert_equal '#ff8080', decls['color']
   end
 
@@ -158,6 +172,7 @@ class TestColorConversionHex < Minitest::Test
       '.test { color: hwb(0 0% 50%) }',
       from: :hwb, to: :hex
     )
+
     assert_equal '#800000', decls['color']
   end
 
@@ -168,6 +183,7 @@ class TestColorConversionHex < Minitest::Test
       '.test { color: hwb(0 25% 25%) }',
       from: :hwb, to: :hex
     )
+
     assert_equal '#bf4040', decls['color']
   end
 
@@ -177,6 +193,7 @@ class TestColorConversionHex < Minitest::Test
       '.test { color: hwb(0 50% 50%) }',
       from: :hwb, to: :hex
     )
+
     assert_equal '#808080', decls['color']
   end
 
@@ -186,6 +203,7 @@ class TestColorConversionHex < Minitest::Test
       '.test { color: hwb(0 60% 60%) }',
       from: :hwb, to: :hex
     )
+
     assert_equal '#808080', decls['color']
   end
 
@@ -194,6 +212,7 @@ class TestColorConversionHex < Minitest::Test
       '.test { color: hwb(0 0% 0% / 0.5) }',
       from: :hwb, to: :hex
     )
+
     assert_equal '#ff000080', decls['color']
   end
 
@@ -202,6 +221,7 @@ class TestColorConversionHex < Minitest::Test
       '.test { color: rgb(255, 0, 0) }',
       to: :hex
     )
+
     assert_equal '#ff0000', decls['color']
   end
 
@@ -210,6 +230,7 @@ class TestColorConversionHex < Minitest::Test
       '.test { color: hsl(0, 100%, 50%) }',
       to: :hex
     )
+
     assert_equal '#ff0000', decls['color']
   end
 
@@ -218,6 +239,7 @@ class TestColorConversionHex < Minitest::Test
       '.test { color: hwb(0 0% 0%) }',
       to: :hex
     )
+
     assert_equal '#ff0000', decls['color']
   end
 
@@ -230,8 +252,7 @@ class TestColorConversionHex < Minitest::Test
     CSS
     sheet.convert_colors!(to: :hex)
 
-    rules_array = []
-    sheet.rules.each { |rule| rules_array << rule }
+    rules_array = sheet.rules.map { |rule| rule }
 
     decls_red = Cataract::Declarations.new(rules_array[0].declarations)
     decls_green = Cataract::Declarations.new(rules_array[1].declarations)
@@ -249,6 +270,7 @@ class TestColorConversionHex < Minitest::Test
       '.test { border-color: rgb(255, 0, 0) #00ff00 hsl(240, 100%, 50%); }',
       to: :hex
     )
+
     assert_equal '#ff0000 #00ff00 #0000ff', decls['border-color']
   end
 end

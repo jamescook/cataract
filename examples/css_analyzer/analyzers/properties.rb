@@ -20,14 +20,14 @@ module CSSAnalyzer
             property_counts[property] += 1
 
             # Store example (limit to 3 examples per property)
-            if property_examples[property].length < 3
-              property_examples[property] << {
-                value: value,
-                important: important,
-                selector: selector,
-                media: media_types
-              }
-            end
+            next unless property_examples[property].length < 3
+
+            property_examples[property] << {
+              value: value,
+              important: important,
+              selector: selector,
+              media: media_types
+            }
           end
         end
 

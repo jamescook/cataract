@@ -31,7 +31,7 @@ module CSSAnalyzer
           selector = rule_set.selector
 
           # Check each declaration for color values
-          rule_set.declarations.each do |property, value, important|
+          rule_set.declarations.each do |property, value, _important|
             next unless COLOR_PROPERTIES.include?(property)
 
             # Extract color values from the declaration
@@ -42,14 +42,14 @@ module CSSAnalyzer
               color_counts[normalized] += 1
 
               # Store example (limit to 3 per color)
-              if color_examples[normalized].length < 3
-                color_examples[normalized] << {
-                  property: property,
-                  original_value: color,
-                  selector: selector,
-                  media: media_types
-                }
-              end
+              next unless color_examples[normalized].length < 3
+
+              color_examples[normalized] << {
+                property: property,
+                original_value: color,
+                selector: selector,
+                media: media_types
+              }
             end
           end
         end

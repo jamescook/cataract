@@ -99,6 +99,7 @@ class TestColorConversion < Minitest::Test
   def test_hex_to_rgb_returns_self
     stylesheet = Cataract.parse_css('.test { color: #fff }')
     result = stylesheet.convert_colors!(from: :hex, to: :rgb)
+
     assert_equal stylesheet, result
   end
 
@@ -150,10 +151,10 @@ class TestColorConversion < Minitest::Test
     sheet.convert_colors!(from: :hex, to: :rgb, variant: :modern)
 
     # Get rules from default media group
-    default_rules = []
-    sheet.rules.each { |rule| default_rules << rule }
+    default_rules = sheet.rules.map { |rule| rule }
 
     decls = Cataract::Declarations.new(default_rules[0].declarations)
+
     assert_equal 'rgb(255 0 0)', decls['color']
 
     # TODO: Add assertions for media query rules once we can access them
@@ -164,6 +165,7 @@ class TestColorConversion < Minitest::Test
       '.test { color: #ff0000 }',
       from: :any, to: :rgb, variant: :modern
     )
+
     assert_equal 'rgb(255 0 0)', decls['color']
   end
 
@@ -174,6 +176,7 @@ class TestColorConversion < Minitest::Test
       '.test { outline-color: #ff0000; }',
       to: :rgb, variant: :modern
     )
+
     assert_equal 'rgb(255 0 0)', decls['outline-color']
   end
 
@@ -183,6 +186,7 @@ class TestColorConversion < Minitest::Test
       '.test { text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5); }',
       to: :hex
     )
+
     assert_equal '2px 2px 4px #00000080', decls['text-shadow']
   end
 
@@ -216,6 +220,7 @@ class TestColorConversion < Minitest::Test
     sheet.convert_colors!(to: :hex)
 
     decls = Cataract::Declarations.new(sheet.rules.first.declarations)
+
     assert_equal '#ff0000', decls['color']
     assert_match(/linear-gradient/, decls['background'])
   end
@@ -227,7 +232,7 @@ class TestColorConversion < Minitest::Test
       to: :hex
     )
     # URL should remain unchanged
-    assert_match(/url\("data:image\/svg/, decls['background-image'])
+    assert_match(%r{url\("data:image/svg}, decls['background-image'])
     assert_match(/rgba%280, 0, 0, 0.25%29/, decls['background-image'])
   end
 
@@ -237,6 +242,7 @@ class TestColorConversion < Minitest::Test
       '.test { color: rgb(255, 0, 0); background-image: url("data:image/svg+xml,%3csvg fill=\'%23ff0000\'%3e%3c/svg%3e"); }',
       to: :hex
     )
+
     assert_equal '#ff0000', decls['color']
     # The %23ff0000 in the URL should NOT be converted
     assert_match(/%23ff0000/, decls['background-image'])

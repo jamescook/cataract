@@ -21,21 +21,21 @@ module CSSAnalyzer
           rule_set.declarations.each do |property, value, important|
             total_declarations += 1
 
-            if important
-              important_count += 1
-              important_by_property[property] += 1
-              selector_important_count += 1
+            next unless important
 
-              important_examples << {
-                selector: selector,
-                property: property,
-                value: value,
-                media: media_types
-              }
-            end
+            important_count += 1
+            important_by_property[property] += 1
+            selector_important_count += 1
+
+            important_examples << {
+              selector: selector,
+              property: property,
+              value: value,
+              media: media_types
+            }
           end
 
-          if selector_important_count > 0
+          if selector_important_count.positive?
             important_by_selector[selector] = selector_important_count
           end
         end
@@ -47,7 +47,7 @@ module CSSAnalyzer
         top_selectors = important_by_selector.sort_by { |_sel, count| -count }.first(20)
 
         # Calculate percentage
-        important_percentage = if total_declarations > 0
+        important_percentage = if total_declarations.positive?
                                  (important_count.to_f / total_declarations * 100).round(1)
                                else
                                  0.0
