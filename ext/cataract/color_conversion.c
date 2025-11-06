@@ -1,83 +1,137 @@
 // color_conversion.c - CSS color format conversion
+//
+// HOW TO ADD A NEW COLOR FORMAT
+// ===============================
+//
+// This module uses an intermediate representation (IR) to convert between color formats.
+// All conversions go through: Source Format → IR → Target Format
+//
+// STEP 1: Define the Intermediate Representation (IR)
+// ---------------------------------------------------
+// The IR is defined in color_conversion.h as `struct color_ir`:
+//   - red, green, blue (int 0-255): sRGB values (always populated)
+//   - alpha (double 0.0-1.0 or -1.0): alpha channel (-1.0 = no alpha)
+//   - has_linear_rgb (int): flag indicating if linear RGB is available
+//   - linear_r, linear_g, linear_b (double 0.0-1.0): high-precision linear RGB
+//
+// Use INIT_COLOR_IR(color) to initialize the struct with default values.
+//
+// High-precision formats (oklab, oklch) should set has_linear_rgb = 1 and populate
+// the linear_* fields to preserve precision and avoid quantization loss.
+//
+// STEP 2: Implement Parser Function
+// ----------------------------------
+// Signature: static struct color_ir parse_FORMAT(VALUE format_value)
+//
+// Example:
+//   static struct color_ir parse_hsl(VALUE hsl_value) {
+//     struct color_ir color;
+//     INIT_COLOR_IR(color);
+//
+//     // Parse the CSS string (e.g., "hsl(120, 100%, 50%)")
+//     const char *str = StringValueCStr(hsl_value);
+//     // ... parse logic ...
+//
+//     // Convert to sRGB (0-255) and store in color.red, color.green, color.blue
+//     // Optionally store linear RGB for high precision
+//
+//     RB_GC_GUARD(hsl_value);  // Protect from GC
+//     return color;
+//   }
+//
+// Tips:
+//   - Use macros from color_conversion.h: SKIP_WHITESPACE, PARSE_INT, etc.
+//   - Validate input and raise rb_eArgError for invalid syntax
+//   - Always add RB_GC_GUARD before returning
+//
+// STEP 3: Implement Formatter Function
+// -------------------------------------
+// Signature: static VALUE format_FORMAT(struct color_ir color, int use_modern_syntax)
+//
+// Example:
+//   static VALUE format_hsl(struct color_ir color, int use_modern_syntax) {
+//     // Convert from sRGB (or linear RGB if available) to target format
+//     // Use macros from color_conversion.h: FORMAT_HSL, FORMAT_HSLA
+//     char buf[64];
+//     if (color.alpha >= 0.0) {
+//       FORMAT_HSLA(buf, h, s, l, color.alpha);
+//     } else {
+//       FORMAT_HSL(buf, h, s, l);
+//     }
+//     return rb_str_new_cstr(buf);
+//   }
+//
+// Tips:
+//   - Check color.has_linear_rgb to use high-precision values when available
+//   - Define FORMAT_* macros in color_conversion.h for consistent output
+//
+// STEP 4: Add Detection Macros (color_conversion.h)
+// --------------------------------------------------
+// Add a STARTS_WITH_FORMAT macro to detect the format in CSS strings:
+//
+//   #define STARTS_WITH_HSL(p, remaining) \
+//       ((remaining) >= 4 && (p)[0] == 'h' && (p)[1] == 's' && (p)[2] == 'l' && \
+//        ((p)[3] == '(' || (p)[3] == 'a'))
+//
+// STEP 5: Register in Dispatchers
+// --------------------------------
+// Add to get_parser() function:
+//   ID format_id = rb_intern("format");
+//   if (format_id == format_id) {
+//     return parse_format;
+//   }
+//
+// Add to get_formatter() function:
+//   ID format_id = rb_intern("format");
+//   if (format_id == format_id) {
+//     return format_format;
+//   }
+//
+// STEP 6: Integrate into Converter
+// ---------------------------------
+// Add to convert_value_with_colors() function:
+//   if (STARTS_WITH_FORMAT(p, remaining) && (parser == NULL || parser == parse_format)) {
+//     const char *end;
+//     FIND_CLOSING_PAREN(p, end);
+//     color_len = end - p;
+//     VALUE format_str = rb_str_new(p, color_len);
+//     struct color_ir color = parse_format(format_str);
+//     VALUE converted = formatter(color, use_modern_syntax);
+//     rb_str_buf_append(result, converted);
+//     pos += color_len;
+//     found_color = 1;
+//     continue;
+//   }
+//
+// Add to detect_color_format() function:
+//   if (STARTS_WITH_FORMAT(p, remaining)) {
+//     return parse_format;
+//   }
+//
+// Add to matches_color_format() function:
+//   ID format_id = rb_intern("format");
+//   if (format_id == format_id) {
+//     return STARTS_WITH_FORMAT(p, remaining);
+//   }
+//
+// STEP 7: Add Tests
+// -----------------
+// Create test/test_color_conversion_FORMAT.rb with comprehensive test coverage:
+//   - Parsing valid values
+//   - Conversions to/from other formats
+//   - Edge cases (invalid input, boundary values)
+//   - Alpha channel support
+//   - Round-trip conversions
+//
+// EXAMPLE: See oklab/oklch implementations for reference
+//
+// ============================================================================
+
 #include "cataract.h"
+#include "color_conversion.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <math.h>
-
-// Macros for parsing color values
-#define SKIP_WHITESPACE(p) while (*(p) == ' ') (p)++
-#define SKIP_SEPARATOR(p) while (*(p) == ',' || *(p) == ' ') (p)++
-#define PARSE_INT(p, var) do { \
-    int is_negative = 0; \
-    if (*(p) == '-') { \
-        is_negative = 1; \
-        (p)++; \
-    } \
-    (var) = 0; \
-    while (*(p) >= '0' && *(p) <= '9') { \
-        (var) = (var) * 10 + (*(p) - '0'); \
-        (p)++; \
-    } \
-    if (is_negative) (var) = -(var); \
-} while(0)
-
-// Find matching closing parenthesis
-// Sets 'end' pointer to character after closing paren
-#define FIND_CLOSING_PAREN(start, end) do { \
-    int paren_count = 0; \
-    (end) = (start); \
-    while (*(end)) { \
-        if (*(end) == '(') paren_count++; \
-        if (*(end) == ')') { \
-            paren_count--; \
-            if (paren_count == 0) { \
-                (end)++; \
-                break; \
-            } \
-        } \
-        (end)++; \
-    } \
-} while(0)
-
-// Detect color format at current position
-#define STARTS_WITH_RGB(p, remaining) \
-    ((remaining) >= 4 && (p)[0] == 'r' && (p)[1] == 'g' && (p)[2] == 'b' && ((p)[3] == '(' || (p)[3] == 'a'))
-
-#define STARTS_WITH_HSL(p, remaining) \
-    ((remaining) >= 4 && (p)[0] == 'h' && (p)[1] == 's' && (p)[2] == 'l' && ((p)[3] == '(' || (p)[3] == 'a'))
-
-#define STARTS_WITH_HWB(p, remaining) \
-    ((remaining) >= 4 && (p)[0] == 'h' && (p)[1] == 'w' && (p)[2] == 'b' && ((p)[3] == '(' || (p)[3] == 'a'))
-
-// Macros for formatting color values
-#define FORMAT_RGB_MODERN(buf, red, green, blue) \
-    snprintf(buf, sizeof(buf), "rgb(%d %d %d)", red, green, blue)
-#define FORMAT_RGB_LEGACY(buf, red, green, blue) \
-    snprintf(buf, sizeof(buf), "rgb(%d, %d, %d)", red, green, blue)
-#define FORMAT_RGBA_MODERN(buf, red, green, blue, alpha) \
-    snprintf(buf, sizeof(buf), "rgb(%d %d %d / %.10g)", red, green, blue, alpha)
-#define FORMAT_RGBA_LEGACY(buf, red, green, blue, alpha) \
-    snprintf(buf, sizeof(buf), "rgba(%d, %d, %d, %.10g)", red, green, blue, alpha)
-#define FORMAT_HEX(buf, red, green, blue) \
-    snprintf(buf, sizeof(buf), "#%02x%02x%02x", red, green, blue)
-#define FORMAT_HEX_ALPHA(buf, red, green, blue, alpha_int) \
-    snprintf(buf, sizeof(buf), "#%02x%02x%02x%02x", red, green, blue, alpha_int)
-#define FORMAT_HSL(buf, hue, sat, light) \
-    snprintf(buf, sizeof(buf), "hsl(%d, %d%%, %d%%)", hue, sat, light)
-#define FORMAT_HSLA(buf, hue, sat, light, alpha) \
-    snprintf(buf, sizeof(buf), "hsl(%d, %d%%, %d%%, %.10g)", hue, sat, light, alpha)
-#define FORMAT_HWB(buf, hue, white, black) \
-    snprintf(buf, sizeof(buf), "hwb(%d %d%% %d%%)", hue, white, black)
-#define FORMAT_HWBA(buf, hue, white, black, alpha) \
-    snprintf(buf, sizeof(buf), "hwb(%d %d%% %d%% / %.10g)", hue, white, black, alpha)
-
-// Intermediate representation for colors
-struct color_ir {
-    int red;      // 0-255
-    int green;    // 0-255
-    int blue;     // 0-255
-    double alpha; // 0.0-1.0, or -1.0 for "no alpha"
-};
 
 // Forward declarations
 static int is_hex_digit(char c);
@@ -93,6 +147,7 @@ typedef VALUE (*color_formatter_fn)(struct color_ir color, int use_modern_syntax
 // Parser functions
 static struct color_ir parse_hex(VALUE hex_value);
 static struct color_ir parse_rgb(VALUE rgb_value);
+static struct color_ir parse_rgb_percent(VALUE rgb_value);
 static struct color_ir parse_hsl(VALUE hsl_value);
 static struct color_ir parse_hwb(VALUE hwb_value);
 
@@ -101,6 +156,17 @@ static VALUE format_hex(struct color_ir color, int use_modern_syntax);
 static VALUE format_rgb(struct color_ir color, int use_modern_syntax);
 static VALUE format_hsl(struct color_ir color, int use_modern_syntax);
 static VALUE format_hwb(struct color_ir color, int use_modern_syntax);
+
+// Oklab functions (defined in color_conversion_oklab.c)
+extern struct color_ir parse_oklab(VALUE oklab_value);
+extern VALUE format_oklab(struct color_ir color, int use_modern_syntax);
+
+// OKLCh functions (defined in color_conversion_oklab.c)
+extern struct color_ir parse_oklch(VALUE oklch_value);
+extern VALUE format_oklch(struct color_ir color, int use_modern_syntax);
+
+// Named color functions (defined in color_conversion_named.c)
+extern struct color_ir parse_named(VALUE named_value);
 
 // Dispatchers
 static color_parser_fn get_parser(VALUE format);
@@ -135,6 +201,31 @@ static int hex_char_to_int(char c) {
     if (c >= 'A' && c <= 'F') return c - 'A' + 10;
     return -1;
 }
+
+// Macro to check if a string contains unparseable content and preserve it if found
+// Sets has_unparseable to 1 if content should be preserved, 0 otherwise
+#define HAS_UNPARSEABLE_CONTENT(str, len, has_unparseable) do { \
+    has_unparseable = 0; \
+    if ((str) != NULL && (len) >= 4) { \
+        static const char *unparseable[] = { \
+            "calc(", "min(", "max(", "clamp(", "var(", \
+            "none", "infinity", "-infinity", "NaN", \
+            "from ", \
+            NULL \
+        }; \
+        for (int _i = 0; unparseable[_i] != NULL; _i++) { \
+            const char *_kw = unparseable[_i]; \
+            size_t _kw_len = strlen(_kw); \
+            for (long _j = 0; _j <= (len) - (long)_kw_len; _j++) { \
+                if (strncmp((str) + _j, _kw, _kw_len) == 0) { \
+                    has_unparseable = 1; \
+                    break; \
+                } \
+            } \
+            if (has_unparseable) break; \
+        } \
+    } \
+} while(0)
 
 // Parse hex color string to intermediate representation
 // hex_value: Ruby string like "#fff", "#ffffff", or "#ff000080"
@@ -172,7 +263,7 @@ static struct color_ir parse_hex(VALUE hex_value) {
     }
 
     struct color_ir color;
-    color.alpha = -1.0;
+    INIT_COLOR_IR(color);
 
     if (hex_len == 3) {
         // 3-digit hex: #RGB -> each digit is duplicated
@@ -199,20 +290,49 @@ static struct color_ir parse_hex(VALUE hex_value) {
 // use_modern_syntax: 1 for "rgb(255 0 0)", 0 for "rgb(255, 0, 0)"
 // Returns: Ruby string with RGB/RGBA value
 static VALUE format_rgb(struct color_ir color, int use_modern_syntax) {
-    char rgb_buf[64];
-    if (color.alpha >= 0.0) {
-        // Has alpha channel
-        if (use_modern_syntax) {
-            FORMAT_RGBA_MODERN(rgb_buf, color.red, color.green, color.blue, color.alpha);
+    char rgb_buf[128];
+
+    // Use high-precision linear RGB if available (preserves precision from oklab/oklch)
+    if (color.has_linear_rgb) {
+        // Convert linear RGB to sRGB percentages
+        double lr = color.linear_r, lg = color.linear_g, lb = color.linear_b;
+
+        // Clamp to [0.0, 1.0]
+        if (lr < 0.0) lr = 0.0; if (lr > 1.0) lr = 1.0;
+        if (lg < 0.0) lg = 0.0; if (lg > 1.0) lg = 1.0;
+        if (lb < 0.0) lb = 0.0; if (lb > 1.0) lb = 1.0;
+
+        // Apply sRGB gamma correction
+        double rs = (lr <= 0.0031308) ? lr * 12.92 : 1.055 * pow(lr, 1.0/2.4) - 0.055;
+        double gs = (lg <= 0.0031308) ? lg * 12.92 : 1.055 * pow(lg, 1.0/2.4) - 0.055;
+        double bs = (lb <= 0.0031308) ? lb * 12.92 : 1.055 * pow(lb, 1.0/2.4) - 0.055;
+
+        // Convert to percentages
+        double r_pct = rs * 100.0;
+        double g_pct = gs * 100.0;
+        double b_pct = bs * 100.0;
+
+        if (color.alpha >= 0.0) {
+            FORMAT_RGB_PERCENT_ALPHA(rgb_buf, r_pct, g_pct, b_pct, color.alpha);
         } else {
-            FORMAT_RGBA_LEGACY(rgb_buf, color.red, color.green, color.blue, color.alpha);
+            FORMAT_RGB_PERCENT(rgb_buf, r_pct, g_pct, b_pct);
         }
     } else {
-        // No alpha channel
-        if (use_modern_syntax) {
-            FORMAT_RGB_MODERN(rgb_buf, color.red, color.green, color.blue);
+        // Use integer sRGB values (0-255)
+        if (color.alpha >= 0.0) {
+            // Has alpha channel
+            if (use_modern_syntax) {
+                FORMAT_RGBA_MODERN(rgb_buf, color.red, color.green, color.blue, color.alpha);
+            } else {
+                FORMAT_RGBA_LEGACY(rgb_buf, color.red, color.green, color.blue, color.alpha);
+            }
         } else {
-            FORMAT_RGB_LEGACY(rgb_buf, color.red, color.green, color.blue);
+            // No alpha channel
+            if (use_modern_syntax) {
+                FORMAT_RGB_MODERN(rgb_buf, color.red, color.green, color.blue);
+            } else {
+                FORMAT_RGB_LEGACY(rgb_buf, color.red, color.green, color.blue);
+            }
         }
     }
 
@@ -241,7 +361,23 @@ static struct color_ir parse_rgb(VALUE rgb_value) {
     }
 
     struct color_ir color;
-    color.alpha = -1.0;
+    INIT_COLOR_IR(color);
+
+    // Check if this is percentage format by looking for '%' before first separator
+    const char *check = p;
+    int is_percent = 0;
+    while (*check && *check != ')' && *check != ',' && *check != '/') {
+        if (*check == '%') {
+            is_percent = 1;
+            break;
+        }
+        check++;
+    }
+
+    if (is_percent) {
+        // Delegate to percentage parser
+        return parse_rgb_percent(rgb_value);
+    }
 
     SKIP_WHITESPACE(p);                                   // "255, 128, 64, 0.5)"
     PARSE_INT(p, color.red);                              // red=255, p=", 128, 64, 0.5)"
@@ -287,6 +423,141 @@ static struct color_ir parse_rgb(VALUE rgb_value) {
                  "Invalid alpha value: must be 0.0-1.0, got %.10g", color.alpha);
     }
 
+    return color;
+}
+
+// Parse RGB percentage color string to intermediate representation
+// rgb_value: Ruby string like "rgb(70.492% 2.351% 37.073%)"
+// Returns: color_ir struct with high-precision linear RGB
+static struct color_ir parse_rgb_percent(VALUE rgb_value) {
+    Check_Type(rgb_value, T_STRING);
+
+    const char *rgb_str = RSTRING_PTR(rgb_value);
+    long rgb_len = RSTRING_LEN(rgb_value);
+
+    if (rgb_len < 10 || (strncmp(rgb_str, "rgb(", 4) != 0 && strncmp(rgb_str, "rgba(", 5) != 0)) {
+        rb_raise(rb_eColorConversionError, "Invalid RGB color: must start with 'rgb(' or 'rgba(', got '%s'", rgb_str);
+    }
+
+    // Skip "rgb(" or "rgba("
+    const char *p = rgb_str;
+    if (*p == 'r' && *(p+1) == 'g' && *(p+2) == 'b') {
+        p += 3;
+        if (*p == 'a') p++;
+        if (*p == '(') p++;
+    }
+
+    struct color_ir color;
+    INIT_COLOR_IR(color);
+
+    SKIP_WHITESPACE(p);
+
+    // Parse R%
+    double r_pct = 0.0;
+    while (*p >= '0' && *p <= '9') {
+        r_pct = r_pct * 10.0 + (*p - '0');
+        p++;
+    }
+    if (*p == '.') {
+        p++;
+        double frac = 0.1;
+        while (*p >= '0' && *p <= '9') {
+            r_pct += (*p - '0') * frac;
+            frac *= 0.1;
+            p++;
+        }
+    }
+    if (*p == '%') p++;
+
+    SKIP_SEPARATOR(p);
+
+    // Parse G%
+    double g_pct = 0.0;
+    while (*p >= '0' && *p <= '9') {
+        g_pct = g_pct * 10.0 + (*p - '0');
+        p++;
+    }
+    if (*p == '.') {
+        p++;
+        double frac = 0.1;
+        while (*p >= '0' && *p <= '9') {
+            g_pct += (*p - '0') * frac;
+            frac *= 0.1;
+            p++;
+        }
+    }
+    if (*p == '%') p++;
+
+    SKIP_SEPARATOR(p);
+
+    // Parse B%
+    double b_pct = 0.0;
+    while (*p >= '0' && *p <= '9') {
+        b_pct = b_pct * 10.0 + (*p - '0');
+        p++;
+    }
+    if (*p == '.') {
+        p++;
+        double frac = 0.1;
+        while (*p >= '0' && *p <= '9') {
+            b_pct += (*p - '0') * frac;
+            frac *= 0.1;
+            p++;
+        }
+    }
+    if (*p == '%') p++;
+
+    // Check for alpha
+    SKIP_SEPARATOR(p);
+    if (*p == '/') {
+        p++;
+        SKIP_WHITESPACE(p);
+    }
+
+    if (*p >= '0' && *p <= '9') {
+        color.alpha = 0.0;
+        while (*p >= '0' && *p <= '9') {
+            color.alpha = color.alpha * 10.0 + (*p - '0');
+            p++;
+        }
+        if (*p == '.') {
+            p++;
+            double decimal = 0.1;
+            while (*p >= '0' && *p <= '9') {
+                color.alpha += (*p - '0') * decimal;
+                decimal /= 10.0;
+                p++;
+            }
+        }
+    }
+
+    // Convert percentages to sRGB (0-1.0)
+    double rs = r_pct / 100.0;
+    double gs = g_pct / 100.0;
+    double bs = b_pct / 100.0;
+
+    // Clamp to [0, 1]
+    if (rs < 0.0) rs = 0.0; if (rs > 1.0) rs = 1.0;
+    if (gs < 0.0) gs = 0.0; if (gs > 1.0) gs = 1.0;
+    if (bs < 0.0) bs = 0.0; if (bs > 1.0) bs = 1.0;
+
+    // Apply inverse gamma to get linear RGB for precision
+    double lr = (rs <= 0.04045) ? rs / 12.92 : pow((rs + 0.055) / 1.055, 2.4);
+    double lg = (gs <= 0.04045) ? gs / 12.92 : pow((gs + 0.055) / 1.055, 2.4);
+    double lb = (bs <= 0.04045) ? bs / 12.92 : pow((bs + 0.055) / 1.055, 2.4);
+
+    // Store high-precision linear RGB
+    color.has_linear_rgb = 1;
+    color.linear_r = lr;
+    color.linear_g = lg;
+    color.linear_b = lb;
+
+    // Also store integer sRGB for compatibility
+    color.red = (int)(rs * 255.0 + 0.5);
+    color.green = (int)(gs * 255.0 + 0.5);
+    color.blue = (int)(bs * 255.0 + 0.5);
+
+    RB_GC_GUARD(rgb_value);
     return color;
 }
 
@@ -383,6 +654,7 @@ static struct color_ir parse_hsl(VALUE hsl_value) {
     if (hue < 0) hue += 360;
 
     struct color_ir color;
+    INIT_COLOR_IR(color);
     color.alpha = alpha;
 
     double c = (1.0 - fabs(2.0 * lightness - 1.0)) * saturation; // TODO: Document
@@ -560,6 +832,7 @@ static struct color_ir parse_hwb(VALUE hwb_value) {
 
     // Apply HWB transformation: rgb = rgb * (1 - W - B) + W
     struct color_ir color;
+    INIT_COLOR_IR(color);
     color.red = (int)(((red_prime + m) * (1.0 - whiteness - blackness) + whiteness) * 255.0 + 0.5);
     color.green = (int)(((green_prime + m) * (1.0 - whiteness - blackness) + whiteness) * 255.0 + 0.5);
     color.blue = (int)(((blue_prime + m) * (1.0 - whiteness - blackness) + whiteness) * 255.0 + 0.5);
@@ -602,6 +875,14 @@ static VALUE format_hwb(struct color_ir color, int use_modern_syntax) {
     double whiteness = min;
     double blackness = 1.0 - max;
 
+    // Per W3C spec: if white + black >= 1, the color is achromatic (hue is undefined)
+    // https://www.w3.org/TR/css-color-4/#the-hwb-notation
+    // Use epsilon to account for floating-point rounding errors
+    double epsilon = 1.0 / 100000.0;
+    if (whiteness + blackness >= 1.0 - epsilon) {
+        hue = 0.0;  // CSS serializes NaN as 0
+    }
+
     int hue_int = (int)(hue + 0.5);
     int white_int = (int)(whiteness * 100.0 + 0.5);
     int black_int = (int)(blackness * 100.0 + 0.5);
@@ -623,6 +904,9 @@ static color_parser_fn get_parser(VALUE format) {
     ID rgb_id = rb_intern("rgb");
     ID hsl_id = rb_intern("hsl");
     ID hwb_id = rb_intern("hwb");
+    ID oklab_id = rb_intern("oklab");
+    ID oklch_id = rb_intern("oklch");
+    ID named_id = rb_intern("named");
 
     if (format_id == hex_id) {
         return parse_hex;
@@ -635,6 +919,15 @@ static color_parser_fn get_parser(VALUE format) {
     }
     if (format_id == hwb_id) {
         return parse_hwb;
+    }
+    if (format_id == oklab_id) {
+        return parse_oklab;
+    }
+    if (format_id == oklch_id) {
+        return parse_oklch;
+    }
+    if (format_id == named_id) {
+        return parse_named;
     }
 
     return NULL;
@@ -650,6 +943,8 @@ static color_formatter_fn get_formatter(VALUE format) {
     ID hsla_id = rb_intern("hsla");
     ID hwb_id = rb_intern("hwb");
     ID hwba_id = rb_intern("hwba");
+    ID oklab_id = rb_intern("oklab");
+    ID oklch_id = rb_intern("oklch");
 
     if (format_id == hex_id) {
         return format_hex;
@@ -662,6 +957,12 @@ static color_formatter_fn get_formatter(VALUE format) {
     }
     if (format_id == hwb_id || format_id == hwba_id) {
         return format_hwb;
+    }
+    if (format_id == oklab_id) {
+        return format_oklab;
+    }
+    if (format_id == oklch_id) {
+        return format_oklch;
     }
 
     return NULL;
@@ -678,6 +979,8 @@ static VALUE convert_value_with_colors(VALUE value, color_parser_fn parser, colo
 
     const char *input = RSTRING_PTR(value);
     long input_len = RSTRING_LEN(value);
+
+    DEBUG_PRINTF("convert_value_with_colors: input='%.*s' parser=%p formatter=%p\n", (int)input_len, input, (void*)parser, (void*)formatter);
 
     // Build output string with converted colors
     VALUE result = rb_str_buf_new(input_len * 2);  // Allocate generous space
@@ -751,6 +1054,16 @@ static VALUE convert_value_with_colors(VALUE value, color_parser_fn parser, colo
             FIND_CLOSING_PAREN(p, end);
             color_len = end - p;
 
+            // Skip if contains unparseable content (calc, none, etc.)
+            int skip;
+            HAS_UNPARSEABLE_CONTENT(p, color_len, skip);
+            if (skip) {
+                rb_str_buf_append(result, rb_str_new(p, color_len));
+                pos += color_len;
+                found_color = 1;
+                continue;
+            }
+
             VALUE rgb_str = rb_str_new(p, color_len);
             struct color_ir color = parse_rgb(rgb_str);
             VALUE converted = formatter(color, use_modern_syntax);
@@ -765,6 +1078,16 @@ static VALUE convert_value_with_colors(VALUE value, color_parser_fn parser, colo
             const char *end;
             FIND_CLOSING_PAREN(p, end);
             color_len = end - p;
+
+            // Skip if contains unparseable content (calc, none, etc.)
+            int skip;
+            HAS_UNPARSEABLE_CONTENT(p, color_len, skip);
+            if (skip) {
+                rb_str_buf_append(result, rb_str_new(p, color_len));
+                pos += color_len;
+                found_color = 1;
+                continue;
+            }
 
             VALUE hsl_str = rb_str_new(p, color_len);
             struct color_ir color = parse_hsl(hsl_str);
@@ -781,6 +1104,16 @@ static VALUE convert_value_with_colors(VALUE value, color_parser_fn parser, colo
             FIND_CLOSING_PAREN(p, end);
             color_len = end - p;
 
+            // Skip if contains unparseable content (calc, none, etc.)
+            int skip;
+            HAS_UNPARSEABLE_CONTENT(p, color_len, skip);
+            if (skip) {
+                rb_str_buf_append(result, rb_str_new(p, color_len));
+                pos += color_len;
+                found_color = 1;
+                continue;
+            }
+
             VALUE hwb_str = rb_str_new(p, color_len);
             struct color_ir color = parse_hwb(hwb_str);
             VALUE converted = formatter(color, use_modern_syntax);
@@ -790,9 +1123,104 @@ static VALUE convert_value_with_colors(VALUE value, color_parser_fn parser, colo
             continue;
         }
 
+        // Check for oklab
+        if (STARTS_WITH_OKLAB(p, remaining) && (parser == NULL || parser == parse_oklab)) {
+            const char *end;
+            FIND_CLOSING_PAREN(p, end);
+            color_len = end - p;
+
+            // Skip if contains unparseable content (calc, none, etc.)
+            int skip;
+            HAS_UNPARSEABLE_CONTENT(p, color_len, skip);
+            if (skip) {
+                rb_str_buf_append(result, rb_str_new(p, color_len));
+                pos += color_len;
+                found_color = 1;
+                continue;
+            }
+
+            VALUE oklab_str = rb_str_new(p, color_len);
+            struct color_ir color = parse_oklab(oklab_str);
+            VALUE converted = formatter(color, use_modern_syntax);
+            rb_str_buf_append(result, converted);
+            pos += color_len;
+            found_color = 1;
+            continue;
+        }
+
+        // Check for oklch
+        if (STARTS_WITH_OKLCH(p, remaining) && (parser == NULL || parser == parse_oklch)) {
+            const char *end;
+            FIND_CLOSING_PAREN(p, end);
+            color_len = end - p;
+
+            // Skip if contains unparseable content (calc, none, etc.)
+            int skip;
+            HAS_UNPARSEABLE_CONTENT(p, color_len, skip);
+            if (skip) {
+                rb_str_buf_append(result, rb_str_new(p, color_len));
+                pos += color_len;
+                found_color = 1;
+                continue;
+            }
+
+            VALUE oklch_str = rb_str_new(p, color_len);
+            struct color_ir color = parse_oklch(oklch_str);
+            VALUE converted = formatter(color, use_modern_syntax);
+            rb_str_buf_append(result, converted);
+            pos += color_len;
+            found_color = 1;
+            continue;
+        }
+
+        // Check for named colors (alphabetic, length 3-20)
+        // Try early to catch valid color names, skip word if not found
+        if (((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z')) && (parser == NULL || parser == parse_named)) {
+            DEBUG_PRINTF("Checking alphabetic word at pos %ld, parser=%p, parse_named=%p\n", pos, (void*)parser, (void*)parse_named);
+            // Find the end of the alphabetic word
+            const char *end = p + 1;
+            while (*end && ((*end >= 'a' && *end <= 'z') || (*end >= 'A' && *end <= 'Z'))) {
+                end++;
+            }
+            color_len = end - p;
+            DEBUG_PRINTF("Word length = %ld\n", color_len);
+
+            // Named colors are 3-20 characters (red to lightgoldenrodyellow)
+            if (color_len >= 3 && color_len <= 20) {
+                VALUE named_str = rb_str_new(p, color_len);
+                DEBUG_PRINTF("Trying to parse: '%s'\n", StringValueCStr(named_str));
+                struct color_ir color = parse_named(named_str);
+                DEBUG_PRINTF("parse_named returned red=%d\n", color.red);
+
+                // Check if valid (red >= 0 means found)
+                if (color.red >= 0) {
+                    DEBUG_PRINTF("Valid color! Converting...\n");
+                    VALUE converted = formatter(color, use_modern_syntax);
+                    rb_str_buf_append(result, converted);
+                    pos += color_len;
+                    found_color = 1;
+                    continue;
+                }
+
+                DEBUG_PRINTF("Not a valid color, copying word\n");
+                // Not a valid color - copy the whole word as-is and continue
+                rb_str_buf_cat(result, p, color_len);
+                pos += color_len;
+                continue;
+            }
+        }
+
         // Not a color - copy character as-is
         rb_str_buf_cat(result, &input[pos], 1);
         pos++;
+    }
+
+    RB_GC_GUARD(value);  // Prevent GC of value while we hold input pointer
+
+    if (found_color) {
+        DEBUG_PRINTF("Returning result='%s'\n", StringValueCStr(result));
+    } else {
+        DEBUG_PRINTF("Returning Qnil (no colors found)\n");
     }
 
     return found_color ? result : Qnil;
@@ -840,6 +1268,22 @@ static color_parser_fn detect_color_format(VALUE value) {
         return parse_hsl;
     }
 
+    // Check for oklab (starts with 'oklab')
+    if (STARTS_WITH_OKLAB(p, remaining)) {
+        return parse_oklab;
+    }
+
+    // Check for oklch (starts with 'oklch')
+    if (STARTS_WITH_OKLCH(p, remaining)) {
+        return parse_oklch;
+    }
+
+    // Check for named colors (fallback - alphabetic characters)
+    // Named colors must start with a letter
+    if ((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z')) {
+        return parse_named;
+    }
+
     return NULL;
 }
 
@@ -870,6 +1314,9 @@ static int matches_color_format(VALUE value, VALUE format) {
     ID rgb_id = rb_intern("rgb");
     ID hsl_id = rb_intern("hsl");
     ID hwb_id = rb_intern("hwb");
+    ID oklab_id = rb_intern("oklab");
+    ID oklch_id = rb_intern("oklch");
+    ID named_id = rb_intern("named");
 
     if (format_id == hex_id) {
         return *p == '#';
@@ -882,6 +1329,17 @@ static int matches_color_format(VALUE value, VALUE format) {
     }
     if (format_id == hsl_id) {
         return STARTS_WITH_HSL(p, remaining);
+    }
+    if (format_id == oklab_id) {
+        return STARTS_WITH_OKLAB(p, remaining);
+    }
+    if (format_id == oklch_id) {
+        return STARTS_WITH_OKLCH(p, remaining);
+    }
+    if (format_id == named_id) {
+        // Named colors are alphabetic (possibly with whitespace)
+        // Just check that it starts with a letter
+        return (*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z');
     }
 
     return 0;
@@ -1023,9 +1481,12 @@ static int process_rule_group_callback(VALUE media_key, VALUE group, VALUE arg) 
             VALUE converted_multi = convert_value_with_colors(value, ctx->parser, ctx->formatter, ctx->use_modern_syntax);
 
             if (!NIL_P(converted_multi)) {
+                DEBUG_PRINTF("Creating new decl with property='%s' value='%s'\n",
+                        StringValueCStr(property), StringValueCStr(converted_multi));
                 // Successfully converted multi-value property
                 VALUE new_decl = rb_struct_new(cDeclarationsValue, property, converted_multi, important, NULL);
                 rb_ary_push(new_declarations, new_decl);
+                DEBUG_PRINTF("Pushed new_decl to new_declarations\n");
                 continue;
             }
 
@@ -1044,9 +1505,16 @@ static int process_rule_group_callback(VALUE media_key, VALUE group, VALUE arg) 
             if (parser != NULL) {
                 // Parse → IR → Format
                 struct color_ir color = parser(value);
-                VALUE new_value = ctx->formatter(color, ctx->use_modern_syntax);
-                VALUE new_decl = rb_struct_new(cDeclarationsValue, property, new_value, important, NULL);
-                rb_ary_push(new_declarations, new_decl);
+
+                // Check if parse was successful (named colors can fail lookup)
+                if (color.red < 0) {
+                    // Invalid color - keep original declaration
+                    rb_ary_push(new_declarations, decl_struct);
+                } else {
+                    VALUE new_value = ctx->formatter(color, ctx->use_modern_syntax);
+                    VALUE new_decl = rb_struct_new(cDeclarationsValue, property, new_value, important, NULL);
+                    rb_ary_push(new_declarations, new_decl);
+                }
             } else {
                 rb_ary_push(new_declarations, decl_struct);
             }
@@ -1148,6 +1616,9 @@ VALUE rb_stylesheet_convert_colors(int argc, VALUE *argv, VALUE self) {
     };
 
     rb_hash_foreach(rule_groups, process_rule_group_callback, (VALUE)&ctx);
+
+    // Clear the @declarations cache so it gets regenerated on next access
+    rb_ivar_set(self, rb_intern("@declarations"), Qnil);
 
     return self;  // Return self for chaining
 }
