@@ -168,6 +168,12 @@ extern VALUE format_oklch(struct color_ir color, int use_modern_syntax);
 // Named color functions (defined in color_conversion_named.c)
 extern struct color_ir parse_named(VALUE named_value);
 
+// Lab functions (defined in color_conversion_lab.c)
+extern struct color_ir parse_lab(VALUE lab_value);
+extern VALUE format_lab(struct color_ir color, int use_modern_syntax);
+extern struct color_ir parse_lch(VALUE lch_value);
+extern VALUE format_lch(struct color_ir color, int use_modern_syntax);
+
 // Dispatchers
 static color_parser_fn get_parser(VALUE format);
 static color_formatter_fn get_formatter(VALUE format);
@@ -906,6 +912,8 @@ static color_parser_fn get_parser(VALUE format) {
     ID hwb_id = rb_intern("hwb");
     ID oklab_id = rb_intern("oklab");
     ID oklch_id = rb_intern("oklch");
+    ID lab_id = rb_intern("lab");
+    ID lch_id = rb_intern("lch");
     ID named_id = rb_intern("named");
 
     if (format_id == hex_id) {
@@ -926,6 +934,12 @@ static color_parser_fn get_parser(VALUE format) {
     if (format_id == oklch_id) {
         return parse_oklch;
     }
+    if (format_id == lab_id) {
+        return parse_lab;
+    }
+    if (format_id == lch_id) {
+        return parse_lch;
+    }
     if (format_id == named_id) {
         return parse_named;
     }
@@ -945,6 +959,8 @@ static color_formatter_fn get_formatter(VALUE format) {
     ID hwba_id = rb_intern("hwba");
     ID oklab_id = rb_intern("oklab");
     ID oklch_id = rb_intern("oklch");
+    ID lab_id = rb_intern("lab");
+    ID lch_id = rb_intern("lch");
 
     if (format_id == hex_id) {
         return format_hex;
@@ -963,6 +979,12 @@ static color_formatter_fn get_formatter(VALUE format) {
     }
     if (format_id == oklch_id) {
         return format_oklch;
+    }
+    if (format_id == lab_id) {
+        return format_lab;
+    }
+    if (format_id == lch_id) {
+        return format_lch;
     }
 
     return NULL;
@@ -1173,6 +1195,56 @@ static VALUE convert_value_with_colors(VALUE value, color_parser_fn parser, colo
             continue;
         }
 
+        // Check for lch (must check before lab since both start with 'l')
+        if (STARTS_WITH_LCH(p, remaining) && (parser == NULL || parser == parse_lch)) {
+            const char *end;
+            FIND_CLOSING_PAREN(p, end);
+            color_len = end - p;
+
+            // Skip if contains unparseable content (calc, none, etc.)
+            int skip;
+            HAS_UNPARSEABLE_CONTENT(p, color_len, skip);
+            if (skip) {
+                rb_str_buf_append(result, rb_str_new(p, color_len));
+                pos += color_len;
+                found_color = 1;
+                continue;
+            }
+
+            VALUE lch_str = rb_str_new(p, color_len);
+            struct color_ir color = parse_lch(lch_str);
+            VALUE converted = formatter(color, use_modern_syntax);
+            rb_str_buf_append(result, converted);
+            pos += color_len;
+            found_color = 1;
+            continue;
+        }
+
+        // Check for lab
+        if (STARTS_WITH_LAB(p, remaining) && (parser == NULL || parser == parse_lab)) {
+            const char *end;
+            FIND_CLOSING_PAREN(p, end);
+            color_len = end - p;
+
+            // Skip if contains unparseable content (calc, none, etc.)
+            int skip;
+            HAS_UNPARSEABLE_CONTENT(p, color_len, skip);
+            if (skip) {
+                rb_str_buf_append(result, rb_str_new(p, color_len));
+                pos += color_len;
+                found_color = 1;
+                continue;
+            }
+
+            VALUE lab_str = rb_str_new(p, color_len);
+            struct color_ir color = parse_lab(lab_str);
+            VALUE converted = formatter(color, use_modern_syntax);
+            rb_str_buf_append(result, converted);
+            pos += color_len;
+            found_color = 1;
+            continue;
+        }
+
         // Check for named colors (alphabetic, length 3-20)
         // Try early to catch valid color names, skip word if not found
         if (((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z')) && (parser == NULL || parser == parse_named)) {
@@ -1274,6 +1346,16 @@ static color_parser_fn detect_color_format(VALUE value) {
         return parse_oklch;
     }
 
+    // Check for lch (starts with 'lch(') - must check before lab
+    if (STARTS_WITH_LCH(p, remaining)) {
+        return parse_lch;
+    }
+
+    // Check for lab (starts with 'lab(')
+    if (STARTS_WITH_LAB(p, remaining)) {
+        return parse_lab;
+    }
+
     // Check for named colors (fallback - alphabetic characters)
     // Named colors must start with a letter
     if ((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z')) {
@@ -1312,6 +1394,8 @@ static int matches_color_format(VALUE value, VALUE format) {
     ID hwb_id = rb_intern("hwb");
     ID oklab_id = rb_intern("oklab");
     ID oklch_id = rb_intern("oklch");
+    ID lab_id = rb_intern("lab");
+    ID lch_id = rb_intern("lch");
     ID named_id = rb_intern("named");
 
     if (format_id == hex_id) {
@@ -1331,6 +1415,12 @@ static int matches_color_format(VALUE value, VALUE format) {
     }
     if (format_id == oklch_id) {
         return STARTS_WITH_OKLCH(p, remaining);
+    }
+    if (format_id == lab_id) {
+        return STARTS_WITH_LAB(p, remaining);
+    }
+    if (format_id == lch_id) {
+        return STARTS_WITH_LCH(p, remaining);
     }
     if (format_id == named_id) {
         // Named colors are alphabetic (possibly with whitespace)

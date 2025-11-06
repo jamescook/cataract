@@ -170,9 +170,9 @@ sheet.convert_colors!(to: :hex)  # Converts all formats to hex
 | **hwb** | ✓ | ✓ | ✓ | `hwb(0 0% 0%)` | Hue, whiteness, blackness |
 | **oklab** | ✓ | ✓ | ✓ | `oklab(0.628 0.225 0.126)` | Perceptually uniform color space |
 | **oklch** | ✓ | ✓ | ✓ | `oklch(0.628 0.258 29.2)` | Cylindrical Oklab (LCh) |
+| **lab** | ✓ | ✓ | ✓ | `lab(53.2% 80.1 67.2)` | CIE L\*a\*b\* color space (D50) |
+| **lch** | ✓ | ✓ | ✓ | `lch(53.2% 104.5 40)` | Cylindrical Lab (polar coordinates) |
 | **named** | ✓ | ✓ | – | `red`, `blue`, `rebeccapurple` | 147 CSS named colors |
-| **lab** | – | – | – | `lab(53.2 80.1 67.2)` | CIE L\*a\*b\* color space (planned) |
-| **lch** | – | – | – | `lch(53.2 104.5 40)` | Cylindrical Lab (planned) |
 | **color()** | – | – | – | `color(display-p3 1 0 0)` | Absolute color spaces (planned) |
 
 **Format aliases:**

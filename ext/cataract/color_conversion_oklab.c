@@ -41,6 +41,23 @@ static void oklch_to_oklab(double L, double C, double H, double *out_L, double *
 static double parse_float(const char **p, double percent_max);
 
 // =============================================================================
+// CONSTANTS
+// =============================================================================
+
+// sRGB gamma correction constants (IEC 61966-2-1:1999)
+// These values appear multiple times in gamma correction functions
+#define SRGB_GAMMA_THRESHOLD_INV 0.04045    // Inverse transform threshold
+#define SRGB_GAMMA_THRESHOLD_FWD 0.0031308  // Forward transform threshold
+#define SRGB_GAMMA_LINEAR_SLOPE 12.92       // Linear segment slope
+#define SRGB_GAMMA_OFFSET 0.055             // Gamma function offset
+#define SRGB_GAMMA_SCALE 1.055              // Gamma function scale (1 + offset)
+#define SRGB_GAMMA_EXPONENT 2.4             // Gamma exponent
+
+// OKLCh powerless hue threshold (per W3C CSS Color Module Level 4)
+// When chroma is below this value, hue is considered "powerless" (missing)
+#define OKLCH_CHROMA_EPSILON 0.000004
+
+// =============================================================================
 // GAMMA CORRECTION: sRGB ↔ Linear RGB
 // =============================================================================
 //
@@ -59,12 +76,13 @@ static void srgb_to_linear_rgb(int r, int g, int b, double *lr, double *lg, doub
     double gs = g / 255.0;
     double bs = b / 255.0;
 
-    // sRGB inverse transfer function
-    // For values ≤ 0.04045: linear mapping (component / 12.92)
-    // For values > 0.04045: power function ((component + 0.055) / 1.055)^2.4
-    *lr = (rs <= 0.04045) ? rs / 12.92 : pow((rs + 0.055) / 1.055, 2.4);
-    *lg = (gs <= 0.04045) ? gs / 12.92 : pow((gs + 0.055) / 1.055, 2.4);
-    *lb = (bs <= 0.04045) ? bs / 12.92 : pow((bs + 0.055) / 1.055, 2.4);
+    // sRGB inverse transfer function (IEC 61966-2-1:1999)
+    *lr = (rs <= SRGB_GAMMA_THRESHOLD_INV) ? rs / SRGB_GAMMA_LINEAR_SLOPE
+                                           : pow((rs + SRGB_GAMMA_OFFSET) / SRGB_GAMMA_SCALE, SRGB_GAMMA_EXPONENT);
+    *lg = (gs <= SRGB_GAMMA_THRESHOLD_INV) ? gs / SRGB_GAMMA_LINEAR_SLOPE
+                                           : pow((gs + SRGB_GAMMA_OFFSET) / SRGB_GAMMA_SCALE, SRGB_GAMMA_EXPONENT);
+    *lb = (bs <= SRGB_GAMMA_THRESHOLD_INV) ? bs / SRGB_GAMMA_LINEAR_SLOPE
+                                           : pow((bs + SRGB_GAMMA_OFFSET) / SRGB_GAMMA_SCALE, SRGB_GAMMA_EXPONENT);
 }
 
 // Convert linear RGB (0.0-1.0) to sRGB (0-255)
@@ -75,10 +93,13 @@ static void linear_rgb_to_srgb(double lr, double lg, double lb, int *r, int *g, 
     if (lg < 0.0) lg = 0.0; if (lg > 1.0) lg = 1.0;
     if (lb < 0.0) lb = 0.0; if (lb > 1.0) lb = 1.0;
 
-    // sRGB forward transfer function (inverse of above)
-    double rs = (lr <= 0.0031308) ? lr * 12.92 : 1.055 * pow(lr, 1.0/2.4) - 0.055;
-    double gs = (lg <= 0.0031308) ? lg * 12.92 : 1.055 * pow(lg, 1.0/2.4) - 0.055;
-    double bs = (lb <= 0.0031308) ? lb * 12.92 : 1.055 * pow(lb, 1.0/2.4) - 0.055;
+    // sRGB forward transfer function (IEC 61966-2-1:1999)
+    double rs = (lr <= SRGB_GAMMA_THRESHOLD_FWD) ? lr * SRGB_GAMMA_LINEAR_SLOPE
+                                                  : SRGB_GAMMA_SCALE * pow(lr, 1.0/SRGB_GAMMA_EXPONENT) - SRGB_GAMMA_OFFSET;
+    double gs = (lg <= SRGB_GAMMA_THRESHOLD_FWD) ? lg * SRGB_GAMMA_LINEAR_SLOPE
+                                                  : SRGB_GAMMA_SCALE * pow(lg, 1.0/SRGB_GAMMA_EXPONENT) - SRGB_GAMMA_OFFSET;
+    double bs = (lb <= SRGB_GAMMA_THRESHOLD_FWD) ? lb * SRGB_GAMMA_LINEAR_SLOPE
+                                                  : SRGB_GAMMA_SCALE * pow(lb, 1.0/SRGB_GAMMA_EXPONENT) - SRGB_GAMMA_OFFSET;
 
     // Convert to 0-255 range and round
     *r = (int)(rs * 255.0 + 0.5);
@@ -112,11 +133,17 @@ static void linear_rgb_to_srgb(double lr, double lg, double lb, int *r, int *g, 
 // Outputs: L (lightness), a (green-red), b (blue-yellow)
 static void linear_rgb_to_oklab(double lr, double lg, double lb, double *L, double *a, double *b) {
     // Step 1: Linear RGB → LMS cone response (matrix M₁)
-    // These coefficients come from the optimized implementation and represent
-    // the transformation to cone response space (approximating human vision)
-    double l = 0.4122214708 * lr + 0.5363325363 * lg + 0.0514459929 * lb;
-    double m = 0.2119034982 * lr + 0.6806995451 * lg + 0.1073969566 * lb;
-    double s = 0.0883024619 * lr + 0.2817188376 * lg + 0.6299787005 * lb;
+    // Matrix coefficients from https://bottosson.github.io/posts/oklab/
+    // Transforms sRGB to LMS cone response (approximating human vision)
+    double l = lr * 0.4122214708   // M₁[0][0]
+             + lg * 0.5363325363   // M₁[0][1]
+             + lb * 0.0514459929;  // M₁[0][2]
+    double m = lr * 0.2119034982   // M₁[1][0]
+             + lg * 0.6806995451   // M₁[1][1]
+             + lb * 0.1073969566;  // M₁[1][2]
+    double s = lr * 0.0883024619   // M₁[2][0]
+             + lg * 0.2817188376   // M₁[2][1]
+             + lb * 0.6299787005;  // M₁[2][2]
 
     // Step 2: Apply cube root nonlinearity
     // From the post: "The cube root is applied to make the space more perceptually uniform"
@@ -126,10 +153,17 @@ static void linear_rgb_to_oklab(double lr, double lg, double lb, double *L, doub
     double s_ = cbrt(s);
 
     // Step 3: Transform to Lab coordinates (matrix M₂)
-    // This final transformation gives us the perceptually uniform Oklab coordinates
-    *L = 0.2104542553 * l_ + 0.7936177850 * m_ - 0.0040720468 * s_;
-    *a = 1.9779984951 * l_ - 2.4285922050 * m_ + 0.4505937099 * s_;
-    *b = 0.0259040371 * l_ + 0.7827717662 * m_ - 0.8086757660 * s_;
+    // Matrix coefficients from https://bottosson.github.io/posts/oklab/
+    // Final transformation to perceptually uniform Oklab coordinates
+    *L = l_ *  0.2104542553   // M₂[0][0]
+       + m_ *  0.7936177850   // M₂[0][1]
+       + s_ * -0.0040720468;  // M₂[0][2]
+    *a = l_ *  1.9779984951   // M₂[1][0]
+       + m_ * -2.4285922050   // M₂[1][1]
+       + s_ *  0.4505937099;  // M₂[1][2]
+    *b = l_ *  0.0259040371   // M₂[2][0]
+       + m_ *  0.7827717662   // M₂[2][1]
+       + s_ * -0.8086757660;  // M₂[2][2]
 }
 
 // Convert Oklab to linear RGB (inverse of above)
@@ -137,10 +171,13 @@ static void linear_rgb_to_oklab(double lr, double lg, double lb, double *L, doub
 // Outputs: lr, lg, lb in range [0.0, 1.0] (may exceed range, caller should clamp)
 static void oklab_to_linear_rgb(double L, double a, double b, double *lr, double *lg, double *lb) {
     // Step 1: Invert M₂ to get l', m', s' from Lab
-    // These are the inverse coefficients of the M₂ matrix
-    double l_ = L + 0.3963377774 * a + 0.2158037573 * b;
-    double m_ = L - 0.1055613458 * a - 0.0638541728 * b;
-    double s_ = L - 0.0894841775 * a - 1.2914855480 * b;
+    // Inverse M₂ matrix coefficients from https://bottosson.github.io/posts/oklab/
+    double l_ = L + a *  0.3963377774   // M₂⁻¹[0][1]
+                  + b *  0.2158037573;  // M₂⁻¹[0][2]
+    double m_ = L + a * -0.1055613458   // M₂⁻¹[1][1]
+                  + b * -0.0638541728;  // M₂⁻¹[1][2]
+    double s_ = L + a * -0.0894841775   // M₂⁻¹[2][1]
+                  + b * -1.2914855480;  // M₂⁻¹[2][2]
 
     // Step 2: Invert cube root (cube the values)
     double l = l_ * l_ * l_;
@@ -148,10 +185,16 @@ static void oklab_to_linear_rgb(double L, double a, double b, double *lr, double
     double s = s_ * s_ * s_;
 
     // Step 3: Invert M₁ to get linear RGB from LMS
-    // These are the inverse coefficients of the M₁ matrix
-    *lr =  4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s;
-    *lg = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s;
-    *lb = -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s;
+    // Inverse M₁ matrix coefficients from https://bottosson.github.io/posts/oklab/
+    *lr = l *  4.0767416621   // M₁⁻¹[0][0]
+        + m * -3.3077115913   // M₁⁻¹[0][1]
+        + s *  0.2309699292;  // M₁⁻¹[0][2]
+    *lg = l * -1.2684380046   // M₁⁻¹[1][0]
+        + m *  2.6097574011   // M₁⁻¹[1][1]
+        + s * -0.3413193965;  // M₁⁻¹[1][2]
+    *lb = l * -0.0041960863   // M₁⁻¹[2][0]
+        + m * -0.7034186147   // M₁⁻¹[2][1]
+        + s *  1.7076147010;  // M₁⁻¹[2][2]
 }
 
 // =============================================================================
@@ -242,8 +285,7 @@ static void oklab_to_oklch(double L, double a, double b, double *out_L, double *
 
     // Per W3C spec: if chroma is very small (near zero), hue is powerless
     // and should be treated as missing/0
-    const double EPSILON = 0.000004;
-    if (*out_C <= EPSILON) {
+    if (*out_C <= OKLCH_CHROMA_EPSILON) {
         *out_H = 0.0;  // Powerless hue
     }
 }
