@@ -385,8 +385,8 @@ void Init_cataract() {
 
     rb_define_const(module, "COMPILE_FLAGS", compile_flags);
 
-    // Initialize color conversion module
-    Init_color_conversion(module);
+    // NOTE: Color conversion is now a separate extension (cataract_color)
+    // It's initialized when you require 'cataract/color_conversion'
 }
 
 // NOTE: shorthand_expander.c and value_splitter.c are now compiled separately (not included)

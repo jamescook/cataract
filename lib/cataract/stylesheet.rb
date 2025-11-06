@@ -1116,9 +1116,7 @@ module Cataract
 
     # Expose rule groups for C merge implementation
     # @api private
-    def rule_groups
-      @rule_groups
-    end
+    attr_reader :rule_groups
 
     private
 

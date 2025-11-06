@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cataract Color Conversion Visual Test</title>
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <style>
+        body {
+            background: #f8f9fa;
+        }
+        .color-cell {
+            width: 80px;
+            height: 40px;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            display: inline-block;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            cursor: help;
+        }
+        .match-indicator {
+            font-size: 1.5em;
+        }
+        .match-indicator.perfect { color: #198754; }
+        .match-indicator.close { color: #ffc107; }
+        .match-indicator.off { color: #dc3545; }
+        .stat-value {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #0d6efd;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid py-5">
+        <h1 class="mb-4">🎨 Cataract Color Conversion Visual Test</h1>
+
+        <div class="card mb-4">
+            <div class="card-body">
+                <p><strong>Purpose:</strong> This page visually validates color conversions across different CSS color formats.</p>
+                <p>If conversions are correct, all color swatches in each row should appear identical.</p>
+                <p><strong>Tip:</strong> Hover over any color swatch to see the CSS color value.</p>
+                <p class="mb-0"><strong>Generated:</strong> <%= Time.now.strftime('%Y-%m-%d %H:%M:%S') %></p>
+            </div>
+        </div>
+
+        <!-- Tabs for Forward/Reverse Conversion -->
+        <ul class="nav nav-tabs mb-3" id="conversionTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="forward-tab" data-bs-toggle="tab" data-bs-target="#forward" type="button" role="tab" aria-controls="forward" aria-selected="true">
+                    Forward: Named → RGB → HWB → HSL → Oklab → Lab → LCH
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="reverse-tab" data-bs-toggle="tab" data-bs-target="#reverse" type="button" role="tab" aria-controls="reverse" aria-selected="false">
+                    Reverse: LCH → Lab → Oklab → HSL → HWB → RGB → Hex
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content mb-5" id="conversionTabContent">
+            <!-- Forward conversion tab -->
+            <div class="tab-pane fade show active" id="forward" role="tabpanel" aria-labelledby="forward-tab">
+                <p class="text-muted mb-3">Starting from named colors, converting through each format. All swatches should match.</p>
+
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Color Name</th>
+                                <th>Named</th>
+                                <th>RGB</th>
+                                <th>HWB</th>
+                                <th>HSL</th>
+                                <th>Oklab</th>
+                                <th>Lab</th>
+                                <th>LCH</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <% forward_tests.each do |test| %>
+                            <tr>
+                                <td class="fw-bold"><%= test[:name] %></td>
+                                <td>
+                                    <div class="color-cell" style="background-color: <%= test[:named] %>;"
+                                         data-bs-toggle="tooltip" data-bs-placement="top"
+                                         title="<%= test[:named] %>"></div>
+                                </td>
+                                <td>
+                                    <div class="color-cell" style="background-color: <%= test[:rgb] %>;"
+                                         data-bs-toggle="tooltip" data-bs-placement="top"
+                                         title="<%= test[:rgb] %>"></div>
+                                </td>
+                                <td>
+                                    <div class="color-cell" style="background-color: <%= test[:hwb] %>;"
+                                         data-bs-toggle="tooltip" data-bs-placement="top"
+                                         title="<%= test[:hwb] %>"></div>
+                                </td>
+                                <td>
+                                    <div class="color-cell" style="background-color: <%= test[:hsl] %>;"
+                                         data-bs-toggle="tooltip" data-bs-placement="top"
+                                         title="<%= test[:hsl] %>"></div>
+                                </td>
+                                <td>
+                                    <div class="color-cell" style="background-color: <%= test[:oklab] %>;"
+                                         data-bs-toggle="tooltip" data-bs-placement="top"
+                                         title="<%= test[:oklab] %>"></div>
+                                </td>
+                                <td>
+                                    <div class="color-cell" style="background-color: <%= test[:lab] %>;"
+                                         data-bs-toggle="tooltip" data-bs-placement="top"
+                                         title="<%= test[:lab] %>"></div>
+                                </td>
+                                <td>
+                                    <div class="color-cell" style="background-color: <%= test[:lch] %>;"
+                                         data-bs-toggle="tooltip" data-bs-placement="top"
+                                         title="<%= test[:lch] %>"></div>
+                                </td>
+                            </tr>
+                            <% end %>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Reverse conversion tab -->
+            <div class="tab-pane fade" id="reverse" role="tabpanel" aria-labelledby="reverse-tab">
+                <p class="text-muted mb-3">Starting from LCH, converting back through each format. Some precision loss expected but should be visually close.</p>
+
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Original</th>
+                                <th>LCH</th>
+                                <th>Lab</th>
+                                <th>Oklab</th>
+                                <th>HSL</th>
+                                <th>HWB</th>
+                                <th>RGB</th>
+                                <th>Hex</th>
+                                <th>Match</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <% reverse_tests.each do |test| %>
+                            <tr>
+                                <td>
+                                    <div class="color-cell" style="background-color: <%= test[:original_hex] %>;"
+                                         data-bs-toggle="tooltip" data-bs-placement="top"
+                                         title="<%= test[:original_hex] %>"></div>
+                                    <div class="small fw-bold mt-1"><%= test[:name] %></div>
+                                </td>
+                                <td>
+                                    <div class="color-cell" style="background-color: <%= test[:lch] %>;"
+                                         data-bs-toggle="tooltip" data-bs-placement="top"
+                                         title="<%= test[:lch] %>"></div>
+                                </td>
+                                <td>
+                                    <div class="color-cell" style="background-color: <%= test[:lab] %>;"
+                                         data-bs-toggle="tooltip" data-bs-placement="top"
+                                         title="<%= test[:lab] %>"></div>
+                                </td>
+                                <td>
+                                    <div class="color-cell" style="background-color: <%= test[:oklab] %>;"
+                                         data-bs-toggle="tooltip" data-bs-placement="top"
+                                         title="<%= test[:oklab] %>"></div>
+                                </td>
+                                <td>
+                                    <div class="color-cell" style="background-color: <%= test[:hsl] %>;"
+                                         data-bs-toggle="tooltip" data-bs-placement="top"
+                                         title="<%= test[:hsl] %>"></div>
+                                </td>
+                                <td>
+                                    <div class="color-cell" style="background-color: <%= test[:hwb] %>;"
+                                         data-bs-toggle="tooltip" data-bs-placement="top"
+                                         title="<%= test[:hwb] %>"></div>
+                                </td>
+                                <td>
+                                    <div class="color-cell" style="background-color: <%= test[:rgb] %>;"
+                                         data-bs-toggle="tooltip" data-bs-placement="top"
+                                         title="<%= test[:rgb] %>"></div>
+                                </td>
+                                <td>
+                                    <div class="color-cell" style="background-color: <%= test[:hex] %>;"
+                                         data-bs-toggle="tooltip" data-bs-placement="top"
+                                         title="<%= test[:hex] %>"></div>
+                                </td>
+                                <td class="match-indicator <%= test[:match_class] %>"
+                                    data-bs-toggle="tooltip" data-bs-placement="top"
+                                    title="RGB distance: <%= '%.2f' % test[:diff] %>">
+                                    <%= test[:match_symbol] %>
+                                </td>
+                            </tr>
+                            <% end %>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Statistics -->
+        <div class="mb-5">
+            <h2 class="mb-3">Conversion Statistics</h2>
+            <div class="row g-4">
+                <div class="col-md-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <div class="stat-value"><%= stats[:total_tests] %></div>
+                            <div class="text-muted">Total Tests</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <div class="stat-value"><%= stats[:perfect_matches] %></div>
+                            <div class="text-muted">Perfect Round-trips</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <div class="stat-value"><%= stats[:close_matches] %></div>
+                            <div class="text-muted">Close Matches</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <div class="stat-value"><%= stats[:formats_tested] %></div>
+                            <div class="text-muted">Formats Tested</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer class="text-center text-muted mt-5">
+            Generated by Cataract Color Conversion Test Suite
+        </footer>
+    </div>
+
+    <!-- Bootstrap Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Initialize tooltips -->
+    <script>
+        // Enable all tooltips
+        const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+        const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
+    </script>
+</body>
+</html>
