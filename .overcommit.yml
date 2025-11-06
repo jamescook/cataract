@@ -1,0 +1,38 @@
+# Use this file to configure the Overcommit hooks you wish to use.
+# This will run before git commits and prevent commits if checks fail.
+
+# Uncomment the following lines to make Overcommit install hooks on `bundle install`
+gemfile: false
+
+PreCommit:
+  RuboCop:
+    enabled: true
+    on_warn: fail # Treat warnings as failures
+    command: ['bundle', 'exec', 'rubocop']
+    flags: ['--force-exclusion']
+    include:
+      - '**/*.rb'
+      - '**/*.rake'
+      - '**/Rakefile'
+      - '**/Gemfile'
+
+  TrailingWhitespace:
+    enabled: true
+    exclude:
+      - '**/vendor/**/*'
+      - '**/docs/**/*'
+      - '**/*.html'
+      - '**/*.css'
+
+  YamlSyntax:
+    enabled: true
+
+# Don't run checks on merge commits
+CommitMsg:
+  ALL:
+    requires_files: false
+    quiet: false
+
+PostCheckout:
+  ALL:
+    enabled: false

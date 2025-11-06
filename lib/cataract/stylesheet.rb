@@ -20,7 +20,7 @@ module Cataract
   #   sheet.each_selector { |sel, decls, spec, media| puts "#{sel}: #{decls}" }
   #
   #   # Add more rules
-  #   sheet.add_block!("h1 { color: blue; }")
+  #   sheet.add_block("h1 { color: blue; }")
   #
   #   # Serialize back to CSS
   #   puts sheet.to_s
@@ -113,10 +113,10 @@ module Cataract
     # @example Load with relative base directory
     #   sheet = Stylesheet.load_file('components/button.css', 'assets/css')
     #
-    # @see #load_file! Instance method for loading into existing stylesheet
+    # @see #load_file Instance method for loading into existing stylesheet
     def self.load_file(filename, base_dir = '.', **options)
       sheet = new(options)
-      sheet.load_file!(filename, base_dir)
+      sheet.load_file(filename, base_dir)
       sheet
     end
 
@@ -139,10 +139,10 @@ module Cataract
     # @example Load local file
     #   sheet = Stylesheet.load_uri('file:///path/to/style.css')
     #
-    # @see #load_uri! Instance method for loading into existing stylesheet
+    # @see #load_uri Instance method for loading into existing stylesheet
     def self.load_uri(uri, **options)
       sheet = new(options)
-      sheet.load_uri!(uri, options)
+      sheet.load_uri(uri, options)
       sheet
     end
 
@@ -384,25 +384,25 @@ module Cataract
     #
     # @example Add CSS block
     #   sheet = Stylesheet.new
-    #   sheet.add_block!("body { color: red; }")
-    #   sheet.add_block!("h1 { color: blue; }")
+    #   sheet.add_block("body { color: red; }")
+    #   sheet.add_block("h1 { color: blue; }")
     #
     # @example Fix malformed CSS
-    #   sheet.add_block!("body { color: red;", fix_braces: true)
+    #   sheet.add_block("body { color: red;", fix_braces: true)
     #   # Automatically closes the missing brace
     #
     # @example Override media types
-    #   sheet.add_block!("body { color: red; }", media_types: :print)
+    #   sheet.add_block("body { color: red; }", media_types: :print)
     #   # Rule is added as print media, even if CSS had no @media query
     #
     # @example Force all rules to specific media
     #   css = "@media screen { body { color: red; } }"
-    #   sheet.add_block!(css, media_types: :print)
+    #   sheet.add_block(css, media_types: :print)
     #   # Ignores @media screen, adds as print media instead
     #
     # @see #parse For parsing without auto-fixing
-    # @see #load_string! Alias for this method
-    def add_block!(css_string, fix_braces: false, media_types: nil)
+    # @see #load_string Alias for this method
+    def add_block(css_string, fix_braces: false, media_types: nil)
       css_to_parse = css_string
 
       if fix_braces
@@ -463,7 +463,7 @@ module Cataract
       self
     end
 
-    alias load_string! add_block!
+    alias load_string add_block
 
     # Get all declarations from the stylesheet after applying CSS cascade rules.
     #
@@ -495,7 +495,7 @@ module Cataract
     # Add a single CSS rule to the stylesheet.
     #
     # This method creates and adds a rule with the specified selector and declarations.
-    # Unlike add_block!, this operates on structured data rather than parsing CSS strings.
+    # Unlike add_block, this operates on structured data rather than parsing CSS strings.
     #
     # @param selector [String] The CSS selector (e.g., "body", ".class", "#id")
     # @param declarations [String, Declarations, Hash] The CSS declarations
@@ -506,20 +506,20 @@ module Cataract
     # @return [RuleSet] The created RuleSet object
     #
     # @example Add rule with string declarations
-    #   sheet.add_rule!(selector: "body", declarations: "color: red; margin: 10px")
+    #   sheet.add_rule(selector: "body", declarations: "color: red; margin: 10px")
     #
     # @example Add rule with hash declarations
-    #   sheet.add_rule!(selector: ".button", declarations: { "color" => "blue", "padding" => "10px" })
+    #   sheet.add_rule(selector: ".button", declarations: { "color" => "blue", "padding" => "10px" })
     #
     # @example Add rule with specific media types
-    #   sheet.add_rule!(selector: "body", declarations: "font-size: 12pt", media_types: :print)
+    #   sheet.add_rule(selector: "body", declarations: "font-size: 12pt", media_types: :print)
     #
     # @example Add rule with multiple media types
-    #   sheet.add_rule!(selector: ".mobile", declarations: "width: 100%", media_types: [:screen, :handheld])
+    #   sheet.add_rule(selector: ".mobile", declarations: "width: 100%", media_types: [:screen, :handheld])
     #
-    # @see #add_block! For parsing CSS strings
+    # @see #add_block For parsing CSS strings
     # @see #add_rule_set! For adding RuleSet objects
-    def add_rule!(selector:, declarations:, media_types: [:all])
+    def add_rule(selector:, declarations:, media_types: [:all])
       # Convert declarations to Declarations object if needed
       decls = declarations.is_a?(Declarations) ? declarations : Declarations.new(declarations)
 
@@ -582,7 +582,7 @@ module Cataract
     #   target = Stylesheet.new
     #   source.each_rule_set { |rs| target.add_rule_set!(rs) }
     #
-    # @see #add_rule! For adding rules from raw data
+    # @see #add_rule For adding rules from raw data
     # @see #each_rule_set For iterating RuleSets
     def add_rule_set!(rule_set)
       # Convert RuleSet to Rule struct
@@ -700,17 +700,17 @@ module Cataract
     #
     # @example Load from HTTPS
     #   sheet = Stylesheet.new
-    #   sheet.load_uri!('https://example.com/style.css')
+    #   sheet.load_uri('https://example.com/style.css')
     #
     # @example Load local file via file:// URI
-    #   sheet.load_uri!('file:///path/to/style.css')
+    #   sheet.load_uri('file:///path/to/style.css')
     #
     # @example Load multiple URIs
-    #   sheet.load_uri!('https://example.com/base.css')
-    #   sheet.load_uri!('https://example.com/theme.css')
+    #   sheet.load_uri('https://example.com/base.css')
+    #   sheet.load_uri('https://example.com/theme.css')
     #
     # @see .load_uri Class method that creates a new stylesheet
-    def load_uri!(uri, options = {})
+    def load_uri(uri, options = {})
       require 'uri'
       require 'net/http'
 
@@ -774,25 +774,25 @@ module Cataract
     #
     # @example Load a CSS file
     #   sheet = Stylesheet.new
-    #   sheet.load_file!('style.css')
+    #   sheet.load_file('style.css')
     #
     # @example Load with relative base directory
-    #   sheet.load_file!('components/button.css', 'assets/css')
+    #   sheet.load_file('components/button.css', 'assets/css')
     #   # Loads from assets/css/components/button.css
     #
     # @example Load multiple files
-    #   sheet.load_file!('base.css')
-    #   sheet.load_file!('theme.css')
-    #   sheet.load_file!('responsive.css')
+    #   sheet.load_file('base.css')
+    #   sheet.load_file('theme.css')
+    #   sheet.load_file('responsive.css')
     #
     # @see .load_file Class method that creates a new stylesheet
-    def load_file!(filename, base_dir = '.', _media_types = :all)
+    def load_file(filename, base_dir = '.', _media_types = :all)
       # Normalize file path and convert to file:// URI
       file_path = File.expand_path(filename, base_dir)
       file_uri = "file://#{file_path}"
 
-      # Delegate to load_uri! which handles imports and base_path
-      load_uri!(file_uri)
+      # Delegate to load_uri which handles imports and base_path
+      load_uri(file_uri)
     end
 
     # Convert stylesheet to nested hash structure.
@@ -1036,115 +1036,6 @@ module Cataract
       rule_sets
     end
 
-    # Expand CSS shorthand properties to their longhand equivalents.
-    #
-    # This class method parses a declarations string and expands any shorthand
-    # properties (like 'margin', 'padding', 'border', 'font', etc.) into their
-    # longhand equivalents. Later declarations override earlier ones, following
-    # CSS cascade rules.
-    #
-    # Supported shorthands:
-    # - margin, padding (4-value expansion)
-    # - border, border-top/right/bottom/left, border-color/style/width
-    # - font, list-style, background
-    #
-    # @param declarations_string [String] CSS declarations to expand
-    # @return [Hash] Hash of longhand property names to values
-    #   Keys are property names (strings), values include !important if present
-    #
-    # @example Expand margin shorthand
-    #   Stylesheet.expand_shorthand("margin: 10px;")
-    #   #=> {"margin-top" => "10px", "margin-right" => "10px", "margin-bottom" => "10px", "margin-left" => "10px"}
-    #
-    # @example Later declarations override
-    #   Stylesheet.expand_shorthand("margin: 10px; margin-top: 20px;")
-    #   #=> {"margin-top" => "20px", "margin-right" => "10px", "margin-bottom" => "10px", "margin-left" => "10px"}
-    #
-    # @example Preserve !important
-    #   Stylesheet.expand_shorthand("margin: 10px !important;")
-    #   #=> {"margin-top" => "10px !important", "margin-right" => "10px !important", ...}
-    #
-    # @example Complex border shorthand
-    #   Stylesheet.expand_shorthand("border: 1px solid red;")
-    #   #=> {"border-top-width" => "1px", "border-top-style" => "solid", "border-top-color" => "red", ...}
-    #
-    # @see #expand_shorthand Instance method (delegates to class method)
-    def self.expand_shorthand(declarations_string)
-      # Parse the declarations string directly using C function
-      raw_declarations = Cataract.parse_declarations(declarations_string)
-      return {} if raw_declarations.empty?
-
-      declarations = Declarations.new(raw_declarations)
-      result = {}
-
-      # Process declarations in order
-      # For shorthands, expand them; for longhands, keep as-is
-      # Later declarations override earlier ones (CSS cascade)
-      declarations.each do |property, value, is_important|
-        suffix = is_important ? ' !important' : ''
-        full_value = "#{value}#{suffix}"
-
-        # Map shorthand properties to their expansion methods
-        expanded = case property
-                   when 'margin'
-                     Cataract.expand_margin(value)
-                   when 'padding'
-                     Cataract.expand_padding(value)
-                   when 'border'
-                     Cataract.expand_border(value)
-                   when 'border-top'
-                     Cataract.expand_border_side('top', value)
-                   when 'border-right'
-                     Cataract.expand_border_side('right', value)
-                   when 'border-bottom'
-                     Cataract.expand_border_side('bottom', value)
-                   when 'border-left'
-                     Cataract.expand_border_side('left', value)
-                   when 'border-color'
-                     Cataract.expand_border_color(value)
-                   when 'border-style'
-                     Cataract.expand_border_style(value)
-                   when 'border-width'
-                     Cataract.expand_border_width(value)
-                   when 'font'
-                     Cataract.expand_font(value)
-                   when 'list-style'
-                     Cataract.expand_list_style(value)
-                   when 'background'
-                     Cataract.expand_background(value)
-                   end
-
-        if expanded
-          # This was a shorthand - merge all expanded properties
-          expanded.each do |exp_prop, exp_value|
-            exp_suffix = is_important ? ' !important' : ''
-            result[exp_prop] = "#{exp_value}#{exp_suffix}"
-          end
-        else
-          # This was a longhand - set it directly (overriding any previous value)
-          result[property] = full_value
-        end
-      end
-
-      result
-    end
-
-    # Expand CSS shorthand properties to their longhand equivalents.
-    #
-    # Instance method that delegates to the class method.
-    #
-    # @param declarations_string [String] CSS declarations to expand
-    # @return [Hash] Hash of longhand property names to values
-    #
-    # @example Expand shorthand
-    #   sheet.expand_shorthand("margin: 10px;")
-    #   #=> {"margin-top" => "10px", "margin-right" => "10px", ...}
-    #
-    # @see .expand_shorthand Class method with full documentation
-    def expand_shorthand(declarations_string)
-      self.class.expand_shorthand(declarations_string)
-    end
-
     # Serialize stylesheet to compact CSS string.
     #
     # Converts the stylesheet back to CSS format. All rules are on single lines
@@ -1238,9 +1129,9 @@ module Cataract
     # @return [String] Serialized CSS
     def serialize_with_media_filter(which_media, formatted:)
       if which_media == :all
-        return Cataract.stylesheet_to_formatted_s_c(@rule_groups, @charset) if formatted
+        return Cataract._stylesheet_to_formatted_s_c(@rule_groups, @charset) if formatted
 
-        return Cataract.stylesheet_to_s_c(@rule_groups, @charset)
+        return Cataract._stylesheet_to_s_c(@rule_groups, @charset)
       end
 
       # Normalize to array for consistent filtering
@@ -1257,10 +1148,10 @@ module Cataract
       end
 
       if formatted
-        Cataract.stylesheet_to_formatted_s_c(filtered_groups,
-                                             @charset)
+        Cataract._stylesheet_to_formatted_s_c(filtered_groups,
+                                              @charset)
       else
-        Cataract.stylesheet_to_s_c(filtered_groups, @charset)
+        Cataract._stylesheet_to_s_c(filtered_groups, @charset)
       end
     end
   end

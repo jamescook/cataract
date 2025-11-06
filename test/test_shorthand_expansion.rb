@@ -3,418 +3,203 @@
 require 'minitest/autorun'
 require 'cataract'
 
-# Test CSS shorthand property expansion
-# Based on css_parser gem's shorthand expansion behavior
+# Test CSS shorthand/longhand behavior through merge operations
+# Verifies that merge correctly expands shorthands when cascading,
+# and recreates optimized shorthands in the final output
 class TestShorthandExpansion < Minitest::Test
-  def setup
-    @sheet = Cataract::Stylesheet.new
+  # Helper to parse CSS and merge rules
+  def parse_and_merge(css)
+    sheet = Cataract.parse_css(css)
+    merged = Cataract.merge(sheet)
+    Cataract::Declarations.new(merged)
   end
 
   # ===========================================================================
-  # Margin/Padding Shorthand (Dimensions)
+  # Margin - Cascading and Override Behavior
   # ===========================================================================
 
-  def test_margin_four_values
-    result = Cataract.expand_margin('1px 2px 3px 4px')
+  def test_margin_shorthand_overrides_longhand
+    # Shorthand declared after longhand should win
+    decls = parse_and_merge('.test { margin-top: 5px; margin: 10px }')
 
-    assert_equal '1px', result['margin-top']
-    assert_equal '2px', result['margin-right']
-    assert_equal '3px', result['margin-bottom']
-    assert_equal '4px', result['margin-left']
+    assert_equal '10px', decls['margin']
+    assert_nil decls['margin-top']
   end
 
-  def test_margin_three_values
-    result = Cataract.expand_margin('1px 2px 3px')
+  def test_margin_longhand_overrides_shorthand
+    # Longhand after shorthand should override that side only
+    decls = parse_and_merge('.test { margin: 10px; margin-top: 20px }')
 
-    assert_equal '1px', result['margin-top']
-    assert_equal '2px', result['margin-right']
-    assert_equal '3px', result['margin-bottom']
-    assert_equal '2px', result['margin-left'] # mirrors right
+    # Should have optimized shorthand with top overridden
+    assert_equal '20px 10px 10px', decls['margin']
+    assert_nil decls['margin-top']
   end
 
-  def test_margin_two_values
-    result = Cataract.expand_margin('1px 2px')
+  def test_margin_partial_override
+    # Override two sides
+    decls = parse_and_merge('.test { margin: 10px; margin-top: 20px; margin-bottom: 30px }')
 
-    assert_equal '1px', result['margin-top']
-    assert_equal '2px', result['margin-right']
-    assert_equal '1px', result['margin-bottom']  # mirrors top
-    assert_equal '2px', result['margin-left']    # mirrors right
+    # Should create shorthand from mixed values
+    assert_equal '20px 10px 30px', decls['margin']
   end
 
-  def test_margin_one_value
-    result = Cataract.expand_margin('10px')
+  def test_margin_all_different_sides
+    # Four different values stay as 4-value shorthand
+    decls = parse_and_merge('.test { margin-top: 1px; margin-right: 2px; margin-bottom: 3px; margin-left: 4px }')
 
-    assert_equal '10px', result['margin-top']
-    assert_equal '10px', result['margin-right']
-    assert_equal '10px', result['margin-bottom']
-    assert_equal '10px', result['margin-left']
+    assert_equal '1px 2px 3px 4px', decls['margin']
   end
 
-  def test_margin_with_calc
-    result = Cataract.expand_margin('10px calc(100% - 20px)')
+  def test_margin_important_prevents_override
+    # !important longhand should not be overridden by normal shorthand
+    decls = parse_and_merge('.test { margin-top: 5px !important; margin: 10px }')
 
-    assert_equal '10px', result['margin-top']
-    assert_equal 'calc(100% - 20px)', result['margin-right']
-    assert_equal '10px', result['margin-bottom']
-    assert_equal 'calc(100% - 20px)', result['margin-left']
+    # Should keep longhand important, others from shorthand
+    assert_equal '5px !important', decls['margin-top']
+    assert_equal '10px', decls['margin-right']
+    assert_equal '10px', decls['margin-bottom']
+    assert_equal '10px', decls['margin-left']
   end
 
-  def test_padding_four_values
-    result = Cataract.expand_padding('5px 10px 15px 20px')
+  def test_margin_all_important_creates_shorthand
+    # All sides with same !important should create shorthand
+    decls = parse_and_merge('.test { margin-top: 10px !important; margin-right: 10px !important; margin-bottom: 10px !important; margin-left: 10px !important }')
 
-    assert_equal '5px', result['padding-top']
-    assert_equal '10px', result['padding-right']
-    assert_equal '15px', result['padding-bottom']
-    assert_equal '20px', result['padding-left']
-  end
-
-  def test_padding_two_values
-    result = Cataract.expand_padding('5px 10px')
-
-    assert_equal '5px', result['padding-top']
-    assert_equal '10px', result['padding-right']
-    assert_equal '5px', result['padding-bottom']
-    assert_equal '10px', result['padding-left']
-  end
-
-  def test_padding_one_value
-    result = Cataract.expand_padding('8px')
-
-    assert_equal '8px', result['padding-top']
-    assert_equal '8px', result['padding-right']
-    assert_equal '8px', result['padding-bottom']
-    assert_equal '8px', result['padding-left']
+    assert_equal '10px !important', decls['margin']
   end
 
   # ===========================================================================
-  # Border Shorthand
+  # Padding - Verify Same Behavior
   # ===========================================================================
 
-  def test_border_shorthand
-    result = Cataract.expand_border('1px solid red')
+  def test_padding_longhand_overrides_shorthand
+    decls = parse_and_merge('.test { padding: 5px; padding-left: 10px }')
 
-    # Should expand to all sides
-    assert_equal '1px', result['border-top-width']
-    assert_equal 'solid', result['border-top-style']
-    assert_equal 'red', result['border-top-color']
-    assert_equal '1px', result['border-right-width']
-    assert_equal 'solid', result['border-right-style']
-    assert_equal 'red', result['border-right-color']
-    assert_equal '1px', result['border-bottom-width']
-    assert_equal 'solid', result['border-bottom-style']
-    assert_equal 'red', result['border-bottom-color']
-    assert_equal '1px', result['border-left-width']
-    assert_equal 'solid', result['border-left-style']
-    assert_equal 'red', result['border-left-color']
+    assert_equal '5px 5px 5px 10px', decls['padding']
   end
 
-  def test_border_shorthand_with_none
-    result = Cataract.expand_border('none')
+  def test_padding_all_same
+    decls = parse_and_merge('.test { padding-top: 8px; padding-right: 8px; padding-bottom: 8px; padding-left: 8px }')
 
-    assert_equal 'none', result['border-top-style']
-    assert_equal 'none', result['border-right-style']
-    assert_equal 'none', result['border-bottom-style']
-    assert_equal 'none', result['border-left-style']
-  end
-
-  def test_border_side_shorthand
-    result = Cataract.expand_border_side('top', '2px dashed blue')
-
-    assert_equal '2px', result['border-top-width']
-    assert_equal 'dashed', result['border-top-style']
-    assert_equal 'blue', result['border-top-color']
-  end
-
-  def test_border_color_shorthand
-    result = Cataract.expand_border_color('red green blue yellow')
-
-    assert_equal 'red', result['border-top-color']
-    assert_equal 'green', result['border-right-color']
-    assert_equal 'blue', result['border-bottom-color']
-    assert_equal 'yellow', result['border-left-color']
-  end
-
-  def test_border_width_shorthand
-    result = Cataract.expand_border_width('1px 2px 3px 4px')
-
-    assert_equal '1px', result['border-top-width']
-    assert_equal '2px', result['border-right-width']
-    assert_equal '3px', result['border-bottom-width']
-    assert_equal '4px', result['border-left-width']
-  end
-
-  def test_border_style_shorthand
-    result = Cataract.expand_border_style('solid dashed')
-
-    assert_equal 'solid', result['border-top-style']
-    assert_equal 'dashed', result['border-right-style']
-    assert_equal 'solid', result['border-bottom-style']
-    assert_equal 'dashed', result['border-left-style']
+    assert_equal '8px', decls['padding']
   end
 
   # ===========================================================================
-  # Background Shorthand
+  # Border - Complex Multi-Property Shorthand
   # ===========================================================================
 
-  def test_background_shorthand_simple
-    result = Cataract.expand_background('white')
+  def test_border_width_override
+    decls = parse_and_merge('.test { border: 1px solid red; border-top-width: 3px }')
 
-    assert_equal 'white', result['background-color']
+    # Should have border-width/style/color but not full border
+    assert_equal '3px 1px 1px', decls['border-width']
+    assert_equal 'solid', decls['border-style']
+    assert_equal 'red', decls['border-color']
+    assert_nil decls['border']
   end
 
-  def test_background_shorthand_complex
-    result = Cataract.expand_background('url(img.png) no-repeat center / cover')
+  def test_border_all_sides_same
+    decls = parse_and_merge('.test { border-top: 2px dashed blue; border-right: 2px dashed blue; border-bottom: 2px dashed blue; border-left: 2px dashed blue }')
 
-    assert_equal 'url(img.png)', result['background-image']
-    assert_equal 'no-repeat', result['background-repeat']
-    assert_equal 'center', result['background-position']
-    assert_equal 'cover', result['background-size']
+    # Should create full border shorthand
+    assert_equal '2px dashed blue', decls['border']
   end
 
-  # ===========================================================================
-  # Font Shorthand
-  # ===========================================================================
+  def test_border_mixed_sides
+    decls = parse_and_merge('.test { border-top: 1px solid red; border-bottom: 2px dotted blue }')
 
-  def test_font_shorthand_simple
-    result = Cataract.expand_font('12px Arial')
-
-    assert_equal '12px', result['font-size']
-    assert_equal 'Arial', result['font-family']
-  end
-
-  def test_font_shorthand_with_line_height
-    result = Cataract.expand_font("bold 14px/1.5 'Helvetica Neue', sans-serif")
-
-    assert_equal 'bold', result['font-weight']
-    assert_equal '14px', result['font-size']
-    assert_equal '1.5', result['line-height']
-    assert_equal "'Helvetica Neue', sans-serif", result['font-family']
+    # Side shorthands are expanded to individual properties
+    assert_equal '1px', decls['border-top-width']
+    assert_equal 'solid', decls['border-top-style']
+    assert_equal 'red', decls['border-top-color']
+    assert_equal '2px', decls['border-bottom-width']
+    assert_equal 'dotted', decls['border-bottom-style']
+    assert_equal 'blue', decls['border-bottom-color']
   end
 
   # ===========================================================================
-  # List-style Shorthand
+  # Font - Requires Minimum Properties
   # ===========================================================================
 
-  def test_list_style_shorthand
-    result = Cataract.expand_list_style('square inside')
+  def test_font_override_family
+    decls = parse_and_merge('.test { font: 12px Arial; font-family: Helvetica }')
 
-    assert_equal 'square', result['list-style-type']
-    assert_equal 'inside', result['list-style-position']
+    # Should recreate font with new family
+    assert_equal '12px Helvetica', decls['font']
+  end
+
+  def test_font_incomplete_properties
+    # Only size, no family - should not create shorthand
+    decls = parse_and_merge('.test { font-size: 14px; font-weight: bold }')
+
+    assert_equal '14px', decls['font-size']
+    assert_equal 'bold', decls['font-weight']
+    assert_nil decls['font']
   end
 
   # ===========================================================================
-  # Security / Input Validation
+  # List-Style - Multiple Properties
   # ===========================================================================
 
-  def test_split_value_rejects_huge_strings
-    huge_string = 'a' * 100_000
-    assert_raises(ArgumentError) do
-      Cataract.split_value(huge_string)
-    end
+  def test_list_style_override
+    decls = parse_and_merge('.test { list-style: square inside; list-style-type: circle }')
+
+    # Should recreate with new type
+    assert_equal 'circle inside', decls['list-style']
   end
 
-  def test_expand_border_side_validates_side
-    assert_raises(ArgumentError) do
-      Cataract.expand_border_side('invalid', '1px solid red')
-    end
+  def test_list_style_single_property
+    # Single property should not create shorthand
+    decls = parse_and_merge('.test { list-style-type: disc }')
+
+    assert_equal 'disc', decls['list-style-type']
+    assert_nil decls['list-style']
   end
 
-  def test_expand_border_side_allows_valid_sides
-    %w[top right bottom left].each do |side|
-      result = Cataract.expand_border_side(side, '1px solid red')
+  # ===========================================================================
+  # Background - Multiple Properties
+  # ===========================================================================
 
-      assert_equal '1px', result["border-#{side}-width"]
-    end
+  def test_background_override
+    decls = parse_and_merge('.test { background: red; background-image: url(img.png) }')
+
+    # Should recreate with both
+    assert_equal 'red url(img.png)', decls['background']
+  end
+
+  def test_background_single_property
+    # Single property should not create shorthand
+    decls = parse_and_merge('.test { background-color: blue }')
+
+    assert_equal 'blue', decls['background-color']
+    assert_nil decls['background']
+  end
+
+  # ===========================================================================
+  # Specificity - Higher Specificity Wins
+  # ===========================================================================
+
+  def test_specificity_override
+    decls = parse_and_merge('.test { margin: 10px } #id { margin-top: 20px }')
+
+    # Higher specificity for margin-top should win
+    assert_equal '20px 10px 10px', decls['margin']
   end
 
   # ===========================================================================
   # Edge Cases
   # ===========================================================================
 
-  def test_important_flag_preserved
-    result = Cataract.expand_margin('10px !important')
+  def test_calc_values
+    decls = parse_and_merge('.test { margin: 10px calc(100% - 20px) }')
 
-    # Each expanded property should retain !important
-    assert_match(/!important/, result['margin-top'])
-    assert_match(/!important/, result['margin-right'])
-    assert_match(/!important/, result['margin-bottom'])
-    assert_match(/!important/, result['margin-left'])
+    # Should preserve calc() in shorthand
+    assert_equal '10px calc(100% - 20px)', decls['margin']
   end
 
-  def test_important_with_multiple_values
-    result = Cataract.expand_margin('10px 20px !important')
+  def test_empty_input
+    decls = parse_and_merge('.test { }')
 
-    assert_equal '10px !important', result['margin-top']
-    assert_equal '20px !important', result['margin-right']
-    assert_equal '10px !important', result['margin-bottom']
-    assert_equal '20px !important', result['margin-left']
-  end
-
-  def test_mixed_shorthand_and_longhand
-    @sheet.parse('div { margin: 10px; margin-top: 20px; }')
-    # each_selector now yields Declarations object, convert to string for expand_shorthand
-    declarations_obj = @sheet.each_selector.first[1]
-    declarations = @sheet.expand_shorthand(declarations_obj.to_s)
-
-    # Longhand should override shorthand value
-    assert_equal '20px', declarations['margin-top']
-    assert_equal '10px', declarations['margin-right']
-  end
-
-  # ===========================================================================
-  # Parser#expand_shorthand - Test all shorthand types through Parser API
-  # ===========================================================================
-
-  def test_parser_expand_shorthand_padding
-    result = @sheet.expand_shorthand('padding: 5px 10px;')
-
-    assert_equal '5px', result['padding-top']
-    assert_equal '10px', result['padding-right']
-    assert_equal '5px', result['padding-bottom']
-    assert_equal '10px', result['padding-left']
-  end
-
-  def test_parser_expand_shorthand_border
-    result = @sheet.expand_shorthand('border: 1px solid red;')
-
-    assert_equal '1px', result['border-top-width']
-    assert_equal '1px', result['border-right-width']
-    assert_equal '1px', result['border-bottom-width']
-    assert_equal '1px', result['border-left-width']
-    assert_equal 'solid', result['border-top-style']
-    assert_equal 'solid', result['border-right-style']
-    assert_equal 'solid', result['border-bottom-style']
-    assert_equal 'solid', result['border-left-style']
-    assert_equal 'red', result['border-top-color']
-    assert_equal 'red', result['border-right-color']
-    assert_equal 'red', result['border-bottom-color']
-    assert_equal 'red', result['border-left-color']
-  end
-
-  def test_parser_expand_shorthand_border_top
-    result = @sheet.expand_shorthand('border-top: 2px dashed blue;')
-
-    assert_equal '2px', result['border-top-width']
-    assert_equal 'dashed', result['border-top-style']
-    assert_equal 'blue', result['border-top-color']
-  end
-
-  def test_parser_expand_shorthand_border_right
-    result = @sheet.expand_shorthand('border-right: 3px dotted green;')
-
-    assert_equal '3px', result['border-right-width']
-    assert_equal 'dotted', result['border-right-style']
-    assert_equal 'green', result['border-right-color']
-  end
-
-  def test_parser_expand_shorthand_border_bottom
-    result = @sheet.expand_shorthand('border-bottom: 4px double yellow;')
-
-    assert_equal '4px', result['border-bottom-width']
-    assert_equal 'double', result['border-bottom-style']
-    assert_equal 'yellow', result['border-bottom-color']
-  end
-
-  def test_parser_expand_shorthand_border_left
-    result = @sheet.expand_shorthand('border-left: 5px groove purple;')
-
-    assert_equal '5px', result['border-left-width']
-    assert_equal 'groove', result['border-left-style']
-    assert_equal 'purple', result['border-left-color']
-  end
-
-  def test_parser_expand_shorthand_border_color
-    result = @sheet.expand_shorthand('border-color: red blue;')
-
-    assert_equal 'red', result['border-top-color']
-    assert_equal 'blue', result['border-right-color']
-    assert_equal 'red', result['border-bottom-color']
-    assert_equal 'blue', result['border-left-color']
-  end
-
-  def test_parser_expand_shorthand_border_style
-    result = @sheet.expand_shorthand('border-style: solid dashed;')
-
-    assert_equal 'solid', result['border-top-style']
-    assert_equal 'dashed', result['border-right-style']
-    assert_equal 'solid', result['border-bottom-style']
-    assert_equal 'dashed', result['border-left-style']
-  end
-
-  def test_parser_expand_shorthand_border_width
-    result = @sheet.expand_shorthand('border-width: 1px 2px 3px;')
-
-    assert_equal '1px', result['border-top-width']
-    assert_equal '2px', result['border-right-width']
-    assert_equal '3px', result['border-bottom-width']
-    assert_equal '2px', result['border-left-width']
-  end
-
-  def test_parser_expand_shorthand_font
-    result = @sheet.expand_shorthand('font: italic bold 16px/1.5 Arial, sans-serif;')
-
-    assert_equal 'italic', result['font-style']
-    assert_equal 'bold', result['font-weight']
-    assert_equal '16px', result['font-size']
-    assert_equal '1.5', result['line-height']
-    assert_equal 'Arial, sans-serif', result['font-family']
-  end
-
-  def test_parser_expand_shorthand_list_style
-    result = @sheet.expand_shorthand("list-style: square inside url('marker.png');")
-
-    assert_equal 'square', result['list-style-type']
-    assert_equal 'inside', result['list-style-position']
-    assert_equal "url('marker.png')", result['list-style-image']
-  end
-
-  def test_parser_expand_shorthand_background
-    result = @sheet.expand_shorthand("background: red url('bg.png') no-repeat center top;")
-
-    assert_equal 'red', result['background-color']
-    assert_equal "url('bg.png')", result['background-image']
-    assert_equal 'no-repeat', result['background-repeat']
-    # background-position captures all position values (per W3C spec)
-    assert_equal 'center top', result['background-position']
-  end
-
-  def test_parser_expand_shorthand_with_important
-    result = @sheet.expand_shorthand('margin: 10px !important;')
-
-    assert_equal '10px !important', result['margin-top']
-    assert_equal '10px !important', result['margin-right']
-    assert_equal '10px !important', result['margin-bottom']
-    assert_equal '10px !important', result['margin-left']
-  end
-
-  def test_parser_expand_shorthand_mixed_important
-    result = @sheet.expand_shorthand('margin: 10px; padding: 5px !important;')
-
-    assert_equal '10px', result['margin-top']
-    assert_equal '10px', result['margin-right']
-    assert_equal '5px !important', result['padding-top']
-    assert_equal '5px !important', result['padding-right']
-  end
-
-  def test_parser_expand_shorthand_longhand_overrides_shorthand
-    result = @sheet.expand_shorthand('margin: 10px; margin-top: 20px;')
-
-    assert_equal '20px', result['margin-top']
-    assert_equal '10px', result['margin-right']
-    assert_equal '10px', result['margin-bottom']
-    assert_equal '10px', result['margin-left']
-  end
-
-  def test_parser_expand_shorthand_longhand_only
-    result = @sheet.expand_shorthand('color: red; font-size: 14px;')
-
-    assert_equal 'red', result['color']
-    assert_equal '14px', result['font-size']
-  end
-
-  def test_parser_expand_shorthand_empty_string
-    result = @sheet.expand_shorthand('')
-
-    assert_empty(result)
+    assert_equal 0, decls.to_a.length
   end
 end

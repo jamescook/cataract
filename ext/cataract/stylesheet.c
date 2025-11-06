@@ -101,7 +101,7 @@ static int process_group_callback(VALUE query_string, VALUE group_hash, VALUE ar
         rb_str_buf_cat2(ctx->result, " { ");
 
         // C function, no rb_funcall
-        VALUE decls_str = declarations_to_s(ctx->self, declarations);
+        VALUE decls_str = declarations_array_to_s(declarations);
         rb_str_buf_append(ctx->result, decls_str);
 
         rb_str_buf_cat2(ctx->result, " }\n");
@@ -228,7 +228,7 @@ static int format_group_callback(VALUE query_string, VALUE group_hash, VALUE arg
         rb_str_buf_cat2(ctx->result, indent);
 
         // Get declarations string
-        VALUE decls_str = declarations_to_s(ctx->self, declarations);
+        VALUE decls_str = declarations_array_to_s(declarations);
         rb_str_buf_append(ctx->result, decls_str);
 
         rb_str_buf_cat2(ctx->result, "\n");

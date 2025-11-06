@@ -4,14 +4,11 @@ module Cataract
   # Add Ruby methods to the C-defined Rule struct
   # Rule = Struct.new(:selector, :declarations, :specificity)
   class Rule
-    # NOTE: `declarations` returns Array<Declarations::Value> (the raw C struct field)
-    # Wrap it if you need Declarations methods: Declarations.new(rule.declarations)
-
     # Property accessor for convenience (delegates to Declarations)
-    # @param property [String] Property name
+    # @param property_name [String] Property name
     # @return [String, nil] Property value with trailing semicolon, or nil if not found
-    def [](property)
-      Declarations.new(declarations)[property]
+    def property(property_name)
+      declarations_wrapper[property_name]
     end
 
     # Silence warning about method redefinition. We redefine below to lazily calculate
@@ -27,6 +24,13 @@ module Cataract
       calculated = Cataract.calculate_specificity(selector)
       self[:specificity] = calculated
       calculated
+    end
+
+    private
+
+    # @return [Declarations] Wrapped declarations object
+    def declarations_wrapper
+      @declarations_wrapper ||= Declarations.new(declarations)
     end
   end
 end

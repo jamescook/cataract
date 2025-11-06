@@ -469,7 +469,7 @@ body { color: red; }"
 
       # Use Stylesheet.load_file which should automatically set base_path
       sheet = Cataract::Stylesheet.new(import: { allowed_schemes: ['file'] })
-      sheet.load_file!(main_file)
+      sheet.load_file(main_file)
 
       assert_equal 2, sheet.size
 
@@ -503,7 +503,7 @@ body { color: red; }"
   end
 
   def test_stylesheet_load_uri_with_file_scheme_sets_base_path
-    # Test that load_uri! with file:// scheme sets base_path for resolving relative imports
+    # Test that load_uri with file:// scheme sets base_path for resolving relative imports
     Dir.mktmpdir do |dir|
       # Create main CSS file with relative @import
       main_file = File.join(dir, 'main.css')
@@ -513,16 +513,16 @@ body { color: red; }"
       imported_file = File.join(dir, 'imported.css')
       File.write(imported_file, '.imported { color: blue; }')
 
-      # Use load_uri! with file:// scheme - should resolve relative imports
+      # Use load_uri with file:// scheme - should resolve relative imports
       sheet = Cataract::Stylesheet.new(import: { allowed_schemes: ['file'] })
-      sheet.load_uri!("file://#{main_file}")
+      sheet.load_uri("file://#{main_file}")
 
       assert_equal 2, sheet.size
 
       selectors = []
       sheet.each_selector { |sel, _, _, _| selectors << sel }
 
-      assert_includes selectors, '.imported', 'load_uri! should resolve relative @import from file:// URI'
+      assert_includes selectors, '.imported', 'load_uri should resolve relative @import from file:// URI'
       assert_includes selectors, 'body'
     end
   end

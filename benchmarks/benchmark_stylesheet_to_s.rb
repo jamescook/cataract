@@ -18,7 +18,7 @@ puts ''
 
 # Verify both versions produce same output
 ruby_output = stylesheet.to_s
-c_output = Cataract.stylesheet_to_s_c(stylesheet.rules)
+c_output = Cataract._stylesheet_to_s_c(stylesheet.rules, stylesheet.charset)
 
 if ruby_output == c_output
   puts '✓ Ruby and C versions produce identical output'
@@ -53,9 +53,9 @@ Benchmark.ips do |x|
     PARSER.to_s
   end
 
-  x.report('C (stylesheet_to_s_c)') do
+  x.report('C (_stylesheet_to_s_c)') do
     PARSER.instance_variable_set(:@serialized, nil)  # Clear cache (apples-to-apples)
-    Cataract.stylesheet_to_s_c(PARSER.rules)
+    Cataract._stylesheet_to_s_c(PARSER.rules, PARSER.charset)
   end
 
   x.compare!

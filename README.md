@@ -9,6 +9,7 @@ A high-performance CSS parser with C extensions for accurate parsing of complex 
 - **C Extension**: Performance-focused C implementation for parsing and serialization
 - **CSS2 Support**: Selectors, combinators, pseudo-classes, pseudo-elements, @media queries
 - **CSS3 Support**: Attribute selectors (`^=`, `$=`, `*=`)
+- **CSS Color Level 4**: Supports hex, rgb, hsl, hwb, oklab, oklch, and named colors with high precision
 - **Specificity Calculation**: Automatic CSS specificity computation
 - **Media Query Filtering**: Query rules by media type
 - **Zero Runtime Dependencies**: Pure C extension with no runtime gem dependencies
@@ -122,6 +123,67 @@ Cataract aims to support all CSS specifications including:
 - **Media Queries**: Full support including nested queries and media features
 - **Special syntax**: Data URIs, `calc()`, `url()`, CSS functions with parentheses
 - **!important**: Full support with correct cascade behavior
+
+### Color Conversion
+
+Cataract supports converting colors between multiple CSS color formats with high precision:
+
+```ruby
+require 'cataract'
+
+# Convert hex to RGB
+sheet = Cataract.parse_css('.button { color: #ff0000; background: #00ff00; }')
+sheet.convert_colors!(from: :hex, to: :rgb)
+sheet.to_css
+# => ".button { color: rgb(255 0 0); background: rgb(0 255 0); }"
+
+# Convert RGB to HSL for easier color manipulation
+sheet = Cataract.parse_css('.card { color: rgb(255, 128, 0); }')
+sheet.convert_colors!(from: :rgb, to: :hsl)
+sheet.to_css
+# => ".card { color: hsl(30, 100%, 50%); }"
+
+# Convert to Oklab for perceptually uniform colors
+sheet = Cataract.parse_css('.gradient { background: linear-gradient(#ff0000, #0000ff); }')
+sheet.convert_colors!(to: :oklab)
+sheet.to_css
+# => ".gradient { background: linear-gradient(oklab(0.6280 0.2249 0.1258), oklab(0.4520 -0.0325 -0.3115)); }"
+
+# Auto-detect source format and convert all colors
+sheet = Cataract.parse_css(<<~CSS)
+  .mixed {
+    color: #ff0000;
+    background: rgb(0, 255, 0);
+    border-color: hsl(240, 100%, 50%);
+  }
+CSS
+sheet.convert_colors!(to: :hex)  # Converts all formats to hex
+```
+
+#### Supported Color Formats
+
+| Format | From | To | Alpha | Example | Notes |
+|--------|------|-----|-------|---------|-------|
+| **hex** | ✓ | ✓ | ✓ | `#ff0000`, `#f00`, `#ff000080` | 3, 6, or 8 digit hex |
+| **rgb** | ✓ | ✓ | ✓ | `rgb(255 0 0)`, `rgb(255, 0, 0)` | Modern & legacy syntax |
+| **hsl** | ✓ | ✓ | ✓ | `hsl(0, 100%, 50%)` | Hue, saturation, lightness |
+| **hwb** | ✓ | ✓ | ✓ | `hwb(0 0% 0%)` | Hue, whiteness, blackness |
+| **oklab** | ✓ | ✓ | ✓ | `oklab(0.628 0.225 0.126)` | Perceptually uniform color space |
+| **oklch** | ✓ | ✓ | ✓ | `oklch(0.628 0.258 29.2)` | Cylindrical Oklab (LCh) |
+| **named** | ✓ | ✓ | – | `red`, `blue`, `rebeccapurple` | 147 CSS named colors |
+| **lab** | – | – | – | `lab(53.2 80.1 67.2)` | CIE L\*a\*b\* color space (planned) |
+| **lch** | – | – | – | `lch(53.2 104.5 40)` | Cylindrical Lab (planned) |
+| **color()** | – | – | – | `color(display-p3 1 0 0)` | Absolute color spaces (planned) |
+
+**Format aliases:**
+- `:rgba` → uses `rgb()` syntax with alpha
+- `:hsla` → uses `hsl()` syntax with alpha
+- `:hwba` → uses `hwb()` syntax with alpha
+
+**Limitations:**
+- Math functions (`calc()`, `min()`, `max()`, `clamp()`) are not evaluated and will be preserved unchanged
+- CSS Color Level 5 features (`none`, `infinity`, relative color syntax with `from`) are preserved but not converted
+- Unknown or future color functions are passed through unchanged
 
 ### `@import` Support
 

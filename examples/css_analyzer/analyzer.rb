@@ -92,7 +92,7 @@ module CSSAnalyzer
 
     def load_css(source)
       # Check if it's a URL
-      if source =~ /\A#{URI::DEFAULT_PARSER.make_regexp(%w[http https])}\z/
+      if /\A#{URI::DEFAULT_PARSER.make_regexp(%w[http https])}\z/.match?(source)
         load_from_url(source)
       elsif File.exist?(source)
         # Local file
@@ -127,7 +127,7 @@ module CSSAnalyzer
       if defined?(CssParser::CATARACT_SHIM) && CssParser::CATARACT_SHIM
         @timings[:premailer_parse] = 0  # Already parsed by Premailer/Cataract
         @timings[:cataract_parse] = 0   # No reparsing needed
-        parser  # Return the Cataract::Stylesheet directly
+        parser # Return the Cataract::Stylesheet directly
       else
         # Not using shim - parser is real css_parser, get CSS string and reparse
         parse_start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -144,7 +144,7 @@ module CSSAnalyzer
     end
 
     def source_name
-      if source =~ /\A#{URI::DEFAULT_PARSER.make_regexp(%w[http https])}\z/
+      if /\A#{URI::DEFAULT_PARSER.make_regexp(%w[http https])}\z/.match?(source)
         uri = URI.parse(source)
         if source.end_with?('.css')
           File.basename(uri.path)

@@ -12,7 +12,7 @@ class TestParserMediaTypes < Minitest::Test
 
   def test_finding_by_media_type
     # from http://www.w3.org/TR/CSS21/media.html#at-media-rule
-    @sheet.add_block!(<<-CSS)
+    @sheet.add_block(<<-CSS)
       @media print {
         body { font-size: 10pt }
       }
@@ -29,7 +29,7 @@ class TestParserMediaTypes < Minitest::Test
   end
 
   def test_with_parenthesized_media_features
-    @sheet.add_block!(<<-CSS)
+    @sheet.add_block(<<-CSS)
       body { color: black }
       @media screen and (width > 500px) {
         body { color: red }
@@ -43,7 +43,7 @@ class TestParserMediaTypes < Minitest::Test
   end
 
   def test_finding_by_multiple_media_types
-    @sheet.add_block!(<<-CSS)
+    @sheet.add_block(<<-CSS)
       @media print {
         body { font-size: 10pt }
       }
@@ -63,7 +63,7 @@ class TestParserMediaTypes < Minitest::Test
   end
 
   def test_adding_block_with_media_types
-    @sheet.add_block!(<<-CSS, media_types: [:screen])
+    @sheet.add_block(<<-CSS, media_types: [:screen])
       body { font-size: 10pt }
     CSS
 
@@ -72,7 +72,7 @@ class TestParserMediaTypes < Minitest::Test
   end
 
   def test_adding_block_with_media_types_followed_by_general_rule
-    @sheet.add_block!(<<-CSS)
+    @sheet.add_block(<<-CSS)
       @media print {
         body { font-size: 10pt }
       }
@@ -84,20 +84,20 @@ class TestParserMediaTypes < Minitest::Test
   end
 
   def test_adding_rule_set_with_media_type
-    @sheet.add_rule!(selector: 'body', declarations: 'color: black', media_types: %i[handheld tty])
-    @sheet.add_rule!(selector: 'body', declarations: 'color: blue', media_types: :screen)
+    @sheet.add_rule(selector: 'body', declarations: 'color: black', media_types: %i[handheld tty])
+    @sheet.add_rule(selector: 'body', declarations: 'color: blue', media_types: :screen)
 
     assert_equal 'color: black;', @sheet.find_by_selector('body', :handheld).join(' ')
   end
 
   def test_selecting_with_all_media_types
-    @sheet.add_rule!(selector: 'body', declarations: 'color: black', media_types: %i[handheld tty])
+    @sheet.add_rule(selector: 'body', declarations: 'color: black', media_types: %i[handheld tty])
     # :all should match all media-specific rules
     assert_equal 'color: black;', @sheet.find_by_selector('body', :all).join(' ')
   end
 
   def test_to_s_includes_media_queries
-    @sheet.add_rule!(selector: 'body', declarations: 'color: black', media_types: :screen)
+    @sheet.add_rule(selector: 'body', declarations: 'color: black', media_types: :screen)
     output = @sheet.to_s
 
     assert_includes output, '@media'
@@ -107,7 +107,7 @@ class TestParserMediaTypes < Minitest::Test
   def test_multiple_media_types_single_rule
     # Test that @media screen, print creates ONE rule with multiple media types
     # NOT multiple rules (one per media type)
-    @sheet.add_block!(<<-CSS)
+    @sheet.add_block(<<-CSS)
       @media screen, print {
         .header { color: blue; }
       }
@@ -122,7 +122,7 @@ class TestParserMediaTypes < Minitest::Test
 
   def test_media_types_rule_counting
     # Ensure rules are counted correctly across different media contexts
-    @sheet.add_block!(<<-CSS)
+    @sheet.add_block(<<-CSS)
       body { margin: 0; }
 
       @media print {
@@ -153,7 +153,7 @@ class TestParserMediaTypes < Minitest::Test
 
   def test_duplicate_selectors_different_media_types
     # Same selector should create separate rules for different media types
-    @sheet.add_block!(<<-CSS)
+    @sheet.add_block(<<-CSS)
       body { color: black; }
 
       @media print {
@@ -182,7 +182,7 @@ class TestParserMediaTypes < Minitest::Test
 
   def test_nested_rules_within_media_query
     # Test multiple selectors within a single media query
-    @sheet.add_block!(<<-CSS)
+    @sheet.add_block(<<-CSS)
       @media screen {
         .header { color: blue; }
         .footer { color: red; }
@@ -204,7 +204,7 @@ class TestParserMediaTypes < Minitest::Test
   end
 
   def test_media_types_preserved_in_each_selector
-    @sheet.add_block!(<<-CSS)
+    @sheet.add_block(<<-CSS)
       .base { color: black; }
 
       @media screen, print {
@@ -227,7 +227,7 @@ class TestParserMediaTypes < Minitest::Test
   end
 
   def test_to_s_with_all_media_types
-    @sheet.add_block!(<<-CSS)
+    @sheet.add_block(<<-CSS)
       body { color: black; }
       @media screen { .header { color: blue; } }
       @media print { .footer { color: red; } }
@@ -244,7 +244,7 @@ class TestParserMediaTypes < Minitest::Test
   end
 
   def test_to_s_with_screen_media_type_only
-    @sheet.add_block!(<<-CSS)
+    @sheet.add_block(<<-CSS)
       body { color: black; }
       @media screen { .header { color: blue; } }
       @media print { .footer { color: red; } }
@@ -263,7 +263,7 @@ class TestParserMediaTypes < Minitest::Test
   end
 
   def test_to_s_with_print_media_type_only
-    @sheet.add_block!(<<-CSS)
+    @sheet.add_block(<<-CSS)
       body { color: black; }
       @media screen { .header { color: blue; } }
       @media print { .footer { color: red; } }
@@ -282,7 +282,7 @@ class TestParserMediaTypes < Minitest::Test
   end
 
   def test_to_s_with_multiple_media_types
-    @sheet.add_block!(<<-CSS)
+    @sheet.add_block(<<-CSS)
       body { color: black; }
       @media screen { .header { color: blue; } }
       @media print { .footer { color: red; } }
@@ -305,7 +305,7 @@ class TestParserMediaTypes < Minitest::Test
 
   def test_add_block_with_media_override_to_existing_group
     # First add some screen rules
-    @sheet.add_block!(<<-CSS)
+    @sheet.add_block(<<-CSS)
       @media screen {
         .header { color: blue; }
       }
@@ -315,7 +315,7 @@ class TestParserMediaTypes < Minitest::Test
 
     # Now add more CSS to the same screen media group using media_types override
     # This tests the rules_before.key?(query_string) == true branch
-    @sheet.add_block!('body { margin: 0; }', media_types: :screen)
+    @sheet.add_block('body { margin: 0; }', media_types: :screen)
 
     assert_equal 2, @sheet.rules_count
 
@@ -339,13 +339,13 @@ class TestParserMediaTypes < Minitest::Test
 
   def test_add_block_with_media_override_adds_to_existing_group_count
     # Start with a screen rule
-    @sheet.add_block!('@media screen { .header { color: blue; } }')
+    @sheet.add_block('@media screen { .header { color: blue; } }')
     initial_count = @sheet.rules_count
 
     assert_equal 1, initial_count
 
     # Add another rule to screen using override - should increment count
-    @sheet.add_block!('.footer { padding: 10px; }', media_types: :screen)
+    @sheet.add_block('.footer { padding: 10px; }', media_types: :screen)
 
     assert_equal 2, @sheet.rules_count
 
@@ -360,13 +360,13 @@ class TestParserMediaTypes < Minitest::Test
 
   def test_add_block_appends_to_existing_media_query_group
     # First add_block creates screen group
-    @sheet.add_block!('@media screen { .header { color: blue; } }')
+    @sheet.add_block('@media screen { .header { color: blue; } }')
 
     assert_equal 1, @sheet.rules_count
 
     # Second add_block adds MORE rules to the SAME screen group (not via override, but naturally)
     # This tests the rules_before.key?(query_string) && new_count > old_count branch
-    @sheet.add_block!('@media screen { .footer { padding: 10px; } .nav { margin: 5px; } }')
+    @sheet.add_block('@media screen { .footer { padding: 10px; } .nav { margin: 5px; } }')
 
     assert_equal 3, @sheet.rules_count
 
@@ -382,7 +382,7 @@ class TestParserMediaTypes < Minitest::Test
 
   def test_add_block_with_override_extracts_from_existing_group
     # Create initial screen group
-    @sheet.add_block!('@media screen { .header { color: blue; } }')
+    @sheet.add_block('@media screen { .header { color: blue; } }')
 
     assert_equal 1, @sheet.rules_count
 
@@ -392,7 +392,7 @@ class TestParserMediaTypes < Minitest::Test
     # 2. Detect screen group existed before (rules_before.key?)
     # 3. Extract the new rules from screen (new_count > old_count)
     # 4. Move them to print group instead
-    @sheet.add_block!('@media screen { .footer { padding: 10px; } }', media_types: :print)
+    @sheet.add_block('@media screen { .footer { padding: 10px; } }', media_types: :print)
 
     assert_equal 2, @sheet.rules_count
 
@@ -416,7 +416,7 @@ class TestParserMediaTypes < Minitest::Test
   # ============================================================================
 
   def test_remove_rules_by_selector
-    @sheet.add_block!(<<-CSS)
+    @sheet.add_block(<<-CSS)
       body { color: black; }
       .header { color: blue; }
       .footer { color: red; }
@@ -433,7 +433,7 @@ class TestParserMediaTypes < Minitest::Test
   end
 
   def test_remove_rules_by_selector_from_specific_media_type
-    @sheet.add_block!(<<-CSS)
+    @sheet.add_block(<<-CSS)
       .header { color: black; }
       @media screen { .header { color: blue; } }
       @media print { .header { color: red; } }
@@ -457,7 +457,7 @@ class TestParserMediaTypes < Minitest::Test
   end
 
   def test_remove_rules_from_all_media_when_no_media_types_specified
-    @sheet.add_block!(<<-CSS)
+    @sheet.add_block(<<-CSS)
       .header { color: black; }
       @media screen { .header { color: blue; } }
       @media print { .header { color: red; } }
@@ -475,7 +475,7 @@ class TestParserMediaTypes < Minitest::Test
   end
 
   def test_remove_rules_cleans_up_empty_groups
-    @sheet.add_block!('@media screen { .header { color: blue; } }')
+    @sheet.add_block('@media screen { .header { color: blue; } }')
 
     assert_equal 1, @sheet.rules_count
 
@@ -491,7 +491,7 @@ class TestParserMediaTypes < Minitest::Test
   end
 
   def test_remove_rules_with_multiple_media_types
-    @sheet.add_block!(<<-CSS)
+    @sheet.add_block(<<-CSS)
       .header { color: black; }
       @media screen { .header { color: blue; } }
       @media print { .header { color: red; } }

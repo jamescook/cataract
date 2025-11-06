@@ -181,8 +181,9 @@ static inline VALUE lowercase_property(VALUE property_str) {
 // Function declarations (implemented in various .c/.rl files)
 // ============================================================================
 
-// Serialization functions (cataract.rl)
-VALUE declarations_to_s(VALUE self, VALUE declarations_array);
+// Serialization functions (cataract.c)
+// Helper function for internal use (called by stylesheet.c)
+VALUE declarations_array_to_s(VALUE declarations_array);
 
 // Stylesheet serialization (stylesheet.c)
 VALUE stylesheet_to_s_c(VALUE self, VALUE rules_array, VALUE charset);
@@ -243,5 +244,9 @@ void finish_rule_fn(
 
 // Specificity calculator (specificity.c)
 VALUE calculate_specificity(VALUE self, VALUE selector_string);
+
+// Color conversion (color_conversion.c)
+void Init_color_conversion(VALUE mCataract);
+VALUE rb_stylesheet_convert_colors(int argc, VALUE *argv, VALUE self);
 
 #endif // CATARACT_H
