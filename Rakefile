@@ -19,6 +19,12 @@ begin
     ext.lib_dir = 'lib/cataract'
     ext.ext_dir = 'ext/cataract_color'
   end
+
+  # Configure the new parallel extension (phase 1 refactoring)
+  Rake::ExtensionTask.new('cataract_new') do |ext|
+    ext.lib_dir = 'lib/cataract'
+    ext.ext_dir = 'ext/cataract_new'
+  end
 end
 
 # Configure CLEAN to run before compilation
