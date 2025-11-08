@@ -22,11 +22,23 @@ extern VALUE eSizeError;
 // Struct field indices
 // ============================================================================
 
-// Rule struct field indices (id, selector, declarations, specificity)
+// Rule struct field indices (id, selector, declarations, specificity, parent_rule_id, nesting_style)
 #define RULE_ID 0
 #define RULE_SELECTOR 1
 #define RULE_DECLARATIONS 2
 #define RULE_SPECIFICITY 3
+#define RULE_PARENT_RULE_ID 4
+#define RULE_NESTING_STYLE 5
+
+// Nesting style constants
+#define NESTING_STYLE_IMPLICIT 0  // .parent { .child { } } - no &
+#define NESTING_STYLE_EXPLICIT 1  // .parent { &.child { } } - has &
+
+// Named constants for parse_css_recursive() call clarity
+// (Makes call sites self-documenting)
+#define NO_PARENT_MEDIA Qnil
+#define NO_PARENT_SELECTOR Qnil
+#define NO_PARENT_RULE_ID Qnil
 
 // Declaration struct field indices (property, value, important)
 #define DECL_PROPERTY 0

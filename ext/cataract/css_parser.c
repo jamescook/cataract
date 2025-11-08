@@ -5,6 +5,9 @@
  * - Flat @rules array with rule IDs (0-indexed)
  * - Separate @media_index hash mapping media queries to rule ID arrays
  * - Handles nested @media queries by combining conditions
+ *
+ * TODO: Unify !important detection into a macro/helper function
+ *       Currently duplicated in parse_declarations() and parse_mixed_block()
  */
 
 #include "cataract.h"
@@ -18,6 +21,33 @@ typedef struct {
     int media_query_count;    // Safety limit for media queries
     st_table *media_cache;    // Parse-time cache: string => parsed media types
 } ParserContext;
+
+// Macro to skip CSS comments /* ... */
+// Usage: SKIP_COMMENT(p, end) where p is current position, end is limit
+// Side effect: advances p past the comment and continues to next iteration
+// Note: Uses RB_UNLIKELY since comments are rare in typical CSS
+#define SKIP_COMMENT(ptr, limit) \
+    if (RB_UNLIKELY((ptr) + 1 < (limit) && *(ptr) == '/' && *((ptr) + 1) == '*')) { \
+        (ptr) += 2; \
+        while ((ptr) + 1 < (limit) && !(*(ptr) == '*' && *((ptr) + 1) == '/')) (ptr)++; \
+        if ((ptr) + 1 < (limit)) (ptr) += 2; \
+        continue; \
+    }
+
+// Find matching closing brace for a block
+// Input: start = position after opening '{', end = limit
+// Returns: pointer to matching '}' (or end if not found)
+// Note: Handles nested braces by tracking depth
+static inline const char* find_matching_brace(const char *start, const char *end) {
+    int depth = 1;
+    const char *p = start;
+    while (p < end && depth > 0) {
+        if (*p == '{') depth++;
+        else if (*p == '}') depth--;
+        if (depth > 0) p++;
+    }
+    return p;
+}
 
 // Lowercase property name (CSS property names are ASCII-only)
 // Non-static so merge_new.c can use it
@@ -39,6 +69,146 @@ VALUE lowercase_property(VALUE property_str) {
     }
 
     return result;
+}
+
+/*
+ * Check if a block contains nested selectors (not just declarations)
+ *
+ * Per W3C spec, nested selectors cannot start with identifiers to avoid ambiguity.
+ * They must start with: &, ., #, [, :, *, >, +, ~, or @media/@supports/etc
+ *
+ * Returns: 1 if nested selectors found, 0 if only declarations
+ */
+static int has_nested_selectors(const char *start, const char *end) {
+    const char *p = start;
+
+    while (p < end) {
+        // Skip whitespace
+        trim_leading(&p, end);
+        if (p >= end) break;
+
+        // Skip comments
+        SKIP_COMMENT(p, end);
+
+        // Check for nested selector indicators
+        char c = *p;
+        if (c == '&' || c == '.' || c == '#' || c == '[' || c == ':' ||
+            c == '*' || c == '>' || c == '+' || c == '~') {
+            // Look ahead - if followed by {, it's likely a nested selector
+            const char *lookahead = p + 1;
+            while (lookahead < end && *lookahead != '{' && *lookahead != ';' && *lookahead != '\n') {
+                lookahead++;
+            }
+            if (lookahead < end && *lookahead == '{') {
+                return 1;  // Found nested selector
+            }
+        }
+
+        // Check for @media, @supports, etc nested inside
+        if (c == '@') {
+            return 1;  // Nested at-rule
+        }
+
+        // Skip to next line or semicolon
+        while (p < end && *p != ';' && *p != '\n') p++;
+        if (p < end) p++;
+    }
+
+    return 0;  // No nested selectors found
+}
+
+/*
+ * Resolve nested selector against parent selector
+ *
+ * Examples:
+ *   resolve_nested_selector(".parent", "& .child")     => ".parent .child"  (explicit)
+ *   resolve_nested_selector(".parent", "&:hover")      => ".parent:hover"   (explicit)
+ *   resolve_nested_selector(".parent", "&.active")     => ".parent.active"  (explicit)
+ *   resolve_nested_selector(".parent", ".child")       => ".parent .child"  (implicit)
+ *   resolve_nested_selector(".parent", "> .child")     => ".parent > .child" (implicit combinator)
+ *
+ * Returns: [resolved_selector (String), nesting_style (Fixnum)]
+ *   nesting_style: 0 = NESTING_STYLE_IMPLICIT, 1 = NESTING_STYLE_EXPLICIT
+ */
+static VALUE resolve_nested_selector(VALUE parent_selector, const char *nested_sel, long nested_len) {
+    const char *parent = RSTRING_PTR(parent_selector);
+    long parent_len = RSTRING_LEN(parent_selector);
+
+    // Check if nested selector contains &
+    int has_ampersand = 0;
+    for (long i = 0; i < nested_len; i++) {
+        if (nested_sel[i] == '&') {
+            has_ampersand = 1;
+            break;
+        }
+    }
+
+    VALUE resolved;
+    int nesting_style;
+
+    if (has_ampersand) {
+        // Explicit nesting - replace & with parent
+        nesting_style = NESTING_STYLE_EXPLICIT;
+
+        // Build result by replacing & with parent
+        VALUE result = rb_str_buf_new(parent_len + nested_len);
+        rb_enc_associate(result, rb_utf8_encoding());
+
+        long i = 0;
+        while (i < nested_len) {
+            if (nested_sel[i] == '&') {
+                // Replace & with parent selector
+                rb_str_buf_cat(result, parent, parent_len);
+                i++;
+            } else {
+                // Copy character as-is
+                rb_str_buf_cat(result, &nested_sel[i], 1);
+                i++;
+            }
+        }
+
+        resolved = result;
+    } else {
+        // Implicit nesting - prepend parent with appropriate spacing
+        nesting_style = NESTING_STYLE_IMPLICIT;
+
+        // Check if nested selector starts with a combinator (>, +, ~)
+        // If so, add exactly one space; otherwise add space for descendant
+        const char *nested_trimmed = nested_sel;
+        const char *nested_end = nested_sel + nested_len;
+
+        // Trim leading whitespace from nested selector
+        trim_leading(&nested_trimmed, nested_end);
+        long trimmed_len = nested_end - nested_trimmed;
+
+        int starts_with_combinator = (trimmed_len > 0 &&
+                                     (nested_trimmed[0] == '>' ||
+                                      nested_trimmed[0] == '+' ||
+                                      nested_trimmed[0] == '~'));
+
+        VALUE result = rb_str_buf_new(parent_len + 1 + trimmed_len);
+        rb_enc_associate(result, rb_utf8_encoding());
+
+        // Add parent
+        rb_str_buf_cat(result, parent, parent_len);
+
+        // Add separator
+        if (starts_with_combinator) {
+            // For combinators, add space before combinator
+            rb_str_buf_cat(result, " ", 1);
+        } else {
+            // For implicit descendant, add space
+            rb_str_buf_cat(result, " ", 1);
+        }
+
+        // Add nested selector (trimmed)
+        rb_str_buf_cat(result, nested_trimmed, trimmed_len);
+
+        resolved = result;
+    }
+
+    // Return array [resolved_selector, nesting_style]
+    return rb_ary_new_from_args(2, resolved, INT2FIX(nesting_style));
 }
 
 /*
@@ -261,7 +431,8 @@ static VALUE parse_declarations(const char *start, const char *end) {
 }
 
 // Forward declarations
-static void parse_css_recursive(ParserContext *ctx, const char *css, const char *pe, VALUE parent_media_sym);
+static void parse_css_recursive(ParserContext *ctx, const char *css, const char *pe,
+                                 VALUE parent_media_sym, VALUE parent_selector, VALUE parent_rule_id);
 static VALUE combine_media_queries(VALUE parent, VALUE child);
 
 /*
@@ -312,9 +483,216 @@ static VALUE intern_media_query_safe(ParserContext *ctx, const char *query_str, 
 }
 
 /*
- * Parse CSS recursively with media query context
+ * Parse mixed declarations and nested selectors from a block
+ * Used when a CSS rule block contains both declarations and nested rules
+ *
+ * Returns: Array of declarations (only the declarations, not nested rules)
  */
-static void parse_css_recursive(ParserContext *ctx, const char *css, const char *pe, VALUE parent_media_sym) {
+static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char *end,
+                                VALUE parent_selector, VALUE parent_rule_id, VALUE parent_media_sym) {
+    VALUE declarations = rb_ary_new();
+    const char *p = start;
+
+    while (p < end) {
+        trim_leading(&p, end);
+        if (p >= end) break;
+
+        SKIP_COMMENT(p, end);
+
+        // Check if this is a nested @media query
+        if (*p == '@' && p + 6 < end && strncmp(p, "@media", 6) == 0 &&
+            (p + 6 == end || IS_WHITESPACE(p[6]))) {
+            // Nested @media - parse with parent selector as context
+            const char *media_start = p + 6;
+            trim_leading(&media_start, end);
+
+            // Find opening brace
+            const char *media_query_end = media_start;
+            while (media_query_end < end && *media_query_end != '{') {
+                media_query_end++;
+            }
+            if (media_query_end >= end) break;
+
+            // Extract media query
+            const char *media_query_start = media_start;
+            const char *media_query_end_trimmed = media_query_end;
+            trim_trailing(media_query_start, &media_query_end_trimmed);
+            VALUE media_sym = intern_media_query_safe(ctx, media_query_start, media_query_end_trimmed - media_query_start);
+
+            p = media_query_end + 1;  // Skip {
+
+            // Find matching closing brace
+            const char *media_block_start = p;
+            const char *media_block_end = find_matching_brace(p, end);
+            p = media_block_end;
+
+            if (p < end) p++;  // Skip }
+
+            // Parse the declarations inside the @media block as if they belong to the parent selector
+            // The content is a declaration list, not a rule list
+            VALUE media_declarations = parse_declarations(media_block_start, media_block_end);
+
+            if (RARRAY_LEN(media_declarations) > 0) {
+                // Create a rule with the parent selector and these declarations, associated with media query
+                int rule_id = ctx->rule_id_counter++;
+
+                VALUE rule = rb_struct_new(cRule,
+                    INT2FIX(rule_id),
+                    parent_selector,
+                    media_declarations,
+                    Qnil,  // specificity
+                    Qnil,  // parent_rule_id (not nested - this is top-level but in media)
+                    Qnil   // nesting_style (not nested)
+                );
+
+                rb_ary_push(ctx->rules_array, rule);
+                update_media_index(ctx, media_sym, rule_id);
+            }
+
+            continue;
+        }
+
+        // Check if this is a nested selector (starts with nesting indicators)
+        char c = *p;
+        if (c == '&' || c == '.' || c == '#' || c == '[' || c == ':' ||
+            c == '*' || c == '>' || c == '+' || c == '~' || c == '@') {
+            // This is likely a nested selector - find the opening brace
+            const char *nested_sel_start = p;
+            while (p < end && *p != '{') p++;
+            if (p >= end) break;
+
+            const char *nested_sel_end = p;
+            trim_trailing(nested_sel_start, &nested_sel_end);
+
+            p++;  // Skip {
+
+            // Find matching closing brace
+            const char *nested_block_start = p;
+            const char *nested_block_end = find_matching_brace(p, end);
+            p = nested_block_end;
+
+            if (p < end) p++;  // Skip }
+
+            // Split nested selector on commas and create a rule for each
+            const char *seg_start = nested_sel_start;
+            const char *seg = nested_sel_start;
+
+            while (seg <= nested_sel_end) {
+                if (seg == nested_sel_end || *seg == ',') {
+                    // Trim segment
+                    while (seg_start < seg && IS_WHITESPACE(*seg_start)) {
+                        seg_start++;
+                    }
+
+                    const char *seg_end_ptr = seg;
+                    while (seg_end_ptr > seg_start && IS_WHITESPACE(*(seg_end_ptr - 1))) {
+                        seg_end_ptr--;
+                    }
+
+                    if (seg_end_ptr > seg_start) {
+                        // Resolve nested selector
+                        VALUE result = resolve_nested_selector(parent_selector, seg_start, seg_end_ptr - seg_start);
+                        VALUE resolved_selector = rb_ary_entry(result, 0);
+                        VALUE nesting_style = rb_ary_entry(result, 1);
+
+                        // Get rule ID
+                        int rule_id = ctx->rule_id_counter++;
+
+                        // Recursively parse nested block
+                        VALUE nested_declarations = parse_mixed_block(ctx, nested_block_start, nested_block_end,
+                                                                     resolved_selector, INT2FIX(rule_id), parent_media_sym);
+
+                        // Create rule for nested selector
+                        VALUE rule = rb_struct_new(cRule,
+                            INT2FIX(rule_id),
+                            resolved_selector,
+                            nested_declarations,
+                            Qnil,  // specificity
+                            parent_rule_id,
+                            nesting_style
+                        );
+
+                        rb_ary_push(ctx->rules_array, rule);
+                        update_media_index(ctx, parent_media_sym, rule_id);
+                    }
+
+                    seg_start = seg + 1;
+                }
+                seg++;
+            }
+
+            continue;
+        }
+
+        // This is a declaration - parse it
+        const char *prop_start = p;
+        while (p < end && *p != ':' && *p != ';' && *p != '{') p++;
+        if (p >= end || *p != ':') {
+            // Malformed - skip to semicolon
+            while (p < end && *p != ';') p++;
+            if (p < end) p++;
+            continue;
+        }
+
+        const char *prop_end = p;
+        trim_trailing(prop_start, &prop_end);
+
+        p++;  // Skip :
+        trim_leading(&p, end);
+
+        const char *val_start = p;
+        int important = 0;
+
+        // Find end of value (semicolon or closing brace or end)
+        while (p < end && *p != ';' && *p != '}') p++;
+        const char *val_end = p;
+
+        // Check for !important
+        const char *important_check = val_end - 10;  // " !important"
+        if (important_check >= val_start) {
+            trim_trailing(val_start, &val_end);
+            if (val_end - val_start >= 10) {
+                if (strncmp(val_end - 10, "!important", 10) == 0) {
+                    important = 1;
+                    val_end -= 10;
+                    trim_trailing(val_start, &val_end);
+                }
+            }
+        } else {
+            trim_trailing(val_start, &val_end);
+        }
+
+        if (p < end && *p == ';') p++;
+
+        // Create declaration
+        if (prop_end > prop_start && val_end > val_start) {
+            VALUE property = rb_utf8_str_new(prop_start, prop_end - prop_start);
+            VALUE value = rb_utf8_str_new(val_start, val_end - val_start);
+
+            property = lowercase_property(property);
+
+            VALUE decl = rb_struct_new(cDeclaration,
+                property,
+                value,
+                important ? Qtrue : Qfalse
+            );
+
+            rb_ary_push(declarations, decl);
+        }
+    }
+
+    return declarations;
+}
+
+/*
+ * Parse CSS recursively with media query context and optional parent selector for nesting
+ *
+ * parent_media_sym: Parent media query symbol (or Qnil for no media context)
+ * parent_selector:  Parent selector string for nested rules (or Qnil for top-level)
+ * parent_rule_id:   Parent rule ID (Fixnum) for nested rules (or Qnil for top-level)
+ */
+static void parse_css_recursive(ParserContext *ctx, const char *css, const char *pe,
+                                 VALUE parent_media_sym, VALUE parent_selector, VALUE parent_rule_id) {
     const char *p = css;
 
     const char *selector_start = NULL;
@@ -327,14 +705,7 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
         if (p >= pe) break;
 
         // Skip comments (rare in typical CSS)
-        if (RB_UNLIKELY(p + 1 < pe && *p == '/' && *(p + 1) == '*')) {
-            p += 2;
-            while (p + 1 < pe && !(*p == '*' && *(p + 1) == '/')) {
-                p++;
-            }
-            if (p + 1 < pe) p += 2;
-            continue;
-        }
+        SKIP_COMMENT(p, pe);
 
         // Check for @media at-rule (only at depth 0)
         if (RB_UNLIKELY(brace_depth == 0 && p + 6 < pe && *p == '@' &&
@@ -366,16 +737,11 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
 
             // Find matching closing brace
             const char *block_start = p;
-            int depth = 1;
-            while (p < pe && depth > 0) {
-                if (*p == '{') depth++;
-                else if (*p == '}') depth--;
-                if (depth > 0) p++;
-            }
-            const char *block_end = p;
+            const char *block_end = find_matching_brace(p, pe);
+            p = block_end;
 
             // Recursively parse @media block with combined media context
-            parse_css_recursive(ctx, block_start, block_end, combined_media_sym);
+            parse_css_recursive(ctx, block_start, block_end, combined_media_sym, NO_PARENT_SELECTOR, NO_PARENT_RULE_ID);
 
             if (p < pe && *p == '}') p++;
             continue;
@@ -415,16 +781,11 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
 
                 // Find matching closing brace
                 const char *block_start = p;
-                int depth = 1;
-                while (p < pe && depth > 0) {
-                    if (*p == '{') depth++;
-                    else if (*p == '}') depth--;
-                    if (depth > 0) p++;
-                }
-                const char *block_end = p;
+                const char *block_end = find_matching_brace(p, pe);
+                p = block_end;
 
                 // Recursively parse block content (preserve parent media context)
-                parse_css_recursive(ctx, block_start, block_end, parent_media_sym);
+                parse_css_recursive(ctx, block_start, block_end, parent_media_sym, parent_selector, parent_rule_id);
 
                 if (p < pe && *p == '}') p++;
                 continue;
@@ -457,13 +818,8 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
 
                 // Find matching closing brace
                 const char *block_start = p;
-                int depth = 1;
-                while (p < pe && depth > 0) {
-                    if (*p == '{') depth++;
-                    else if (*p == '}') depth--;
-                    if (depth > 0) p++;
-                }
-                const char *block_end = p;
+                const char *block_end = find_matching_brace(p, pe);
+                p = block_end;
 
                 // Parse keyframe blocks as rules (from/to/0%/50% etc)
                 ParserContext nested_ctx = {
@@ -473,7 +829,7 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                     .media_query_count = 0,
                     .media_cache = NULL
                 };
-                parse_css_recursive(&nested_ctx, block_start, block_end, Qnil);
+                parse_css_recursive(&nested_ctx, block_start, block_end, NO_PARENT_MEDIA, NO_PARENT_SELECTOR, NO_PARENT_RULE_ID);
 
                 // Get rule ID and increment
                 int rule_id = ctx->rule_id_counter++;
@@ -525,13 +881,8 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
 
                 // Find matching closing brace
                 const char *decl_start = p;
-                int depth = 1;
-                while (p < pe && depth > 0) {
-                    if (*p == '{') depth++;
-                    else if (*p == '}') depth--;
-                    if (depth > 0) p++;
-                }
-                const char *decl_end = p;
+                const char *decl_end = find_matching_brace(p, pe);
+                p = decl_end;
 
                 // Parse declarations
                 VALUE declarations = parse_declarations(decl_start, decl_end);
@@ -578,8 +929,8 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
         if (*p == '}') {
             brace_depth--;
             if (brace_depth == 0 && selector_start != NULL && decl_start != NULL) {
-                // Parse declarations
-                VALUE declarations = parse_declarations(decl_start, p);
+                // Check if block contains nested selectors
+                int has_nesting = has_nested_selectors(decl_start, p);
 
                 // Get selector string
                 const char *sel_end = decl_start - 1;
@@ -587,45 +938,136 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                     sel_end--;
                 }
 
-                // Split on commas
-                const char *seg_start = selector_start;
-                const char *seg = selector_start;
+                if (!has_nesting) {
+                    // FAST PATH: No nesting - parse as pure declarations
+                    VALUE declarations = parse_declarations(decl_start, p);
 
-                while (seg <= sel_end) {
-                    if (seg == sel_end || *seg == ',') {
-                        // Trim segment
-                        while (seg_start < seg && IS_WHITESPACE(*seg_start)) {
-                            seg_start++;
+                    // Split on commas
+                    const char *seg_start = selector_start;
+                    const char *seg = selector_start;
+
+                    while (seg <= sel_end) {
+                        if (seg == sel_end || *seg == ',') {
+                            // Trim segment
+                            while (seg_start < seg && IS_WHITESPACE(*seg_start)) {
+                                seg_start++;
+                            }
+
+                            const char *seg_end_ptr = seg;
+                            while (seg_end_ptr > seg_start && IS_WHITESPACE(*(seg_end_ptr - 1))) {
+                                seg_end_ptr--;
+                            }
+
+                            if (seg_end_ptr > seg_start) {
+                                VALUE selector = rb_utf8_str_new(seg_start, seg_end_ptr - seg_start);
+
+                                // Resolve against parent if nested
+                                VALUE resolved_selector;
+                                VALUE nesting_style_val;
+                                VALUE parent_id_val;
+
+                                if (!NIL_P(parent_selector)) {
+                                    // This is a nested rule - resolve selector
+                                    VALUE result = resolve_nested_selector(parent_selector, RSTRING_PTR(selector), RSTRING_LEN(selector));
+                                    resolved_selector = rb_ary_entry(result, 0);
+                                    nesting_style_val = rb_ary_entry(result, 1);
+                                    parent_id_val = parent_rule_id;
+                                } else {
+                                    // Top-level rule
+                                    resolved_selector = selector;
+                                    nesting_style_val = Qnil;
+                                    parent_id_val = Qnil;
+                                }
+
+                                // Get rule ID and increment
+                                int rule_id = ctx->rule_id_counter++;
+
+                                // Create Rule
+                                VALUE rule = rb_struct_new(cRule,
+                                    INT2FIX(rule_id),
+                                    resolved_selector,
+                                    rb_ary_dup(declarations),
+                                    Qnil,  // specificity
+                                    parent_id_val,
+                                    nesting_style_val
+                                );
+
+                                rb_ary_push(ctx->rules_array, rule);
+
+                                // Update media index
+                                update_media_index(ctx, parent_media_sym, rule_id);
+                            }
+
+                            seg_start = seg + 1;
                         }
-
-                        const char *seg_end_ptr = seg;
-                        while (seg_end_ptr > seg_start && IS_WHITESPACE(*(seg_end_ptr - 1))) {
-                            seg_end_ptr--;
-                        }
-
-                        if (seg_end_ptr > seg_start) {
-                            VALUE selector = rb_utf8_str_new(seg_start, seg_end_ptr - seg_start);
-
-                            // Get rule ID and increment
-                            int rule_id = ctx->rule_id_counter++;
-
-                            // Create Rule (id, selector, declarations, specificity)
-                            VALUE rule = rb_struct_new(cRule,
-                                INT2FIX(rule_id),
-                                selector,
-                                rb_ary_dup(declarations),
-                                Qnil  // specificity
-                            );
-
-                            rb_ary_push(ctx->rules_array, rule);
-
-                            // Update media index
-                            update_media_index(ctx, parent_media_sym, rule_id);
-                        }
-
-                        seg_start = seg + 1;
+                        seg++;
                     }
-                    seg++;
+                } else {
+                    // NESTED PATH: Parse mixed declarations + nested rules
+                    // For each comma-separated parent selector, parse the block with that parent
+                    const char *seg_start = selector_start;
+                    const char *seg = selector_start;
+
+                    while (seg <= sel_end) {
+                        if (seg == sel_end || *seg == ',') {
+                            // Trim segment
+                            while (seg_start < seg && IS_WHITESPACE(*seg_start)) {
+                                seg_start++;
+                            }
+
+                            const char *seg_end_ptr = seg;
+                            while (seg_end_ptr > seg_start && IS_WHITESPACE(*(seg_end_ptr - 1))) {
+                                seg_end_ptr--;
+                            }
+
+                            if (seg_end_ptr > seg_start) {
+                                VALUE current_selector = rb_utf8_str_new(seg_start, seg_end_ptr - seg_start);
+
+                                // Resolve against parent if we're already nested
+                                VALUE resolved_current;
+                                VALUE current_nesting_style;
+                                VALUE current_parent_id;
+
+                                if (!NIL_P(parent_selector)) {
+                                    VALUE result = resolve_nested_selector(parent_selector, RSTRING_PTR(current_selector), RSTRING_LEN(current_selector));
+                                    resolved_current = rb_ary_entry(result, 0);
+                                    current_nesting_style = rb_ary_entry(result, 1);
+                                    current_parent_id = parent_rule_id;
+                                } else {
+                                    resolved_current = current_selector;
+                                    current_nesting_style = Qnil;
+                                    current_parent_id = Qnil;
+                                }
+
+                                // Get rule ID for current selector
+                                int current_rule_id = ctx->rule_id_counter;
+
+                                // Parse mixed block (declarations + nested selectors)
+                                VALUE parent_declarations = parse_mixed_block(ctx, decl_start, p,
+                                                                             resolved_current, INT2FIX(current_rule_id), parent_media_sym);
+
+                                // Create rule for parent selector if it has declarations
+                                if (RARRAY_LEN(parent_declarations) > 0) {
+                                    ctx->rule_id_counter++;  // Increment since we're creating a rule
+
+                                    VALUE rule = rb_struct_new(cRule,
+                                        INT2FIX(current_rule_id),
+                                        resolved_current,
+                                        parent_declarations,
+                                        Qnil,  // specificity
+                                        current_parent_id,
+                                        current_nesting_style
+                                    );
+
+                                    rb_ary_push(ctx->rules_array, rule);
+                                    update_media_index(ctx, parent_media_sym, current_rule_id);
+                                }
+                            }
+
+                            seg_start = seg + 1;
+                        }
+                        seg++;
+                    }
                 }
 
                 selector_start = NULL;
@@ -734,8 +1176,8 @@ VALUE parse_css_new_impl(VALUE css_string, int rule_id_offset) {
     ctx.media_query_count = 0;
     ctx.media_cache = NULL;  // Removed - no perf benefit
 
-    // Parse CSS
-    parse_css_recursive(&ctx, p, pe, Qnil);
+    // Parse CSS (top-level, no parent context)
+    parse_css_recursive(&ctx, p, pe, NO_PARENT_MEDIA, NO_PARENT_SELECTOR, NO_PARENT_RULE_ID);
 
     // Build result hash
     VALUE result = rb_hash_new();

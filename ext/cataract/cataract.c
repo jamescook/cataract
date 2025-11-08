@@ -604,14 +604,16 @@ void Init_cataract(void) {
         eSizeError = rb_define_class_under(mCataract, "SizeError", eCataractError);
     }
 
-    // Define Rule struct: (id, selector, declarations, specificity)
+    // Define Rule struct: (id, selector, declarations, specificity, parent_rule_id, nesting_style)
     cRule = rb_struct_define_under(
         mCataract,
         "Rule",
         "id",                 // Integer (0-indexed position in @rules array)
-        "selector",           // String
+        "selector",           // String (fully resolved/flattened selector)
         "declarations",       // Array of Declaration
         "specificity",        // Integer (nil = not calculated yet)
+        "parent_rule_id",     // Integer | nil (parent rule ID for nested rules)
+        "nesting_style",      // Integer | nil (0=implicit, 1=explicit, nil=not nested)
         NULL
     );
 

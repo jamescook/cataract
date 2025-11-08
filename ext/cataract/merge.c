@@ -766,7 +766,9 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
         INT2FIX(0),              // id
         str_merged_selector,     // selector (cached frozen string)
         merged_declarations,      // declarations
-        Qnil                      // specificity (not applicable)
+        Qnil,                     // specificity (not applicable)
+        Qnil,                     // parent_rule_id (not nested)
+        Qnil                      // nesting_style (not nested)
     );
 
     // Set @rules array with single merged rule (use cached ID)
