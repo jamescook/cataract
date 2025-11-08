@@ -279,7 +279,7 @@ void init_merge_constants(void) {
 // 3. Call shorthand creator function
 // 4. Add shorthand to properties_hash and remove longhands
 // Note: Uses cached static strings (VALUE) for property names - no runtime allocation
-#define TRY_CREATE_FOUR_SIDED_SHORTHAND(hash, str_top, str_right, str_bottom, str_left, str_shorthand, creator_func, vstruct) \
+#define TRY_CREATE_FOUR_SIDED_SHORTHAND(hash, str_top, str_right, str_bottom, str_left, str_shorthand, creator_func) \
     do { \
         VALUE _top = GET_PROP_VALUE_STR(hash, str_top); \
         VALUE _right = GET_PROP_VALUE_STR(hash, str_right); \
@@ -372,10 +372,7 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
         return empty_sheet;
     }
 
-    // Get Declaration struct class once (use global cDeclaration from cataract.h)
-    VALUE declaration_struct = cDeclaration;
-
-    // Use Ruby hash for temporary storage: property => {value:, specificity:, important:, _struct_class:}
+    // Use Ruby hash for temporary storage: property => {value:, specificity:, important:}
     VALUE properties_hash = rb_hash_new();
 
     // Iterate through each rule
@@ -523,27 +520,27 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
     // Try to create margin shorthand
     TRY_CREATE_FOUR_SIDED_SHORTHAND(properties_hash,
         str_margin_top, str_margin_right, str_margin_bottom, str_margin_left,
-        str_margin, cataract_create_margin_shorthand, declaration_struct);
+        str_margin, cataract_create_margin_shorthand);
 
     // Try to create padding shorthand
     TRY_CREATE_FOUR_SIDED_SHORTHAND(properties_hash,
         str_padding_top, str_padding_right, str_padding_bottom, str_padding_left,
-        str_padding, cataract_create_padding_shorthand, declaration_struct);
+        str_padding, cataract_create_padding_shorthand);
 
     // Create border-width from individual sides
     TRY_CREATE_FOUR_SIDED_SHORTHAND(properties_hash,
         str_border_top_width, str_border_right_width, str_border_bottom_width, str_border_left_width,
-        str_border_width, cataract_create_border_width_shorthand, declaration_struct);
+        str_border_width, cataract_create_border_width_shorthand);
 
     // Create border-style from individual sides
     TRY_CREATE_FOUR_SIDED_SHORTHAND(properties_hash,
         str_border_top_style, str_border_right_style, str_border_bottom_style, str_border_left_style,
-        str_border_style, cataract_create_border_style_shorthand, declaration_struct);
+        str_border_style, cataract_create_border_style_shorthand);
 
     // Create border-color from individual sides
     TRY_CREATE_FOUR_SIDED_SHORTHAND(properties_hash,
         str_border_top_color, str_border_right_color, str_border_bottom_color, str_border_left_color,
-        str_border_color, cataract_create_border_color_shorthand, declaration_struct);
+        str_border_color, cataract_create_border_color_shorthand);
 
     // Now create border shorthand from border-{width,style,color}
     VALUE border_width = GET_PROP_VALUE_STR(properties_hash, str_border_width);

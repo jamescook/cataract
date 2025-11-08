@@ -279,7 +279,6 @@ static VALUE stylesheet_to_s_new(VALUE self, VALUE rules_array, VALUE media_inde
                 // Close previous media block if open
                 if (in_media_block) {
                     rb_str_cat2(result, "}\n");
-                    in_media_block = 0;
                 }
 
                 // Open new media block
@@ -350,7 +349,6 @@ static VALUE stylesheet_to_formatted_s_new(VALUE self, VALUE rules_array, VALUE 
                 // Close previous media block if open
                 if (in_media_block) {
                     rb_str_cat2(result, "}\n");
-                    in_media_block = 0;
                 }
 
                 // Open new media block
