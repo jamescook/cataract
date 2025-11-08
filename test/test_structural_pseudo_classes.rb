@@ -4,7 +4,7 @@ require_relative 'test_helper'
 
 # Test CSS3 structural pseudo-classes
 # Based on W3C Selectors Level 3: https://www.w3.org/TR/selectors-3/#structural-pseudos
-class TestNewStructuralPseudoClasses < Minitest::Test
+class TestStructuralPseudoClasses < Minitest::Test
   def setup
     @sheet = Cataract::Stylesheet.new
   end

@@ -80,9 +80,12 @@ static void srgb_to_linear_rgb(int r, int g, int b, double *lr, double *lg, doub
 // Applies gamma: adds the sRGB nonlinearity
 static void linear_rgb_to_srgb(double lr, double lg, double lb, int *r, int *g, int *b) {
     // Clamp to valid range [0.0, 1.0]
-    if (lr < 0.0) lr = 0.0; if (lr > 1.0) lr = 1.0;
-    if (lg < 0.0) lg = 0.0; if (lg > 1.0) lg = 1.0;
-    if (lb < 0.0) lb = 0.0; if (lb > 1.0) lb = 1.0;
+    if (lr < 0.0) lr = 0.0;
+    if (lr > 1.0) lr = 1.0;
+    if (lg < 0.0) lg = 0.0;
+    if (lg > 1.0) lg = 1.0;
+    if (lb < 0.0) lb = 0.0;
+    if (lb > 1.0) lb = 1.0;
 
     // sRGB forward transfer function (IEC 61966-2-1:1999)
     double rs = (lr <= SRGB_GAMMA_THRESHOLD_FWD) ? lr * SRGB_GAMMA_LINEAR_SLOPE
@@ -98,9 +101,12 @@ static void linear_rgb_to_srgb(double lr, double lg, double lb, int *r, int *g, 
     *b = (int)(bs * 255.0 + 0.5);
 
     // Clamp to valid byte range
-    if (*r < 0) *r = 0; if (*r > 255) *r = 255;
-    if (*g < 0) *g = 0; if (*g > 255) *g = 255;
-    if (*b < 0) *b = 0; if (*b > 255) *b = 255;
+    if (*r < 0) *r = 0;
+    if (*r > 255) *r = 255;
+    if (*g < 0) *g = 0;
+    if (*g > 255) *g = 255;
+    if (*b < 0) *b = 0;
+    if (*b > 255) *b = 255;
 }
 
 // =============================================================================

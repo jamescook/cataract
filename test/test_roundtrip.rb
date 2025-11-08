@@ -2,7 +2,7 @@
 
 require_relative 'test_helper'
 
-class TestNewRoundtrip < Minitest::Test
+class TestRoundtrip < Minitest::Test
   def test_roundtrip_preserves_rules
     css = <<~CSS
       .btn { padding: 10px; }

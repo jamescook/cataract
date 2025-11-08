@@ -2,7 +2,7 @@
 
 require_relative 'test_helper'
 
-class NewEncodingTest < Minitest::Test
+class TestEncoding < Minitest::Test
   def test_property_names_are_us_ascii
     css = '* { color: red; font-family: Arial; }'
     sheet = Cataract::Stylesheet.new

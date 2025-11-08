@@ -3,7 +3,7 @@
 require_relative 'test_helper'
 
 # Real-world CSS parsing tests using actual framework CSS files
-class TestNewRealWorld < Minitest::Test
+class TestRealWorld < Minitest::Test
   def setup
     @bootstrap_css = File.read(File.expand_path('fixtures/bootstrap.css', __dir__))
   end

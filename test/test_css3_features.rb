@@ -3,7 +3,7 @@
 require_relative 'test_helper'
 
 # Tests for CSS3 features
-class TestNewCSS3Features < Minitest::Test
+class TestCSS3Features < Minitest::Test
   def setup
     @sheet = Cataract::Stylesheet.new
   end

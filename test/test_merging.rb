@@ -3,7 +3,7 @@
 
 require_relative 'test_helper'
 
-class TestNewMerging < Minitest::Test
+class TestMerging < Minitest::Test
   # Test simple merge of two rules with different properties
   def test_simple_merge
     sheet = Cataract::Stylesheet.parse(<<~CSS)

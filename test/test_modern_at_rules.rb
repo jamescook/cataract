@@ -4,7 +4,7 @@ require_relative 'test_helper'
 
 # Test modern CSS at-rules (CSS3+)
 # These use the generic at-rule pattern and should be handled automatically
-class TestNewModernAtRules < Minitest::Test
+class TestModernAtRules < Minitest::Test
   def setup
     @sheet = Cataract::Stylesheet.new
   end

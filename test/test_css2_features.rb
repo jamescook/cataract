@@ -4,7 +4,7 @@ require_relative 'test_helper'
 
 # Tests for CSS2 features that are not yet implemented
 # These tests are expected to fail until the features are added
-class TestNewCSS2Features < Minitest::Test
+class TestCSS2Features < Minitest::Test
   def setup
     @sheet = Cataract::Stylesheet.new
   end

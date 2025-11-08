@@ -69,8 +69,8 @@
 // --------------------------------------------------
 // Add a STARTS_WITH_FORMAT macro to detect the format in CSS strings:
 //
-//   #define STARTS_WITH_HSL(p, remaining) \
-//       ((remaining) >= 4 && (p)[0] == 'h' && (p)[1] == 's' && (p)[2] == 'l' && \
+//   #define STARTS_WITH_HSL(p, remaining)
+//       ((remaining) >= 4 && (p)[0] == 'h' && (p)[1] == 's' && (p)[2] == 'l' &&
 //        ((p)[3] == '(' || (p)[3] == 'a'))
 //
 // STEP 5: Register in Dispatchers
@@ -305,9 +305,12 @@ static VALUE format_rgb(struct color_ir color, int use_modern_syntax) {
         double lr = color.linear_r, lg = color.linear_g, lb = color.linear_b;
 
         // Clamp to [0.0, 1.0]
-        if (lr < 0.0) lr = 0.0; if (lr > 1.0) lr = 1.0;
-        if (lg < 0.0) lg = 0.0; if (lg > 1.0) lg = 1.0;
-        if (lb < 0.0) lb = 0.0; if (lb > 1.0) lb = 1.0;
+        if (lr < 0.0) lr = 0.0;
+        if (lr > 1.0) lr = 1.0;
+        if (lg < 0.0) lg = 0.0;
+        if (lg > 1.0) lg = 1.0;
+        if (lb < 0.0) lb = 0.0;
+        if (lb > 1.0) lb = 1.0;
 
         // Apply sRGB gamma correction
         double rs = (lr <= 0.0031308) ? lr * 12.92 : 1.055 * pow(lr, 1.0/2.4) - 0.055;
@@ -544,9 +547,12 @@ static struct color_ir parse_rgb_percent(VALUE rgb_value) {
     double bs = b_pct / 100.0;
 
     // Clamp to [0, 1]
-    if (rs < 0.0) rs = 0.0; if (rs > 1.0) rs = 1.0;
-    if (gs < 0.0) gs = 0.0; if (gs > 1.0) gs = 1.0;
-    if (bs < 0.0) bs = 0.0; if (bs > 1.0) bs = 1.0;
+    if (rs < 0.0) rs = 0.0;
+    if (rs > 1.0) rs = 1.0;
+    if (gs < 0.0) gs = 0.0;
+    if (gs > 1.0) gs = 1.0;
+    if (bs < 0.0) bs = 0.0;
+    if (bs > 1.0) bs = 1.0;
 
     // Apply inverse gamma to get linear RGB for precision
     double lr = (rs <= 0.04045) ? rs / 12.92 : pow((rs + 0.055) / 1.055, 2.4);

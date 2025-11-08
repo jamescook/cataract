@@ -8,7 +8,7 @@ require_relative 'test_helper'
 # - @keyframes: https://www.w3.org/TR/css-animations-1/#keyframes
 # - @supports: https://www.w3.org/TR/css-conditional-3/#at-supports
 # - nested @media: https://www.w3.org/TR/css-conditional-3/#at-media
-class TestNewAtRules < Minitest::Test
+class TestAtRules < Minitest::Test
   def setup
     @sheet = Cataract::Stylesheet.new
   end
