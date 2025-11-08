@@ -65,7 +65,7 @@ puts '=' * 80
 puts
 
 parser = Cataract::Stylesheet.new
-parser.parse(LARGE_CSS_FIXTURE)
+parser.add_block(LARGE_CSS_FIXTURE)
 GC.start
 # Verify we actually parsed everything
 raise 'Parse failed' if parser.rules_count.zero?
@@ -79,7 +79,7 @@ Benchmark.ips do |x|
 
   x.report(mode_label) do
     parser = Cataract::Stylesheet.new
-    parser.parse(LARGE_CSS_FIXTURE)
+    parser.add_block(LARGE_CSS_FIXTURE)
   end
 
   x.save! RESULTS_FILE_PARSE
@@ -97,13 +97,13 @@ Benchmark.ips do |x|
 
   x.report(mode_label) do
     parser = Cataract::Stylesheet.new
-    parser.parse(LARGE_CSS_FIXTURE)
+    parser.add_block(LARGE_CSS_FIXTURE)
 
     count = 0
-    parser.each_selector do |selector, declarations, _specificity|
+    parser.each_selector do |rule|
       # Force string to be used
-      _ = selector.length
-      _ = declarations.to_s
+      _ = rule.selector.length
+      _ = rule.declarations.to_s
       count += 1
     end
 
@@ -126,7 +126,7 @@ Benchmark.ips do |x|
   x.report(mode_label) do
     10.times do
       parser = Cataract::Stylesheet.new
-      parser.parse(LARGE_CSS_FIXTURE)
+      parser.add_block(LARGE_CSS_FIXTURE)
     end
   end
 

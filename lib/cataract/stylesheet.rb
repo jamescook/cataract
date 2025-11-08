@@ -1,16 +1,35 @@
 # frozen_string_literal: true
 
 module Cataract
-  # New parallel implementation of Stylesheet with flat rule array
+  # Represents a parsed CSS stylesheet with rule management and merging capabilities.
   #
-  # Key differences from old Stylesheet:
-  # - Rules stored in flat array (preserves insertion order)
-  # - Media query stored as symbol directly on each rule
-  # - Single Rule concept (no RuleSet wrapper needed)
+  # The Stylesheet class stores parsed CSS rules in a flat array structure that preserves
+  # insertion order. Media queries are tracked via an index that maps media query symbols
+  # to rule IDs, allowing efficient filtering and serialization.
   #
-  # This is a parallel implementation that will eventually replace Stylesheet.
+  # @example Parse and query CSS
+  #   sheet = Cataract::Stylesheet.parse("body { color: red; }")
+  #   sheet.size #=> 1
+  #   sheet.rules.first.selector #=> "body"
+  #
+  # @example Work with media queries
+  #   sheet = Cataract.parse_css("@media print { .footer { color: blue; } }")
+  #   sheet.media_queries #=> [:print]
+  #   sheet.for_media(:print).first.selector #=> ".footer"
+  #
+  # @attr_reader [Array<Rule>] rules Array of parsed CSS rules
+  # @attr_reader [String, nil] charset The @charset declaration if present
   class Stylesheet
-    attr_reader :rules, :charset, :media_index
+    # @return [Array<Rule>] Array of parsed CSS rules
+    attr_reader :rules
+
+    # @return [String, nil] The @charset declaration if present
+    attr_reader :charset
+
+    # @private
+    # Internal index mapping media query symbols to rule IDs
+    # @return [Hash<Symbol, Array<Integer>>]
+    attr_reader :media_index
 
     # Create a new empty stylesheet.
     #
@@ -166,6 +185,66 @@ module Cataract
       end
     end
     alias to_css to_s
+
+    # Serialize to formatted CSS string with indentation and newlines.
+    #
+    # Converts the stylesheet to a human-readable CSS string with proper indentation.
+    # Rules are formatted with each declaration on its own line, and media queries
+    # are properly indented. Optionally filters output to specific media queries.
+    #
+    # @param which_media [Symbol, Array<Symbol>] Optional media filter (default: :all)
+    #   - :all - Output all rules including base rules and all media queries
+    #   - :screen, :print, etc. - Output only rules from specified media query
+    #   - [:screen, :print] - Output rules from multiple media queries
+    #
+    # @return [String] Formatted CSS string
+    #
+    # @example Get all CSS formatted
+    #   sheet.to_formatted_s
+    #   # => "body {\n  color: black;\n}\n@media print {\n  .footer {\n    color: red;\n  }\n}\n"
+    #
+    # @example Filter to specific media type
+    #   sheet.to_formatted_s(:print)
+    #
+    # @see #to_s For compact single-line output
+    def to_formatted_s(which_media = :all)
+      # Normalize to array for consistent filtering
+      which_media_array = which_media.is_a?(Array) ? which_media : [which_media]
+
+      # If :all is present, return everything (no filtering)
+      if which_media_array.include?(:all)
+        Cataract._stylesheet_to_formatted_s(@rules, @media_index, @charset)
+      else
+        # Collect all rule IDs that match the requested media types
+        matching_rule_ids = Set.new
+        which_media_array.each do |media_sym|
+          if @media_index[media_sym]
+            matching_rule_ids.merge(@media_index[media_sym])
+          end
+        end
+
+        # Build filtered rules array (re-indexed from 0)
+        filtered_rules = []
+        old_to_new_id = {}
+        matching_rule_ids.sort.each do |old_id|
+          new_id = filtered_rules.length
+          rule = @rules[old_id]
+          filtered_rules << Cataract::Rule.new(new_id, rule.selector, rule.declarations, rule.specificity)
+          old_to_new_id[old_id] = new_id
+        end
+
+        # Build filtered media_index with remapped IDs
+        filtered_media_index = {}
+        which_media_array.each do |media_sym|
+          if @media_index[media_sym]
+            filtered_media_index[media_sym] = @media_index[media_sym].filter_map { |old_id| old_to_new_id[old_id] }
+          end
+        end
+
+        # C serialization with filtered data
+        Cataract._stylesheet_to_formatted_s(filtered_rules, filtered_media_index, @charset)
+      end
+    end
 
     # Get number of rules
     #

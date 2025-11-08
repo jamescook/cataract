@@ -610,4 +610,79 @@ body { color: red; }'
       assert_equal 1, sheet.size
     end
   end
+
+  def test_to_formatted_s_basic
+    css = 'body { color: red; margin: 10px; }'
+    sheet = Cataract::Stylesheet.parse(css)
+
+    expected = <<~CSS
+      body {
+        color: red; margin: 10px;
+      }
+    CSS
+
+    assert_equal expected, sheet.to_formatted_s
+  end
+
+  def test_to_formatted_s_with_media_query
+    css = '@media print { .footer { color: blue; } }'
+    sheet = Cataract::Stylesheet.parse(css)
+
+    expected = <<~CSS
+      @media print {
+        .footer {
+          color: blue;
+        }
+      }
+    CSS
+
+    assert_equal expected, sheet.to_formatted_s
+  end
+
+  def test_to_formatted_s_mixed_rules_and_media
+    css = 'body { color: red; } @media screen { div { margin: 5px; } }'
+    sheet = Cataract::Stylesheet.parse(css)
+
+    expected = <<~CSS
+      body {
+        color: red;
+      }
+      @media screen {
+        div {
+          margin: 5px;
+        }
+      }
+    CSS
+
+    assert_equal expected, sheet.to_formatted_s
+  end
+
+  def test_to_formatted_s_with_keyframes
+    css = <<~CSS
+      @keyframes slideIn {
+        0% { transform: translateX(-100%); opacity: 0; }
+        100% { transform: translateX(0); opacity: 1; }
+      }
+      .animated { animation: slideIn 0.5s ease-in; }
+    CSS
+    sheet = Cataract::Stylesheet.parse(css)
+
+    formatted = sheet.to_formatted_s
+
+    expected = <<~CSS
+      @keyframes slideIn {
+        0% {
+          transform: translateX(-100%); opacity: 0;
+        }
+        100% {
+          transform: translateX(0); opacity: 1;
+        }
+      }
+      .animated {
+        animation: slideIn 0.5s ease-in;
+      }
+    CSS
+
+    assert_equal expected, formatted
+  end
 end

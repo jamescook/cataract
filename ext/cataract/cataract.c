@@ -62,7 +62,12 @@ static void serialize_declarations(VALUE result, VALUE declarations) {
             rb_str_cat2(result, " !important");
         }
 
-        rb_str_cat2(result, "; ");
+        rb_str_cat2(result, ";");
+
+        // Add space after semicolon except for last declaration
+        if (j < decl_len - 1) {
+            rb_str_cat2(result, " ");
+        }
     }
 }
 
@@ -89,7 +94,7 @@ static void serialize_at_rule(VALUE result, VALUE at_rule) {
                 rb_str_append(result, nested_selector);
                 rb_str_cat2(result, " { ");
                 serialize_declarations(result, nested_declarations);
-                rb_str_cat2(result, "}\n");
+                rb_str_cat2(result, " }\n");
             }
         } else {
             // Serialize as declarations (e.g., @font-face)
@@ -117,7 +122,115 @@ static void serialize_rule(VALUE result, VALUE rule) {
     rb_str_append(result, selector);
     rb_str_cat2(result, " { ");
     serialize_declarations(result, declarations);
+    rb_str_cat2(result, " }\n");
+}
+
+// Helper to serialize an AtRule with formatting (@keyframes, @font-face, etc)
+static void serialize_at_rule_formatted(VALUE result, VALUE at_rule, const char *indent) {
+    VALUE selector = rb_struct_aref(at_rule, INT2FIX(AT_RULE_SELECTOR));
+    VALUE content = rb_struct_aref(at_rule, INT2FIX(AT_RULE_CONTENT));
+
+    rb_str_cat2(result, indent);
+    rb_str_append(result, selector);
+    rb_str_cat2(result, " {\n");
+
+    // Check if content is rules or declarations
+    if (RARRAY_LEN(content) > 0) {
+        VALUE first = rb_ary_entry(content, 0);
+
+        if (rb_obj_is_kind_of(first, cRule)) {
+            // Serialize as nested rules (e.g., @keyframes) with formatting
+            for (long i = 0; i < RARRAY_LEN(content); i++) {
+                VALUE nested_rule = rb_ary_entry(content, i);
+                VALUE nested_selector = rb_struct_aref(nested_rule, INT2FIX(RULE_SELECTOR));
+                VALUE nested_declarations = rb_struct_aref(nested_rule, INT2FIX(RULE_DECLARATIONS));
+
+                // Nested selector with opening brace (2-space indent)
+                rb_str_cat2(result, indent);
+                rb_str_cat2(result, "  ");
+                rb_str_append(result, nested_selector);
+                rb_str_cat2(result, " {\n");
+
+                // Declarations on their own line (4-space indent)
+                rb_str_cat2(result, indent);
+                rb_str_cat2(result, "    ");
+                serialize_declarations(result, nested_declarations);
+                rb_str_cat2(result, "\n");
+
+                // Closing brace (2-space indent)
+                rb_str_cat2(result, indent);
+                rb_str_cat2(result, "  }\n");
+            }
+        } else {
+            // Serialize as declarations (e.g., @font-face)
+            rb_str_cat2(result, indent);
+            rb_str_cat2(result, "  ");
+            serialize_declarations(result, content);
+            rb_str_cat2(result, "\n");
+        }
+    }
+
+    rb_str_cat2(result, indent);
     rb_str_cat2(result, "}\n");
+}
+
+// Helper to serialize a single rule with formatting (indented, multi-line)
+static void serialize_rule_formatted(VALUE result, VALUE rule, const char *indent) {
+    // Check if this is an AtRule
+    if (rb_obj_is_kind_of(rule, cAtRule)) {
+        serialize_at_rule_formatted(result, rule, indent);
+        return;
+    }
+
+    // Regular Rule serialization with formatting
+    VALUE selector = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR));
+    VALUE declarations = rb_struct_aref(rule, INT2FIX(RULE_DECLARATIONS));
+
+    // Selector line with opening brace
+    rb_str_cat2(result, indent);
+    rb_str_append(result, selector);
+    rb_str_cat2(result, " {\n");
+
+    // Declarations on their own line with extra indentation
+    rb_str_cat2(result, indent);
+    rb_str_cat2(result, "  ");
+    serialize_declarations(result, declarations);
+    rb_str_cat2(result, "\n");
+
+    // Closing brace
+    rb_str_cat2(result, indent);
+    rb_str_cat2(result, "}\n");
+}
+
+// Context for building rule_to_media map
+struct build_rule_map_ctx {
+    VALUE rule_to_media;
+};
+
+// Callback to build reverse map from rule_id to media_sym
+static int build_rule_map_callback(VALUE media_sym, VALUE rule_ids, VALUE arg) {
+    struct build_rule_map_ctx *ctx = (struct build_rule_map_ctx *)arg;
+
+    Check_Type(rule_ids, T_ARRAY);
+    long ids_len = RARRAY_LEN(rule_ids);
+
+    for (long i = 0; i < ids_len; i++) {
+        VALUE id = rb_ary_entry(rule_ids, i);
+        VALUE existing = rb_hash_aref(ctx->rule_to_media, id);
+
+        if (NIL_P(existing)) {
+            rb_hash_aset(ctx->rule_to_media, id, media_sym);
+        } else {
+            // Keep the longer/more specific media query
+            VALUE existing_str = rb_sym2str(existing);
+            VALUE new_str = rb_sym2str(media_sym);
+            if (RSTRING_LEN(new_str) > RSTRING_LEN(existing_str)) {
+                rb_hash_aset(ctx->rule_to_media, id, media_sym);
+            }
+        }
+    }
+
+    return ST_CONTINUE;
 }
 
 static VALUE stylesheet_to_s_new(VALUE self, VALUE rules_array, VALUE media_index, VALUE charset) {
@@ -135,34 +248,10 @@ static VALUE stylesheet_to_s_new(VALUE self, VALUE rules_array, VALUE media_inde
 
     long total_rules = RARRAY_LEN(rules_array);
 
-    // Build a map from rule_id to media query symbol
-    // We'll use a hash table: rule_id => media_sym
+    // Build a map from rule_id to media query symbol using rb_hash_foreach
     VALUE rule_to_media = rb_hash_new();
-    VALUE media_keys = rb_funcall(media_index, rb_intern("keys"), 0);
-    long media_count = RARRAY_LEN(media_keys);
-
-    for (long i = 0; i < media_count; i++) {
-        VALUE media_key = rb_ary_entry(media_keys, i);
-        VALUE rule_ids = rb_hash_aref(media_index, media_key);
-        long ids_len = RARRAY_LEN(rule_ids);
-
-        for (long j = 0; j < ids_len; j++) {
-            VALUE id = rb_ary_entry(rule_ids, j);
-            // Store the LONGEST media query for this rule (most specific)
-            // This handles rules that appear in multiple media queries
-            VALUE existing = rb_hash_aref(rule_to_media, id);
-            if (NIL_P(existing)) {
-                rb_hash_aset(rule_to_media, id, media_key);
-            } else {
-                // If already set, keep the longer/more specific one
-                VALUE existing_str = rb_sym2str(existing);
-                VALUE new_str = rb_sym2str(media_key);
-                if (RSTRING_LEN(new_str) > RSTRING_LEN(existing_str)) {
-                    rb_hash_aset(rule_to_media, id, media_key);
-                }
-            }
-        }
-    }
+    struct build_rule_map_ctx map_ctx = { rule_to_media };
+    rb_hash_foreach(media_index, build_rule_map_callback, (VALUE)&map_ctx);
 
     // Iterate through rules in insertion order, grouping consecutive media queries
     VALUE current_media = Qnil;
@@ -203,6 +292,77 @@ static VALUE stylesheet_to_s_new(VALUE self, VALUE rules_array, VALUE media_inde
 
             // Serialize rule inside media block
             serialize_rule(result, rule);
+        }
+    }
+
+    // Close final media block if still open
+    if (in_media_block) {
+        rb_str_cat2(result, "}\n");
+    }
+
+    return result;
+}
+
+// Formatted version with indentation and newlines
+static VALUE stylesheet_to_formatted_s_new(VALUE self, VALUE rules_array, VALUE media_index, VALUE charset) {
+    Check_Type(rules_array, T_ARRAY);
+    Check_Type(media_index, T_HASH);
+
+    VALUE result = rb_str_new_cstr("");
+
+    // Add charset if present
+    if (!NIL_P(charset)) {
+        rb_str_cat2(result, "@charset \"");
+        rb_str_append(result, charset);
+        rb_str_cat2(result, "\";\n");
+    }
+
+    long total_rules = RARRAY_LEN(rules_array);
+
+    // Build a map from rule_id to media query symbol using rb_hash_foreach
+    VALUE rule_to_media = rb_hash_new();
+    struct build_rule_map_ctx map_ctx = { rule_to_media };
+    rb_hash_foreach(media_index, build_rule_map_callback, (VALUE)&map_ctx);
+
+    // Iterate through rules in insertion order, grouping consecutive media queries
+    VALUE current_media = Qnil;
+    int in_media_block = 0;
+
+    for (long i = 0; i < total_rules; i++) {
+        VALUE rule_id = INT2FIX(i);
+        VALUE rule_media = rb_hash_aref(rule_to_media, rule_id);
+        VALUE rule = rb_ary_entry(rules_array, i);
+
+        if (NIL_P(rule_media)) {
+            // Not in any media query - close any open media block first
+            if (in_media_block) {
+                rb_str_cat2(result, "}\n");
+                in_media_block = 0;
+                current_media = Qnil;
+            }
+
+            // Output rule with no indentation
+            serialize_rule_formatted(result, rule, "");
+        } else {
+            // This rule is in a media query
+            // Check if media query changed from previous rule
+            if (NIL_P(current_media) || !rb_equal(current_media, rule_media)) {
+                // Close previous media block if open
+                if (in_media_block) {
+                    rb_str_cat2(result, "}\n");
+                    in_media_block = 0;
+                }
+
+                // Open new media block
+                current_media = rule_media;
+                rb_str_cat2(result, "@media ");
+                rb_str_append(result, rb_sym2str(rule_media));
+                rb_str_cat2(result, " {\n");
+                in_media_block = 1;
+            }
+
+            // Serialize rule inside media block with 2-space indentation
+            serialize_rule_formatted(result, rule, "  ");
         }
     }
 
@@ -491,6 +651,7 @@ void Init_cataract(void) {
     // Define module functions
     rb_define_module_function(mCataract, "_parse_css", parse_css_new, 1);
     rb_define_module_function(mCataract, "_stylesheet_to_s", stylesheet_to_s_new, 3);
+    rb_define_module_function(mCataract, "_stylesheet_to_formatted_s", stylesheet_to_formatted_s_new, 3);
     rb_define_module_function(mCataract, "parse_media_types", parse_media_types, 1);
     rb_define_module_function(mCataract, "parse_declarations", new_parse_declarations, 1);
     rb_define_module_function(mCataract, "merge", cataract_merge_new, 1);

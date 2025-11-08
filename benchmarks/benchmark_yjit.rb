@@ -48,7 +48,7 @@ class YjitBenchmark < BenchmarkHarness
 
     parser = Cataract::Stylesheet.new
     sample_css = 'body { margin: 0; }'
-    parser.parse(sample_css)
+    parser.add_block(sample_css)
     raise 'Parse failed' if parser.rules_count.zero?
   end
 

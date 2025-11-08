@@ -45,11 +45,11 @@ class ParsingBenchmark < BenchmarkHarness
 
     # Verify fixtures parse correctly
     parser = Cataract::Stylesheet.new
-    parser.parse(css1)
+    parser.add_block(css1)
     raise 'CSS1 sanity check failed: expected rules' if parser.rules_count.zero?
 
     parser = Cataract::Stylesheet.new
-    parser.parse(css2)
+    parser.add_block(css2)
     raise 'CSS2 sanity check failed: expected rules' if parser.rules_count.zero?
   end
 
@@ -88,7 +88,7 @@ class ParsingBenchmark < BenchmarkHarness
 
       x.report('cataract: CSS1') do
         parser = Cataract::Stylesheet.new
-        parser.parse(css1)
+        parser.add_block(css1)
       end
 
       x.compare!
@@ -110,7 +110,7 @@ class ParsingBenchmark < BenchmarkHarness
 
       x.report('cataract: CSS2') do
         parser = Cataract::Stylesheet.new
-        parser.parse(css2)
+        parser.add_block(css2)
       end
 
       x.compare!
@@ -124,7 +124,7 @@ class ParsingBenchmark < BenchmarkHarness
 
     # Test Cataract
     parser = Cataract::Stylesheet.new
-    parser.parse(css2)
+    parser.add_block(css2)
     cataract_rules = parser.rules_count
     puts "Cataract found #{cataract_rules} rules"
 
@@ -143,8 +143,8 @@ class ParsingBenchmark < BenchmarkHarness
 
     # Show sample output
     puts "\nSample Cataract output:"
-    parser.each_selector.first(5).each do |selector, declarations, specificity|
-      puts "  #{selector}: #{declarations} (spec: #{specificity})"
+    parser.each_selector.first(5).each do |rule|
+      puts "  #{rule.selector}: #{rule.declarations} (spec: #{rule.specificity})"
     end
   end
 end

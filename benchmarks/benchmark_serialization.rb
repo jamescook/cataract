@@ -152,7 +152,7 @@ class SerializationBenchmark < BenchmarkHarness
 
     # Pre-parse using Parser API for media filtering
     cataract_parser = Cataract::Stylesheet.new
-    cataract_parser.add_block!(bootstrap_css)
+    cataract_parser.add_block(bootstrap_css)
 
     css_parser_for_filter = CssParser::Parser.new
     css_parser_for_filter.add_block!(bootstrap_css)
