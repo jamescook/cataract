@@ -6,7 +6,7 @@ require_relative 'test_helper'
 # These tests are expected to fail until the features are added
 class TestNewCSS2Features < Minitest::Test
   def setup
-    @sheet = Cataract::NewStylesheet.new
+    @sheet = Cataract::Stylesheet.new
   end
 
   # ============================================================================
@@ -266,9 +266,9 @@ class TestNewCSS2Features < Minitest::Test
     css = '.priority { color: red !important }'
     @sheet.add_block(css)
 
-    # This should already work based on NewDeclarations class
+    # This should already work based on Declarations class
     rule = @sheet.rules.first
-    decls = Cataract::NewDeclarations.new(rule.declarations)
+    decls = Cataract::Declarations.new(rule.declarations)
 
     assert decls.important?('color')
     assert_equal 'color: red !important;', decls.to_s

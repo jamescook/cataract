@@ -3,13 +3,6 @@
 require_relative 'test_helper'
 
 class TestColorConversion < Minitest::Test
-  # Helper to parse, convert, and get declarations
-  def convert_and_get_declarations(css, **options)
-    sheet = Cataract.parse_css(css)
-    sheet.convert_colors!(**options)
-    Cataract::Declarations.new(sheet.declarations)
-  end
-
   # Edge cases and format-agnostic tests
 
   # Error handling tests

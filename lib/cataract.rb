@@ -1,16 +1,11 @@
 # frozen_string_literal: true
 
 require_relative 'cataract/version'
-require_relative 'cataract/cataract' # Load C extension first (defines Rule struct)
-require_relative 'cataract/cataract_new' # Load new parallel C extension (defines NewRule, AtRule structs)
+require_relative 'cataract/cataract' # Load C extension (defines Rule, Declaration, AtRule structs)
 require_relative 'cataract/rule' # Add Ruby methods to Rule
-require_relative 'cataract/new_rule' # Add Ruby methods to NewRule
 require_relative 'cataract/at_rule' # Add Ruby methods to AtRule
 require_relative 'cataract/stylesheet'
-require_relative 'cataract/new_stylesheet' # New parallel implementation
-require_relative 'cataract/rule_set'
 require_relative 'cataract/declarations'
-require_relative 'cataract/new_declarations' # New parallel implementation
 require_relative 'cataract/import_resolver'
 
 # Cataract is a high-performance CSS parser written in C with a Ruby interface.
@@ -34,8 +29,6 @@ require_relative 'cataract/import_resolver'
 # @see RuleSet Represents individual CSS rules
 module Cataract
   class << self
-    alias parse_css_internal parse_css
-
     # Parse a CSS string into a Stylesheet object.
     #
     # This is the main entry point for parsing CSS. It returns a Stylesheet
@@ -105,7 +98,8 @@ module Cataract
   #   sheet = Cataract.parse_css(".test { margin-top: 10px; margin-right: 10px; margin-bottom: 10px; margin-left: 10px; }")
   #   merged = Cataract.merge(sheet)
   #   # merged contains "margin: 10px" shorthand instead of four longhand properties
-  def self.merge(rules)
+  # FIXME: Remove ?
+  def self.__merge(rules)
     return [] if rules.nil? || rules.empty?
 
     # Accept both Stylesheet and Array for convenience

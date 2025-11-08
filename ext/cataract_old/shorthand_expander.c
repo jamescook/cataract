@@ -7,7 +7,7 @@
  * NOTE: value_splitter has been migrated to pure C (value_splitter.c)
  */
 
-#include "cataract_new.h"
+#include "cataract.h"
 
 /*
  * Helper: Check if string ends with !important and strip it

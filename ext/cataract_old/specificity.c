@@ -15,7 +15,7 @@
  *   - Universal selector (*) has zero specificity
  */
 
-#include "cataract_new.h"
+#include "cataract.h"
 #include <string.h>
 
 // Calculate specificity for a CSS selector string

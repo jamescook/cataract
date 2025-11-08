@@ -2,9 +2,9 @@
 
 require_relative 'test_helper'
 
-class TestNewDeclarations < Minitest::Test
+class TestDeclarations < Minitest::Test
   def test_basic_usage
-    decl = Cataract::NewDeclarations.new
+    decl = Cataract::Declarations.new
 
     # Basic property setting
     decl['color'] = 'red'
@@ -17,7 +17,7 @@ class TestNewDeclarations < Minitest::Test
   end
 
   def test_important_flags
-    decl = Cataract::NewDeclarations.new
+    decl = Cataract::Declarations.new
 
     decl['color'] = 'red !important'
     decl['background'] = 'blue'
@@ -30,10 +30,10 @@ class TestNewDeclarations < Minitest::Test
   end
 
   def test_initialization
-    decl = Cataract::NewDeclarations.new({
-                                           'color' => 'red',
-                                           'background' => 'blue !important'
-                                         })
+    decl = Cataract::Declarations.new({
+                                        'color' => 'red',
+                                        'background' => 'blue !important'
+                                      })
 
     assert_equal 'red', decl['color']
     assert_equal 'blue !important', decl['background']
@@ -42,11 +42,11 @@ class TestNewDeclarations < Minitest::Test
   end
 
   def test_iteration
-    decl = Cataract::NewDeclarations.new({
-                                           'color' => 'red',
-                                           'background' => 'blue !important',
-                                           'margin' => '10px'
-                                         })
+    decl = Cataract::Declarations.new({
+                                        'color' => 'red',
+                                        'background' => 'blue !important',
+                                        'margin' => '10px'
+                                      })
 
     properties = []
     values = []
@@ -64,15 +64,15 @@ class TestNewDeclarations < Minitest::Test
   end
 
   def test_merge
-    decl1 = Cataract::NewDeclarations.new({
-                                            'color' => 'red',
-                                            'margin' => '10px'
-                                          })
+    decl1 = Cataract::Declarations.new({
+                                         'color' => 'red',
+                                         'margin' => '10px'
+                                       })
 
-    decl2 = Cataract::NewDeclarations.new({
-                                            'color' => 'blue !important',
-                                            'padding' => '5px'
-                                          })
+    decl2 = Cataract::Declarations.new({
+                                         'color' => 'blue !important',
+                                         'padding' => '5px'
+                                       })
 
     # Test non-mutating merge
     merged = decl1.merge(decl2)
@@ -87,7 +87,7 @@ class TestNewDeclarations < Minitest::Test
   end
 
   def test_merge_with_hash
-    decl = Cataract::NewDeclarations.new({ 'color' => 'red' })
+    decl = Cataract::Declarations.new({ 'color' => 'red' })
 
     merged = decl.merge({ 'background' => 'blue', 'margin' => '10px' })
 
@@ -100,7 +100,7 @@ class TestNewDeclarations < Minitest::Test
   end
 
   def test_merge_bang
-    decl = Cataract::NewDeclarations.new({ 'color' => 'red' })
+    decl = Cataract::Declarations.new({ 'color' => 'red' })
 
     decl['background'] = 'blue'
 
@@ -110,16 +110,16 @@ class TestNewDeclarations < Minitest::Test
   end
 
   def test_equality
-    decl1 = Cataract::NewDeclarations.new({ 'color' => 'red', 'margin' => '10px' })
-    decl2 = Cataract::NewDeclarations.new({ 'color' => 'red', 'margin' => '10px' })
-    decl3 = Cataract::NewDeclarations.new({ 'color' => 'blue' })
+    decl1 = Cataract::Declarations.new({ 'color' => 'red', 'margin' => '10px' })
+    decl2 = Cataract::Declarations.new({ 'color' => 'red', 'margin' => '10px' })
+    decl3 = Cataract::Declarations.new({ 'color' => 'blue' })
 
     assert_equal decl1, decl2
     refute_equal decl1, decl3
   end
 
   def test_key?
-    decl = Cataract::NewDeclarations.new({ 'color' => 'red', 'margin' => '10px' })
+    decl = Cataract::Declarations.new({ 'color' => 'red', 'margin' => '10px' })
 
     assert decl.key?('color')
     assert decl.key?('margin')
@@ -128,7 +128,7 @@ class TestNewDeclarations < Minitest::Test
   end
 
   def test_delete
-    decl = Cataract::NewDeclarations.new({ 'color' => 'red', 'margin' => '10px', 'padding' => '5px' })
+    decl = Cataract::Declarations.new({ 'color' => 'red', 'margin' => '10px', 'padding' => '5px' })
 
     assert_equal 3, decl.size
 
@@ -143,11 +143,11 @@ class TestNewDeclarations < Minitest::Test
   end
 
   def test_to_h
-    decl = Cataract::NewDeclarations.new({
-                                           'color' => 'red',
-                                           'background' => 'blue !important',
-                                           'margin' => '10px'
-                                         })
+    decl = Cataract::Declarations.new({
+                                        'color' => 'red',
+                                        'background' => 'blue !important',
+                                        'margin' => '10px'
+                                      })
 
     hash = decl.to_h
 
@@ -161,7 +161,7 @@ class TestNewDeclarations < Minitest::Test
   # Edge case tests for set_property parsing
   def test_quoted_string_with_important_text
     # !important inside quotes should NOT be treated as important flag
-    decl = Cataract::NewDeclarations.new
+    decl = Cataract::Declarations.new
     decl['content'] = '"text !important"'
 
     assert_equal '"text !important"', decl['content']
@@ -170,7 +170,7 @@ class TestNewDeclarations < Minitest::Test
 
   def test_quoted_string_with_colons
     # Colons inside quotes should not confuse property/value parsing
-    decl = Cataract::NewDeclarations.new
+    decl = Cataract::Declarations.new
     decl['content'] = '": not a property"'
 
     assert_equal '": not a property"', decl['content']
@@ -178,7 +178,7 @@ class TestNewDeclarations < Minitest::Test
 
   def test_value_with_comments
     # Comments should be handled (either preserved or stripped)
-    decl = Cataract::NewDeclarations.new
+    decl = Cataract::Declarations.new
     decl['color'] = 'red /* blue */'
 
     # Parser should handle this - either keep comment or strip it
@@ -187,7 +187,7 @@ class TestNewDeclarations < Minitest::Test
 
   def test_value_with_comment_before_important
     # Comment before !important
-    decl = Cataract::NewDeclarations.new
+    decl = Cataract::Declarations.new
     decl['color'] = 'red /* comment */ !important'
 
     # Should still recognize !important
@@ -196,7 +196,7 @@ class TestNewDeclarations < Minitest::Test
 
   def test_trailing_semicolons
     # Multiple trailing semicolons should be stripped
-    decl = Cataract::NewDeclarations.new
+    decl = Cataract::Declarations.new
     decl['color'] = 'red;;;'
 
     assert_equal 'red', decl['color']
@@ -204,7 +204,7 @@ class TestNewDeclarations < Minitest::Test
 
   def test_important_with_extra_whitespace
     # Various whitespace around !important
-    decl = Cataract::NewDeclarations.new
+    decl = Cataract::Declarations.new
     decl['color'] = 'red  !important'
     decl['background'] = 'blue!important'
     decl['margin'] = 'green ! important'
@@ -216,7 +216,7 @@ class TestNewDeclarations < Minitest::Test
 
   def test_empty_value_with_important
     # css_parser silently ignores "property: !important" with no value
-    decl = Cataract::NewDeclarations.new
+    decl = Cataract::Declarations.new
     decl['color'] = '!important'
 
     # Should either be nil or raise - document current behavior
@@ -225,7 +225,7 @@ class TestNewDeclarations < Minitest::Test
 
   def test_url_with_special_chars
     # URLs can contain special characters
-    decl = Cataract::NewDeclarations.new
+    decl = Cataract::Declarations.new
     decl['background'] = 'url(data:image/png;base64,abc123)'
 
     assert_equal 'url(data:image/png;base64,abc123)', decl['background']
@@ -233,7 +233,7 @@ class TestNewDeclarations < Minitest::Test
 
   def test_escaped_quotes_in_string
     # Escaped quotes inside quoted strings
-    decl = Cataract::NewDeclarations.new
+    decl = Cataract::Declarations.new
     decl['content'] = '"value with \\" quote"'
 
     # Should preserve the escaped quote
@@ -242,7 +242,7 @@ class TestNewDeclarations < Minitest::Test
 
   def test_property_normalization
     # Property names should be normalized (lowercased)
-    decl = Cataract::NewDeclarations.new
+    decl = Cataract::Declarations.new
     decl['COLOR'] = 'red'
     decl['Background-Color'] = 'blue'
 

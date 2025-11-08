@@ -6,7 +6,7 @@ require_relative 'test_helper'
 # Based on css_parser gem's test_css_parser_media_types.rb
 class TestNewParserMediaTypes < Minitest::Test
   def setup
-    @sheet = Cataract::NewStylesheet.new
+    @sheet = Cataract::Stylesheet.new
   end
 
   def test_finding_by_media_type

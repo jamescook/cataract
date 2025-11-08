@@ -10,7 +10,7 @@ require_relative 'test_helper'
 # - nested @media: https://www.w3.org/TR/css-conditional-3/#at-media
 class TestNewAtRules < Minitest::Test
   def setup
-    @sheet = Cataract::NewStylesheet.new
+    @sheet = Cataract::Stylesheet.new
   end
 
   # @font-face tests

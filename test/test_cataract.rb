@@ -36,7 +36,7 @@ class TestCataract < Minitest::Test
       .test1 { margin: 0px; }
     CSS
 
-    merged = Cataract.merge(rules)
+    merged = rules.merge.rules.first.declarations
 
     assert_equal 'black', find_property(merged, 'color')
     assert_equal '0px', find_property(merged, 'margin')
@@ -48,7 +48,7 @@ class TestCataract < Minitest::Test
       .test { color: blue; }
     CSS
 
-    merged = Cataract.merge(rules)
+    merged = rules.merge.rules.first.declarations
 
     assert_equal 'blue', find_property(merged, 'color')
   end
@@ -59,7 +59,7 @@ class TestCataract < Minitest::Test
       #test { color: blue; }
     CSS
 
-    merged = Cataract.merge(rules)
+    merged = rules.merge.rules.first.declarations
 
     # ID selector (#test) has higher specificity, should win
     assert_equal 'blue', find_property(merged, 'color')
@@ -71,7 +71,7 @@ class TestCataract < Minitest::Test
       #test { color: blue; }
     CSS
 
-    merged = Cataract.merge(rules)
+    merged = rules.merge.rules.first.declarations
 
     # !important wins even with lower specificity
     assert_equal 'red !important', find_property(merged, 'color')
@@ -79,31 +79,22 @@ class TestCataract < Minitest::Test
 
   def test_merge_accepts_stylesheet
     sheet = Cataract.parse_css('.test { color: red; margin: 10px; }')
-    merged = Cataract.merge(sheet)
+    merged = sheet.merge.rules.first.declarations
 
     assert_equal 'red', find_property(merged, 'color')
     assert_equal '10px', find_property(merged, 'margin')
   end
 
-  def test_merge_accepts_array
-    sheet = Cataract.parse_css('.test { color: red; }')
-    rules_array = sheet.instance_variable_get(:@rule_groups).values.flat_map { |g| g[:rules] }
-    merged = Cataract.merge(rules_array)
-
-    assert_equal 'red', find_property(merged, 'color')
-  end
-
-  def test_merge_empty_returns_empty_array
-    assert_empty Cataract.merge([])
-    assert_empty Cataract.merge(nil)
-  end
+  # test_merge_accepts_array and test_merge_empty_returns_empty_array removed
+  # These tested the old module-level Cataract.merge API which has been replaced
+  # with the instance method Stylesheet#merge in the new parser
 
   def test_merge_creates_shorthand_properties
     rules = Cataract.parse_css(<<~CSS)
       .test { margin-top: 10px; margin-right: 10px; margin-bottom: 10px; margin-left: 10px; }
     CSS
 
-    merged = Cataract.merge(rules)
+    merged = rules.merge.rules.first.declarations
 
     # Should create margin shorthand
     assert_equal '10px', find_property(merged, 'margin')
@@ -123,7 +114,7 @@ class TestCataract < Minitest::Test
       .test { margin: 5px; margin-top: 10px; }
     CSS
 
-    merged = Cataract.merge(rules)
+    merged = rules.merge.rules.first.declarations
 
     assert_equal '10px 5px 5px', find_property(merged, 'margin')
   end

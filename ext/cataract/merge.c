@@ -4,7 +4,14 @@
 static ID id_value = 0;
 static ID id_specificity = 0;
 static ID id_important = 0;
-static ID id_struct_class = 0;
+static ID id_all = 0;
+
+// Cached ivar IDs for Stylesheet
+static ID id_ivar_rules = 0;
+static ID id_ivar_media_index = 0;
+
+// Cached "merged" selector string
+static VALUE str_merged_selector = Qnil;
 
 // Cached property name strings (frozen, never GC'd)
 // Initialized in init_merge_constants() at module load time
@@ -57,7 +64,6 @@ struct expand_context {
     VALUE properties_hash;
     int specificity;
     VALUE important;
-    VALUE declaration_struct;
 };
 
 // Callback for rb_hash_foreach - process expanded properties and apply cascade
@@ -76,7 +82,7 @@ static int merge_expanded_callback(VALUE exp_prop, VALUE exp_value, VALUE ctx_va
         rb_hash_aset(prop_data, ID2SYM(id_value), exp_value);
         rb_hash_aset(prop_data, ID2SYM(id_specificity), INT2NUM(ctx->specificity));
         rb_hash_aset(prop_data, ID2SYM(id_important), ctx->important);
-        rb_hash_aset(prop_data, ID2SYM(id_struct_class), ctx->declaration_struct);
+        // Note: declaration_struct not stored - use global cDeclaration instead
         rb_hash_aset(ctx->properties_hash, exp_prop, prop_data);
     } else {
         VALUE existing_spec = rb_hash_aref(existing, ID2SYM(id_specificity));
@@ -110,13 +116,12 @@ static int merge_expanded_callback(VALUE exp_prop, VALUE exp_value, VALUE ctx_va
 
 // Callback for rb_hash_foreach - builds result array from properties hash
 static int merge_build_result_callback(VALUE property, VALUE prop_data, VALUE result_ary) {
-    // Get Declaration struct class (cached in prop_data for efficiency)
-    VALUE declaration_struct = rb_hash_aref(prop_data, ID2SYM(id_struct_class));
+    // Extract value and important flag from prop_data
     VALUE value = rb_hash_aref(prop_data, ID2SYM(id_value));
     VALUE important = rb_hash_aref(prop_data, ID2SYM(id_important));
 
-    // Create Declaration struct
-    VALUE decl_struct = rb_struct_new(declaration_struct, property, value, important);
+    // Create Declaration struct (use global cDeclaration)
+    VALUE decl_struct = rb_struct_new(cDeclaration, property, value, important);
     rb_ary_push(result_ary, decl_struct);
 
     return ST_CONTINUE;
@@ -128,7 +133,11 @@ void init_merge_constants(void) {
     id_value = rb_intern("value");
     id_specificity = rb_intern("specificity");
     id_important = rb_intern("important");
-    id_struct_class = rb_intern("_struct_class");
+    id_all = rb_intern("all");
+
+    // Initialize ivar IDs for Stylesheet
+    id_ivar_rules = rb_intern("@rules");
+    id_ivar_media_index = rb_intern("@media_index");
 
     // Margin properties
     str_margin = rb_str_freeze(USASCII_STR("margin"));
@@ -235,6 +244,10 @@ void init_merge_constants(void) {
     rb_gc_register_mark_object(str_background_repeat);
     rb_gc_register_mark_object(str_background_attachment);
     rb_gc_register_mark_object(str_background_position);
+
+    // Cached "merged" selector string
+    str_merged_selector = rb_str_freeze(USASCII_STR("merged"));
+    rb_gc_register_mark_object(str_merged_selector);
 }
 
 // Helper macros to extract property data from properties_hash
@@ -306,7 +319,6 @@ void init_merge_constants(void) {
                     rb_hash_aset(_shorthand_data, ID2SYM(id_value), _shorthand_value); \
                     rb_hash_aset(_shorthand_data, ID2SYM(id_specificity), INT2NUM(_specificity)); \
                     rb_hash_aset(_shorthand_data, ID2SYM(id_important), _top_imp); \
-                    rb_hash_aset(_shorthand_data, ID2SYM(id_struct_class), vstruct); \
                     rb_hash_aset(hash, str_shorthand, _shorthand_data); \
                     \
                     rb_hash_delete(hash, str_top); \
@@ -322,27 +334,46 @@ void init_merge_constants(void) {
     } while(0)
 
 // Merge CSS rules according to cascade rules
-// Input: array of parsed rules from parse_css
-// Output: array of Declaration structs (merged and with shorthand recreated)
-VALUE cataract_merge(VALUE self, VALUE rules_array) {
+// Input: Stylesheet object or CSS string
+// Output: Stylesheet with merged declarations
+// TODO: Add instance-level merge! that mutates receiver
+VALUE cataract_merge_new(VALUE self, VALUE input) {
+    VALUE rules_array;
+
+    // Handle different input types
+    // Most calls pass Stylesheet (common case), String is rare
+    if (TYPE(input) == T_STRING) {
+        // Parse CSS string first
+        VALUE parsed = parse_css_new(self, input);
+        rules_array = rb_hash_aref(parsed, ID2SYM(rb_intern("rules")));
+    } else if (rb_obj_is_kind_of(input, cStylesheet)) {
+        // Extract @rules from Stylesheet (common case)
+        rules_array = rb_ivar_get(input, id_ivar_rules);
+    } else {
+        rb_raise(rb_eTypeError, "Expected Stylesheet or String, got %s",
+                rb_obj_classname(input));
+    }
+
     Check_Type(rules_array, T_ARRAY);
 
     // Initialize cached symbol IDs on first call (thread-safe since GVL is held)
+    // This only happens once, so unlikely
     if (id_value == 0) {
         id_value = rb_intern("value");
         id_specificity = rb_intern("specificity");
         id_important = rb_intern("important");
-        id_struct_class = rb_intern("_struct_class");
     }
 
     long num_rules = RARRAY_LEN(rules_array);
+    // Empty stylesheets are rare
     if (num_rules == 0) {
-        return rb_ary_new();
+        // Return empty stylesheet
+        VALUE empty_sheet = rb_class_new_instance(0, NULL, cStylesheet);
+        return empty_sheet;
     }
 
-    // Get Declaration struct class once
-    VALUE cataract_module = rb_const_get(rb_cObject, rb_intern("Cataract"));
-    VALUE declaration_struct = rb_const_get(cataract_module, rb_intern("Declaration"));
+    // Get Declaration struct class once (use global cDeclaration from cataract.h)
+    VALUE declaration_struct = cDeclaration;
 
     // Use Ruby hash for temporary storage: property => {value:, specificity:, important:, _struct_class:}
     VALUE properties_hash = rb_hash_new();
@@ -353,6 +384,7 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
         Check_Type(rule, T_STRUCT);
 
         // Extract selector, declarations, specificity from Rule struct
+        // Rule has: id, selector, declarations, specificity
         VALUE selector = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR));
         VALUE declarations = rb_struct_aref(rule, INT2FIX(RULE_DECLARATIONS));
         VALUE specificity_val = rb_struct_aref(rule, INT2FIX(RULE_SPECIFICITY));
@@ -378,11 +410,12 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
             VALUE value = rb_struct_aref(decl, INT2FIX(DECL_VALUE));
             VALUE important = rb_struct_aref(decl, INT2FIX(DECL_IMPORTANT));
 
-            // Properties are already lowercased during parsing (see css_parser.c)
+            // Properties are already lowercased during parsing (see cataract_new.c)
             // No need to lowercase again
             int is_important = RTEST(important);
 
             // Expand shorthand properties if needed
+            // Most properties are NOT shorthands, so hint compiler accordingly
             const char *prop_str = StringValueCStr(property);
             VALUE expanded = Qnil;
 
@@ -415,6 +448,7 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
             }
 
             // If property was expanded, iterate and apply cascade using rb_hash_foreach
+            // Expansion is rare (most properties are not shorthands)
             if (!NIL_P(expanded)) {
                 Check_Type(expanded, T_HASH);
 
@@ -422,7 +456,6 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
                 ctx.properties_hash = properties_hash;
                 ctx.specificity = specificity;
                 ctx.important = important;
-                ctx.declaration_struct = declaration_struct;
 
                 rb_hash_foreach(expanded, merge_expanded_callback, (VALUE)&ctx);
 
@@ -433,13 +466,15 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
             // Apply CSS cascade rules
             VALUE existing = rb_hash_aref(properties_hash, property);
 
+            // In merge scenarios, properties often collide (same property in multiple rules)
+            // so existing property is the common case
             if (NIL_P(existing)) {
                 // New property - add it
                 VALUE prop_data = rb_hash_new();
                 rb_hash_aset(prop_data, ID2SYM(id_value), value);
                 rb_hash_aset(prop_data, ID2SYM(id_specificity), INT2NUM(specificity));
                 rb_hash_aset(prop_data, ID2SYM(id_important), important);
-                rb_hash_aset(prop_data, ID2SYM(id_struct_class), declaration_struct);
+                // Note: declaration_struct not stored - use global cDeclaration instead
                 rb_hash_aset(properties_hash, property, prop_data);
             } else {
                 // Property exists - check cascade rules
@@ -451,6 +486,7 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
 
                 int should_replace = 0;
 
+                // Most declarations are NOT !important
                 if (is_important) {
                     // New is !important - wins if existing is NOT important OR equal/higher specificity
                     if (!existing_is_important || existing_spec_int <= specificity) {
@@ -463,6 +499,7 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
                     }
                 }
 
+                // Replacement is common in merge scenarios
                 if (should_replace) {
                     rb_hash_aset(existing, ID2SYM(id_value), value);
                     rb_hash_aset(existing, ID2SYM(id_specificity), INT2NUM(specificity));
@@ -540,7 +577,6 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
                 rb_hash_aset(border_data, ID2SYM(id_value), border_shorthand);
                 rb_hash_aset(border_data, ID2SYM(id_specificity), INT2NUM(border_spec));
                 rb_hash_aset(border_data, ID2SYM(id_important), border_important);
-                rb_hash_aset(border_data, ID2SYM(id_struct_class), declaration_struct);
                 rb_hash_aset(properties_hash, str_border, border_data);
 
                 if (!NIL_P(border_width)) rb_hash_delete(properties_hash, str_border_width);
@@ -592,7 +628,6 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
                 rb_hash_aset(font_data, ID2SYM(id_value), font_shorthand);
                 rb_hash_aset(font_data, ID2SYM(id_specificity), INT2NUM(font_spec));
                 rb_hash_aset(font_data, ID2SYM(id_important), font_important);
-                rb_hash_aset(font_data, ID2SYM(id_struct_class), declaration_struct);
                 rb_hash_aset(properties_hash, str_font, font_data);
 
                 // Remove longhand properties
@@ -645,7 +680,6 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
                 rb_hash_aset(list_style_data, ID2SYM(id_value), list_style_shorthand);
                 rb_hash_aset(list_style_data, ID2SYM(id_specificity), INT2NUM(list_style_spec));
                 rb_hash_aset(list_style_data, ID2SYM(id_important), list_style_important);
-                rb_hash_aset(list_style_data, ID2SYM(id_struct_class), declaration_struct);
                 rb_hash_aset(properties_hash, str_list_style, list_style_data);
 
                 // Remove longhand properties
@@ -705,7 +739,6 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
                 rb_hash_aset(background_data, ID2SYM(id_value), background_shorthand);
                 rb_hash_aset(background_data, ID2SYM(id_specificity), INT2NUM(background_spec));
                 rb_hash_aset(background_data, ID2SYM(id_important), background_important);
-                rb_hash_aset(background_data, ID2SYM(id_struct_class), declaration_struct);
                 rb_hash_aset(properties_hash, str_background, background_data);
 
                 // Remove longhand properties
@@ -723,54 +756,36 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
     #undef GET_PROP_VALUE
     #undef GET_PROP_DATA
 
-    // Build result array by iterating properties_hash using rb_hash_foreach
-    VALUE result = rb_ary_new();
-    rb_hash_foreach(properties_hash, merge_build_result_callback, result);
+    // Build merged declarations array
+    VALUE merged_declarations = rb_ary_new();
+    rb_hash_foreach(properties_hash, merge_build_result_callback, merged_declarations);
+
+    // Create a new Stylesheet with a single merged rule
+    // Use rb_class_new_instance instead of rb_funcall for better performance
+    VALUE merged_sheet = rb_class_new_instance(0, NULL, cStylesheet);
+
+    // Create merged rule
+    VALUE merged_rule = rb_struct_new(cRule,
+        INT2FIX(0),              // id
+        str_merged_selector,     // selector (cached frozen string)
+        merged_declarations,      // declarations
+        Qnil                      // specificity (not applicable)
+    );
+
+    // Set @rules array with single merged rule (use cached ID)
+    VALUE rules_ary = rb_ary_new_from_args(1, merged_rule);
+    rb_ivar_set(merged_sheet, id_ivar_rules, rules_ary);
+
+    // Set @media_index with :all pointing to rule 0 (use cached ID)
+    VALUE media_idx = rb_hash_new();
+    VALUE all_ids = rb_ary_new_from_args(1, INT2FIX(0));
+    rb_hash_aset(media_idx, ID2SYM(id_all), all_ids);
+    rb_ivar_set(merged_sheet, id_ivar_media_index, media_idx);
 
     RB_GC_GUARD(properties_hash);
-    RB_GC_GUARD(result);
+    RB_GC_GUARD(merged_declarations);
     RB_GC_GUARD(rules_array);
+    RB_GC_GUARD(merged_sheet);
 
-    return result;
-}
-
-// Context for flattening hash structure callback
-struct flatten_hash_ctx {
-    VALUE rules_array;
-};
-
-// Callback to flatten {query_string => {media_types: [...], rules: [...]}} to array
-static int flatten_hash_callback(VALUE query_string, VALUE group_hash, VALUE arg) {
-    struct flatten_hash_ctx *ctx = (struct flatten_hash_ctx *)arg;
-
-    VALUE rules = rb_hash_aref(group_hash, ID2SYM(rb_intern("rules")));
-    if (!NIL_P(rules) && TYPE(rules) == T_ARRAY) {
-        long rules_len = RARRAY_LEN(rules);
-        for (long i = 0; i < rules_len; i++) {
-            rb_ary_push(ctx->rules_array, RARRAY_AREF(rules, i));
-        }
-    }
-
-    return ST_CONTINUE;
-}
-
-// Wrapper function that accepts either array or hash structure
-// This is called from Ruby as Cataract.merge_rules
-VALUE cataract_merge_wrapper(VALUE self, VALUE input) {
-    // Check if input is a hash (new structure from Stylesheet)
-    if (TYPE(input) == T_HASH) {
-        // Flatten hash structure to array
-        VALUE rules_array = rb_ary_new();
-        struct flatten_hash_ctx ctx = { rules_array };
-        rb_hash_foreach(input, flatten_hash_callback, (VALUE)&ctx);
-
-        // Call the original merge function
-        VALUE result = cataract_merge(self, rules_array);
-
-        RB_GC_GUARD(rules_array);
-        return result;
-    }
-
-    // Input is already an array - call original function directly
-    return cataract_merge(self, input);
+    return merged_sheet;
 }

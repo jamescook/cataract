@@ -9,7 +9,7 @@ class TestNewRoundtrip < Minitest::Test
       .alert { margin: 5px; }
     CSS
 
-    sheet = Cataract::NewStylesheet.parse(css)
+    sheet = Cataract::Stylesheet.parse(css)
     dumped = sheet.to_s
 
     # Both selectors should be present
@@ -22,7 +22,7 @@ class TestNewRoundtrip < Minitest::Test
   def test_roundtrip_preserves_important
     css = '.test { color: red; margin: 10px !important; }'
 
-    sheet = Cataract::NewStylesheet.parse(css)
+    sheet = Cataract::Stylesheet.parse(css)
     dumped = sheet.to_s
 
     # Should have !important preserved
@@ -35,11 +35,11 @@ class TestNewRoundtrip < Minitest::Test
     original_css = File.read('test/fixtures/bootstrap.css')
 
     # Parse and dump
-    sheet = Cataract::NewStylesheet.parse(original_css)
+    sheet = Cataract::Stylesheet.parse(original_css)
     dumped = sheet.to_s
 
     # Parse the dumped CSS again
-    sheet2 = Cataract::NewStylesheet.parse(dumped)
+    sheet2 = Cataract::Stylesheet.parse(dumped)
     dumped2 = sheet2.to_s
 
     # The second dump should be identical to the first (idempotent)
@@ -53,7 +53,7 @@ class TestNewRoundtrip < Minitest::Test
 
   def test_roundtrip_empty_stylesheet
     css = ''
-    sheet = Cataract::NewStylesheet.parse(css)
+    sheet = Cataract::Stylesheet.parse(css)
     dumped = sheet.to_s
 
     assert_equal '', dumped.strip
@@ -61,7 +61,7 @@ class TestNewRoundtrip < Minitest::Test
 
   def test_roundtrip_single_rule
     css = '.test { color: red; }'
-    sheet = Cataract::NewStylesheet.parse(css)
+    sheet = Cataract::Stylesheet.parse(css)
     dumped = sheet.to_s
 
     assert_includes dumped, '.test'
@@ -79,7 +79,7 @@ class TestNewRoundtrip < Minitest::Test
       }
     CSS
 
-    sheet = Cataract::NewStylesheet.parse(css)
+    sheet = Cataract::Stylesheet.parse(css)
     dumped = sheet.to_s
 
     # Verify UTF-8 content is preserved
@@ -106,7 +106,7 @@ class TestNewRoundtrip < Minitest::Test
       }
     CSS
 
-    sheet = Cataract::NewStylesheet.parse(css)
+    sheet = Cataract::Stylesheet.parse(css)
     dumped = sheet.to_s
 
     # Verify UTF-8 selectors are preserved
@@ -129,7 +129,7 @@ class TestNewRoundtrip < Minitest::Test
       }
     CSS
 
-    sheet = Cataract::NewStylesheet.parse(css)
+    sheet = Cataract::Stylesheet.parse(css)
     dumped = sheet.to_s
 
     # Verify both ASCII and UTF-8 preserved
@@ -139,7 +139,7 @@ class TestNewRoundtrip < Minitest::Test
     assert_includes dumped, '⟶'
 
     # Parse-dump-parse cycle should be idempotent
-    sheet2 = Cataract::NewStylesheet.parse(dumped)
+    sheet2 = Cataract::Stylesheet.parse(dumped)
     dumped2 = sheet2.to_s
 
     assert_equal dumped, dumped2, 'UTF-8 CSS should be idempotent through parse-dump cycle'
@@ -156,7 +156,7 @@ class TestNewRoundtrip < Minitest::Test
       }
     CSS
 
-    sheet = Cataract::NewStylesheet.parse(css)
+    sheet = Cataract::Stylesheet.parse(css)
     dumped = sheet.to_s
 
     # Should preserve media queries
@@ -165,7 +165,7 @@ class TestNewRoundtrip < Minitest::Test
     assert_includes dumped, '.test'
 
     # Parse again to verify structure
-    sheet2 = Cataract::NewStylesheet.parse(dumped)
+    sheet2 = Cataract::Stylesheet.parse(dumped)
 
     assert_equal 3, sheet2.size, 'Should have 3 rules (1 base + 2 media)'
     assert_equal 2, sheet2.media_queries.size, 'Should have 2 media queries'
@@ -174,11 +174,11 @@ class TestNewRoundtrip < Minitest::Test
   def test_roundtrip_preserves_declaration_order
     css = '.test { margin: 0; padding: 20px; border: 1px solid; }'
 
-    sheet = Cataract::NewStylesheet.parse(css)
+    sheet = Cataract::Stylesheet.parse(css)
     dumped = sheet.to_s
 
     # Parse again
-    sheet2 = Cataract::NewStylesheet.parse(dumped)
+    sheet2 = Cataract::Stylesheet.parse(dumped)
 
     # Check declarations are in some order (order preserved within each rule)
     sheet2.each_selector do |rule|

@@ -6,7 +6,7 @@ require_relative 'test_helper'
 # These use the generic at-rule pattern and should be handled automatically
 class TestNewModernAtRules < Minitest::Test
   def setup
-    @sheet = Cataract::NewStylesheet.new
+    @sheet = Cataract::Stylesheet.new
   end
 
   # @layer tests (Cascade Layers)

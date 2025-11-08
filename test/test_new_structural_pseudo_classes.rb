@@ -6,7 +6,7 @@ require_relative 'test_helper'
 # Based on W3C Selectors Level 3: https://www.w3.org/TR/selectors-3/#structural-pseudos
 class TestNewStructuralPseudoClasses < Minitest::Test
   def setup
-    @sheet = Cataract::NewStylesheet.new
+    @sheet = Cataract::Stylesheet.new
   end
 
   # :nth-child() tests

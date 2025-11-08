@@ -2,8 +2,7 @@
 
 module Cataract
   # Container for CSS property declarations with merge and cascade support
-  # Works with NewDeclaration structs from the new parser
-  class NewDeclarations
+  class Declarations
     include Enumerable
 
     def initialize(properties = {})
@@ -59,8 +58,8 @@ module Cataract
       # Properties from C parser are already normalized, so direct comparison
       existing_index = @values.find_index { |v| v.property == prop }
 
-      # Create a new NewDeclaration struct
-      new_val = Cataract::NewDeclaration.new(prop, clean_value, is_important)
+      # Create a new Declaration struct
+      new_val = Cataract::Declaration.new(prop, clean_value, is_important)
 
       if existing_index
         @values[existing_index] = new_val
@@ -127,12 +126,12 @@ module Cataract
 
     def merge!(other)
       case other
-      when NewDeclarations
+      when Declarations
         other.each { |prop, value, important| self[prop] = important ? "#{value} !important" : value }
       when Hash
         other.each { |prop, value| self[prop] = value }
       else
-        raise ArgumentError, 'Can only merge NewDeclarations or Hash objects'
+        raise ArgumentError, 'Can only merge Declarations or Hash objects'
       end
       self
     end
@@ -149,8 +148,8 @@ module Cataract
 
     def ==(other)
       case other
-      when NewDeclarations
-        # Compare arrays of NewDeclaration structs
+      when Declarations
+        # Compare arrays of Value structs
         to_a == other.to_a
       when String
         # Allow string comparison for convenience
@@ -173,9 +172,9 @@ module Cataract
       @values.find { |v| v.property == normalized_property }
     end
 
-    # Parse "color: red; background: blue" string into array of NewDeclaration structs
+    # Parse "color: red; background: blue" string into array of Value structs
     def parse_declaration_string(str)
-      Cataract.new_parse_declarations(str)
+      Cataract.parse_declarations(str)
     end
   end
 end

@@ -10,7 +10,7 @@ class TestNewRealWorld < Minitest::Test
 
   def test_bootstrap_parses_successfully
     # Real-world CSS from Bootstrap 5
-    sheet = Cataract::NewStylesheet.parse(@bootstrap_css)
+    sheet = Cataract::Stylesheet.parse(@bootstrap_css)
 
     # Bootstrap 5.0.2 should have exactly 2807 rules (matches css_parser)
     # Note: Rules are split by selector, so "h1, h2 { }" becomes 2 rules
@@ -19,7 +19,7 @@ class TestNewRealWorld < Minitest::Test
 
   def test_bootstrap_standalone_pseudo_elements
     # Bootstrap uses standalone pseudo-elements like ::-moz-focus-inner
-    sheet = Cataract::NewStylesheet.parse(@bootstrap_css)
+    sheet = Cataract::Stylesheet.parse(@bootstrap_css)
 
     # Find the ::-moz-focus-inner rule
     found = false
@@ -37,7 +37,7 @@ class TestNewRealWorld < Minitest::Test
 
   def test_bootstrap_pseudo_class_after_pseudo_element
     # Bootstrap uses selectors like .form-range::-webkit-slider-thumb:active
-    sheet = Cataract::NewStylesheet.parse(@bootstrap_css)
+    sheet = Cataract::Stylesheet.parse(@bootstrap_css)
 
     # Find webkit slider thumb with :active pseudo-class
     found = false
@@ -57,7 +57,7 @@ class TestNewRealWorld < Minitest::Test
 
   def test_bootstrap_vendor_prefixed_pseudo_elements
     # Bootstrap uses vendor-prefixed pseudo-elements
-    sheet = Cataract::NewStylesheet.parse(@bootstrap_css)
+    sheet = Cataract::Stylesheet.parse(@bootstrap_css)
 
     vendor_pseudo_elements = []
     sheet.each_selector do |rule|
@@ -75,7 +75,7 @@ class TestNewRealWorld < Minitest::Test
 
   def test_bootstrap_media_queries
     # Bootstrap uses extensive media queries
-    sheet = Cataract::NewStylesheet.parse(@bootstrap_css)
+    sheet = Cataract::Stylesheet.parse(@bootstrap_css)
 
     # Count rules with media types (any media that's not :all)
     media_rules = sheet.media_index.except(:all).values.flatten.uniq.size
@@ -85,7 +85,7 @@ class TestNewRealWorld < Minitest::Test
 
   def test_bootstrap_complex_attribute_selectors
     # Bootstrap uses attribute selectors like [type=button]
-    sheet = Cataract::NewStylesheet.parse(@bootstrap_css)
+    sheet = Cataract::Stylesheet.parse(@bootstrap_css)
 
     attribute_selectors = []
     sheet.each_selector do |rule|
@@ -97,7 +97,7 @@ class TestNewRealWorld < Minitest::Test
 
   def test_bootstrap_custom_properties
     # Bootstrap 5 uses CSS custom properties (--bs-*)
-    sheet = Cataract::NewStylesheet.parse(@bootstrap_css)
+    sheet = Cataract::Stylesheet.parse(@bootstrap_css)
 
     custom_props_found = false
     sheet.each_selector do |rule|
@@ -113,7 +113,7 @@ class TestNewRealWorld < Minitest::Test
 
   def test_bootstrap_calc_functions
     # Bootstrap uses calc() for responsive sizing
-    sheet = Cataract::NewStylesheet.parse(@bootstrap_css)
+    sheet = Cataract::Stylesheet.parse(@bootstrap_css)
 
     calc_found = false
     sheet.each_selector do |rule|

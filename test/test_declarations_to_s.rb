@@ -63,7 +63,7 @@ class TestDeclarationsToS < Minitest::Test
       .test { padding: 5px; }
     CSS
 
-    merged = Cataract.merge(rules)
+    merged = rules.merge.rules.first.declarations
     result = Cataract::Declarations.new(merged).to_s
 
     # Should contain all three properties
@@ -77,7 +77,7 @@ class TestDeclarationsToS < Minitest::Test
       .test { color: black !important; margin: 10px; }
     CSS
 
-    merged = Cataract.merge(rules)
+    merged = rules.merge.rules.first.declarations
     result = Cataract::Declarations.new(merged).to_s
 
     assert_includes result, 'color: black !important'

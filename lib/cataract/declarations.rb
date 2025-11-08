@@ -2,6 +2,7 @@
 
 module Cataract
   # Container for CSS property declarations with merge and cascade support
+  # Works with Declaration structs from the new parser
   class Declarations
     include Enumerable
 
@@ -149,7 +150,7 @@ module Cataract
     def ==(other)
       case other
       when Declarations
-        # Compare arrays of Value structs
+        # Compare arrays of Declaration structs
         to_a == other.to_a
       when String
         # Allow string comparison for convenience
@@ -172,7 +173,7 @@ module Cataract
       @values.find { |v| v.property == normalized_property }
     end
 
-    # Parse "color: red; background: blue" string into array of Value structs
+    # Parse "color: red; background: blue" string into array of Declaration structs
     def parse_declaration_string(str)
       Cataract.parse_declarations(str)
     end

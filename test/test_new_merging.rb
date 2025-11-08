@@ -6,7 +6,7 @@ require_relative 'test_helper'
 class TestNewMerging < Minitest::Test
   # Test simple merge of two rules with different properties
   def test_simple_merge
-    sheet = Cataract::NewStylesheet.parse(<<~CSS)
+    sheet = Cataract::Stylesheet.parse(<<~CSS)
       .test1 { color: black; }
       .test1 { margin: 0px; }
     CSS
@@ -19,7 +19,7 @@ class TestNewMerging < Minitest::Test
 
   # Test that later rule with same specificity overwrites earlier
   def test_merging_same_property
-    sheet = Cataract::NewStylesheet.parse(<<~CSS)
+    sheet = Cataract::Stylesheet.parse(<<~CSS)
       .test { color: black; }
       .test { color: red; }
     CSS
@@ -31,7 +31,7 @@ class TestNewMerging < Minitest::Test
 
   # Test that higher specificity wins
   def test_specificity_wins
-    sheet = Cataract::NewStylesheet.parse(<<~CSS)
+    sheet = Cataract::Stylesheet.parse(<<~CSS)
       .test { color: black; }
       #test { color: red; }
     CSS
@@ -43,7 +43,7 @@ class TestNewMerging < Minitest::Test
 
   # Test that lower specificity doesn't override higher
   def test_lower_specificity_loses
-    sheet = Cataract::NewStylesheet.parse(<<~CSS)
+    sheet = Cataract::Stylesheet.parse(<<~CSS)
       #test { color: red; }
       .test { color: black; }
     CSS
@@ -55,7 +55,7 @@ class TestNewMerging < Minitest::Test
 
   # Test !important wins over non-important regardless of specificity
   def test_important_wins
-    sheet = Cataract::NewStylesheet.parse(<<~CSS)
+    sheet = Cataract::Stylesheet.parse(<<~CSS)
       .test { color: black !important; }
       #test { color: red; }
     CSS
@@ -67,7 +67,7 @@ class TestNewMerging < Minitest::Test
 
   # Test !important doesn't override higher specificity !important
   def test_important_with_specificity
-    sheet = Cataract::NewStylesheet.parse(<<~CSS)
+    sheet = Cataract::Stylesheet.parse(<<~CSS)
       #test { color: red !important; }
       .test { color: black !important; }
     CSS
@@ -79,7 +79,7 @@ class TestNewMerging < Minitest::Test
 
   # Test merging with multiple selectors (uses max specificity)
   def test_multiple_selectors_max_specificity
-    sheet = Cataract::NewStylesheet.parse(<<~CSS)
+    sheet = Cataract::Stylesheet.parse(<<~CSS)
       p, a[rel="external"] { color: black; }
       a { color: blue; }
     CSS
@@ -93,7 +93,7 @@ class TestNewMerging < Minitest::Test
 
   # Test property names are case-insensitive
   def test_case_insensitive_properties
-    sheet = Cataract::NewStylesheet.parse(<<~CSS)
+    sheet = Cataract::Stylesheet.parse(<<~CSS)
       .test { CoLor: red; }
       .test { color: blue; }
     CSS
@@ -105,7 +105,7 @@ class TestNewMerging < Minitest::Test
 
   # Test merging backgrounds (requires shorthand expansion)
   def test_merging_backgrounds
-    sheet = Cataract::NewStylesheet.parse(<<~CSS)
+    sheet = Cataract::Stylesheet.parse(<<~CSS)
       .test { background-color: black; }
       .test { background-image: none; }
     CSS
@@ -118,7 +118,7 @@ class TestNewMerging < Minitest::Test
 
   # Test merging dimensions (margin expansion then merge)
   def test_merging_dimensions
-    sheet = Cataract::NewStylesheet.parse(<<~CSS)
+    sheet = Cataract::Stylesheet.parse(<<~CSS)
       .test { margin: 3em; }
       .test { margin-left: 1em; }
     CSS
@@ -130,7 +130,7 @@ class TestNewMerging < Minitest::Test
 
   # Test merging fonts
   def test_merging_fonts
-    sheet = Cataract::NewStylesheet.parse(<<~CSS)
+    sheet = Cataract::Stylesheet.parse(<<~CSS)
       .test { font: 11px Arial; }
       .test { font-weight: bold; }
     CSS
@@ -142,7 +142,7 @@ class TestNewMerging < Minitest::Test
 
   # Test multiple !important with same specificity (last wins)
   def test_multiple_important_same_specificity
-    sheet = Cataract::NewStylesheet.parse(<<~CSS)
+    sheet = Cataract::Stylesheet.parse(<<~CSS)
       .test { color: black !important; }
       .test { color: red !important; }
     CSS
@@ -154,7 +154,7 @@ class TestNewMerging < Minitest::Test
 
   # Test !important in same block (last wins)
   def test_important_in_same_block
-    sheet = Cataract::NewStylesheet.parse(<<~CSS)
+    sheet = Cataract::Stylesheet.parse(<<~CSS)
       .test { color: black !important; color: red !important; }
     CSS
 
@@ -165,7 +165,7 @@ class TestNewMerging < Minitest::Test
 
   # Test !important beats non-important in same block
   def test_important_beats_non_important_same_block
-    sheet = Cataract::NewStylesheet.parse(<<~CSS)
+    sheet = Cataract::Stylesheet.parse(<<~CSS)
       .test { color: red; color: black !important; }
     CSS
 
@@ -176,7 +176,7 @@ class TestNewMerging < Minitest::Test
 
   # Test merging shorthand !important
   def test_shorthand_important
-    sheet = Cataract::NewStylesheet.parse(<<~CSS)
+    sheet = Cataract::Stylesheet.parse(<<~CSS)
       .test { background: black none !important; }
       .test { background-color: red; }
     CSS
@@ -192,7 +192,7 @@ class TestNewMerging < Minitest::Test
 
   # Test empty merge (single rule)
   def test_single_rule_merge
-    sheet = Cataract::NewStylesheet.parse(<<~CSS)
+    sheet = Cataract::Stylesheet.parse(<<~CSS)
       .test { color: red; margin: 10px; }
     CSS
 
@@ -204,7 +204,7 @@ class TestNewMerging < Minitest::Test
 
   # Test merging with no rules
   def test_empty_merge
-    sheet = Cataract::NewStylesheet.new
+    sheet = Cataract::Stylesheet.new
     merged = sheet.merge
 
     assert_empty merged.rules
@@ -214,7 +214,7 @@ class TestNewMerging < Minitest::Test
   # Properties should already be lowercase from parser, but test edge cases
   def test_uppercase_properties_are_lowercased
     # Parse CSS with uppercase properties (parser should lowercase them)
-    sheet = Cataract::NewStylesheet.parse(<<~CSS)
+    sheet = Cataract::Stylesheet.parse(<<~CSS)
       .test { COLOR: red; MARGIN-TOP: 10px; }
       .test { color: blue; margin-top: 20px; }
     CSS
@@ -234,7 +234,7 @@ class TestNewMerging < Minitest::Test
 
   # Test that shorthand expansion produces lowercase properties
   def test_shorthand_expansion_lowercase
-    sheet = Cataract::NewStylesheet.parse(<<~CSS)
+    sheet = Cataract::Stylesheet.parse(<<~CSS)
       .test { margin: 10px 20px; }
     CSS
 

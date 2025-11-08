@@ -3,16 +3,16 @@
 # Test helpers for Stylesheet tests
 # Provides high-level assertions that work with parsed CSS structures
 module StylesheetTestHelper
-  # Assert that an object (NewStylesheet or NewRule) matches a media query
+  # Assert that an object (Stylesheet or Rule) matches a media query
   #
   # @param media [Symbol] Media query symbol (:screen, :print, :all, etc)
-  # @param object [NewStylesheet, NewRule] Object to check
+  # @param object [Stylesheet, Rule] Object to check
   #
-  # For NewStylesheet: checks if any rules exist for that media query
-  # For NewRule: checks if the rule is indexed under that media query
+  # For Stylesheet: checks if any rules exist for that media query
+  # For Rule: checks if the rule is indexed under that media query
   def assert_matches_media(media, object)
     case object
-    when Cataract::NewStylesheet
+    when Cataract::Stylesheet
       if media == :all
         refute_empty object.rules, 'Expected stylesheet to have rules for :all media'
       else
@@ -21,20 +21,20 @@ module StylesheetTestHelper
         refute_nil rule_ids, "Expected stylesheet to have media index entry for #{media.inspect}"
         refute_empty rule_ids, "Expected stylesheet to have rules for media #{media.inspect}"
       end
-    when Cataract::NewRule
+    when Cataract::Rule
       # Need the stylesheet to check media_index - this is a bit awkward
       # Maybe this form isn't as useful for individual rules?
-      flunk 'assert_matches_media for NewRule requires stylesheet context - use assert_rule_in_media instead'
+      flunk 'assert_matches_media for Rule requires stylesheet context - use assert_rule_in_media instead'
     else
-      flunk "assert_matches_media expects NewStylesheet or NewRule, got #{object.class}"
+      flunk "assert_matches_media expects Stylesheet or Rule, got #{object.class}"
     end
   end
 
   # Assert that a rule is in a specific media query
   #
-  # @param rule [NewRule] The rule to check
+  # @param rule [Rule] The rule to check
   # @param media [Symbol] Media query symbol
-  # @param stylesheet [NewStylesheet] The stylesheet containing the rule
+  # @param stylesheet [Stylesheet] The stylesheet containing the rule
   def assert_rule_in_media(rule, media, stylesheet)
     rule_ids = stylesheet.media_index[media]
 
@@ -46,21 +46,21 @@ module StylesheetTestHelper
   # Assert that an object has a CSS property with expected value
   #
   # @param expected [Hash] Hash of property => value (e.g., {color: "red"})
-  # @param object [NewRule, AtRule, Array<NewDeclaration>] Object to check
+  # @param object [Rule, AtRule, Array<NewDeclaration>] Object to check
   # @param message [String] Optional failure message
   def assert_has_property(expected, object, message = nil)
     property, value = expected.first
     property = property.to_s
 
     declarations = case object
-                   when Cataract::NewRule
+                   when Cataract::Rule
                      object.declarations
                    when Cataract::AtRule
                      object.content # For @font-face, content is Array of NewDeclaration
                    when Array
                      object
                    else
-                     flunk "assert_has_property expects NewRule, AtRule, or Array of declarations, got #{object.class}"
+                     flunk "assert_has_property expects Rule, AtRule, or Array of declarations, got #{object.class}"
                    end
 
     decl = declarations.find { |d| d.property == property }
@@ -77,7 +77,7 @@ module StylesheetTestHelper
   # Assert that a stylesheet has rules matching a selector
   #
   # @param selector [String] CSS selector to find
-  # @param stylesheet [NewStylesheet] Stylesheet to search
+  # @param stylesheet [Stylesheet] Stylesheet to search
   # @param media [Symbol] Optional media query filter (default: :all)
   # @param count [Integer, nil] Expected number of matches (nil = any)
   # @param css_preview [String, nil] Optional CSS preview for error messages
@@ -96,7 +96,7 @@ module StylesheetTestHelper
   # Assert that no rules match a selector
   #
   # @param selector [String] CSS selector that should not exist
-  # @param stylesheet [NewStylesheet] Stylesheet to search
+  # @param stylesheet [Stylesheet] Stylesheet to search
   # @param media [Symbol] Optional media query filter (default: :all)
   def assert_no_selector_matches(selector, stylesheet, media: :all)
     rules = stylesheet.find_by_selector(selector, media: media)
@@ -108,7 +108,7 @@ module StylesheetTestHelper
   # Assert that each_selector yields expected selectors for a given media query
   #
   # @param expected_selectors [Array<String>] Expected selectors in order
-  # @param stylesheet [NewStylesheet] The stylesheet
+  # @param stylesheet [Stylesheet] The stylesheet
   # @param media [Symbol] Media query filter (default: :all)
   def assert_selectors_match(expected_selectors, stylesheet, media: :all)
     actual_selectors = []
@@ -124,7 +124,7 @@ module StylesheetTestHelper
   #
   # @param css [String] CSS to test
   def assert_round_trip(css)
-    sheet = Cataract::NewStylesheet.parse(css)
+    sheet = Cataract::Stylesheet.parse(css)
     expected = css.strip
     actual = sheet.to_s.strip
 
@@ -135,7 +135,7 @@ module StylesheetTestHelper
   # Assert that rules have expected declarations
   #
   # @param expected [String, Array<NewDeclaration>] Expected declarations
-  # @param rules [Array<NewRule>] Rules from find_by_selector or similar
+  # @param rules [Array<Rule>] Rules from find_by_selector or similar
   #
   # If expected is a String, it should be semicolon-separated declarations like "color: red; margin: 0"
   # Declaration order doesn't matter - this checks that all expected declarations exist.
@@ -146,7 +146,7 @@ module StylesheetTestHelper
     case expected
     when String
       # Parse expected string into individual declarations
-      expected_parsed = Cataract::NewStylesheet.parse(".dummy { #{expected} }")
+      expected_parsed = Cataract::Stylesheet.parse(".dummy { #{expected} }")
       expected_decls = expected_parsed.rules.first.declarations
 
       # Check count matches
@@ -177,7 +177,7 @@ module StylesheetTestHelper
   # Assert that a selector or rule has expected specificity
   #
   # @param expected [Integer] Expected specificity value
-  # @param selector_or_rule [String, NewRule] Either a selector string or a Rule object
+  # @param selector_or_rule [String, Rule] Either a selector string or a Rule object
   #
   # @example With rule object
   #   rule = @sheet.find_by_selector('div > p').first
@@ -187,16 +187,16 @@ module StylesheetTestHelper
   #   assert_specificity(2, 'div > p')
   def assert_specificity(expected, selector_or_rule)
     rule = case selector_or_rule
-           when Cataract::NewRule
+           when Cataract::Rule
              selector_or_rule
            when String
              # Parse selector as CSS to get a rule with specificity
-             temp_sheet = Cataract::NewStylesheet.parse("#{selector_or_rule} { color: red; }")
+             temp_sheet = Cataract::Stylesheet.parse("#{selector_or_rule} { color: red; }")
 
              assert_equal 1, temp_sheet.rules.length, "Failed to parse selector #{selector_or_rule.inspect}"
              temp_sheet.rules.first
            else
-             flunk "assert_specificity expects NewRule or String selector, got #{selector_or_rule.class}"
+             flunk "assert_specificity expects Rule or String selector, got #{selector_or_rule.class}"
            end
 
     assert_equal expected, rule.specificity,
@@ -206,7 +206,7 @@ module StylesheetTestHelper
   # Assert that stylesheet has expected number of selectors
   #
   # @param expected_count [Integer] Expected number of selectors
-  # @param stylesheet [NewStylesheet] Stylesheet to check
+  # @param stylesheet [Stylesheet] Stylesheet to check
   # @param media [Symbol] Optional media query filter (default: :all)
   #
   # @example Check total selector count
@@ -224,8 +224,8 @@ module StylesheetTestHelper
   # Assert that a rule has expected media types
   #
   # @param expected [Array<Symbol>] Expected media types (e.g., [:screen, :print] or [:all])
-  # @param rule [NewRule] Rule to check
-  # @param stylesheet [NewStylesheet] Stylesheet containing the rule
+  # @param rule [Rule] Rule to check
+  # @param stylesheet [Stylesheet] Stylesheet containing the rule
   #
   # @example
   #   rule = @sheet.find_by_selector('.header').first
