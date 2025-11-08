@@ -2,12 +2,15 @@
 
 require_relative 'cataract/version'
 require_relative 'cataract/cataract' # Load C extension first (defines Rule struct)
-require_relative 'cataract/cataract_new' # Load new parallel C extension (defines NewRule struct)
+require_relative 'cataract/cataract_new' # Load new parallel C extension (defines NewRule, AtRule structs)
 require_relative 'cataract/rule' # Add Ruby methods to Rule
+require_relative 'cataract/new_rule' # Add Ruby methods to NewRule
+require_relative 'cataract/at_rule' # Add Ruby methods to AtRule
 require_relative 'cataract/stylesheet'
 require_relative 'cataract/new_stylesheet' # New parallel implementation
 require_relative 'cataract/rule_set'
 require_relative 'cataract/declarations'
+require_relative 'cataract/new_declarations' # New parallel implementation
 require_relative 'cataract/import_resolver'
 
 # Cataract is a high-performance CSS parser written in C with a Ruby interface.

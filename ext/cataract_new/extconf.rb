@@ -5,8 +5,8 @@ require 'mkmf'
 # New parallel implementation - stubbed version
 # Once stable, this will replace ext/cataract/
 
-# Compile both main file and parser
-$objs = ['cataract_new.o', 'css_parser_new.o']
+# Compile main file, parser, merge, and supporting files
+$objs = ['cataract_new.o', 'css_parser_new.o', 'merge_new.o', 'shorthand_expander_new.o', 'specificity_new.o']
 
 # Suppress warnings
 $CFLAGS << ' -Wno-unused-const-variable' if RUBY_PLATFORM.match?(/darwin|linux/)

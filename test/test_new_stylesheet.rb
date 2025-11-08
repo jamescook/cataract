@@ -1,6 +1,4 @@
-require 'minitest/autorun'
-require_relative '../lib/cataract'
-require_relative '../lib/cataract/new_stylesheet'
+require_relative 'test_helper'
 
 class TestNewStylesheet < Minitest::Test
   # ============================================================================
@@ -29,16 +27,16 @@ class TestNewStylesheet < Minitest::Test
   def test_new_rule_struct_fields
     # Create a NewRule manually to test struct definition
     rule = Cataract::NewRule.new(
+      0,                         # id
       'body',                    # selector
       [],                        # declarations
-      1,                         # specificity
-      nil                        # media_query_sym
+      1                          # specificity
     )
 
+    assert_equal 0, rule.id
     assert_equal 'body', rule.selector
     assert_empty rule.declarations
     assert_equal 1, rule.specificity
-    assert_nil rule.media_query_sym
   end
 
   def test_new_declaration_struct_fields
@@ -126,10 +124,8 @@ class TestNewStylesheet < Minitest::Test
     css = '@media screen { body { color: red; } }'
     sheet = Cataract::NewStylesheet.parse(css)
 
-    rule = sheet.rules.first
-
-    assert_kind_of Symbol, rule.media_query_sym
-    assert_equal :screen, rule.media_query_sym
+    assert_matches_media :screen, sheet
+    assert_has_selector 'body', sheet, media: :screen
   end
 
   def test_media_query_deduplication
@@ -140,9 +136,9 @@ class TestNewStylesheet < Minitest::Test
 
     sheet = Cataract::NewStylesheet.parse(css)
 
-    # Both rules should have same symbol (interned)
-    assert_same sheet.rules[0].media_query_sym,
-                sheet.rules[1].media_query_sym
+    # Both rules should be in same media_index entry
+    assert_includes sheet.media_index[:screen], sheet.rules[0].id
+    assert_includes sheet.media_index[:screen], sheet.rules[1].id
   end
 
   def test_for_media_filter
@@ -155,10 +151,13 @@ class TestNewStylesheet < Minitest::Test
 
     sheet = Cataract::NewStylesheet.parse(css)
 
+    assert_matches_media :screen, sheet
+    assert_matches_media :print, sheet
+
     screen_rules = sheet.for_media(:screen)
 
     assert_equal 2, screen_rules.length
-    assert(screen_rules.all? { |r| r.media_query_sym == :screen })
+    assert_equal %w[h1 p], screen_rules.map(&:selector)
   end
 
   def test_base_rules_filter
@@ -173,7 +172,7 @@ class TestNewStylesheet < Minitest::Test
     base_rules = sheet.base_rules
 
     assert_equal 2, base_rules.length
-    assert(base_rules.all? { |r| r.media_query_sym.nil? })
+    assert_equal %w[body div], base_rules.map(&:selector)
   end
 
   def test_media_queries_list
@@ -289,7 +288,6 @@ body { color: red; }'
     rule = sheet.rules[0]
 
     assert_equal 'body', rule.selector
-    assert_nil rule.media_query_sym
     assert_equal 2, rule.declarations.length
 
     # Check declarations
@@ -317,7 +315,6 @@ body { color: red; }'
     rule = sheet.rules[0]
 
     assert_equal 'div', rule.selector
-    assert_nil rule.media_query_sym
     assert_equal 1, rule.declarations.length
 
     # Check declaration with !important
@@ -356,16 +353,12 @@ body { color: red; }'
     assert_equal 4, sheet.rules.length
 
     assert_equal 'body', sheet.rules[0].selector
-    assert_nil sheet.rules[0].media_query_sym
 
     assert_equal 'h1', sheet.rules[1].selector
-    assert_equal :screen, sheet.rules[1].media_query_sym
 
     assert_equal 'h2', sheet.rules[2].selector
-    assert_equal :screen, sheet.rules[2].media_query_sym
 
     assert_equal 'div', sheet.rules[3].selector
-    assert_nil sheet.rules[3].media_query_sym
 
     # E2E: Should group consecutive @media rules
     assert_equal css_expected, sheet.to_s.chomp
@@ -384,13 +377,10 @@ body { color: red; }'
     assert_equal 3, sheet.rules.length
 
     assert_equal 'h1', sheet.rules[0].selector
-    assert_equal :screen, sheet.rules[0].media_query_sym
 
     assert_equal 'body', sheet.rules[1].selector
-    assert_nil sheet.rules[1].media_query_sym
 
     assert_equal 'h2', sheet.rules[2].selector
-    assert_equal :screen, sheet.rules[2].media_query_sym
 
     # Verify serialization creates TWO separate @media blocks
     # (because body rule interrupts the screen rules)
@@ -422,16 +412,12 @@ body { color: red; }'
     assert_equal 4, sheet.rules.length
 
     assert_equal 'body', sheet.rules[0].selector
-    assert_nil sheet.rules[0].media_query_sym
 
     assert_equal 'h1', sheet.rules[1].selector
-    assert_equal :screen, sheet.rules[1].media_query_sym
 
     assert_equal 'h2', sheet.rules[2].selector
-    assert_equal :print, sheet.rules[2].media_query_sym
 
     assert_equal 'p', sheet.rules[3].selector
-    assert_equal :screen, sheet.rules[3].media_query_sym
 
     # Verify serialization preserves order
     output = sheet.to_s
@@ -439,6 +425,43 @@ body { color: red; }'
     assert_operator output.index('body'), :<, output.index('@media screen')
     assert_operator output.index('@media screen'), :<, output.index('@media print')
     assert_operator output.index('@media print'), :<, output.rindex('@media screen')
+  end
+
+  # ============================================================================
+  # Nested media query tests (each_selector behavior)
+  # ============================================================================
+
+  def test_nested_media_each_selector
+    css = <<~CSS
+      @media screen {
+        @media (min-width: 500px) {
+          .nested { color: red; }
+        }
+      }
+      .normal { color: blue; }
+    CSS
+
+    sheet = Cataract::NewStylesheet.parse(css)
+
+    # Should have 2 rules total
+    assert_equal 2, sheet.size
+
+    # Query with combined media should return nested rule
+    combined_media = :'screen and (min-width: 500px)'
+
+    assert_matches_media combined_media, sheet
+    assert_selectors_match ['.nested'], sheet, media: combined_media
+
+    # Query with just :screen should return nested rule (it's in screen index too)
+    assert_matches_media :screen, sheet
+    assert_selectors_match ['.nested'], sheet, media: :screen
+
+    # Query with :all should return both rules
+    assert_selectors_match ['.nested', '.normal'], sheet, media: :all
+
+    # Verify media_index structure (low-level plumbing check)
+    assert_equal [0], sheet.media_index[combined_media]
+    assert_equal [0], sheet.media_index[:screen]
   end
 
   # ============================================================================
@@ -509,12 +532,7 @@ body { color: red; }'
     css = 'body { color: red; } div { margin: 10px; }'
     sheet = Cataract::NewStylesheet.parse(css)
 
-    selectors = []
-    sheet.each_selector do |selector, _declarations, _specificity, _media_types|
-      selectors << selector
-    end
-
-    assert_equal %w[body div], selectors
+    assert_equal %w[body div], sheet.selectors
   end
 
   def test_finding_by_selector

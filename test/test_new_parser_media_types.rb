@@ -1,13 +1,12 @@
 # frozen_string_literal: true
 
-require 'minitest/autorun'
-require 'cataract'
+require_relative 'test_helper'
 
 # Media types handling tests
 # Based on css_parser gem's test_css_parser_media_types.rb
-class TestParserMediaTypes < Minitest::Test
+class TestNewParserMediaTypes < Minitest::Test
   def setup
-    @sheet = Cataract::Stylesheet.new
+    @sheet = Cataract::NewStylesheet.new
   end
 
   def test_finding_by_media_type
@@ -24,8 +23,8 @@ class TestParserMediaTypes < Minitest::Test
       }
     CSS
 
-    assert_equal 'font-size: 10pt; line-height: 1.2;', @sheet.find_by_selector('body', :print).join(' ')
-    assert_equal 'font-size: 13px; line-height: 1.2;', @sheet.find_by_selector('body', :screen).join(' ')
+    assert_declarations 'font-size: 10pt; line-height: 1.2', @sheet.find_by_selector('body', media: :print)
+    assert_declarations 'font-size: 13px; line-height: 1.2', @sheet.find_by_selector('body', media: :screen)
   end
 
   def test_with_parenthesized_media_features
@@ -37,9 +36,10 @@ class TestParserMediaTypes < Minitest::Test
     CSS
 
     # :all returns ALL rules
-    assert_equal 'color: black; color: red;', @sheet.find_by_selector('body', :all).join(' ')
+    assert_declarations 'color: black; color: red', @sheet.find_by_selector('body', media: :all)
+
     # :screen returns ONLY the screen-specific rule (matches css_parser)
-    assert_equal 'color: red;', @sheet.find_by_selector('body', :screen).join(' ')
+    assert_declarations 'color: red', @sheet.find_by_selector('body', media: :screen)
   end
 
   def test_finding_by_multiple_media_types
@@ -56,10 +56,9 @@ class TestParserMediaTypes < Minitest::Test
     CSS
 
     # Query with array of media types
-    results = @sheet.find_by_selector('body', %i[screen handheld])
+    results = @sheet.find_by_selector('body', media: %i[screen handheld])
 
-    assert_includes results.join(' '), 'font-size: 13px;'
-    assert_includes results.join(' '), 'line-height: 1.2;'
+    assert_declarations 'font-size: 13px; line-height: 1.2', results
   end
 
   def test_adding_block_with_media_types
@@ -67,8 +66,8 @@ class TestParserMediaTypes < Minitest::Test
       body { font-size: 10pt }
     CSS
 
-    assert_equal 'font-size: 10pt;', @sheet.find_by_selector('body', :screen).join(' ')
-    assert_empty @sheet.find_by_selector('body', :handheld)
+    assert_declarations 'font-size: 10pt', @sheet.find_by_selector('body', media: :screen)
+    assert_empty @sheet.find_by_selector('body', media: :handheld)
   end
 
   def test_adding_block_with_media_types_followed_by_general_rule
@@ -87,13 +86,13 @@ class TestParserMediaTypes < Minitest::Test
     @sheet.add_rule(selector: 'body', declarations: 'color: black', media_types: %i[handheld tty])
     @sheet.add_rule(selector: 'body', declarations: 'color: blue', media_types: :screen)
 
-    assert_equal 'color: black;', @sheet.find_by_selector('body', :handheld).join(' ')
+    assert_declarations 'color: black', @sheet.find_by_selector('body', media: :handheld)
   end
 
   def test_selecting_with_all_media_types
     @sheet.add_rule(selector: 'body', declarations: 'color: black', media_types: %i[handheld tty])
     # :all should match all media-specific rules
-    assert_equal 'color: black;', @sheet.find_by_selector('body', :all).join(' ')
+    assert_declarations 'color: black', @sheet.find_by_selector('body', media: :all)
   end
 
   def test_to_s_includes_media_queries
@@ -116,8 +115,8 @@ class TestParserMediaTypes < Minitest::Test
     assert_equal 1, @sheet.rules_count
 
     # Verify the rule appears for both media types
-    assert_equal 'color: blue;', @sheet.find_by_selector('.header', :screen).join(' ')
-    assert_equal 'color: blue;', @sheet.find_by_selector('.header', :print).join(' ')
+    assert_declarations 'color: blue', @sheet.find_by_selector('.header', media: :screen)
+    assert_declarations 'color: blue', @sheet.find_by_selector('.header', media: :print)
   end
 
   def test_media_types_rule_counting
@@ -168,16 +167,15 @@ class TestParserMediaTypes < Minitest::Test
     assert_equal 3, @sheet.rules_count
 
     # All media should return all three rules
-    all_body_rules = @sheet.find_by_selector('body', :all)
+    all_body_rules = @sheet.find_by_selector('body', media: :all)
 
     assert_equal 3, all_body_rules.length
 
     # Print should return ONLY the print-specific rule (matches css_parser)
-    print_body = @sheet.find_by_selector('body', :print)
+    print_body = @sheet.find_by_selector('body', media: :print)
 
     assert_equal 1, print_body.length
-    assert_includes print_body.join(' '), 'background: white'
-    assert_includes print_body.join(' '), 'color: black'
+    assert_declarations 'background: white; color: black', print_body
   end
 
   def test_nested_rules_within_media_query
@@ -193,14 +191,14 @@ class TestParserMediaTypes < Minitest::Test
     assert_equal 3, @sheet.rules_count
 
     # All three should be screen-only
-    assert_equal 'color: blue;', @sheet.find_by_selector('.header', :screen).join(' ')
-    assert_equal 'color: red;', @sheet.find_by_selector('.footer', :screen).join(' ')
-    assert_equal 'width: 200px;', @sheet.find_by_selector('.sidebar', :screen).join(' ')
+    assert_declarations 'color: blue', @sheet.find_by_selector('.header', media: :screen)
+    assert_declarations 'color: red', @sheet.find_by_selector('.footer', media: :screen)
+    assert_declarations 'width: 200px', @sheet.find_by_selector('.sidebar', media: :screen)
 
     # None should appear for print
-    assert_empty @sheet.find_by_selector('.header', :print)
-    assert_empty @sheet.find_by_selector('.footer', :print)
-    assert_empty @sheet.find_by_selector('.sidebar', :print)
+    assert_empty @sheet.find_by_selector('.header', media: :print)
+    assert_empty @sheet.find_by_selector('.footer', media: :print)
+    assert_empty @sheet.find_by_selector('.sidebar', media: :print)
   end
 
   def test_media_types_preserved_in_each_selector
@@ -216,14 +214,13 @@ class TestParserMediaTypes < Minitest::Test
       }
     CSS
 
-    rules = {}
-    @sheet.each_selector do |selector, _declarations, _specificity, media_types|
-      rules[selector] = media_types
-    end
+    base_rule = @sheet.find_by_selector('.base').first
+    multi_rule = @sheet.find_by_selector('.multi').first
+    handheld_rule = @sheet.find_by_selector('.handheld').first
 
-    assert_equal [:all], rules['.base']
-    assert_equal %i[screen print], rules['.multi']
-    assert_equal [:handheld], rules['.handheld']
+    assert_media_types [:all], base_rule, @sheet
+    assert_media_types %i[screen print], multi_rule, @sheet
+    assert_media_types [:handheld], handheld_rule, @sheet
   end
 
   def test_to_s_with_all_media_types
@@ -320,14 +317,9 @@ class TestParserMediaTypes < Minitest::Test
     assert_equal 2, @sheet.rules_count
 
     # Both rules should be in screen media
-    screen_rules = []
-    @sheet.each_selector(media: :screen) do |selector, _decls, _spec, _media|
-      screen_rules << selector
-    end
-
-    assert_equal 2, screen_rules.length
-    assert_includes screen_rules, '.header'
-    assert_includes screen_rules, 'body'
+    assert_selector_count 2, @sheet, media: :screen
+    assert_has_selector '.header', @sheet, media: :screen
+    assert_has_selector 'body', @sheet, media: :screen
 
     # Verify output groups them under same @media
     output = @sheet.to_s
@@ -350,12 +342,9 @@ class TestParserMediaTypes < Minitest::Test
     assert_equal 2, @sheet.rules_count
 
     # Both should be accessible via screen filter
-    selectors = []
-    @sheet.each_selector(media: :screen) { |sel, _, _, _| selectors << sel }
-
-    assert_equal 2, selectors.length
-    assert_includes selectors, '.header'
-    assert_includes selectors, '.footer'
+    assert_selector_count 2, @sheet, media: :screen
+    assert_has_selector '.header', @sheet, media: :screen
+    assert_has_selector '.footer', @sheet, media: :screen
   end
 
   def test_add_block_appends_to_existing_media_query_group
@@ -371,13 +360,10 @@ class TestParserMediaTypes < Minitest::Test
     assert_equal 3, @sheet.rules_count
 
     # All three should be in screen
-    selectors = []
-    @sheet.each_selector(media: :screen) { |sel, _, _, _| selectors << sel }
-
-    assert_equal 3, selectors.length
-    assert_includes selectors, '.header'
-    assert_includes selectors, '.footer'
-    assert_includes selectors, '.nav'
+    assert_selector_count 3, @sheet, media: :screen
+    assert_has_selector '.header', @sheet, media: :screen
+    assert_has_selector '.footer', @sheet, media: :screen
+    assert_has_selector '.nav', @sheet, media: :screen
   end
 
   def test_add_block_with_override_extracts_from_existing_group
@@ -397,18 +383,12 @@ class TestParserMediaTypes < Minitest::Test
     assert_equal 2, @sheet.rules_count
 
     # .header should stay in screen
-    screen_selectors = []
-    @sheet.each_selector(media: :screen) { |sel, _, _, _| screen_selectors << sel }
-
-    assert_equal 1, screen_selectors.length
-    assert_includes screen_selectors, '.header'
+    assert_selector_count 1, @sheet, media: :screen
+    assert_has_selector '.header', @sheet, media: :screen
 
     # .footer should be in print (moved by override)
-    print_selectors = []
-    @sheet.each_selector(media: :print) { |sel, _, _, _| print_selectors << sel }
-
-    assert_equal 1, print_selectors.length
-    assert_includes print_selectors, '.footer'
+    assert_selector_count 1, @sheet, media: :print
+    assert_has_selector '.footer', @sheet, media: :print
   end
 
   # ============================================================================
@@ -447,13 +427,13 @@ class TestParserMediaTypes < Minitest::Test
     assert_equal 2, @sheet.rules_count
 
     # Universal .header should still exist
-    assert_predicate @sheet.find_by_selector('.header', :all), :any?
+    assert_predicate @sheet.find_by_selector('.header', media: :all), :any?
 
     # Screen .header should be gone
-    assert_empty @sheet.find_by_selector('.header', :screen)
+    assert_empty @sheet.find_by_selector('.header', media: :screen)
 
     # Print .header should still exist
-    assert_predicate @sheet.find_by_selector('.header', :print), :any?
+    assert_predicate @sheet.find_by_selector('.header', media: :print), :any?
   end
 
   def test_remove_rules_from_all_media_when_no_media_types_specified
@@ -469,9 +449,9 @@ class TestParserMediaTypes < Minitest::Test
     @sheet.remove_rules!(selector: '.header')
 
     assert_equal 0, @sheet.rules_count
-    assert_empty @sheet.find_by_selector('.header', :all)
-    assert_empty @sheet.find_by_selector('.header', :screen)
-    assert_empty @sheet.find_by_selector('.header', :print)
+    assert_empty @sheet.find_by_selector('.header', media: :all)
+    assert_empty @sheet.find_by_selector('.header', media: :screen)
+    assert_empty @sheet.find_by_selector('.header', media: :print)
   end
 
   def test_remove_rules_cleans_up_empty_groups
@@ -484,10 +464,8 @@ class TestParserMediaTypes < Minitest::Test
 
     assert_equal 0, @sheet.rules_count
 
-    # The screen group should be completely removed
-    groups = @sheet.instance_variable_get(:@rule_groups)
-
-    assert_empty groups
+    # The screen media index entry should be completely removed
+    assert_empty @sheet.media_index
   end
 
   def test_remove_rules_with_multiple_media_types
@@ -506,11 +484,11 @@ class TestParserMediaTypes < Minitest::Test
     assert_equal 2, @sheet.rules_count
 
     # Universal and handheld should remain
-    assert_predicate @sheet.find_by_selector('.header', :all), :any?
-    assert_predicate @sheet.find_by_selector('.header', :handheld), :any?
+    assert_predicate @sheet.find_by_selector('.header', media: :all), :any?
+    assert_predicate @sheet.find_by_selector('.header', media: :handheld), :any?
 
     # Screen and print should be gone
-    assert_empty @sheet.find_by_selector('.header', :screen)
-    assert_empty @sheet.find_by_selector('.header', :print)
+    assert_empty @sheet.find_by_selector('.header', media: :screen)
+    assert_empty @sheet.find_by_selector('.header', media: :print)
   end
 end
