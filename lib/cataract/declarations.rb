@@ -198,8 +198,7 @@ module Cataract
 
     # Convert declarations to CSS string.
     #
-    # Implemented in C for performance (see ext/cataract/cataract.c).
-    # The C implementation is defined via rb_define_method and overrides this stub.
+    # Implemented in C for performance.
     #
     # @return [String] CSS declaration block string
     #

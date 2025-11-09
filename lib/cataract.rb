@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
 require_relative 'cataract/version'
-require_relative 'cataract/cataract' # Load C extension (defines Rule, Declaration, AtRule structs)
-require_relative 'cataract/rule' # Add Ruby methods to Rule
-require_relative 'cataract/at_rule' # Add Ruby methods to AtRule
+require_relative 'cataract/native_extension'
+require_relative 'cataract/rule'
+require_relative 'cataract/at_rule'
 require_relative 'cataract/stylesheet_scope'
 require_relative 'cataract/stylesheet'
 require_relative 'cataract/declarations'

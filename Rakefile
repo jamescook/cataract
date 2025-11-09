@@ -12,7 +12,7 @@ begin
   require 'rake/extensiontask'
 
   # Configure the main extension
-  Rake::ExtensionTask.new('cataract') do |ext|
+  Rake::ExtensionTask.new('native_extension') do |ext|
     ext.lib_dir = 'lib/cataract'
     ext.ext_dir = 'ext/cataract'
   end
@@ -26,7 +26,6 @@ end
 
 # Configure CLEAN to run before compilation
 # rake-compiler already adds: tmp/, lib/**/*.{so,bundle}, etc.
-# All C files are now hand-written (Ragel removed), so only clean build artifacts
 CLEAN.include('ext/**/Makefile', 'ext/**/*.o')
 
 Rake::TestTask.new(:test) do |t|

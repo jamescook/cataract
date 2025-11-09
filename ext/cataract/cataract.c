@@ -987,7 +987,7 @@ static VALUE new_parse_declarations(VALUE self, VALUE declarations_string) {
 // Ruby Module Initialization
 // ============================================================================
 
-void Init_cataract(void) {
+void Init_native_extension(void) {
     // Get Cataract module (should be defined by main extension)
     VALUE mCataract = rb_define_module("Cataract");
 
