@@ -382,7 +382,13 @@
 
 <span class='comment'># Run benchmarks
 </span><span class='id identifier rubyid_rake'>rake</span> <span class='id identifier rubyid_benchmark'>benchmark</span>
-</code></pre>
+
+<span class='comment'># Run fuzzer to test parser robustness
+</span><span class='id identifier rubyid_rake'>rake</span> <span class='id identifier rubyid_fuzz'>fuzz</span>                      <span class='comment'># 10,000 iterations (default)
+</span><span class='id identifier rubyid_rake'>rake</span> <span class='id identifier rubyid_fuzz'>fuzz</span> <span class='const'>ITERATIONS</span><span class='op'>=</span><span class='int'>100000</span>    <span class='comment'># Custom iteration count
+</span></code></pre>
+
+<p><strong>Fuzzer</strong>: Generates random CSS input to test parser robustness against malformed or edge-case CSS. Helps catch crashes, memory leaks, and parsing edge cases.</p>
 
 <h2 id="label-How+It+Works">How It Works</h2>
 
@@ -406,7 +412,7 @@
 </div></div>
 
       <div id="footer">
-  Generated on Sun Nov  9 22:38:23 2025 by
+  Generated on Sun Nov  9 23:20:12 2025 by
   <a href="https://yardoc.org" title="Yay! A Ruby Documentation Tool" target="_parent">yard</a>
   0.9.37 (ruby-3.4.7).
 </div>
