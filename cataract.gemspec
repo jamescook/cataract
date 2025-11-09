@@ -5,11 +5,11 @@ require_relative 'lib/cataract/version'
 Gem::Specification.new do |spec|
   spec.name          = 'cataract'
   spec.version       = Cataract::VERSION
-  spec.authors       = ['Your Name']
-  spec.email         = ['your.email@example.com']
+  spec.authors       = ['James Cook']
+  spec.email         = ['jcook.rubyist@gmail.com']
 
-  spec.summary       = 'CSS parser built with Ragel state machines'
-  spec.description   = 'A high-performance CSS parser using Ragel finite state machines for accurate parsing of complex CSS structures'
+  spec.summary       = 'High-performance CSS parser with C extensions'
+  spec.description   = 'A performant CSS parser with C extensions for accurate parsing of complex CSS structures including media queries, nested selectors, and CSS Color Level 4'
   spec.homepage      = 'https://github.com/jamescook/cataract'
   spec.license       = 'MIT'
   spec.required_ruby_version = Gem::Requirement.new('>= 3.1.0')
