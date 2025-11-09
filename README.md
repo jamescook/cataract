@@ -11,7 +11,7 @@ A performant CSS parser for accurate parsing of complex CSS structures.
 - **C Extension**: Performance-focused C implementation for parsing and serialization
 - **CSS2 Support**: Selectors, combinators, pseudo-classes, pseudo-elements, @media queries
 - **CSS3 Support**: Attribute selectors (`^=`, `$=`, `*=`)
-- **CSS Color Level 4**: Supports hex, rgb, hsl, hwb, oklab, oklch, and named colors with high precision
+- **CSS Color Level 4**: Parses and preserves modern color formats (hex, rgb, hsl, hwb, oklab, oklch, lab, lch, named colors). Optional color conversion utility for transforming between formats.
 - **Specificity Calculation**: Automatic CSS specificity computation
 - **Media Query Filtering**: Query rules by media type
 - **Zero Runtime Dependencies**: Pure C extension with no runtime gem dependencies
