@@ -21,6 +21,7 @@ typedef struct {
     int media_query_count;    // Safety limit for media queries
     st_table *media_cache;    // Parse-time cache: string => parsed media types
     int has_nesting;          // Set to 1 if any nested rules are created
+    int depth;                // Current recursion depth (safety limit)
 } ParserContext;
 
 // Macro to skip CSS comments /* ... */
@@ -45,6 +46,21 @@ static inline const char* find_matching_brace(const char *start, const char *end
     while (p < end && depth > 0) {
         if (*p == '{') depth++;
         else if (*p == '}') depth--;
+        if (depth > 0) p++;
+    }
+    return p;
+}
+
+// Find matching closing paren
+// Input: start = position after opening '(', end = limit
+// Returns: pointer to matching ')' (or end if not found)
+// Note: Handles nested parens by tracking depth
+static inline const char* find_matching_paren(const char *start, const char *end) {
+    int depth = 1;
+    const char *p = start;
+    while (p < end && depth > 0) {
+        if (*p == '(') depth++;
+        else if (*p == ')') depth--;
         if (depth > 0) p++;
     }
     return p;
@@ -78,6 +94,11 @@ VALUE lowercase_property(VALUE property_str) {
  * Per W3C spec, nested selectors cannot start with identifiers to avoid ambiguity.
  * They must start with: &, ., #, [, :, *, >, +, ~, or @media/@supports/etc
  *
+ * Example CSS blocks:
+ *   "color: red; font-size: 14px;"     -> 0 (declarations only)
+ *   "color: red; & .child { ... }"     -> 1 (has nested selector)
+ *   "color: red; @media (...) { ... }" -> 1 (has nested @media)
+ *
  * Returns: 1 if nested selectors found, 0 if only declarations
  */
 static int has_nested_selectors(const char *start, const char *end) {
@@ -92,10 +113,14 @@ static int has_nested_selectors(const char *start, const char *end) {
         SKIP_COMMENT(p, end);
 
         // Check for nested selector indicators
+        // Example: "color: red; & .child { font: 14px; }"
+        //                       ^p (at &) - nested selector indicator
         char c = *p;
         if (c == '&' || c == '.' || c == '#' || c == '[' || c == ':' ||
             c == '*' || c == '>' || c == '+' || c == '~') {
             // Look ahead - if followed by {, it's likely a nested selector
+            // Example: "& .child { font: 14px; }"
+            //           ^p      ^lookahead (at {) - confirms nested selector
             const char *lookahead = p + 1;
             while (lookahead < end && *lookahead != '{' && *lookahead != ';' && *lookahead != '\n') {
                 lookahead++;
@@ -106,11 +131,15 @@ static int has_nested_selectors(const char *start, const char *end) {
         }
 
         // Check for @media, @supports, etc nested inside
+        // Example: "color: red; @media (min-width: 768px) { ... }"
+        //                       ^p (at @) - nested at-rule
         if (c == '@') {
             return 1;  // Nested at-rule
         }
 
         // Skip to next line or semicolon
+        // Example: "color: red; font-size: 14px;"
+        //                    ^p              ^p (after skip) - continue checking
         while (p < end && *p != ';' && *p != '\n') p++;
         if (p < end) p++;
     }
@@ -149,6 +178,10 @@ static VALUE resolve_nested_selector(VALUE parent_selector, const char *nested_s
 
     if (has_ampersand) {
         // Explicit nesting - replace & with parent
+        // Example: parent=".button", nested="&:hover" => ".button:hover"
+        //          &:hover
+        //          ^       - Replace & with ".button"
+        //           ^^^^^^ - Copy rest as-is
         nesting_style = NESTING_STYLE_EXPLICIT;
 
         // Build result by replacing & with parent
@@ -157,13 +190,13 @@ static VALUE resolve_nested_selector(VALUE parent_selector, const char *nested_s
 
         long i = 0;
         while (i < nested_len) {
-            if (nested_sel[i] == '&') {
+            if (nested_sel[i] == '&') {                                        // At: '&'
                 // Replace & with parent selector
-                rb_str_buf_cat(result, parent, parent_len);
-                i++;
+                rb_str_buf_cat(result, parent, parent_len);                   // Output: ".button"
+                i++;                                                           // Move to: ':'
             } else {
                 // Copy character as-is
-                rb_str_buf_cat(result, &nested_sel[i], 1);
+                rb_str_buf_cat(result, &nested_sel[i], 1);                    // Output: ':hover'
                 i++;
             }
         }
@@ -171,10 +204,14 @@ static VALUE resolve_nested_selector(VALUE parent_selector, const char *nested_s
         resolved = result;
     } else {
         // Implicit nesting - prepend parent with appropriate spacing
+        // Example: parent=".parent", nested=".child" => ".parent .child"
+        //          .child
+        //          - Prepend ".parent " before ".child"
+        // Example: parent=".parent", nested="> .child" => ".parent > .child"
+        //          > .child
+        //          - Prepend ".parent " before "> .child"
         nesting_style = NESTING_STYLE_IMPLICIT;
 
-        // Check if nested selector starts with a combinator (>, +, ~)
-        // If so, add exactly one space; otherwise add space for descendant
         const char *nested_trimmed = nested_sel;
         const char *nested_end = nested_sel + nested_len;
 
@@ -182,34 +219,28 @@ static VALUE resolve_nested_selector(VALUE parent_selector, const char *nested_s
         trim_leading(&nested_trimmed, nested_end);
         long trimmed_len = nested_end - nested_trimmed;
 
-        int starts_with_combinator = (trimmed_len > 0 &&
-                                     (nested_trimmed[0] == '>' ||
-                                      nested_trimmed[0] == '+' ||
-                                      nested_trimmed[0] == '~'));
-
         VALUE result = rb_str_buf_new(parent_len + 1 + trimmed_len);
         rb_enc_associate(result, rb_utf8_encoding());
 
-        // Add parent
+        // Add parent                                                          // Output: ".parent"
         rb_str_buf_cat(result, parent, parent_len);
 
-        // Add separator
-        if (starts_with_combinator) {
-            // For combinators, add space before combinator
-            rb_str_buf_cat(result, " ", 1);
-        } else {
-            // For implicit descendant, add space
-            rb_str_buf_cat(result, " ", 1);
-        }
+        // Add separator space (before combinator or for implicit descendant) // Output: " "
+        rb_str_buf_cat(result, " ", 1);
 
-        // Add nested selector (trimmed)
+        // Add nested selector (trimmed)                                       // Output: ".child"
         rb_str_buf_cat(result, nested_trimmed, trimmed_len);
 
         resolved = result;
     }
 
     // Return array [resolved_selector, nesting_style]
-    return rb_ary_new_from_args(2, resolved, INT2FIX(nesting_style));
+    VALUE result_array = rb_ary_new_from_args(2, resolved, INT2FIX(nesting_style));
+
+    // Guard parent_selector since we extracted C pointer and did allocations
+    RB_GC_GUARD(parent_selector);
+
+    return result_array;
 }
 
 /*
@@ -236,13 +267,8 @@ static VALUE extract_media_types(const char *query, long query_len) {
         // Check for opening paren (skip conditions like "(min-width: 768px)")
         if (*p == '(') {
             // Skip to matching closing paren
-            int depth = 1;
-            p++;
-            while (p < end && depth > 0) {
-                if (*p == '(') depth++;
-                else if (*p == ')') depth--;
-                p++;
-            }
+            const char *closing = find_matching_paren(p, end);
+            p = (closing < end) ? closing + 1 : closing;
             continue;
         }
 
@@ -272,13 +298,8 @@ static VALUE extract_media_types(const char *query, long query_len) {
         while (p < end && *p != ',') {
             if (*p == '(') {
                 // Skip condition
-                int depth = 1;
-                p++;
-                while (p < end && depth > 0) {
-                    if (*p == '(') depth++;
-                    else if (*p == ')') depth--;
-                    p++;
-                }
+                const char *closing = find_matching_paren(p, end);
+                p = (closing < end) ? closing + 1 : closing;
             } else {
                 p++;
             }
@@ -333,12 +354,23 @@ static void update_media_index(ParserContext *ctx, VALUE media_sym, int rule_id)
             add_to_media_index(ctx->media_index, type_sym, rule_id);
         }
     }
+
+    // Guard media_str since we extracted C pointer and called extract_media_types (which allocates)
+    RB_GC_GUARD(media_str);
 }
 
 /*
  * Parse declaration block into array of Declaration structs
- * Input: "color: red; background: blue !important"
- * Output: [Declaration(...), Declaration(...)]
+ *
+ * Example input: "color: red; background: url(image.png); font-size: 14px !important"
+ * Example output: [Declaration("color", "red", false),
+ *                  Declaration("background", "url(image.png)", false),
+ *                  Declaration("font-size", "14px", true)]
+ *
+ * Handles:
+ *   - Multiple declarations separated by semicolons
+ *   - Values containing parentheses (e.g., url(...), rgba(...))
+ *   - !important flag
  */
 static VALUE parse_declarations(const char *start, const char *end) {
     VALUE declarations = rb_ary_new();
@@ -352,6 +384,8 @@ static VALUE parse_declarations(const char *start, const char *end) {
         if (pos >= end) break;
 
         // Find property (up to colon)
+        // Example: "color: red; ..."
+        //           ^pos  ^pos (at :)
         const char *prop_start = pos;
         while (pos < end && *pos != ':') pos++;
         if (pos >= end) break;  // No colon found
@@ -369,14 +403,17 @@ static VALUE parse_declarations(const char *start, const char *end) {
         }
 
         // Find value (up to semicolon or end)
+        // Must track paren depth to avoid breaking on semicolons inside url() or rgba()
+        // Example: "url(data:image/svg+xml;base64,...); next-prop: ..."
+        //           ^val_start                        ^pos (at ; outside parens)
         const char *val_start = pos;
         int paren_depth = 0;
         while (pos < end) {
-            if (*pos == '(') {
-                paren_depth++;
-            } else if (*pos == ')') {
-                paren_depth--;
-            } else if (*pos == ';' && paren_depth == 0) {
+            if (*pos == '(') {                      // At: '('
+                paren_depth++;                       // Depth: 1
+            } else if (*pos == ')') {                // At: ')'
+                paren_depth--;                       // Depth: 0
+            } else if (*pos == ';' && paren_depth == 0) {  // At: ';' (outside parens)
                 break;  // Found terminating semicolon
             }
             pos++;
@@ -394,7 +431,8 @@ static VALUE parse_declarations(const char *start, const char *end) {
             if (check < val_end && *check == '!') {
                 check++;
                 while (check < val_end && IS_WHITESPACE(*check)) check++;
-                if ((val_end - check) >= 9 && strncmp(check, "important", 9) == 0) {
+                // strncmp safely handles remaining length check
+                if (check + 9 <= val_end && strncmp(check, "important", 9) == 0) {
                     is_important = 1;
                     const char *important_pos = check - 1;
                     while (important_pos > val_start && (IS_WHITESPACE(*(important_pos-1)) || *(important_pos-1) == '!')) {
@@ -410,10 +448,27 @@ static VALUE parse_declarations(const char *start, const char *end) {
 
         // Skip if value is empty
         if (val_end > val_start) {
+            long prop_len = prop_end - prop_start;
+            long val_len = val_end - val_start;
+
+            // Check property name length
+            if (prop_len > MAX_PROPERTY_NAME_LENGTH) {
+                rb_raise(eSizeError,
+                         "Property name too long: %ld bytes (max %d)",
+                         prop_len, MAX_PROPERTY_NAME_LENGTH);
+            }
+
+            // Check property value length
+            if (val_len > MAX_PROPERTY_VALUE_LENGTH) {
+                rb_raise(eSizeError,
+                         "Property value too long: %ld bytes (max %d)",
+                         val_len, MAX_PROPERTY_VALUE_LENGTH);
+            }
+
             // Create property string and lowercase it
-            VALUE property_raw = rb_usascii_str_new(prop_start, prop_end - prop_start);
+            VALUE property_raw = rb_usascii_str_new(prop_start, prop_len);
             VALUE property = lowercase_property(property_raw);
-            VALUE value = rb_utf8_str_new(val_start, val_end - val_start);
+            VALUE value = rb_utf8_str_new(val_start, val_len);
 
             // Create Declaration struct
             VALUE decl = rb_struct_new(cDeclaration,
@@ -487,10 +542,28 @@ static VALUE intern_media_query_safe(ParserContext *ctx, const char *query_str, 
  * Parse mixed declarations and nested selectors from a block
  * Used when a CSS rule block contains both declarations and nested rules
  *
+ * Example CSS block being parsed:
+ *   .parent {
+ *     color: red;           <- declaration
+ *     & .child {            <- nested selector
+ *       font-size: 14px;
+ *     }
+ *     @media (min-width: 768px) {  <- nested @media
+ *       padding: 10px;
+ *     }
+ *   }
+ *
  * Returns: Array of declarations (only the declarations, not nested rules)
  */
 static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char *end,
                                 VALUE parent_selector, VALUE parent_rule_id, VALUE parent_media_sym) {
+    // Check recursion depth to prevent stack overflow
+    if (ctx->depth > MAX_PARSE_DEPTH) {
+        rb_raise(eDepthError,
+                 "CSS nesting too deep: exceeded maximum depth of %d",
+                 MAX_PARSE_DEPTH);
+    }
+
     VALUE declarations = rb_ary_new();
     const char *p = start;
 
@@ -559,10 +632,15 @@ static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char
         }
 
         // Check if this is a nested selector (starts with nesting indicators)
+        // Example within parse_mixed_block:
+        //   Input block: "color: red; & .child { font: 14px; }"
+        //                              ^p (at &) - nested selector detected
         char c = *p;
         if (c == '&' || c == '.' || c == '#' || c == '[' || c == ':' ||
             c == '*' || c == '>' || c == '+' || c == '~' || c == '@') {
             // This is likely a nested selector - find the opening brace
+            // Example: "& .child { font: 14px; }"
+            //           ^nested_sel_start  ^p (at {)
             const char *nested_sel_start = p;
             while (p < end && *p != '{') p++;
             if (p >= end) break;
@@ -573,6 +651,8 @@ static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char
             p++;  // Skip {
 
             // Find matching closing brace
+            // Example: "& .child { font: 14px; }"
+            //                     ^nested_block_start  ^nested_block_end (at })
             const char *nested_block_start = p;
             const char *nested_block_end = find_matching_brace(p, end);
             p = nested_block_end;
@@ -580,11 +660,12 @@ static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char
             if (p < end) p++;  // Skip }
 
             // Split nested selector on commas and create a rule for each
+            // Example: "& .child, & .sibling { ... }" creates 2 nested rules
             const char *seg_start = nested_sel_start;
             const char *seg = nested_sel_start;
 
             while (seg <= nested_sel_end) {
-                if (seg == nested_sel_end || *seg == ',') {
+                if (seg == nested_sel_end || *seg == ',') {  // At: ',' or end
                     // Trim segment
                     while (seg_start < seg && IS_WHITESPACE(*seg_start)) {
                         seg_start++;
@@ -605,8 +686,10 @@ static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char
                         int rule_id = ctx->rule_id_counter++;
 
                         // Recursively parse nested block
+                        ctx->depth++;
                         VALUE nested_declarations = parse_mixed_block(ctx, nested_block_start, nested_block_end,
                                                                      resolved_selector, INT2FIX(rule_id), parent_media_sym);
+                        ctx->depth--;
 
                         // Create rule for nested selector
                         VALUE rule = rb_struct_new(cRule,
@@ -677,10 +760,26 @@ static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char
 
         // Create declaration
         if (prop_end > prop_start && val_end > val_start) {
-            VALUE property = rb_utf8_str_new(prop_start, prop_end - prop_start);
-            VALUE value = rb_utf8_str_new(val_start, val_end - val_start);
+            long prop_len = prop_end - prop_start;
+            long val_len = val_end - val_start;
 
-            property = lowercase_property(property);
+            // Check property name length
+            if (prop_len > MAX_PROPERTY_NAME_LENGTH) {
+                rb_raise(eSizeError,
+                         "Property name too long: %ld bytes (max %d)",
+                         prop_len, MAX_PROPERTY_NAME_LENGTH);
+            }
+
+            // Check property value length
+            if (val_len > MAX_PROPERTY_VALUE_LENGTH) {
+                rb_raise(eSizeError,
+                         "Property value too long: %ld bytes (max %d)",
+                         val_len, MAX_PROPERTY_VALUE_LENGTH);
+            }
+
+            VALUE property_raw = rb_usascii_str_new(prop_start, prop_len);
+            VALUE property = lowercase_property(property_raw);
+            VALUE value = rb_utf8_str_new(val_start, val_len);
 
             VALUE decl = rb_struct_new(cDeclaration,
                 property,
@@ -704,6 +803,13 @@ static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char
  */
 static void parse_css_recursive(ParserContext *ctx, const char *css, const char *pe,
                                  VALUE parent_media_sym, VALUE parent_selector, VALUE parent_rule_id) {
+    // Check recursion depth to prevent stack overflow
+    if (ctx->depth > MAX_PARSE_DEPTH) {
+        rb_raise(eDepthError,
+                 "CSS nesting too deep: exceeded maximum depth of %d",
+                 MAX_PARSE_DEPTH);
+    }
+
     const char *p = css;
 
     const char *selector_start = NULL;
@@ -752,7 +858,9 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
             p = block_end;
 
             // Recursively parse @media block with combined media context
+            ctx->depth++;
             parse_css_recursive(ctx, block_start, block_end, combined_media_sym, NO_PARENT_SELECTOR, NO_PARENT_RULE_ID);
+            ctx->depth--;
 
             if (p < pe && *p == '}') p++;
             continue;
@@ -796,7 +904,9 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                 p = block_end;
 
                 // Recursively parse block content (preserve parent media context)
+                ctx->depth++;
                 parse_css_recursive(ctx, block_start, block_end, parent_media_sym, parent_selector, parent_rule_id);
+                ctx->depth--;
 
                 if (p < pe && *p == '}') p++;
                 continue;
@@ -839,7 +949,8 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                     .rule_id_counter = 0,
                     .media_query_count = 0,
                     .media_cache = NULL,
-                    .has_nesting = 0
+                    .has_nesting = 0,
+                    .depth = 0
                 };
                 parse_css_recursive(&nested_ctx, block_start, block_end, NO_PARENT_MEDIA, NO_PARENT_SELECTOR, NO_PARENT_RULE_ID);
 
@@ -941,7 +1052,9 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
         if (*p == '}') {
             brace_depth--;
             if (brace_depth == 0 && selector_start != NULL && decl_start != NULL) {
-                // Check if block contains nested selectors
+                // We've found a complete CSS rule block - now determine if it has nesting
+                // Example: .parent { color: red; & .child { font-size: 14px; } }
+                //          ^selector_start    ^decl_start                    ^p (at })
                 int has_nesting = has_nested_selectors(decl_start, p);
 
                 // Get selector string
@@ -954,12 +1067,15 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                     // FAST PATH: No nesting - parse as pure declarations
                     VALUE declarations = parse_declarations(decl_start, p);
 
-                    // Split on commas
+                    // Split on commas to handle multi-selector rules
+                    // Example: ".a, .b, .c { color: red; }" creates 3 separate rules
+                    //           ^selector_start      ^sel_end
+                    //              ^seg_start=seg (scanning for commas)
                     const char *seg_start = selector_start;
                     const char *seg = selector_start;
 
                     while (seg <= sel_end) {
-                        if (seg == sel_end || *seg == ',') {
+                        if (seg == sel_end || *seg == ',') {  // At: ',' or end
                             // Trim segment
                             while (seg_start < seg && IS_WHITESPACE(*seg_start)) {
                                 seg_start++;
@@ -1022,11 +1138,19 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                 } else {
                     // NESTED PATH: Parse mixed declarations + nested rules
                     // For each comma-separated parent selector, parse the block with that parent
+                    //
+                    // Example: ".a, .b { color: red; & .child { font: 14px; } }"
+                    //           ^selector_start ^sel_end
+                    // Creates:
+                    //   - .a with declarations [color: red]
+                    //   - .a .child with declarations [font: 14px]
+                    //   - .b with declarations [color: red]
+                    //   - .b .child with declarations [font: 14px]
                     const char *seg_start = selector_start;
                     const char *seg = selector_start;
 
                     while (seg <= sel_end) {
-                        if (seg == sel_end || *seg == ',') {
+                        if (seg == sel_end || *seg == ',') {  // At: ',' or end
                             // Trim segment
                             while (seg_start < seg && IS_WHITESPACE(*seg_start)) {
                                 seg_start++;
@@ -1063,8 +1187,10 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                                 long rules_before = RARRAY_LEN(ctx->rules_array);
 
                                 // Parse mixed block (declarations + nested selectors)
+                                ctx->depth++;
                                 VALUE parent_declarations = parse_mixed_block(ctx, decl_start, p,
                                                                              resolved_current, INT2FIX(current_rule_id), parent_media_sym);
+                                ctx->depth--;
 
                                 long rules_after = RARRAY_LEN(ctx->rules_array);
                                 int has_nested_children = (rules_after > rules_before);
@@ -1205,6 +1331,7 @@ VALUE parse_css_new_impl(VALUE css_string, int rule_id_offset) {
     ctx.media_query_count = 0;
     ctx.media_cache = NULL;  // Removed - no perf benefit
     ctx.has_nesting = 0;  // Will be set to 1 if any nested rules are created
+    ctx.depth = 0;  // Start at depth 0
 
     // Parse CSS (top-level, no parent context)
     parse_css_recursive(&ctx, p, pe, NO_PARENT_MEDIA, NO_PARENT_SELECTOR, NO_PARENT_RULE_ID);

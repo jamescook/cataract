@@ -69,7 +69,24 @@ srand(RNG_SEED)
 # Load bootstrap.css as main seed
 BOOTSTRAP_CSS = File.read(File.join(__dir__, '../../test/fixtures/bootstrap.css'))
 
-# CSS corpus - real CSS snippets to mutate
+# Clean CSS samples for regex-based mutations (guaranteed valid UTF-8)
+CLEAN_CORPUS = [
+  'body { margin: 0; padding: 0; }',
+  'div { color: red; background: blue; }',
+  '.class { font-size: 14px; }',
+  '#id { display: flex; }',
+  'a:hover { text-decoration: underline; }',
+  '@media screen { body { font-size: 16px; } }',
+  '.button { color: blue; &:hover { color: red; } }',
+  '.parent { margin: 0; .child { padding: 10px; } }',
+  '@supports (display: flex) { div { display: flex; } }',
+  "@font-face { font-family: 'Custom'; src: url('font.woff'); }",
+  '@keyframes fade { from { opacity: 0; } to { opacity: 1; } }',
+  'h1 + *[rel=up] { border: 1px solid red; }',
+  BOOTSTRAP_CSS[0..1000] # Clean bootstrap snippet
+].freeze
+
+# CSS corpus - real CSS snippets to mutate (includes garbage samples with binary data)
 CORPUS = [
   BOOTSTRAP_CSS, # Full bootstrap.css
   # Interesting subsections of bootstrap
@@ -133,7 +150,96 @@ CORPUS = [
   "div { content: '#{'x' * 31_000}'; }",
 
   # Multiple nested @supports to stress recursion
-  '@supports (display: flex) { @supports (gap: 1rem) { div { display: flex; } } }'
+  '@supports (display: flex) { @supports (gap: 1rem) { div { display: flex; } } }',
+
+  # CSS Nesting - Valid cases
+  '.button { color: blue; &:hover { color: red; } }',
+  '.parent { margin: 0; .child { padding: 10px; } }',
+  '.card { & .title { font-size: 20px; } & .body { margin: 10px; } }',
+  '.a, .b { color: black; & .child { color: white; } }',
+  '.foo { color: red; @media (min-width: 768px) { color: blue; } }',
+  '.parent { color: red; & > .child { color: blue; } }',
+  '.nav { display: flex; &.active { background: red; } }',
+  '.outer { .middle { .inner { color: red; } } }',
+  '.button { &:hover, &:focus { outline: 2px solid blue; } }',
+  '.list { & > li { & > a { text-decoration: none; } } }',
+
+  # CSS Nesting - Garbage/malformed cases to stress parser
+  '.parent { & { } }', # Empty nested rule
+  '.a { & }', # Incomplete nested rule
+  '.b { &', # Missing closing brace
+  '.c { & .child { }', # Missing outer closing brace
+  '.d { & .child { color: red; }', # Missing outer closing brace
+  '.e { & & & & & { color: red; } }', # Multiple ampersands
+  '.f { &&&&& { } }', # Continuous ampersands
+  '.g { &..child { } }', # Invalid selector after &
+  '.h { &#invalid { } }', # Invalid combinator
+  '.i { &::: { } }', # Too many colons
+  '.j { & .a { & .b { & .c { & .d { & .e { & .f { & .g { & .h { & .i { & .j { } } } } } } } } } } }', # Deep nesting
+  '.k { & .child { color: red; & }', # Incomplete nested block
+  '.l { .child & { } }', # & in wrong position
+  '.m { .a { .b { .c }', # Missing closing braces in chain
+  '.n { & { & { & { } } }', # Nested empty blocks
+  '.o { color: red &:hover { } }', # Missing semicolon before nesting
+  '.p { &, { } }', # Comma with nothing after
+  '.q { &, , , .child { } }', # Multiple commas
+  '.r { & .child { @media { } } }', # Incomplete @media in nested
+  '.s { @media { .child { } }', # Missing @media query
+  '.t { @media screen & .child { } }', # Invalid @media syntax with nesting
+  '.u { & .a, & .b, & .c, }', # Trailing comma in nested selector
+  '.v { & { color: &; } }', # & as value
+  '.w { & .child { & .grandchild { & .great { color: red } } }', # Missing braces
+  '.x { &&&.child { } }', # Multiple & before class
+  '.y { & + & + & { } }', # Adjacent sibling combinators
+  '.z { & ~ & ~ & { } }', # General sibling combinators
+
+  # CSS Nesting with @media - garbage
+  '.a { @media }', # Incomplete @media
+  '.b { @media screen }', # @media without block
+  '.c { @media screen { }', # Missing outer closing brace
+  '.d { @media (garbage) { color: red; } }', # Invalid media query in nested
+  '.e { @media screen { @media print { } }', # Missing closing braces
+  '.f { @media { @media { @media { } } } }', # Nested @media without queries
+
+  # Extreme nesting garbage
+  '.a { & .b { & .c { & .d { & .e { & .f { & .g { & .h { & .i { & .j { & .k { } } } } } } } } } } }', # 11 levels
+  ".deep { #{'& .x { ' * 50}color: red;#{' }' * 50} }", # Very deep nesting
+  ".unclosed { #{'& .x { ' * 20}", # Many unclosed nested blocks
+  '.chaos { & { & { & { & { & { & { & { & { & { & { } } } } } } } } } } }', # Deep self-nesting
+
+  # Brace chaos in nested context
+  '.parent { &:hover { color: red; }}}}}', # Extra closing braces
+  '.parent { &:hover {{{{{{ color: red; } }', # Extra opening braces
+  '.parent { &:hover { color: red; }; &:focus { color: blue; }', # Missing outer close
+  '.parent { & .child { } } } }', # Too many closing braces
+  '.parent { { & .child { } }', # Opening brace before nested
+  '.parent { & .child { { color: red; } }', # Double opening in nested
+
+  # Null bytes and binary in nested CSS
+  ".parent { &\x00.child { color: red; } }", # Null in selector
+  ".parent { & .child { color: \x00\xFF\xFE; } }", # Null/binary in value
+  ".parent {\x00 & .child { } }", # Null after opening brace
+  ".parent { & .child {\x00} }", # Null before closing brace
+
+  # Comment chaos in nested CSS
+  '.parent { /* & .child { */ color: red; }', # Commented nesting
+  '.parent { & .child { /* color: red; } */ }', # Unclosed comment in nested
+  '.parent { & /* .child */ { color: red; } }', # Comment in middle of selector
+  '.parent { & .child /* { color: red; } }', # Comment breaking structure
+
+  # Escaped characters in nested selectors
+  '.parent { &\\.child { } }', # Escaped dot
+  '.parent { &\\:hover { } }', # Escaped colon
+  '.parent { &\\&child { } }', # Escaped ampersand
+  '.parent { \\& .child { } }', # Escaped ampersand at start
+
+  # Property/value chaos in nested blocks
+  '.parent { color: red; & .child { : value; } }', # Missing property
+  '.parent { & .child { property; } }', # Missing colon and value
+  '.parent { & .child { : ; } }', # Just colon and semicolon
+  '.parent { & .child { :::; } }', # Multiple colons
+  '.parent { & .child { color red } }', # Missing colon
+  '.parent { & .child { color: } }' # Missing value
 ].freeze
 
 # Color formats to test conversion between
@@ -332,6 +438,28 @@ def mutate(css)
   result
 end
 
+# Nesting-specific mutations (applied to clean CSS only, no binary corruption)
+def mutate_nesting(css)
+  mutations = [
+    -> { css.gsub('{', '{ & { ') }, # Add nested & blocks everywhere
+    -> { css.gsub(/}/, ' } }') }, # Add extra closing braces after nested
+    -> { css.gsub('&', '& & &') }, # Multiply ampersands
+    -> { css.delete('&').gsub('.', '&.') }, # Move & to wrong positions
+    -> { css.gsub('{', '{ .nested { ') }, # Add implicit nesting everywhere
+    -> { css + (' { & .child { color: red; }' * rand(10)) }, # Add unclosed nested blocks
+    -> { ".wrapper { #{css} }" }, # Wrap entire CSS in nested block
+    -> { css.gsub(/@media/, '@media (garbage) { @media') }, # Corrupt nested @media
+    -> { css.gsub('&', '& & & & &') }, # Chain ampersands
+    -> { css.gsub(/\.[\w-]+/) { |m| "#{m} { & #{m} { " } + (' }' * css.scan(/\.[\w-]+/).size) }, # Nest all class selectors
+    -> { css.gsub(/\{[^{}]*\}/) { |m| "{ & #{m} }" } }, # Wrap blocks in & nesting
+    -> { css.gsub(';', '; & .x { color: red; } ') }, # Insert nested rules after semicolons
+    -> { ".a { .b { .c { .d { .e { #{css} } } } } }" }, # Deep wrapper nesting
+    -> { css.gsub('{', '{ /* & */ { ') } # Comment out nesting markers
+  ]
+
+  mutations.sample.call
+end
+
 # Stats tracking
 stats = {
   total: 0,
@@ -339,9 +467,9 @@ stats = {
   merge_tested: 0,
   to_s_tested: 0,
   color_converted: 0,
-  parse_errors: 0,
   depth_errors: 0,
   size_errors: 0,
+  other_errors: 0,
   crashes: 0
 }
 
@@ -350,7 +478,9 @@ WORKER_TIMEOUT = ENV['FUZZ_GC_STRESS'] == '1' ? 300 : 10 # 5 minutes for GC.stre
 
 puts "Starting CSS parser fuzzer (#{ITERATIONS} iterations)..."
 puts "RNG seed: #{RNG_SEED} (use this to reproduce crashes)"
-puts "Corpus: #{CORPUS.length} CSS samples"
+puts "Clean corpus: #{CLEAN_CORPUS.length} samples (for mutations)"
+puts "Full corpus: #{CORPUS.length} samples (direct testing)"
+puts 'Strategy: 70% mutations, 15% nesting, 10% direct, 5% garbage'
 puts "GC.stress: ENABLED (expect 100-1000x slowdown, #{WORKER_TIMEOUT}s timeout)" if ENV['FUZZ_GC_STRESS'] == '1'
 puts ''
 
@@ -379,9 +509,31 @@ def parse_in_worker(stdin, stdout, stderr, wait_thr, input, last_input)
     return [:crash, error_msg, last_input, stderr_output, false, false, false]
   end
 
-  # Send length-prefixed input
-  stdin.write([input.bytesize].pack('N'))
-  stdin.write(input)
+  # Send length-prefixed input (non-blocking to handle large inputs)
+  # Force binary encoding to avoid encoding conflicts
+  data = [input.bytesize].pack('N') + input.b
+  total_written = 0
+  retries = 0
+  max_retries = 100
+
+  while total_written < data.bytesize
+    begin
+      written = stdin.write_nonblock(data[total_written..])
+      total_written += written
+      retries = 0 # Reset on successful write
+    rescue IO::WaitWritable
+      # Pipe buffer full - wait for reader to consume some data
+      retries += 1
+      if retries > max_retries
+        # Worker hung - treat as crash
+        return [:crash, 'Worker hung (pipe blocked)', input, '', false, false, false]
+      end
+
+      stdin.wait_writable(0.1) # 100ms timeout
+      retry
+    end
+  end
+
   stdin.flush
 
   # Wait for response with timeout
@@ -413,7 +565,11 @@ def parse_in_worker(stdin, stdout, stderr, wait_thr, input, last_input)
     [:crash, error_msg, input, stderr_output, false, false, false]
   else
     # Read response
-    response = stdout.gets&.strip
+    response = stdout.gets
+    return [:error, nil, nil, nil, false, false, false] if response.nil?
+
+    response = response.force_encoding('UTF-8').scrub.strip
+
     case response
     when /^PARSE/
       # Extract which operations were tested
@@ -425,8 +581,6 @@ def parse_in_worker(stdin, stdout, stderr, wait_thr, input, last_input)
       [:depth_error, nil, nil, nil, false, false, false]
     when 'SIZE'
       [:size_error, nil, nil, nil, false, false, false]
-    when 'PARSEERR'
-      [:parse_error, nil, nil, nil, false, false, false]
     else
       [:error, nil, nil, nil, false, false, false]
     end
@@ -451,20 +605,47 @@ end
 start_time = Time.now
 crash_file = File.join(__dir__, 'fuzz_last_input.css')
 
+# Track last N inputs for debugging freezes
+RECENT_INPUTS = [] # rubocop:disable Style/MutableConstant
+MAX_RECENT = 20
+
+# Trap Ctrl+C to dump recent inputs
+Signal.trap('INT') do
+  puts "\n\nInterrupted! Dumping last #{RECENT_INPUTS.length} inputs..."
+  RECENT_INPUTS.each_with_index do |input, i|
+    filename = File.join(__dir__, "fuzz_recent_#{i}.css")
+    File.binwrite(filename, input)
+    puts "  #{i}: #{filename} (#{input.bytesize} bytes)"
+  end
+  exit 1
+end
+
 # Spawn initial worker subprocess
 stdin, stdout, stderr, wait_thr = spawn_worker
 last_input = nil
 
 ITERATIONS.times do |i|
   # Pick a seed and mutate it, or generate pure garbage occasionally
-  input = if rand < 0.95
-            mutate(CORPUS.sample)
+  r = rand
+  input = if r < 0.70
+            # Normal mutations on clean CSS (70%) - uses regex so needs valid UTF-8
+            mutate(CLEAN_CORPUS.sample)
+          elsif r < 0.85
+            # Nesting-specific mutations on clean CSS (15%)
+            mutate_nesting(CLEAN_CORPUS.sample)
+          elsif r < 0.95
+            # Direct CORPUS samples without mutation (10%) - includes all samples
+            CORPUS.sample
           else
-            # Pure garbage
+            # Pure garbage (5%)
             Array.new(rand(1000)) { rand(256).chr }.join
           end
 
   stats[:total] += 1
+
+  # Track recent inputs for debugging
+  RECENT_INPUTS << input
+  RECENT_INPUTS.shift if RECENT_INPUTS.length > MAX_RECENT
 
   # Send to worker subprocess
   result, error, crashed_input, stderr_output, merge_tested, to_s_tested, color_converted = parse_in_worker(stdin, stdout, stderr,
@@ -483,6 +664,8 @@ ITERATIONS.times do |i|
     stats[:depth_errors] += 1
   when :size_error
     stats[:size_errors] += 1
+  when :error
+    stats[:other_errors] += 1
   when :crash
     stats[:crashes] += 1
 
@@ -620,9 +803,9 @@ puts "Parsed: #{stats[:parsed]} (#{(stats[:parsed] * 100.0 / stats[:total]).roun
 puts "Merge tested: #{stats[:merge_tested]} (#{(stats[:merge_tested] * 100.0 / stats[:total]).round(1)}%)"
 puts "ToS tested: #{stats[:to_s_tested]} (#{(stats[:to_s_tested] * 100.0 / stats[:total]).round(1)}%)"
 puts "Color converted: #{stats[:color_converted]} (#{(stats[:color_converted] * 100.0 / stats[:total]).round(1)}%)"
-puts "Parse Errors: #{stats[:parse_errors]} (#{(stats[:parse_errors] * 100.0 / stats[:total]).round(1)}%)"
 puts "Depth Errors: #{stats[:depth_errors]} (#{(stats[:depth_errors] * 100.0 / stats[:total]).round(1)}%)"
 puts "Size Errors: #{stats[:size_errors]} (#{(stats[:size_errors] * 100.0 / stats[:total]).round(1)}%)"
+puts "Other Errors: #{stats[:other_errors]} (#{(stats[:other_errors] * 100.0 / stats[:total]).round(1)}%)"
 puts "Crashes: #{stats[:crashes]}"
 puts '=' * 60
 

@@ -15,7 +15,7 @@ extern VALUE cStylesheet;
 
 // Error class references
 extern VALUE eCataractError;
-extern VALUE eParseError;
+extern VALUE eDepthError;
 extern VALUE eSizeError;
 
 // ============================================================================
@@ -60,7 +60,7 @@ extern VALUE eSizeError;
 #define IS_WHITESPACE(c) ((c) == ' ' || (c) == '\t' || (c) == '\n' || (c) == '\r')
 
 // Debug output (disabled by default)
-// #define CATARACT_DEBUG 1
+// #define CATARACT_DEBUG 0
 
 #ifdef CATARACT_DEBUG
   #define DEBUG_PRINTF(...) printf(__VA_ARGS__)
@@ -107,6 +107,18 @@ static inline VALUE strip_string(const char *str, long len) {
 #endif
 
 // Safety limits
+#ifndef MAX_PARSE_DEPTH
+  #define MAX_PARSE_DEPTH 10  // Max recursion depth for nested @media/@supports blocks and CSS nesting
+#endif
+
+#ifndef MAX_PROPERTY_NAME_LENGTH
+  #define MAX_PROPERTY_NAME_LENGTH 256  // Max length of CSS property name
+#endif
+
+#ifndef MAX_PROPERTY_VALUE_LENGTH
+  #define MAX_PROPERTY_VALUE_LENGTH 32768  // Max length of CSS property value (32KB)
+#endif
+
 #ifndef MAX_MEDIA_QUERIES
   #define MAX_MEDIA_QUERIES 1000  // Prevent symbol table exhaustion
 #endif

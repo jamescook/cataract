@@ -10,7 +10,7 @@ VALUE cStylesheet;
 
 // Error class definitions (shared with main extension)
 VALUE eCataractError;
-VALUE eParseError;
+VALUE eDepthError;
 VALUE eSizeError;
 
 // ============================================================================
@@ -142,6 +142,8 @@ static VALUE unresolve_selector(VALUE parent_selector, VALUE child_selector, VAL
 
     int style = NIL_P(nesting_style) ? NESTING_STYLE_IMPLICIT : FIX2INT(nesting_style);
 
+    VALUE result;
+
     if (style == NESTING_STYLE_EXPLICIT) {
         // Explicit nesting: replace parent with &
         // ".button:hover" -> "&:hover"
@@ -150,13 +152,12 @@ static VALUE unresolve_selector(VALUE parent_selector, VALUE child_selector, VAL
         // Find where parent ends in child
         if (strncmp(child, parent, parent_len) == 0) {
             // Parent matches at start - replace with &
-            VALUE result = rb_str_new_cstr("&");
+            result = rb_str_new_cstr("&");
             rb_str_cat(result, child + parent_len, child_len - parent_len);
-            return result;
+        } else {
+            // Fallback: just return child (shouldn't happen)
+            result = child_selector;
         }
-
-        // Fallback: just return child (shouldn't happen)
-        return child_selector;
     } else {
         // Implicit nesting: strip parent + space from beginning
         // ".parent .child" -> ".child"
@@ -165,13 +166,22 @@ static VALUE unresolve_selector(VALUE parent_selector, VALUE child_selector, VAL
             // Check if followed by space
             if (child_len > parent_len && child[parent_len] == ' ') {
                 // Strip "parent " prefix
-                return rb_str_new(child + parent_len + 1, child_len - parent_len - 1);
+                result = rb_str_new(child + parent_len + 1, child_len - parent_len - 1);
+            } else {
+                // Fallback: return child as-is
+                result = child_selector;
             }
+        } else {
+            // Fallback: return child as-is
+            result = child_selector;
         }
-
-        // Fallback: return child as-is
-        return child_selector;
     }
+
+    // Guard both selectors since we extracted C pointers and did allocations
+    RB_GC_GUARD(parent_selector);
+    RB_GC_GUARD(child_selector);
+
+    return result;
 }
 
 // Helper to serialize a single rule (dispatches to at-rule serializer if needed)
@@ -441,7 +451,9 @@ static void serialize_children_only(VALUE result, VALUE rules_array, long rule_i
                         for (int j = 0; j <= indent_level; j++) {
                             rb_str_cat2(child_indent, "  ");
                         }
-                        serialize_declarations_formatted(result, child_declarations, RSTRING_PTR(child_indent));
+                        const char *child_indent_ptr = RSTRING_PTR(child_indent);
+                        serialize_declarations_formatted(result, child_declarations, child_indent_ptr);
+                        RB_GC_GUARD(child_indent);
                     }
 
                     // Recursively serialize grandchildren
@@ -495,7 +507,9 @@ static void serialize_children_only(VALUE result, VALUE rules_array, long rule_i
                         for (int j = 0; j <= indent_level; j++) {
                             rb_str_cat2(child_indent, "  ");
                         }
-                        serialize_declarations_formatted(result, child_declarations, RSTRING_PTR(child_indent));
+                        const char *child_indent_ptr = RSTRING_PTR(child_indent);
+                        serialize_declarations_formatted(result, child_declarations, child_indent_ptr);
+                        RB_GC_GUARD(child_indent);
                     }
 
                     rb_str_append(result, indent_str);
@@ -783,21 +797,8 @@ static VALUE stylesheet_to_formatted_s_new(VALUE self, VALUE rules_array, VALUE 
 static VALUE new_parse_declarations_string(const char *start, const char *end) {
     VALUE declarations = rb_ary_new();
 
-    // Fast path: check if there are any comments
-    int has_comments = 0;
-    for (const char *check = start; check + 1 < end; check++) {
-        if (*check == '/' && *(check + 1) == '*') {
-            has_comments = 1;
-            break;
-        }
-    }
-
-    // If there are comments, strip them first (rare case)
-    // For now, skip comment stripping since it requires copy_without_comments
-    // which is in css_parser.c - we can add it later if needed
-    if (has_comments) {
-        rb_raise(eParseError, "Comments in declaration strings not yet supported in new parser");
-    }
+    // Note: Comments in declarations aren't stripped (copy_without_comments is in css_parser.c)
+    // The parser is error-tolerant, so it just continues parsing as-is.
 
     const char *pos = start;
     while (pos < end) {
@@ -994,10 +995,10 @@ void Init_cataract(void) {
         eCataractError = rb_define_class_under(mCataract, "Error", rb_eStandardError);
     }
 
-    if (rb_const_defined(mCataract, rb_intern("ParseError"))) {
-        eParseError = rb_const_get(mCataract, rb_intern("ParseError"));
+    if (rb_const_defined(mCataract, rb_intern("DepthError"))) {
+        eDepthError = rb_const_get(mCataract, rb_intern("DepthError"));
     } else {
-        eParseError = rb_define_class_under(mCataract, "ParseError", eCataractError);
+        eDepthError = rb_define_class_under(mCataract, "DepthError", eCataractError);
     }
 
     if (rb_const_defined(mCataract, rb_intern("SizeError"))) {

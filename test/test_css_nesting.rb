@@ -721,4 +721,39 @@ class TestCssNesting < Minitest::Test
 
     assert_equal expected, output
   end
+
+  # Test recursion depth limit (MAX_PARSE_DEPTH = 10)
+  def test_depth_error_on_deep_nesting
+    # Build CSS with 10 nested & .x blocks (depth 11: .a at 1, then 10 nested = exceeds limit)
+    css = ".a { #{'& .x { ' * 10}color: red;#{' }' * 10} }"
+
+    error = assert_raises(Cataract::DepthError) do
+      Cataract::Stylesheet.parse(css)
+    end
+
+    assert_match(/CSS nesting too deep.*exceeded maximum depth of 10/i, error.message)
+  end
+
+  # Test depth error with @media nesting
+  def test_depth_error_with_media_nesting
+    # Build deeply nested @media queries (11 levels total)
+    css = "#{'@media a { ' * 11}body { margin: 0; }#{' }' * 11}"
+
+    error = assert_raises(Cataract::DepthError) do
+      Cataract::Stylesheet.parse(css)
+    end
+
+    assert_match(/CSS nesting too deep.*exceeded maximum depth of 10/i, error.message)
+  end
+
+  # Test that depth error doesn't trigger at exactly max depth
+  def test_depth_ok_at_maximum
+    # Build CSS with 9 nested & .x blocks (depth 10: .a at 1, then 9 nested = max allowed)
+    css = ".a { #{'& .x { ' * 9}color: red;#{' }' * 9} }"
+
+    # Should not raise DepthError
+    sheet = Cataract::Stylesheet.parse(css)
+
+    assert_predicate sheet.rules_count, :positive?
+  end
 end

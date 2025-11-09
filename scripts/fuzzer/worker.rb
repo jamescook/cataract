@@ -48,9 +48,8 @@ loop do
     # This tests merge error handling when second rule set is invalid
     begin
       valid_stylesheet = Cataract.parse_css('body { margin: 0; color: red; }')
-      valid_rules = valid_stylesheet.rules.to_a
-      combined_rules = valid_rules + rules
-      Cataract.merge(combined_rules)
+      valid_stylesheet.add_block(css) # Add fuzzed CSS to valid stylesheet
+      valid_stylesheet.merge # Call merge on the stylesheet
       merge_tested = true
     rescue Cataract::Error
       # Expected - merge might fail on invalid CSS
@@ -59,8 +58,12 @@ loop do
     # Test to_s on parsed rules occasionally
     # This tests serialization on fuzzed data
     if !rules.empty? && rand < 0.01
-      merged = Cataract.merge(rules)
-      Cataract::Declarations.new(merged).to_s
+      stylesheet.to_s
+      to_s_tested = true
+    end
+
+    if !rules.empty? && rand < 0.02
+      stylesheet.to_formatted_s
       to_s_tested = true
     end
 
@@ -88,10 +91,9 @@ loop do
     $stdout.write("DEPTH\n")
   rescue Cataract::SizeError
     $stdout.write("SIZE\n")
-  rescue Cataract::ParseError, Cataract::Error
-    $stdout.write("PARSEERR\n")
   rescue StandardError
     $stdout.write("ERR\n")
   end
+
   $stdout.flush
 end
