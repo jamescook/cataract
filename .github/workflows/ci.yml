@@ -14,6 +14,29 @@ jobs:
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
+  lint:
+    if: github.actor == 'jamescook'
+    needs: test-ubuntu
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.4'
+          bundler-cache: true
+
+      - name: Install clang-tidy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-tidy
+
+      - name: Run clang-tidy
+        run: |
+          clang-tidy --version
+          bundle exec rake lint
+
   docs:
     # Only run on push to main (not PRs)
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
