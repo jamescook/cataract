@@ -57,34 +57,27 @@
         <div class="clear"></div>
       </div>
 
-      <div id="content"><div id='filecontents'><h1 id="live-example">Live Example</h1>
+      <div id="content"><div id='filecontents'>
+<h1 id="label-Live+Example">Live Example</h1>
 
-<p>This is a live example of Cataract analyzing GitHub.com&#39;s CSS.</p>
+<p>This is a live example of Cataract analyzing GitHub.com’s CSS.</p>
 
 <p><strong><a href="file.github_analysis.html" title="View GitHub.com CSS Analysis Report">View GitHub.com CSS Analysis Report</a></strong></p>
 
 <p>This analysis was generated using:</p>
 
-<pre class="code bash"><code class="bash">ruby examples/css_analyzer.rb https://github.com -o docs/github_analysis.html
+<pre class="code ruby"><code class="ruby">ruby examples/css_analyzer.rb https://github.com -o docs/github_analysis.html
 </code></pre>
 
-<p>The example demonstrates:</p>
-
-<ul>
-<li><strong>Real-world CSS parsing performance</strong> - Analyzing 16,000+ rules from GitHub.com</li>
-<li><strong>Property usage statistics</strong> - Top properties and their frequency</li>
-<li><strong>Color palette extraction</strong> - All colors used across the site</li>
-<li><strong>Specificity analysis</strong> - Distribution of selector complexity</li>
-<li><strong>!important usage patterns</strong> - How often declarations are marked important</li>
-</ul>
+<p>The example demonstrates: - <strong>Real-world CSS parsing performance</strong> - Analyzing 16,000+ rules from GitHub.com - <strong>Property usage statistics</strong> - Top properties and their frequency - <strong>Color palette extraction</strong> - All colors used across the site - <strong>Specificity analysis</strong> - Distribution of selector complexity - <strong>!important usage patterns</strong> - How often declarations are marked important</p>
 
 <p>The analysis is regenerated each time documentation is built with <code>rake docs</code>.</p>
 
-<h2 id="running-your-own-analysis">Running Your Own Analysis</h2>
+<h2 id="label-Running+Your+Own+Analysis">Running Your Own Analysis</h2>
 
 <p>You can analyze any website or CSS file:</p>
 
-<pre class="code bash"><code class="bash"># Analyze a website
+<pre class="code ruby"><code class="ruby"># Analyze a website
 ruby examples/css_analyzer.rb https://example.com
 
 # Analyze a CSS file
@@ -96,9 +89,9 @@ ruby examples/css_analyzer.rb https://example.com -o report.html
 </div></div>
 
       <div id="footer">
-  Generated on Thu Nov  6 14:47:37 2025 by
+  Generated on Sun Nov  9 09:22:06 2025 by
   <a href="https://yardoc.org" title="Yay! A Ruby Documentation Tool" target="_parent">yard</a>
-  0.9.37 (ruby-3.4.5).
+  0.9.37 (ruby-3.4.7).
 </div>
 
     </div>
