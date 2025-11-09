@@ -60,7 +60,7 @@ extern VALUE eSizeError;
 #define IS_WHITESPACE(c) ((c) == ' ' || (c) == '\t' || (c) == '\n' || (c) == '\r')
 
 // Debug output (disabled by default)
-// #define CATARACT_DEBUG 0
+// #define CATARACT_DEBUG 1
 
 #ifdef CATARACT_DEBUG
   #define DEBUG_PRINTF(...) printf(__VA_ARGS__)
@@ -92,9 +92,13 @@ static inline VALUE strip_string(const char *str, long len) {
 }
 
 // US-ASCII string literal creation
+// Only for compile-time string literals - uses sizeof() for length
+// For runtime char*, use rb_usascii_str_new(ptr, len) directly
 #define USASCII_STR(str) rb_usascii_str_new((str), sizeof(str) - 1)
 
 // UTF-8 string literal creation
+// Only for compile-time string literals - uses sizeof() for length
+// For runtime char*, use rb_utf8_str_new(ptr, len) directly
 #define UTF8_STR(str) rb_utf8_str_new((str), sizeof(str) - 1)
 
 // String allocation macros (from old cataract.h)

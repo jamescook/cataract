@@ -356,6 +356,13 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
 
     Check_Type(rules_array, T_ARRAY);
 
+    // Check if stylesheet has nesting (affects selector rollup)
+    int has_nesting = 0;
+    if (rb_obj_is_kind_of(input, cStylesheet)) {
+        VALUE has_nesting_ivar = rb_ivar_get(input, rb_intern("@_has_nesting"));
+        has_nesting = RTEST(has_nesting_ivar);
+    }
+
     // Initialize cached symbol IDs on first call (thread-safe since GVL is held)
     // This only happens once, so unlikely
     if (id_value == 0) {
@@ -372,18 +379,187 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
         return empty_sheet;
     }
 
-    // Use Ruby hash for temporary storage: property => {value:, specificity:, important:}
+    // For nested CSS: identify parent rules (rules that have children)
+    // These should be skipped during merge, even if they have declarations
+    // Use Ruby hash as a set: parent_id => true
+    VALUE parent_ids = Qnil;
+    if (has_nesting) {
+        DEBUG_PRINTF("\n=== MERGE: has_nesting=true, num_rules=%ld ===\n", num_rules);
+        parent_ids = rb_hash_new();
+        for (long i = 0; i < num_rules; i++) {
+            VALUE rule = RARRAY_AREF(rules_array, i);
+            VALUE selector = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR));
+            VALUE rule_id = rb_struct_aref(rule, INT2FIX(RULE_ID));
+            VALUE parent_rule_id = rb_struct_aref(rule, INT2FIX(RULE_PARENT_RULE_ID));
+            DEBUG_PRINTF("  Rule %ld: selector='%s', rule_id=%d, parent_rule_id=%s\n",
+                         i, RSTRING_PTR(selector), FIX2INT(rule_id),
+                         NIL_P(parent_rule_id) ? "nil" : RSTRING_PTR(rb_inspect(parent_rule_id)));
+            if (!NIL_P(parent_rule_id)) {
+                // This rule has a parent, so mark that parent ID
+                rb_hash_aset(parent_ids, parent_rule_id, Qtrue);
+            }
+        }
+    }
+
+    // For nested CSS with different selectors from SAME parent: group rules by selector
+    // Only split into multiple rules if ALL rules share the same parent_rule_id
+    // selector => [rule indices]
+    VALUE selector_groups = Qnil;
+    VALUE common_parent = Qundef;  // Qundef = not set yet
+
+    if (has_nesting) {
+        DEBUG_PRINTF("\n=== Building selector groups ===\n");
+        selector_groups = rb_hash_new();
+        for (long i = 0; i < num_rules; i++) {
+            VALUE rule = RARRAY_AREF(rules_array, i);
+            VALUE rule_id = rb_struct_aref(rule, INT2FIX(RULE_ID));
+            VALUE declarations = rb_struct_aref(rule, INT2FIX(RULE_DECLARATIONS));
+            VALUE parent_rule_id = rb_struct_aref(rule, INT2FIX(RULE_PARENT_RULE_ID));
+            VALUE selector = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR));
+
+            // Per W3C spec: parent and child are SEPARATE rules with different selectors
+            // Both should be included in merge output
+            // Don't skip parent rules - they have their own selector and declarations
+
+            // Skip empty rules (no declarations)
+            if (RARRAY_LEN(declarations) == 0) {
+                DEBUG_PRINTF("  Skipping rule %ld: selector='%s' (empty declarations)\n",
+                             i, RSTRING_PTR(selector));
+                continue;
+            }
+
+            DEBUG_PRINTF("  Processing rule %ld: selector='%s', parent_rule_id=%s\n",
+                         i, RSTRING_PTR(selector),
+                         NIL_P(parent_rule_id) ? "nil" : RSTRING_PTR(rb_inspect(parent_rule_id)));
+
+            // Track if all rules share the same parent
+            if (common_parent == Qundef) {
+                common_parent = parent_rule_id;
+                DEBUG_PRINTF("    Setting common_parent=%s\n",
+                             NIL_P(common_parent) ? "nil" : RSTRING_PTR(rb_inspect(common_parent)));
+            }
+
+            VALUE group = rb_hash_aref(selector_groups, selector);
+            if (NIL_P(group)) {
+                group = rb_ary_new();
+                rb_hash_aset(selector_groups, selector, group);
+                DEBUG_PRINTF("    Created new group for selector='%s'\n", RSTRING_PTR(selector));
+            }
+            rb_ary_push(group, LONG2FIX(i));
+        }
+        DEBUG_PRINTF("  Total selector groups: %ld\n", RHASH_SIZE(selector_groups));
+    }
+
+    // If nested CSS with multiple distinct selectors, return separate rules
+    // Per W3C spec: each unique selector (parent or child) is a separate rule
+    // Example: .parent { color: red; .child { color: blue; } } .other { color: green; }
+    // Should return 3 rules: .parent, .parent .child, .other
+    DEBUG_PRINTF("\n=== Decision point ===\n");
+    DEBUG_PRINTF("  has_nesting=%d\n", has_nesting);
+    DEBUG_PRINTF("  selector_groups is nil? %d\n", NIL_P(selector_groups));
+    if (!NIL_P(selector_groups)) {
+        DEBUG_PRINTF("  selector_groups size=%ld\n", RHASH_SIZE(selector_groups));
+    }
+    DEBUG_PRINTF("  Condition: has_nesting && !NIL_P(selector_groups) && RHASH_SIZE(selector_groups) > 1 = %d\n",
+                 has_nesting && !NIL_P(selector_groups) && RHASH_SIZE(selector_groups) > 1);
+
+    if (has_nesting && !NIL_P(selector_groups) && RHASH_SIZE(selector_groups) > 1) {
+        DEBUG_PRINTF("  -> Taking MULTI-SELECTOR path (separate rules)\n");
+        VALUE merged_sheet = rb_class_new_instance(0, NULL, cStylesheet);
+        VALUE merged_rules = rb_ary_new();
+        int rule_id_counter = 0;
+
+        // Iterate through each selector group
+        VALUE selectors = rb_funcall(selector_groups, rb_intern("keys"), 0);
+        long num_selectors = RARRAY_LEN(selectors);
+
+        for (long s = 0; s < num_selectors; s++) {
+            VALUE selector = rb_ary_entry(selectors, s);
+            VALUE group_indices = rb_hash_aref(selector_groups, selector);
+
+            // For now, just take first rule from each group (no merging within group)
+            // TODO: Merge declarations within same-selector group
+            long first_idx = FIX2LONG(rb_ary_entry(group_indices, 0));
+            VALUE orig_rule = RARRAY_AREF(rules_array, first_idx);
+            VALUE orig_decls = rb_struct_aref(orig_rule, INT2FIX(RULE_DECLARATIONS));
+
+            // Create new rule with this selector and declarations
+            VALUE new_rule = rb_struct_new(cRule,
+                INT2FIX(rule_id_counter++),
+                selector,
+                orig_decls,
+                Qnil,  // specificity
+                Qnil,  // parent_rule_id
+                Qnil   // nesting_style
+            );
+            rb_ary_push(merged_rules, new_rule);
+        }
+
+        rb_ivar_set(merged_sheet, id_ivar_rules, merged_rules);
+
+        // Set @media_index with :all pointing to all rule IDs
+        VALUE media_idx = rb_hash_new();
+        VALUE all_ids = rb_ary_new();
+        for (int i = 0; i < rule_id_counter; i++) {
+            rb_ary_push(all_ids, INT2FIX(i));
+        }
+        rb_hash_aset(media_idx, ID2SYM(id_all), all_ids);
+        rb_ivar_set(merged_sheet, id_ivar_media_index, media_idx);
+
+        return merged_sheet;
+    }
+
+    // Single-merge path: merge all rules into one
     VALUE properties_hash = rb_hash_new();
+
+    // Track selector for rollup (minimize allocations)
+    // Store pointer + length to first non-parent selector
+    // Also keep the VALUE alive since we extract C pointer before allocations
+    const char *first_selector_ptr = NULL;
+    long first_selector_len = 0;
+    VALUE first_selector_value = Qnil;
+    int all_same_selector = 1;
 
     // Iterate through each rule
     for (long i = 0; i < num_rules; i++) {
         VALUE rule = RARRAY_AREF(rules_array, i);
         Check_Type(rule, T_STRUCT);
 
-        // Extract selector, declarations, specificity from Rule struct
-        // Rule has: id, selector, declarations, specificity
+        // Extract rule fields
+        VALUE rule_id = rb_struct_aref(rule, INT2FIX(RULE_ID));
         VALUE selector = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR));
         VALUE declarations = rb_struct_aref(rule, INT2FIX(RULE_DECLARATIONS));
+
+        // Skip parent rules when handling nested CSS
+        // Example: .button { color: black; &:hover { color: red; } }
+        //   - Rule id=0, selector=".button", declarations=[color: black] (SKIP - has children)
+        //   - Rule id=1, selector=".button:hover", declarations=[color: red] (PROCESS)
+        if (has_nesting && !NIL_P(parent_ids)) {
+            VALUE is_parent = rb_hash_aref(parent_ids, rule_id);
+            if (RTEST(is_parent)) {
+                continue;
+            }
+        }
+
+        long num_decls = RARRAY_LEN(declarations);
+        // Skip rules with no declarations (empty parent containers)
+        if (num_decls == 0) {
+            continue;
+        }
+
+        // Track selectors for rollup (delay allocation)
+        const char *sel_ptr = RSTRING_PTR(selector);
+        long sel_len = RSTRING_LEN(selector);
+        if (first_selector_ptr == NULL) {
+            first_selector_ptr = sel_ptr;
+            first_selector_len = sel_len;
+            first_selector_value = selector;  // Keep VALUE alive for RB_GC_GUARD
+        } else if (all_same_selector) {
+            if (sel_len != first_selector_len || memcmp(sel_ptr, first_selector_ptr, sel_len) != 0) {
+                all_same_selector = 0;
+            }
+        }
+
         VALUE specificity_val = rb_struct_aref(rule, INT2FIX(RULE_SPECIFICITY));
 
         // Calculate specificity if not provided (lazy)
@@ -397,7 +573,6 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
 
         // Process each declaration in this rule
         Check_Type(declarations, T_ARRAY);
-        long num_decls = RARRAY_LEN(declarations);
 
         for (long j = 0; j < num_decls; j++) {
             VALUE decl = RARRAY_AREF(declarations, j);
@@ -757,6 +932,16 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
     VALUE merged_declarations = rb_ary_new();
     rb_hash_foreach(properties_hash, merge_build_result_callback, merged_declarations);
 
+    // Determine final selector (allocate only once at the end)
+    VALUE final_selector;
+    if (has_nesting && all_same_selector && first_selector_ptr != NULL) {
+        // All rules have same selector - use it for rollup
+        final_selector = rb_usascii_str_new(first_selector_ptr, first_selector_len);
+    } else {
+        // Mixed selectors or no nesting - use "merged"
+        final_selector = str_merged_selector;
+    }
+
     // Create a new Stylesheet with a single merged rule
     // Use rb_class_new_instance instead of rb_funcall for better performance
     VALUE merged_sheet = rb_class_new_instance(0, NULL, cStylesheet);
@@ -764,7 +949,7 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
     // Create merged rule
     VALUE merged_rule = rb_struct_new(cRule,
         INT2FIX(0),              // id
-        str_merged_selector,     // selector (cached frozen string)
+        final_selector,          // selector (rolled-up or "merged")
         merged_declarations,      // declarations
         Qnil,                     // specificity (not applicable)
         Qnil,                     // parent_rule_id (not nested)
@@ -781,10 +966,10 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
     rb_hash_aset(media_idx, ID2SYM(id_all), all_ids);
     rb_ivar_set(merged_sheet, id_ivar_media_index, media_idx);
 
-    RB_GC_GUARD(properties_hash);
-    RB_GC_GUARD(merged_declarations);
-    RB_GC_GUARD(rules_array);
-    RB_GC_GUARD(merged_sheet);
+    // Guard first_selector_value: C pointer extracted via RSTRING_PTR during iteration,
+    // then used after many allocations (hash operations, shorthand expansions) when
+    // creating final_selector with rb_usascii_str_new
+    RB_GC_GUARD(first_selector_value);
 
     return merged_sheet;
 }

@@ -12,6 +12,22 @@ require 'rbconfig'
 require_relative '../../lib/cataract'
 require_relative '../../lib/cataract/color_conversion' # Load color extension for fuzzing
 
+# Check if Cataract is compiled in debug mode (would overwhelm pipe buffer)
+if Cataract::COMPILE_FLAGS[:debug]
+  abort <<~ERROR
+    #{'=' * 80}
+    ERROR: Cataract compiled with DEBUG mode enabled
+    #{'=' * 80}
+    Debug output will overwhelm the pipe buffer and freeze the fuzzer.
+
+    To disable debug mode:
+      1. Edit ext/cataract/cataract.h
+      2. Comment out the line: #define CATARACT_DEBUG 1
+      3. Recompile: rake compile
+    #{'=' * 80}
+  ERROR
+end
+
 # Check if Ruby is compiled with AddressSanitizer (ASAN)
 # ASAN provides detailed heap-buffer-overflow and use-after-free reports
 def check_asan_enabled

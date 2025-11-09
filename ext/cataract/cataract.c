@@ -336,9 +336,9 @@ static VALUE stylesheet_to_s_original(VALUE rules_array, VALUE media_index, VALU
     int in_media_block = 0;
 
     for (long i = 0; i < total_rules; i++) {
-        VALUE rule_id = INT2FIX(i);
-        VALUE rule_media = rb_hash_aref(rule_to_media, rule_id);
         VALUE rule = rb_ary_entry(rules_array, i);
+        VALUE rule_id = rb_struct_aref(rule, INT2FIX(RULE_ID));
+        VALUE rule_media = rb_hash_aref(rule_to_media, rule_id);
 
         if (NIL_P(rule_media)) {
             // Not in any media query - close any open media block first
@@ -696,6 +696,11 @@ static VALUE stylesheet_to_formatted_s_original(VALUE rules_array, VALUE media_i
                 // Close previous media block if open
                 if (in_media_block) {
                     rb_str_cat2(result, "}\n");
+                } else {
+                    // Add blank line before @media if transitioning from non-media rules
+                    if (RSTRING_LEN(result) > 0) {
+                        rb_str_cat2(result, "\n");
+                    }
                 }
 
                 // Open new media block
@@ -1063,4 +1068,21 @@ void Init_cataract(void) {
 
     // Initialize merge constants (cached property strings)
     init_merge_constants();
+
+    // Export compile-time flags as a hash for runtime introspection
+    VALUE compile_flags = rb_hash_new();
+
+    #ifdef CATARACT_DEBUG
+        rb_hash_aset(compile_flags, ID2SYM(rb_intern("debug")), Qtrue);
+    #else
+        rb_hash_aset(compile_flags, ID2SYM(rb_intern("debug")), Qfalse);
+    #endif
+
+    #ifdef DISABLE_STR_BUF_OPTIMIZATION
+        rb_hash_aset(compile_flags, ID2SYM(rb_intern("str_buf_optimization")), Qfalse);
+    #else
+        rb_hash_aset(compile_flags, ID2SYM(rb_intern("str_buf_optimization")), Qtrue);
+    #endif
+
+    rb_define_const(mCataract, "COMPILE_FLAGS", compile_flags);
 }

@@ -756,4 +756,422 @@ class TestCssNesting < Minitest::Test
 
     assert_predicate sheet.rules_count, :positive?
   end
+
+  # W3C Spec Example 1: & can be used on its own
+  # https://www.w3.org/TR/css-nesting-1/
+  def test_w3c_example_ampersand_on_its_own
+    css = <<~CSS
+      .foo {
+        color: blue;
+        & > .bar { color: red; }
+        > .baz { color: green; }
+      }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css)
+
+    # Should produce 3 rules:
+    # .foo { color: blue; }
+    # .foo > .bar { color: red; }
+    # .foo > .baz { color: green; }
+    assert_equal 3, sheet.rules_count
+
+    foo_rule = sheet.find_by_selector('.foo').first
+    bar_rule = sheet.find_by_selector('.foo > .bar').first
+    baz_rule = sheet.find_by_selector('.foo > .baz').first
+
+    assert foo_rule, 'Should have .foo rule'
+    assert bar_rule, 'Should have .foo > .bar rule'
+    assert baz_rule, 'Should have .foo > .baz rule'
+
+    assert_has_property({ color: 'blue' }, foo_rule)
+    assert_has_property({ color: 'red' }, bar_rule)
+    assert_has_property({ color: 'green' }, baz_rule)
+  end
+
+  # W3C Spec Example 2: & in compound selector
+  def test_w3c_example_compound_selector
+    css = <<~CSS
+      .foo {
+        color: blue;
+        &.bar { color: red; }
+      }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css)
+
+    # Should produce 2 rules:
+    # .foo { color: blue; }
+    # .foo.bar { color: red; }
+    assert_equal 2, sheet.rules_count
+
+    foo_rule = sheet.find_by_selector('.foo').first
+    foobar_rule = sheet.find_by_selector('.foo.bar').first
+
+    assert foo_rule, 'Should have .foo rule'
+    assert foobar_rule, 'Should have .foo.bar rule'
+
+    assert_has_property({ color: 'blue' }, foo_rule)
+    assert_has_property({ color: 'red' }, foobar_rule)
+  end
+
+  # W3C Spec Example: Multiple levels of nesting
+  def test_w3c_example_multiple_levels
+    css = <<~CSS
+      figure {
+        margin: 0;
+
+        > figcaption {
+          background: hsl(0 0% 0% / 50%);
+
+          > p {
+            font-size: .9rem;
+          }
+        }
+      }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css)
+
+    # Should produce 3 rules:
+    # figure { margin: 0; }
+    # figure > figcaption { background: hsl(0 0% 0% / 50%); }
+    # figure > figcaption > p { font-size: .9rem; }
+    assert_equal 3, sheet.rules_count
+
+    figure_rule = sheet.find_by_selector('figure').first
+    figcaption_rule = sheet.find_by_selector('figure > figcaption').first
+    p_rule = sheet.find_by_selector('figure > figcaption > p').first
+
+    assert figure_rule, 'Should have figure rule'
+    assert figcaption_rule, 'Should have figure > figcaption rule'
+    assert p_rule, 'Should have figure > figcaption > p rule'
+
+    assert_has_property({ margin: '0' }, figure_rule)
+    assert_has_property({ background: 'hsl(0 0% 0% / 50%)' }, figcaption_rule)
+    assert_has_property({ 'font-size': '.9rem' }, p_rule)
+  end
+
+  # W3C Spec Example: Mixing declarations with nested rules
+  # Per spec: "nested style rules are considered to come after their parent rule"
+  def test_w3c_example_mixed_declarations_cascade_order
+    css = <<~CSS
+      article {
+        color: blue;
+        & { color: red; }
+      }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css)
+
+    # Should produce 2 rules (parent + nested):
+    # article { color: blue; }
+    # article { color: red; }
+    # Both have same selector and specificity, but nested comes after
+    assert_equal 2, sheet.rules_count
+
+    article_rules = sheet.find_by_selector('article')
+
+    assert_equal 2, article_rules.length, 'Should have 2 article rules'
+
+    # First rule should have color: blue
+    assert_has_property({ color: 'blue' }, article_rules[0])
+    # Second rule should have color: red
+    assert_has_property({ color: 'red' }, article_rules[1])
+  end
+
+  # W3C Spec Example: & can be used multiple times in a single selector
+  def test_w3c_example_ampersand_multiple_times
+    css = <<~CSS
+      .foo {
+        color: blue;
+        & .bar & .baz & .qux { color: red; }
+      }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css)
+
+    # Should produce 2 rules:
+    # .foo { color: blue; }
+    # .foo .bar .foo .baz .foo .qux { color: red; }
+    assert_equal 2, sheet.rules_count
+
+    foo_rule = sheet.find_by_selector('.foo').first
+    complex_rule = sheet.find_by_selector('.foo .bar .foo .baz .foo .qux').first
+
+    assert foo_rule, 'Should have .foo rule'
+    assert complex_rule, 'Should have .foo .bar .foo .baz .foo .qux rule'
+
+    assert_has_property({ color: 'blue' }, foo_rule)
+    assert_has_property({ color: 'red' }, complex_rule)
+  end
+
+  # W3C Spec Example: & doesn't have to be at the beginning
+  def test_w3c_example_ampersand_not_at_beginning
+    css = <<~CSS
+      .foo {
+        color: red;
+        .parent & {
+          color: blue;
+        }
+      }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css)
+
+    # Should produce 2 rules:
+    # .foo { color: red; }
+    # .parent .foo { color: blue; }
+    assert_equal 2, sheet.rules_count
+
+    foo_rule = sheet.find_by_selector('.foo').first
+    parent_foo_rule = sheet.find_by_selector('.parent .foo').first
+
+    assert foo_rule, 'Should have .foo rule'
+    assert parent_foo_rule, 'Should have .parent .foo rule'
+
+    assert_has_property({ color: 'red' }, foo_rule)
+    assert_has_property({ color: 'blue' }, parent_foo_rule)
+  end
+
+  # W3C Spec Example: & with :not()
+  def test_w3c_example_ampersand_with_not
+    css = <<~CSS
+      .foo {
+        color: red;
+        :not(&) {
+          color: blue;
+        }
+      }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css)
+
+    # Should produce 2 rules:
+    # .foo { color: red; }
+    # :not(.foo) { color: blue; }
+    assert_equal 2, sheet.rules_count
+
+    foo_rule = sheet.find_by_selector('.foo').first
+    not_foo_rule = sheet.find_by_selector(':not(.foo)').first
+
+    assert foo_rule, 'Should have .foo rule'
+    assert not_foo_rule, 'Should have :not(.foo) rule'
+
+    assert_has_property({ color: 'red' }, foo_rule)
+    assert_has_property({ color: 'blue' }, not_foo_rule)
+  end
+
+  # W3C Spec Example: Relative selector with implied &
+  def test_w3c_example_relative_selector
+    css = <<~CSS
+      .foo {
+        color: red;
+        + .bar + & { color: blue; }
+      }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css)
+
+    # Should produce 2 rules:
+    # .foo { color: red; }
+    # .foo + .bar + .foo { color: blue; }
+    assert_equal 2, sheet.rules_count
+
+    foo_rule = sheet.find_by_selector('.foo').first
+    complex_rule = sheet.find_by_selector('.foo + .bar + .foo').first
+
+    assert foo_rule, 'Should have .foo rule'
+    assert complex_rule, 'Should have .foo + .bar + .foo rule'
+
+    assert_has_property({ color: 'red' }, foo_rule)
+    assert_has_property({ color: 'blue' }, complex_rule)
+  end
+
+  # W3C Spec Example: & used all on its own
+  def test_w3c_example_ampersand_alone
+    css = <<~CSS
+      .foo {
+        color: blue;
+        & { padding: 2ch; }
+      }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css)
+
+    # Should produce 2 rules:
+    # .foo { color: blue; }
+    # .foo { padding: 2ch; }
+    assert_equal 2, sheet.rules_count
+
+    foo_rules = sheet.find_by_selector('.foo')
+
+    assert_equal 2, foo_rules.length, 'Should have 2 .foo rules'
+
+    assert_has_property({ color: 'blue' }, foo_rules[0])
+    assert_has_property({ padding: '2ch' }, foo_rules[1])
+  end
+
+  # W3C Spec Example: && doubled up
+  def test_w3c_example_ampersand_doubled
+    css = <<~CSS
+      .foo {
+        color: blue;
+        && { padding: 2ch; }
+      }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css)
+
+    # Should produce 2 rules:
+    # .foo { color: blue; }
+    # .foo.foo { padding: 2ch; }
+    assert_equal 2, sheet.rules_count
+
+    foo_rule = sheet.find_by_selector('.foo').first
+    foo_foo_rule = sheet.find_by_selector('.foo.foo').first
+
+    assert foo_rule, 'Should have .foo rule'
+    assert foo_foo_rule, 'Should have .foo.foo rule'
+
+    assert_has_property({ color: 'blue' }, foo_rule)
+    assert_has_property({ padding: '2ch' }, foo_foo_rule)
+  end
+
+  # W3C Spec Example: Nesting @media with properties
+  def test_w3c_example_media_nesting_simple
+    css = <<~CSS
+      .foo {
+        display: grid;
+
+        @media (orientation: landscape) {
+          grid-auto-flow: column;
+        }
+      }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css)
+
+    # Should produce 2 rules:
+    # .foo { display: grid; }
+    # @media (orientation: landscape) { .foo { grid-auto-flow: column; } }
+    assert_equal 2, sheet.rules_count
+
+    foo_base = sheet.find_by_selector('.foo').find { |r| r.declarations.any? { |d| d.property == 'display' } }
+    foo_media = sheet.find_by_selector('.foo').find { |r| r.declarations.any? { |d| d.property == 'grid-auto-flow' } }
+
+    assert foo_base, 'Should have .foo rule with display'
+    assert foo_media, 'Should have .foo rule with grid-auto-flow (in @media)'
+
+    assert_has_property({ display: 'grid' }, foo_base)
+    assert_has_property({ 'grid-auto-flow': 'column' }, foo_media)
+
+    # Check media query is set correctly
+    media_sym = sheet.instance_variable_get(:@media_index).find { |_, ids| ids.include?(foo_media.id) }&.first
+
+    assert media_sym, 'Should have media query for foo_media rule'
+    assert_equal :'orientation: landscape', media_sym
+  end
+
+  # W3C Spec Example: Nested @media queries
+  def test_w3c_example_media_nesting_nested
+    css = <<~CSS
+      .foo {
+        display: grid;
+
+        @media (orientation: landscape) {
+          grid-auto-flow: column;
+
+          @media (min-width > 1024px) {
+            max-inline-size: 1024px;
+          }
+        }
+      }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css)
+
+    # Should produce 3 rules:
+    # .foo { display: grid; }
+    # @media (orientation: landscape) { .foo { grid-auto-flow: column; } }
+    # @media (orientation: landscape) and (min-width > 1024px) { .foo { max-inline-size: 1024px; } }
+    assert_equal 3, sheet.rules_count
+
+    foo_base = sheet.find_by_selector('.foo').find { |r| r.declarations.any? { |d| d.property == 'display' } }
+    foo_landscape = sheet.find_by_selector('.foo').find { |r| r.declarations.any? { |d| d.property == 'grid-auto-flow' } }
+    foo_nested = sheet.find_by_selector('.foo').find { |r| r.declarations.any? { |d| d.property == 'max-inline-size' } }
+
+    assert foo_base, 'Should have .foo rule with display'
+    assert foo_landscape, 'Should have .foo rule with grid-auto-flow'
+    assert foo_nested, 'Should have .foo rule with max-inline-size'
+
+    assert_has_property({ display: 'grid' }, foo_base)
+    assert_has_property({ 'grid-auto-flow': 'column' }, foo_landscape)
+    assert_has_property({ 'max-inline-size': '1024px' }, foo_nested)
+
+    # Check media queries
+    media_index = sheet.instance_variable_get(:@media_index)
+    landscape_media = media_index.find { |_, ids| ids.include?(foo_landscape.id) }&.first
+    nested_media = media_index.find { |_, ids| ids.include?(foo_nested.id) }&.first
+
+    assert_equal :'orientation: landscape', landscape_media
+    # Combined media query should be: (orientation: landscape) and (min-width > 1024px)
+    assert_match(/orientation.*landscape.*min-width.*1024px/, nested_media.to_s)
+  end
+
+  # W3C Spec Example: Mixed declarations order doesn't matter
+  def test_w3c_example_mixed_declarations_order
+    css = <<~CSS
+      article {
+        color: green;
+        & { color: blue; }
+        color: red;
+      }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css)
+
+    # Per spec: "relative order of declarations vs other rules is not preserved"
+    # Equivalent to:
+    # article { color: green; color: red; & { color: blue; } }
+    # So we should have 2 rules:
+    # article { color: green; color: red; } (both declarations in parent)
+    # article { color: blue; } (nested rule)
+    assert_equal 2, sheet.rules_count
+
+    article_rules = sheet.find_by_selector('article')
+
+    assert_equal 2, article_rules.length, 'Should have 2 article rules'
+
+    # Parent rule should have both green and red (red wins in cascade)
+    parent_rule = article_rules[0]
+
+    assert_equal 2, parent_rule.declarations.length, 'Parent should have 2 color declarations'
+
+    # Nested rule should have blue
+    nested_rule = article_rules[1]
+
+    assert_has_property({ color: 'blue' }, nested_rule)
+  end
+
+  # Rule order: parent must come before nested in array order for proper cascade
+  def test_parent_rule_comes_before_nested_in_array
+    css = <<~CSS
+      .parent {
+        color: blue;
+        & .child { color: red; }
+      }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css)
+    rules = sheet.instance_variable_get(:@rules)
+
+    # Find indices
+    parent_idx = rules.index { |r| r.selector == '.parent' }
+    child_idx = rules.index { |r| r.selector == '.parent .child' }
+
+    assert parent_idx, 'Should have .parent rule'
+    assert child_idx, 'Should have .parent .child rule'
+    assert_operator parent_idx, :<, child_idx, 'Parent rule must come before nested child in array order'
+  end
 end

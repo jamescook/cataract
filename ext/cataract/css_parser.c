@@ -184,9 +184,30 @@ static VALUE resolve_nested_selector(VALUE parent_selector, const char *nested_s
         //           ^^^^^^ - Copy rest as-is
         nesting_style = NESTING_STYLE_EXPLICIT;
 
-        // Build result by replacing & with parent
-        VALUE result = rb_str_buf_new(parent_len + nested_len);
+        // Check if selector starts with a combinator (relative selector)
+        // Example: "+ .bar + &" should become ".foo + .bar + .foo"
+        const char *nested_trimmed = nested_sel;
+        const char *nested_trimmed_end = nested_sel + nested_len;
+        trim_leading(&nested_trimmed, nested_trimmed_end);
+
+        int starts_with_combinator = 0;
+        if (nested_trimmed < nested_trimmed_end) {
+            char first_char = *nested_trimmed;
+            if (first_char == '+' || first_char == '>' || first_char == '~') {
+                starts_with_combinator = 1;
+            }
+        }
+
+        // Build result by replacing & with parent (add extra space if starts with combinator)
+        VALUE result = rb_str_buf_new(parent_len + nested_len + (starts_with_combinator ? parent_len + 2 : 0));
         rb_enc_associate(result, rb_utf8_encoding());
+
+        // If starts with combinator, prepend parent first with space
+        // Example: "+ .bar + &" => ".foo + .bar + .foo"
+        if (starts_with_combinator) {
+            rb_str_buf_cat(result, parent, parent_len);
+            rb_str_buf_cat(result, " ", 1);
+        }
 
         long i = 0;
         while (i < nested_len) {
@@ -274,12 +295,16 @@ static VALUE extract_media_types(const char *query, long query_len) {
 
         // Find end of word (media type or keyword)
         const char *word_start = p;
-        while (p < end && !IS_WHITESPACE(*p) && *p != ',' && *p != '(') {
+        while (p < end && !IS_WHITESPACE(*p) && *p != ',' && *p != '(' && *p != ':') {
             p++;
         }
 
         if (p > word_start) {
             long word_len = p - word_start;
+
+            // Check if this is a media feature (followed by ':')
+            // Example: "orientation" in "orientation: landscape" is not a media type
+            int is_media_feature = (p < end && *p == ':');
 
             // Check if it's a keyword (and, or, not, only)
             int is_keyword = (word_len == 3 && strncmp(word_start, "and", 3) == 0) ||
@@ -287,7 +312,7 @@ static VALUE extract_media_types(const char *query, long query_len) {
                            (word_len == 3 && strncmp(word_start, "not", 3) == 0) ||
                            (word_len == 4 && strncmp(word_start, "only", 4) == 0);
 
-            if (!is_keyword) {
+            if (!is_keyword && !is_media_feature) {
                 // This is a media type - add it as symbol
                 VALUE type_sym = ID2SYM(rb_intern2(word_start, word_len));
                 rb_ary_push(types, type_sym);
@@ -494,8 +519,9 @@ static VALUE combine_media_queries(VALUE parent, VALUE child);
 /*
  * Combine parent and child media queries
  * Examples:
- *   parent="screen", child="(min-width: 500px)" => "screen and (min-width: 500px)"
+ *   parent="screen", child="min-width: 500px" => "screen and (min-width: 500px)"
  *   parent=nil, child="print" => "print"
+ * Note: child may have had outer parens stripped, so we re-add them for conditions
  */
 static VALUE combine_media_queries(VALUE parent, VALUE child) {
     if (NIL_P(parent)) {
@@ -511,13 +537,34 @@ static VALUE combine_media_queries(VALUE parent, VALUE child) {
 
     VALUE combined = rb_str_dup(parent_str);
     rb_str_cat2(combined, " and ");
-    rb_str_append(combined, child_str);
+
+    // If child is a condition (contains ':'), wrap it in parentheses
+    // Example: "min-width: 500px" => "(min-width: 500px)"
+    const char *child_ptr = RSTRING_PTR(child_str);
+    long child_len = RSTRING_LEN(child_str);
+    int has_colon = 0;
+    int already_wrapped = (child_len >= 2 && child_ptr[0] == '(' && child_ptr[child_len - 1] == ')');
+
+    for (long i = 0; i < child_len && !has_colon; i++) {
+        if (child_ptr[i] == ':') {
+            has_colon = 1;
+        }
+    }
+
+    if (has_colon && !already_wrapped) {
+        rb_str_cat2(combined, "(");
+        rb_str_append(combined, child_str);
+        rb_str_cat2(combined, ")");
+    } else {
+        rb_str_append(combined, child_str);
+    }
 
     return ID2SYM(rb_intern_str(combined));
 }
 
 /*
  * Intern media query string to symbol with safety check
+ * Strips outer parentheses from standalone conditions like "(orientation: landscape)"
  */
 static VALUE intern_media_query_safe(ParserContext *ctx, const char *query_str, long query_len) {
     if (query_len == 0) {
@@ -531,7 +578,40 @@ static VALUE intern_media_query_safe(ParserContext *ctx, const char *query_str, 
                 MAX_MEDIA_QUERIES);
     }
 
-    VALUE query_string = rb_usascii_str_new(query_str, query_len);
+    // Strip outer parentheses from standalone conditions
+    // Example: "(orientation: landscape)" => "orientation: landscape"
+    // But keep: "screen and (min-width: 500px)" as-is
+    const char *start = query_str;
+    const char *end = query_str + query_len;
+
+    // Trim whitespace
+    while (start < end && IS_WHITESPACE(*start)) start++;
+    while (end > start && IS_WHITESPACE(*(end - 1))) end--;
+
+    if (end > start && *start == '(' && *(end - 1) == ')') {
+        // Check if this is a simple wrapped condition (no other parens/operators)
+        int depth = 0;
+        int has_and_or = 0;
+        for (const char *p = start; p < end; p++) {
+            if (*p == '(') depth++;
+            else if (*p == ')') depth--;
+            // Check for "and" or "or" at depth 0 (outside our outer parens)
+            if (depth == 0 && p + 3 < end &&
+                (strncmp(p, " and ", 5) == 0 || strncmp(p, " or ", 4) == 0)) {
+                has_and_or = 1;
+                break;
+            }
+        }
+
+        // Strip outer parens if depth stays >= 1 (no operators outside) and no and/or
+        if (!has_and_or && depth == 0) {
+            start++;  // Skip opening (
+            end--;    // Skip closing )
+        }
+    }
+
+    long final_len = end - start;
+    VALUE query_string = rb_usascii_str_new(start, final_len);
     VALUE sym = ID2SYM(rb_intern_str(query_string));
     ctx->media_query_count++;
 
@@ -602,31 +682,41 @@ static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char
 
             if (p < end) p++;  // Skip }
 
-            // Parse the declarations inside the @media block as if they belong to the parent selector
-            // The content is a declaration list, not a rule list
-            VALUE media_declarations = parse_declarations(media_block_start, media_block_end);
+            // Combine media queries: parent + child
+            VALUE combined_media_sym = combine_media_queries(parent_media_sym, media_sym);
 
-            if (RARRAY_LEN(media_declarations) > 0) {
-                // Create a rule with the parent selector and these declarations, associated with media query
-                int rule_id = ctx->rule_id_counter++;
+            // Parse the block with parse_mixed_block to support further nesting
+            // Create a rule ID for this media rule
+            int media_rule_id = ctx->rule_id_counter++;
 
-                VALUE rule = rb_struct_new(cRule,
-                    INT2FIX(rule_id),
-                    parent_selector,
-                    media_declarations,
-                    Qnil,  // specificity
-                    parent_rule_id,  // Link to parent for nested @media serialization
-                    Qnil   // nesting_style (nil for @media nesting)
-                );
+            // Reserve position for parent rule
+            long parent_pos = RARRAY_LEN(ctx->rules_array);
+            rb_ary_push(ctx->rules_array, Qnil);
 
-                // Mark that we have nesting (only set once)
-                if (!ctx->has_nesting && !NIL_P(parent_rule_id)) {
-                    ctx->has_nesting = 1;
-                }
+            // Parse mixed block (may contain declarations and/or nested @media)
+            ctx->depth++;
+            VALUE media_declarations = parse_mixed_block(ctx, media_block_start, media_block_end,
+                                                        parent_selector, INT2FIX(media_rule_id), combined_media_sym);
+            ctx->depth--;
 
-                rb_ary_push(ctx->rules_array, rule);
-                update_media_index(ctx, media_sym, rule_id);
+            // Create rule with the parent selector and declarations, associated with combined media query
+            VALUE rule = rb_struct_new(cRule,
+                INT2FIX(media_rule_id),
+                parent_selector,
+                media_declarations,
+                Qnil,  // specificity
+                parent_rule_id,  // Link to parent for nested @media serialization
+                Qnil   // nesting_style (nil for @media nesting)
+            );
+
+            // Mark that we have nesting (only set once)
+            if (!ctx->has_nesting && !NIL_P(parent_rule_id)) {
+                ctx->has_nesting = 1;
             }
+
+            // Replace placeholder with actual rule
+            rb_ary_store(ctx->rules_array, parent_pos, rule);
+            update_media_index(ctx, combined_media_sym, media_rule_id);
 
             continue;
         }
@@ -1183,40 +1273,37 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                                 // Get rule ID for current selector (increment to reserve it)
                                 int current_rule_id = ctx->rule_id_counter++;
 
-                                // Track rules array length to detect if nested rules were added
-                                long rules_before = RARRAY_LEN(ctx->rules_array);
+                                // Reserve parent's position in rules array with placeholder
+                                // This ensures parent comes before nested rules in array order (per W3C spec)
+                                long parent_position = RARRAY_LEN(ctx->rules_array);
+                                rb_ary_push(ctx->rules_array, Qnil);
 
                                 // Parse mixed block (declarations + nested selectors)
+                                // Nested rules will be added AFTER the placeholder
                                 ctx->depth++;
                                 VALUE parent_declarations = parse_mixed_block(ctx, decl_start, p,
                                                                              resolved_current, INT2FIX(current_rule_id), parent_media_sym);
                                 ctx->depth--;
 
-                                long rules_after = RARRAY_LEN(ctx->rules_array);
-                                int has_nested_children = (rules_after > rules_before);
+                                // Create parent rule and replace placeholder
+                                // Always create the rule (even if empty) to avoid edge cases
+                                VALUE rule = rb_struct_new(cRule,
+                                    INT2FIX(current_rule_id),
+                                    resolved_current,
+                                    parent_declarations,
+                                    Qnil,  // specificity
+                                    current_parent_id,
+                                    current_nesting_style
+                                );
 
-                                // Create rule for parent selector if it has nested children OR declarations
-                                // (Check has_nested_children first - it's a cheap boolean vs RARRAY_LEN call)
-                                if (has_nested_children || RARRAY_LEN(parent_declarations) > 0) {
-                                    // Note: rule ID already reserved above
-
-                                    VALUE rule = rb_struct_new(cRule,
-                                        INT2FIX(current_rule_id),
-                                        resolved_current,
-                                        parent_declarations,
-                                        Qnil,  // specificity
-                                        current_parent_id,
-                                        current_nesting_style
-                                    );
-
-                                    // Mark that we have nesting (only set once)
-                                    if (!ctx->has_nesting && !NIL_P(current_parent_id)) {
-                                        ctx->has_nesting = 1;
-                                    }
-
-                                    rb_ary_push(ctx->rules_array, rule);
-                                    update_media_index(ctx, parent_media_sym, current_rule_id);
+                                // Mark that we have nesting (only set once)
+                                if (!ctx->has_nesting && !NIL_P(current_parent_id)) {
+                                    ctx->has_nesting = 1;
                                 }
+
+                                // Replace placeholder with actual rule - just pointer assignment, fast!
+                                rb_ary_store(ctx->rules_array, parent_position, rule);
+                                update_media_index(ctx, parent_media_sym, current_rule_id);
                             }
 
                             seg_start = seg + 1;

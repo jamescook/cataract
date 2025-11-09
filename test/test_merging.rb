@@ -270,15 +270,18 @@ class TestMerging < Minitest::Test
 
     merged = sheet.merge
 
-    # After merge, should have one merged rule for .parent .child selector
+    # Per W3C spec: parent and child are separate rules with different selectors
     # Nesting should be flattened - all rules are top-level with resolved selectors
-    assert_equal 1, merged.rules_count
+    assert_equal 2, merged.rules_count
 
-    # The merged rule should have the fully resolved selector
-    merged_rule = merged.rules.first
+    parent_rule = merged.rules.find { |r| r.selector == '.parent' }
+    child_rule = merged.rules.find { |r| r.selector == '.parent .child' }
 
-    assert_equal '.parent .child', merged_rule.selector
-    assert_has_property({ color: 'blue' }, merged_rule)
+    assert parent_rule, 'Should have .parent rule'
+    assert child_rule, 'Should have .parent .child rule'
+
+    assert_has_property({ color: 'red' }, parent_rule)
+    assert_has_property({ color: 'blue' }, child_rule)
   end
 
   def test_merge_with_explicit_nesting_flattens
@@ -293,13 +296,18 @@ class TestMerging < Minitest::Test
 
     merged = sheet.merge
 
-    # Should have one merged rule with resolved selector .button:hover
-    assert_equal 1, merged.rules_count
+    # Per W3C spec: .button and .button:hover are different selectors
+    # Should have 2 separate rules
+    assert_equal 2, merged.rules_count
 
-    merged_rule = merged.rules.first
+    button_rule = merged.rules.find { |r| r.selector == '.button' }
+    hover_rule = merged.rules.find { |r| r.selector == '.button:hover' }
 
-    assert_equal '.button:hover', merged_rule.selector
-    assert_has_property({ color: 'red' }, merged_rule)
+    assert button_rule, 'Should have .button rule'
+    assert hover_rule, 'Should have .button:hover rule'
+
+    assert_has_property({ color: 'black' }, button_rule)
+    assert_has_property({ color: 'red' }, hover_rule)
   end
 
   def test_merge_multiple_nested_rules_same_resolved_selector
@@ -386,10 +394,21 @@ class TestMerging < Minitest::Test
 
     merged = sheet.merge
 
-    # Should have one merged rule combining all (selector becomes complex)
-    # Actually, with different selectors, merge creates a single rule with
-    # the merged selector ".parent .child, .other" or similar
-    assert_equal 1, merged.rules_count
+    # Per W3C spec: parent and child are separate rules with different selectors
+    # Should have 3 rules: .parent, .parent .child, and .other
+    assert_equal 3, merged.rules_count
+
+    parent_rule = merged.rules.find { |r| r.selector == '.parent' }
+    child_rule = merged.rules.find { |r| r.selector == '.parent .child' }
+    other_rule = merged.rules.find { |r| r.selector == '.other' }
+
+    assert parent_rule, 'Should have .parent rule'
+    assert child_rule, 'Should have .parent .child rule'
+    assert other_rule, 'Should have .other rule'
+
+    assert_has_property({ color: 'red' }, parent_rule)
+    assert_has_property({ color: 'blue' }, child_rule)
+    assert_has_property({ color: 'green' }, other_rule)
   end
 
   def test_merge_nested_with_important
@@ -428,15 +447,18 @@ class TestMerging < Minitest::Test
 
     merged = sheet.merge
 
-    # #parent .child has higher specificity than .parent .child
-    # Should have one merged rule (actually two different selectors, so this might produce two rules)
-    # Let me check the actual merged output
-    # Actually, merge() with different selectors should keep them separate
-    # Let me adjust the test to check proper flattening with specificity
+    # Different selectors: #parent .child (higher specificity) and .parent .child (lower)
+    # Should have 2 separate rules with different selectors
+    assert_equal 2, merged.rules_count
 
-    # For now, just verify rules are flattened properly
-    # Both should be in the merged result
-    assert_operator merged.rules_count, :>=, 1
+    high_spec_rule = merged.rules.find { |r| r.selector == '#parent .child' }
+    low_spec_rule = merged.rules.find { |r| r.selector == '.parent .child' }
+
+    assert high_spec_rule, 'Should have #parent .child rule'
+    assert low_spec_rule, 'Should have .parent .child rule'
+
+    assert_has_property({ color: 'blue' }, high_spec_rule)
+    assert_has_property({ color: 'red' }, low_spec_rule)
   end
 
   def test_merge_nested_no_parent_declarations

@@ -168,7 +168,7 @@ class SerializationBenchmark < BenchmarkHarness
       end
 
       x.report('cataract: print') do
-        cataract_parser.to_s(:print)
+        cataract_parser.to_s(media: :print)
       end
 
       x.compare!

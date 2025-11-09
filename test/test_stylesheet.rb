@@ -647,6 +647,7 @@ body { color: red; }'
       body {
         color: red;
       }
+
       @media screen {
         div {
           margin: 5px;
@@ -684,5 +685,67 @@ body { color: red; }'
     CSS
 
     assert_equal expected, formatted
+  end
+
+  def test_to_formatted_s_with_media_filtering
+    css = <<~CSS
+      body { color: black; }
+      @media screen { .screen-only { display: block; } }
+      @media print { .print-only { display: none; } }
+    CSS
+    sheet = Cataract::Stylesheet.parse(css)
+
+    # Filter to only screen media
+    screen_output = sheet.to_formatted_s(media: :screen)
+    expected_screen = <<~CSS
+      body {
+        color: black;
+      }
+
+      @media screen {
+        .screen-only {
+          display: block;
+        }
+      }
+    CSS
+
+    assert_equal expected_screen, screen_output
+
+    # Filter to only print media
+    print_output = sheet.to_formatted_s(media: :print)
+    expected_print = <<~CSS
+      body {
+        color: black;
+      }
+
+      @media print {
+        .print-only {
+          display: none;
+        }
+      }
+    CSS
+
+    assert_equal expected_print, print_output
+  end
+
+  def test_to_formatted_s_with_multiple_media_filtering
+    css = <<~CSS
+      body { margin: 0; }
+      @media screen { .screen { color: blue; } }
+      @media print { .print { color: black; } }
+      @media handheld { .handheld { font-size: 12px; } }
+    CSS
+    sheet = Cataract::Stylesheet.parse(css)
+
+    # Filter to multiple media types
+    output = sheet.to_formatted_s(media: %i[screen print])
+
+    # Should include screen and print, but not handheld
+    assert_includes output, '@media screen'
+    assert_includes output, '.screen'
+    assert_includes output, '@media print'
+    assert_includes output, '.print'
+    refute_includes output, '@media handheld'
+    refute_includes output, '.handheld'
   end
 end

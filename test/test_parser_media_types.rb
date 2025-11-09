@@ -230,7 +230,7 @@ class TestParserMediaTypes < Minitest::Test
       @media print { .footer { color: red; } }
     CSS
 
-    output = @sheet.to_s(:all)
+    output = @sheet.to_s(media: :all)
 
     # Should include all rules
     assert_includes output, 'body { color: black; }'
@@ -247,7 +247,7 @@ class TestParserMediaTypes < Minitest::Test
       @media print { .footer { color: red; } }
     CSS
 
-    output = @sheet.to_s(:screen)
+    output = @sheet.to_s(media: :screen)
 
     # Should only include screen rules
     assert_includes output, '@media screen'
@@ -266,7 +266,7 @@ class TestParserMediaTypes < Minitest::Test
       @media print { .footer { color: red; } }
     CSS
 
-    output = @sheet.to_s(:print)
+    output = @sheet.to_s(media: :print)
 
     # Should only include print rules
     assert_includes output, '@media print'
@@ -286,7 +286,7 @@ class TestParserMediaTypes < Minitest::Test
       @media handheld { .mobile { width: 100%; } }
     CSS
 
-    output = @sheet.to_s(%i[screen print])
+    output = @sheet.to_s(media: %i[screen print])
 
     # Should include screen and print rules
     assert_includes output, '@media screen'
