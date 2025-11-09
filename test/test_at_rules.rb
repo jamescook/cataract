@@ -27,7 +27,7 @@ class TestAtRules < Minitest::Test
     # @font-face should be treated as a selector
     assert_has_selector '@font-face', @sheet
 
-    rule = @sheet.find_by_selector('@font-face').first
+    rule = @sheet.with_selector('@font-face').first
 
     assert_has_property({ 'font-family': "'MyFont'" }, rule)
     assert_has_property({ src: "url('font.woff2')" }, rule)
@@ -238,10 +238,10 @@ class TestAtRules < Minitest::Test
 
     assert_equal 'body', rule.selector
     # Should combine media queries: screen AND (min-width: 500px)
-    # Check that this rule is in the combined media query
+    # Check that this rule is accessible via the combined media query
     combined_media = :'screen and (min-width: 500px)'
 
-    assert_equal [0], @sheet.media_index[combined_media]
+    assert_equal [rule], @sheet.with_media(combined_media)
   end
 
   def test_nested_media_complex

@@ -4,6 +4,7 @@ require_relative 'cataract/version'
 require_relative 'cataract/cataract' # Load C extension (defines Rule, Declaration, AtRule structs)
 require_relative 'cataract/rule' # Add Ruby methods to Rule
 require_relative 'cataract/at_rule' # Add Ruby methods to AtRule
+require_relative 'cataract/stylesheet_scope'
 require_relative 'cataract/stylesheet'
 require_relative 'cataract/declarations'
 require_relative 'cataract/import_resolver'
@@ -20,7 +21,7 @@ require_relative 'cataract/import_resolver'
 #   sheet = Cataract.parse_css("body { color: red; } h1 { color: blue; }")
 #
 #   # Query rules
-#   sheet.each_selector { |rule| puts "#{rule.selector}: #{rule.declarations}" }
+#   sheet.select(&:selector?).each { |rule| puts "#{rule.selector}: #{rule.declarations}" }
 #
 #   # Merge with cascade rules
 #   merged = sheet.merge
