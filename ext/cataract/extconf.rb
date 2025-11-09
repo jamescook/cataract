@@ -45,4 +45,4 @@ else
   puts 'String buffer optimization: DISABLED'
 end
 
-create_makefile('cataract/cataract')
+create_makefile('cataract/native_extension')
