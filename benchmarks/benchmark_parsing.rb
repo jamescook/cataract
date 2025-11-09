@@ -143,7 +143,7 @@ class ParsingBenchmark < BenchmarkHarness
 
     # Show sample output
     puts "\nSample Cataract output:"
-    parser.each_selector.first(5).each do |rule|
+    parser.select(&:selector?).first(5).each do |rule|
       puts "  #{rule.selector}: #{rule.declarations} (spec: #{rule.specificity})"
     end
   end

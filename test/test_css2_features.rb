@@ -28,7 +28,7 @@ class TestCSS2Features < Minitest::Test
     assert_matches_media :print, @sheet
     assert_has_selector 'body', @sheet, media: :print, count: 1
 
-    body_rule = @sheet.find_by_selector('body', media: :print).first
+    body_rule = @sheet.with_media(:print).with_selector('body').first
 
     assert_has_property({ margin: '0' }, body_rule)
 
@@ -64,7 +64,7 @@ class TestCSS2Features < Minitest::Test
     # Check it parses and applies to screen
     assert_equal 1, @sheet.size
 
-    container_rules = @sheet.find_by_selector('.container', media: :screen)
+    container_rules = @sheet.with_media(:screen).with_selector('.container')
 
     assert_equal 1, container_rules.length
     assert_equal '.container', container_rules[0].selector
@@ -88,19 +88,19 @@ class TestCSS2Features < Minitest::Test
     assert_equal 3, @sheet.size
 
     # :all matches ALL rules regardless of media type
-    all_body_rules = @sheet.find_by_selector('body', media: :all)
+    all_body_rules = @sheet.with_media(:all).with_selector('body')
 
     assert_equal 2, all_body_rules.length
     assert_equal 'body', all_body_rules[0].selector
     assert_equal 'body', all_body_rules[1].selector
 
-    header_rules = @sheet.find_by_selector('.header', media: :all)
+    header_rules = @sheet.with_media(:all).with_selector('.header')
 
     assert_equal 1, header_rules.length
     assert_equal '.header', header_rules[0].selector
 
     # Media-specific query returns ONLY media-specific rules (matches css_parser)
-    print_body_rules = @sheet.find_by_selector('body', media: :print)
+    print_body_rules = @sheet.with_media(:print).with_selector('body')
 
     assert_equal 1, print_body_rules.length
     assert_equal 'body', print_body_rules[0].selector

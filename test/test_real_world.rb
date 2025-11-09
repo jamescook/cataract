@@ -23,7 +23,7 @@ class TestRealWorld < Minitest::Test
 
     # Find the ::-moz-focus-inner rule
     found = false
-    sheet.each_selector do |rule|
+    sheet.select(&:selector?).each do |rule|
       next unless rule.selector == '::-moz-focus-inner'
 
       found = true
@@ -41,7 +41,7 @@ class TestRealWorld < Minitest::Test
 
     # Find webkit slider thumb with :active pseudo-class
     found = false
-    sheet.each_selector do |rule|
+    sheet.select(&:selector?).each do |rule|
       next unless rule.selector.include?('webkit-slider-thumb:active')
 
       found = true
@@ -60,7 +60,7 @@ class TestRealWorld < Minitest::Test
     sheet = Cataract::Stylesheet.parse(@bootstrap_css)
 
     vendor_pseudo_elements = []
-    sheet.each_selector do |rule|
+    sheet.select(&:selector?).each do |rule|
       vendor_pseudo_elements << rule.selector if rule.selector.include?('::-webkit-') || rule.selector.include?('::-moz-')
     end
 
@@ -77,8 +77,9 @@ class TestRealWorld < Minitest::Test
     # Bootstrap uses extensive media queries
     sheet = Cataract::Stylesheet.parse(@bootstrap_css)
 
-    # Count rules with media types (any media that's not :all)
-    media_rules = sheet.media_index.except(:all).values.flatten.uniq.size
+    # Count unique rules across all media queries (excluding base rules)
+    all_media_rule_ids = sheet.media_queries.flat_map { |mq| sheet.with_media(mq).map(&:id) }.uniq
+    media_rules = all_media_rule_ids.size
 
     assert_predicate media_rules, :positive?, "Bootstrap should have media query rules (found #{media_rules})"
   end
@@ -88,7 +89,7 @@ class TestRealWorld < Minitest::Test
     sheet = Cataract::Stylesheet.parse(@bootstrap_css)
 
     attribute_selectors = []
-    sheet.each_selector do |rule|
+    sheet.select(&:selector?).each do |rule|
       attribute_selectors << rule.selector if rule.selector.include?('[type=')
     end
 
@@ -100,7 +101,7 @@ class TestRealWorld < Minitest::Test
     sheet = Cataract::Stylesheet.parse(@bootstrap_css)
 
     custom_props_found = false
-    sheet.each_selector do |rule|
+    sheet.select(&:selector?).each do |rule|
       next unless rule.selector == ':root'
 
       # :root should have CSS custom properties (check if any property starts with '--bs-')
@@ -116,7 +117,7 @@ class TestRealWorld < Minitest::Test
     sheet = Cataract::Stylesheet.parse(@bootstrap_css)
 
     calc_found = false
-    sheet.each_selector do |rule|
+    sheet.select(&:selector?).each do |rule|
       # Check if any declaration value contains 'calc('
       if rule.declarations.any? { |d| d.value.to_s.include?('calc(') }
         calc_found = true

@@ -20,7 +20,7 @@ class TestModernAtRules < Minitest::Test
     assert_equal 1, @sheet.rules_count
     assert_has_selector '.padding', @sheet
 
-    rule = @sheet.find_by_selector('.padding').first
+    rule = @sheet.with_selector('.padding').first
 
     assert_has_property({ padding: '1rem' }, rule)
   end
@@ -81,7 +81,7 @@ class TestModernAtRules < Minitest::Test
     assert_equal 1, @sheet.rules_count
     assert_has_selector '.card', @sheet
 
-    rule = @sheet.find_by_selector('.card').first
+    rule = @sheet.with_selector('.card').first
 
     assert_has_property({ padding: '2rem' }, rule)
   end
@@ -143,7 +143,7 @@ class TestModernAtRules < Minitest::Test
     assert_equal 1, @sheet.rules_count
     assert_has_selector '.title', @sheet
 
-    rule = @sheet.find_by_selector('.title').first
+    rule = @sheet.with_selector('.title').first
 
     assert_has_property({ 'font-size': '1.2rem' }, rule)
   end

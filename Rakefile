@@ -4,6 +4,9 @@ require 'bundler/gem_tasks'
 require 'rake/testtask'
 require 'rake/clean'
 
+# Load tasks from lib/tasks/
+Dir.glob('lib/tasks/**/*.rake').each { |r| load r }
+
 # Only load extension task if rake-compiler is available
 begin
   require 'rake/extensiontask'

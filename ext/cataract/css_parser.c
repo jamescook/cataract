@@ -1426,7 +1426,7 @@ VALUE parse_css_new_impl(VALUE css_string, int rule_id_offset) {
     // Build result hash
     VALUE result = rb_hash_new();
     rb_hash_aset(result, ID2SYM(rb_intern("rules")), ctx.rules_array);
-    rb_hash_aset(result, ID2SYM(rb_intern("media_index")), ctx.media_index);
+    rb_hash_aset(result, ID2SYM(rb_intern("_media_index")), ctx.media_index);
     rb_hash_aset(result, ID2SYM(rb_intern("charset")), charset);
     rb_hash_aset(result, ID2SYM(rb_intern("last_rule_id")), INT2FIX(ctx.rule_id_counter));
     rb_hash_aset(result, ID2SYM(rb_intern("_has_nesting")), ctx.has_nesting ? Qtrue : Qfalse);

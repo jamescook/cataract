@@ -15,21 +15,18 @@ module Cataract
   # @example Work with media queries
   #   sheet = Cataract.parse_css("@media print { .footer { color: blue; } }")
   #   sheet.media_queries #=> [:print]
-  #   sheet.for_media(:print).first.selector #=> ".footer"
+  #   sheet.with_media(:print).first.selector #=> ".footer"
   #
   # @attr_reader [Array<Rule>] rules Array of parsed CSS rules
   # @attr_reader [String, nil] charset The @charset declaration if present
   class Stylesheet
+    include Enumerable
+
     # @return [Array<Rule>] Array of parsed CSS rules
     attr_reader :rules
 
     # @return [String, nil] The @charset declaration if present
     attr_reader :charset
-
-    # @private
-    # Internal index mapping media query symbols to rule IDs
-    # @return [Hash<Symbol, Array<Integer>>]
-    attr_reader :media_index
 
     # Create a new empty stylesheet.
     #
@@ -49,7 +46,7 @@ module Cataract
       }.merge(options)
 
       @rules = [] # Flat array of Rule structs
-      @media_index = {} # Hash: Symbol => Array of rule IDs
+      @_media_index = {} # Hash: Symbol => Array of rule IDs
       @charset = nil
     end
 
@@ -87,13 +84,159 @@ module Cataract
       sheet
     end
 
-    # Query rules by media query symbol
+    # Iterate over all rules (required by Enumerable).
     #
-    # @param media_sym [Symbol] Media query symbol to filter by
-    # @return [Array<Rule>] Matching rules
-    def for_media(media_sym)
-      rule_ids = @media_index[media_sym] || []
-      rule_ids.map { |id| @rules[id] }
+    # Yields both selector-based rules (Rule) and at-rules (AtRule).
+    # Use rule.selector? to filter for selector-based rules only.
+    #
+    # @yield [rule] Block to execute for each rule
+    # @yieldparam rule [Rule, AtRule] The rule object
+    # @return [Enumerator] Returns enumerator if no block given
+    #
+    # @example Iterate over all rules
+    #   sheet.each { |rule| puts rule.selector }
+    #
+    # @example Filter to selector-based rules only
+    #   sheet.select(&:selector?).each { |rule| puts rule.specificity }
+    def each(&)
+      return enum_for(:each) unless block_given?
+
+      @rules.each(&)
+    end
+
+    # Filter rules by media query symbol(s).
+    #
+    # Returns a chainable StylesheetScope that can be further filtered.
+    #
+    # @param media [Symbol, Array<Symbol>] Media query symbol(s) to filter by
+    # @return [StylesheetScope] Scope with media filter applied
+    #
+    # @example Get print media rules
+    #   sheet.with_media(:print).each { |rule| puts rule.selector }
+    #   sheet.with_media(:print).select(&:selector?).map(&:selector)
+    #
+    # @example Get rules from multiple media queries
+    #   sheet.with_media([:screen, :print]).map(&:selector)
+    #
+    # @example Chain filters
+    #   sheet.with_media(:print).with_specificity(10..).to_a
+    def with_media(media)
+      StylesheetScope.new(self, media: media)
+    end
+
+    # Filter rules by CSS specificity.
+    #
+    # Returns a chainable StylesheetScope that can be further filtered.
+    #
+    # @param specificity [Integer, Range] Specificity value or range
+    # @return [StylesheetScope] Scope with specificity filter applied
+    #
+    # @example Get high-specificity rules
+    #   sheet.with_specificity(100..).each { |rule| puts rule.selector }
+    #
+    # @example Get exact specificity
+    #   sheet.with_specificity(10).map(&:selector)
+    #
+    # @example Chain with media filter
+    #   sheet.with_media(:print).with_specificity(10..50).to_a
+    def with_specificity(specificity)
+      StylesheetScope.new(self, specificity: specificity)
+    end
+
+    # Filter rules by CSS selector.
+    #
+    # Returns a chainable StylesheetScope that can be further filtered.
+    # Supports both exact string matching and regular expression patterns.
+    #
+    # @param selector [String, Regexp] CSS selector to match (exact or pattern)
+    # @return [StylesheetScope] Scope with selector filter applied
+    #
+    # @example Find body rules (exact match)
+    #   sheet.with_selector('body').to_a
+    #
+    # @example Find all .btn-* classes (pattern match)
+    #   sheet.with_selector(/\.btn-/).map(&:selector)
+    #
+    # @example Find body rules in print media
+    #   sheet.with_media(:print).with_selector('body').each { |r| puts r }
+    #
+    # @example Chain multiple filters
+    #   sheet.with_selector('.header').with_specificity(10..).to_a
+    def with_selector(selector)
+      StylesheetScope.new(self, selector: selector)
+    end
+
+    # Filter rules by CSS property name and optional value.
+    #
+    # Returns a chainable StylesheetScope that can be further filtered.
+    #
+    # @param property [String] CSS property name to match
+    # @param value [String, nil] Optional property value to match
+    # @return [StylesheetScope] Scope with property filter applied
+    #
+    # @example Find all rules with color property
+    #   sheet.with_property('color').map(&:selector)
+    #
+    # @example Find rules with position: absolute
+    #   sheet.with_property('position', 'absolute').to_a
+    #
+    # @example Chain with media filter
+    #   sheet.with_media(:screen).with_property('z-index').to_a
+    def with_property(property, value = nil)
+      StylesheetScope.new(self, property: property, property_value: value)
+    end
+
+    # Filter to only base rules (rules not inside any @media query).
+    #
+    # Returns a chainable StylesheetScope that can be further filtered.
+    #
+    # @return [StylesheetScope] Scope with base_only filter applied
+    #
+    # @example Get base rules only
+    #   sheet.base_only.map(&:selector)
+    #
+    # @example Chain with property filter
+    #   sheet.base_only.with_property('color').to_a
+    def base_only
+      StylesheetScope.new(self, base_only: true)
+    end
+
+    # Filter by at-rule type.
+    #
+    # Returns a chainable StylesheetScope that can be further filtered.
+    #
+    # @param type [Symbol] At-rule type to match (:keyframes, :font_face, etc.)
+    # @return [StylesheetScope] Scope with at-rule type filter applied
+    #
+    # @example Find all @keyframes
+    #   sheet.with_at_rule_type(:keyframes).map(&:selector)
+    #
+    # @example Find all @font-face
+    #   sheet.with_at_rule_type(:font_face).to_a
+    #
+    # @example Chain with media filter
+    #   sheet.with_media(:screen).with_at_rule_type(:keyframes).to_a
+    def with_at_rule_type(type)
+      StylesheetScope.new(self, at_rule_type: type)
+    end
+
+    # Filter to rules with !important declarations.
+    #
+    # Returns a chainable StylesheetScope that can be further filtered.
+    #
+    # @param property [String, nil] Optional property name to match
+    # @return [StylesheetScope] Scope with important filter applied
+    #
+    # @example Find all rules with any !important
+    #   sheet.with_important.map(&:selector)
+    #
+    # @example Find rules with color !important
+    #   sheet.with_important('color').to_a
+    #
+    # @example Chain with media filter
+    #   sheet.with_media(:screen).with_important.to_a
+    def with_important(property = nil)
+      StylesheetScope.new(self, important: true, important_property: property)
     end
 
     # Get all rules without media query (rules that apply to all media)
@@ -101,7 +244,7 @@ module Cataract
     # @return [Array<Rule>] Rules with no media query
     def base_rules
       # Rules not in any media_index entry
-      media_rule_ids = @media_index.values.flatten.uniq
+      media_rule_ids = @_media_index.values.flatten.uniq
       @rules.select.with_index { |_rule, idx| !media_rule_ids.include?(idx) }
     end
 
@@ -109,7 +252,7 @@ module Cataract
     #
     # @return [Array<Symbol>] Array of unique media query symbols
     def media_queries
-      @media_index.keys
+      @_media_index.keys
     end
 
     # Get all selectors
@@ -151,13 +294,13 @@ module Cataract
 
       # If :all is present, return everything (no filtering)
       if which_media_array.include?(:all)
-        Cataract._stylesheet_to_s(@rules, @media_index, @charset, @_has_nesting || false)
+        Cataract._stylesheet_to_s(@rules, @_media_index, @charset, @_has_nesting || false)
       else
         # Collect all rule IDs that match the requested media types
         matching_rule_ids = Set.new
         which_media_array.each do |media_sym|
-          if @media_index[media_sym]
-            matching_rule_ids.merge(@media_index[media_sym])
+          if @_media_index[media_sym]
+            matching_rule_ids.merge(@_media_index[media_sym])
           end
         end
 
@@ -167,8 +310,8 @@ module Cataract
         # Build filtered media_index (keep original IDs, just filter to included rules)
         filtered_media_index = {}
         which_media_array.each do |media_sym|
-          if @media_index[media_sym]
-            filtered_media_index[media_sym] = @media_index[media_sym] & matching_rule_ids.to_a
+          if @_media_index[media_sym]
+            filtered_media_index[media_sym] = @_media_index[media_sym] & matching_rule_ids.to_a
           end
         end
 
@@ -207,21 +350,21 @@ module Cataract
 
       # If :all is present, return everything (no filtering)
       if which_media_array.include?(:all)
-        Cataract._stylesheet_to_formatted_s(@rules, @media_index, @charset, @_has_nesting || false)
+        Cataract._stylesheet_to_formatted_s(@rules, @_media_index, @charset, @_has_nesting || false)
       else
         # Collect all rule IDs that match the requested media types
         matching_rule_ids = Set.new
 
         # Include rules not in any media query (they apply to all media)
-        media_rule_ids = @media_index.values.flatten.uniq
+        media_rule_ids = @_media_index.values.flatten.uniq
         all_rule_ids = (0...@rules.length).to_a
         non_media_rule_ids = all_rule_ids - media_rule_ids
         matching_rule_ids.merge(non_media_rule_ids)
 
         # Include rules from requested media types
         which_media_array.each do |media_sym|
-          if @media_index[media_sym]
-            matching_rule_ids.merge(@media_index[media_sym])
+          if @_media_index[media_sym]
+            matching_rule_ids.merge(@_media_index[media_sym])
           end
         end
 
@@ -231,8 +374,8 @@ module Cataract
         # Build filtered media_index (keep original IDs, just filter to included rules)
         filtered_media_index = {}
         which_media_array.each do |media_sym|
-          if @media_index[media_sym]
-            filtered_media_index[media_sym] = @media_index[media_sym] & matching_rule_ids.to_a
+          if @_media_index[media_sym]
+            filtered_media_index[media_sym] = @_media_index[media_sym] & matching_rule_ids.to_a
           end
         end
 
@@ -263,7 +406,7 @@ module Cataract
     # @return [self] Returns self for method chaining
     def clear!
       @rules.clear
-      @media_index.clear
+      @_media_index.clear
       @charset = nil
       @selectors = nil # Clear memoized cache
       self
@@ -363,7 +506,7 @@ module Cataract
 
         # Check media type match
         if filter_media
-          rule_media_types = @media_index.select { |_media, ids| ids.include?(rule_id) }.keys
+          rule_media_types = @_media_index.select { |_media, ids| ids.include?(rule_id) }.keys
           # Extract individual media types from complex queries
           individual_types = rule_media_types.flat_map { |key| Cataract.parse_media_types(key) }.uniq
 
@@ -384,7 +527,7 @@ module Cataract
         @rules.delete_at(rule_id)
 
         # Remove from media_index and update IDs for rules after this one
-        @media_index.each_value do |ids|
+        @_media_index.each_value do |ids|
           ids.delete(rule_id)
           # Decrement IDs greater than removed ID
           ids.map! { |id| id > rule_id ? id - 1 : id }
@@ -392,7 +535,7 @@ module Cataract
       end
 
       # Clean up empty media_index entries
-      @media_index.delete_if { |_media, ids| ids.empty? }
+      @_media_index.delete_if { |_media, ids| ids.empty? }
 
       # Update rule IDs in remaining rules
       @rules.each_with_index { |rule, new_id| rule.id = new_id }
@@ -440,12 +583,12 @@ module Cataract
       end
 
       # Merge media_index with offsetted IDs
-      result[:media_index].each do |media_sym, rule_ids|
+      result[:_media_index].each do |media_sym, rule_ids|
         offsetted_ids = rule_ids.map { |id| id + offset }
-        if @media_index[media_sym]
-          @media_index[media_sym].concat(offsetted_ids)
+        if @_media_index[media_sym]
+          @_media_index[media_sym].concat(offsetted_ids)
         else
-          @media_index[media_sym] = offsetted_ids
+          @_media_index[media_sym] = offsetted_ids
         end
       end
 
@@ -471,71 +614,6 @@ module Cataract
       # Wrap in CSS syntax and add as block
       css = "#{selector} { #{declarations} }"
       add_block(css, media_types: media_types)
-    end
-
-    # Find rules by selector
-    #
-    # @param selector [String] Selector to search for
-    # @param media [Symbol, Array<Symbol>] Optional media filter (default: :all)
-    # @return [Array<Rule>] Array of matching rules
-    def find_by_selector(selector, media: :all)
-      # Normalize media to array
-      media_array = media.is_a?(Array) ? media : [media]
-
-      # Get rule IDs for the media query
-      rule_ids = if media_array.include?(:all)
-                   (0...@rules.length).to_a # All rule IDs
-                 else
-                   # Collect rule IDs from all requested media types
-                   media_array.flat_map { |m| @media_index[m] || [] }.uniq
-                 end
-
-      # Filter by selector
-      rule_ids.map { |id| @rules[id] }.select { |r| r.selector == selector }
-    end
-    alias [] find_by_selector
-
-    # Iterate over each rule with optional filtering
-    #
-    # @param media [Symbol, Array<Symbol>] Filter by media query symbol(s) (default: :all for everything)
-    # @param specificity [Integer, Range] Filter by specificity value or range
-    # @param property [String] Filter by CSS property name
-    # @param property_value [String] Filter by CSS property value
-    # @yield [rule] Block to execute for each matching rule
-    # @yieldparam rule [Rule] The matching rule object
-    # @return [Enumerator, nil] Returns enumerator if no block given
-    #
-    # @example Iterate over all rules
-    #   sheet.each_selector do |rule|
-    #     puts "#{rule.selector} has #{rule.declarations.length} declarations"
-    #   end
-    #
-    # @example Filter by media type
-    #   sheet.each_selector(media: :print) do |rule|
-    #     puts rule.selector
-    #   end
-    def each_selector(media: :all, specificity: nil, property: nil, property_value: nil)
-      unless block_given?
-        return enum_for(:each_selector, media: media, specificity: specificity,
-                                        property: property, property_value: property_value)
-      end
-
-      # Normalize media to array once
-      query_media = media.is_a?(Array) ? media : [media]
-      check_media = !query_media.include?(:all)
-
-      @rules.each_with_index do |rule, rule_id|
-        # Skip at-rules (they're definitions, not selectors)
-        next unless rule.supports_each_selector?
-
-        # Apply filters
-        next if check_media && !rule_matches_media?(rule_id, query_media)
-        next if specificity && !rule_matches_specificity?(rule, specificity)
-        next if (property || property_value) && !rule_matches_property?(rule, property, property_value)
-
-        # Yield the rule object
-        yield rule
-      end
     end
 
     # Convert to hash
@@ -582,12 +660,18 @@ module Cataract
     def merge!
       merged = Cataract.merge(self)
       @rules = merged.instance_variable_get(:@rules)
-      @media_index = merged.instance_variable_get(:@media_index)
+      @_media_index = merged.instance_variable_get(:@_media_index)
       @_has_nesting = merged.instance_variable_get(:@_has_nesting)
       self
     end
 
     private
+
+    # @private
+    # Internal index mapping media query symbols to rule IDs for efficient filtering.
+    # This is an implementation detail and should not be relied upon by external code.
+    # @return [Hash<Symbol, Array<Integer>>]
+    attr_reader :_media_index
 
     # Check if a rule matches any of the requested media queries
     #
@@ -595,7 +679,7 @@ module Cataract
     # @param query_media [Array<Symbol>] Media types to match
     # @return [Boolean] true if rule appears in any of the requested media index entries
     def rule_matches_media?(rule_id, query_media)
-      query_media.any? { |m| @media_index[m]&.include?(rule_id) }
+      query_media.any? { |m| @_media_index[m]&.include?(rule_id) }
     end
 
     # Check if a rule matches the specificity filter

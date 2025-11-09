@@ -27,8 +27,8 @@ class TestCssNesting < Minitest::Test
     # 2. .parent .child { color: blue; }
     assert_equal 2, @sheet.rules_count
 
-    parent_rule = @sheet.find_by_selector('.parent').first
-    child_rule = @sheet.find_by_selector('.parent .child').first
+    parent_rule = @sheet.with_selector('.parent').first
+    child_rule = @sheet.with_selector('.parent .child').first
 
     assert parent_rule, 'Should have .parent rule'
     assert child_rule, 'Should have .parent .child rule'
@@ -52,8 +52,8 @@ class TestCssNesting < Minitest::Test
 
     assert_equal 2, @sheet.rules_count
 
-    foo_rule = @sheet.find_by_selector('.foo').first
-    bar_rule = @sheet.find_by_selector('.foo .bar').first
+    foo_rule = @sheet.with_selector('.foo').first
+    bar_rule = @sheet.with_selector('.foo .bar').first
 
     assert foo_rule, 'Should have .foo rule'
     assert bar_rule, 'Should have .foo .bar rule'
@@ -77,8 +77,8 @@ class TestCssNesting < Minitest::Test
 
     assert_equal 2, @sheet.rules_count
 
-    button_rule = @sheet.find_by_selector('.button').first
-    primary_rule = @sheet.find_by_selector('.button.primary').first
+    button_rule = @sheet.with_selector('.button').first
+    primary_rule = @sheet.with_selector('.button.primary').first
 
     assert button_rule, 'Should have .button rule'
     assert primary_rule, 'Should have .button.primary rule'
@@ -102,8 +102,8 @@ class TestCssNesting < Minitest::Test
 
     assert_equal 2, @sheet.rules_count
 
-    link_rule = @sheet.find_by_selector('.link').first
-    hover_rule = @sheet.find_by_selector('.link:hover').first
+    link_rule = @sheet.with_selector('.link').first
+    hover_rule = @sheet.with_selector('.link:hover').first
 
     assert link_rule, 'Should have .link rule'
     assert hover_rule, 'Should have .link:hover rule'
@@ -130,9 +130,9 @@ class TestCssNesting < Minitest::Test
 
     assert_equal 3, @sheet.rules_count
 
-    a_rule = @sheet.find_by_selector('.a').first
-    b_rule = @sheet.find_by_selector('.a .b').first
-    c_rule = @sheet.find_by_selector('.a .b .c').first
+    a_rule = @sheet.with_selector('.a').first
+    b_rule = @sheet.with_selector('.a .b').first
+    c_rule = @sheet.with_selector('.a .b .c').first
 
     assert a_rule, 'Should have .a rule'
     assert b_rule, 'Should have .a .b rule'
@@ -159,8 +159,8 @@ class TestCssNesting < Minitest::Test
     # With nesting: 3 rules (.parent:first-child, .parent:last-child, .parent placeholder)
     assert_equal 3, @sheet.rules_count
 
-    first_rule = @sheet.find_by_selector('.parent:first-child').first
-    last_rule = @sheet.find_by_selector('.parent:last-child').first
+    first_rule = @sheet.with_selector('.parent:first-child').first
+    last_rule = @sheet.with_selector('.parent:last-child').first
 
     assert first_rule, 'Should have .parent:first-child rule'
     assert last_rule, 'Should have .parent:last-child rule'
@@ -184,8 +184,8 @@ class TestCssNesting < Minitest::Test
     # With nesting support, creates 4 rules: .a -> .a .c -> .b -> .b .c
     assert_equal 4, @sheet.rules_count
 
-    a_c_rule = @sheet.find_by_selector('.a .c').first
-    b_c_rule = @sheet.find_by_selector('.b .c').first
+    a_c_rule = @sheet.with_selector('.a .c').first
+    b_c_rule = @sheet.with_selector('.b .c').first
 
     assert a_c_rule, 'Should have .a .c rule'
     assert b_c_rule, 'Should have .b .c rule'
@@ -221,11 +221,11 @@ class TestCssNesting < Minitest::Test
     # table.colortable th { text-align: center; background: black; color: white; }
     assert_equal 6, @sheet.rules_count
 
-    td_rule = @sheet.find_by_selector('table.colortable td').first
-    td_c_rule = @sheet.find_by_selector('table.colortable td.c').first
-    td_first_rule = @sheet.find_by_selector('table.colortable td:first-child').first
-    td_adjacent_rule = @sheet.find_by_selector('table.colortable td:first-child + td').first
-    th_rule = @sheet.find_by_selector('table.colortable th').first
+    td_rule = @sheet.with_selector('table.colortable td').first
+    td_c_rule = @sheet.with_selector('table.colortable td.c').first
+    td_first_rule = @sheet.with_selector('table.colortable td:first-child').first
+    td_adjacent_rule = @sheet.with_selector('table.colortable td:first-child + td').first
+    th_rule = @sheet.with_selector('table.colortable th').first
 
     assert td_rule, 'Should have table.colortable td rule'
     assert td_c_rule, 'Should have table.colortable td.c rule'
@@ -257,7 +257,7 @@ class TestCssNesting < Minitest::Test
     # With nesting: 2 rules (.parent .child + .parent placeholder)
     assert_equal 2, @sheet.rules_count
 
-    child_rule = @sheet.find_by_selector('.parent .child').first
+    child_rule = @sheet.with_selector('.parent .child').first
 
     assert child_rule, 'Should have .parent .child rule'
     assert_has_property({ color: 'blue' }, child_rule)
@@ -279,8 +279,8 @@ class TestCssNesting < Minitest::Test
 
     assert_equal 2, @sheet.rules_count
 
-    parent_rule = @sheet.find_by_selector('.parent').first
-    child_rule = @sheet.find_by_selector('.parent .child').first
+    parent_rule = @sheet.with_selector('.parent').first
+    child_rule = @sheet.with_selector('.parent .child').first
 
     assert parent_rule, 'Should have .parent rule'
     assert child_rule, 'Should have .parent .child rule'
@@ -306,9 +306,9 @@ class TestCssNesting < Minitest::Test
     # With nesting: 4 rules (3 with combinators + .parent placeholder)
     assert_equal 4, @sheet.rules_count
 
-    child_rule = @sheet.find_by_selector('.parent > .child').first
-    sibling_rule = @sheet.find_by_selector('.parent + .sibling').first
-    general_rule = @sheet.find_by_selector('.parent ~ .general').first
+    child_rule = @sheet.with_selector('.parent > .child').first
+    sibling_rule = @sheet.with_selector('.parent + .sibling').first
+    general_rule = @sheet.with_selector('.parent ~ .general').first
 
     assert child_rule, 'Should have .parent > .child rule'
     assert sibling_rule, 'Should have .parent + .sibling rule'
@@ -337,14 +337,14 @@ class TestCssNesting < Minitest::Test
     # @media screen { .foo { color: blue; } }
     assert_equal 2, @sheet.rules_count
 
-    foo_rule = @sheet.find_by_selector('.foo', media: :all).first
-    foo_screen_rule = @sheet.find_by_selector('.foo', media: :screen).first
+    foo_rule = @sheet.with_media(:all).with_selector('.foo').first
+    foo_screen_rule = @sheet.with_media(:screen).with_selector('.foo').first
 
     assert foo_rule, 'Should have .foo rule'
     assert foo_screen_rule, 'Should have .foo rule in screen media'
 
     # All rules should include both (one from general, one from screen)
-    all_foo_rules = @sheet.find_by_selector('.foo', media: :all)
+    all_foo_rules = @sheet.with_media(:all).with_selector('.foo')
 
     assert_equal 2, all_foo_rules.length
   end
@@ -776,9 +776,9 @@ class TestCssNesting < Minitest::Test
     # .foo > .baz { color: green; }
     assert_equal 3, sheet.rules_count
 
-    foo_rule = sheet.find_by_selector('.foo').first
-    bar_rule = sheet.find_by_selector('.foo > .bar').first
-    baz_rule = sheet.find_by_selector('.foo > .baz').first
+    foo_rule = sheet.with_selector('.foo').first
+    bar_rule = sheet.with_selector('.foo > .bar').first
+    baz_rule = sheet.with_selector('.foo > .baz').first
 
     assert foo_rule, 'Should have .foo rule'
     assert bar_rule, 'Should have .foo > .bar rule'
@@ -805,8 +805,8 @@ class TestCssNesting < Minitest::Test
     # .foo.bar { color: red; }
     assert_equal 2, sheet.rules_count
 
-    foo_rule = sheet.find_by_selector('.foo').first
-    foobar_rule = sheet.find_by_selector('.foo.bar').first
+    foo_rule = sheet.with_selector('.foo').first
+    foobar_rule = sheet.with_selector('.foo.bar').first
 
     assert foo_rule, 'Should have .foo rule'
     assert foobar_rule, 'Should have .foo.bar rule'
@@ -839,9 +839,9 @@ class TestCssNesting < Minitest::Test
     # figure > figcaption > p { font-size: .9rem; }
     assert_equal 3, sheet.rules_count
 
-    figure_rule = sheet.find_by_selector('figure').first
-    figcaption_rule = sheet.find_by_selector('figure > figcaption').first
-    p_rule = sheet.find_by_selector('figure > figcaption > p').first
+    figure_rule = sheet.with_selector('figure').first
+    figcaption_rule = sheet.with_selector('figure > figcaption').first
+    p_rule = sheet.with_selector('figure > figcaption > p').first
 
     assert figure_rule, 'Should have figure rule'
     assert figcaption_rule, 'Should have figure > figcaption rule'
@@ -870,7 +870,7 @@ class TestCssNesting < Minitest::Test
     # Both have same selector and specificity, but nested comes after
     assert_equal 2, sheet.rules_count
 
-    article_rules = sheet.find_by_selector('article')
+    article_rules = sheet.with_selector('article')
 
     assert_equal 2, article_rules.length, 'Should have 2 article rules'
 
@@ -896,8 +896,8 @@ class TestCssNesting < Minitest::Test
     # .foo .bar .foo .baz .foo .qux { color: red; }
     assert_equal 2, sheet.rules_count
 
-    foo_rule = sheet.find_by_selector('.foo').first
-    complex_rule = sheet.find_by_selector('.foo .bar .foo .baz .foo .qux').first
+    foo_rule = sheet.with_selector('.foo').first
+    complex_rule = sheet.with_selector('.foo .bar .foo .baz .foo .qux').first
 
     assert foo_rule, 'Should have .foo rule'
     assert complex_rule, 'Should have .foo .bar .foo .baz .foo .qux rule'
@@ -924,8 +924,8 @@ class TestCssNesting < Minitest::Test
     # .parent .foo { color: blue; }
     assert_equal 2, sheet.rules_count
 
-    foo_rule = sheet.find_by_selector('.foo').first
-    parent_foo_rule = sheet.find_by_selector('.parent .foo').first
+    foo_rule = sheet.with_selector('.foo').first
+    parent_foo_rule = sheet.with_selector('.parent .foo').first
 
     assert foo_rule, 'Should have .foo rule'
     assert parent_foo_rule, 'Should have .parent .foo rule'
@@ -952,8 +952,8 @@ class TestCssNesting < Minitest::Test
     # :not(.foo) { color: blue; }
     assert_equal 2, sheet.rules_count
 
-    foo_rule = sheet.find_by_selector('.foo').first
-    not_foo_rule = sheet.find_by_selector(':not(.foo)').first
+    foo_rule = sheet.with_selector('.foo').first
+    not_foo_rule = sheet.with_selector(':not(.foo)').first
 
     assert foo_rule, 'Should have .foo rule'
     assert not_foo_rule, 'Should have :not(.foo) rule'
@@ -978,8 +978,8 @@ class TestCssNesting < Minitest::Test
     # .foo + .bar + .foo { color: blue; }
     assert_equal 2, sheet.rules_count
 
-    foo_rule = sheet.find_by_selector('.foo').first
-    complex_rule = sheet.find_by_selector('.foo + .bar + .foo').first
+    foo_rule = sheet.with_selector('.foo').first
+    complex_rule = sheet.with_selector('.foo + .bar + .foo').first
 
     assert foo_rule, 'Should have .foo rule'
     assert complex_rule, 'Should have .foo + .bar + .foo rule'
@@ -1004,7 +1004,7 @@ class TestCssNesting < Minitest::Test
     # .foo { padding: 2ch; }
     assert_equal 2, sheet.rules_count
 
-    foo_rules = sheet.find_by_selector('.foo')
+    foo_rules = sheet.with_selector('.foo')
 
     assert_equal 2, foo_rules.length, 'Should have 2 .foo rules'
 
@@ -1028,8 +1028,8 @@ class TestCssNesting < Minitest::Test
     # .foo.foo { padding: 2ch; }
     assert_equal 2, sheet.rules_count
 
-    foo_rule = sheet.find_by_selector('.foo').first
-    foo_foo_rule = sheet.find_by_selector('.foo.foo').first
+    foo_rule = sheet.with_selector('.foo').first
+    foo_foo_rule = sheet.with_selector('.foo.foo').first
 
     assert foo_rule, 'Should have .foo rule'
     assert foo_foo_rule, 'Should have .foo.foo rule'
@@ -1057,8 +1057,8 @@ class TestCssNesting < Minitest::Test
     # @media (orientation: landscape) { .foo { grid-auto-flow: column; } }
     assert_equal 2, sheet.rules_count
 
-    foo_base = sheet.find_by_selector('.foo').find { |r| r.declarations.any? { |d| d.property == 'display' } }
-    foo_media = sheet.find_by_selector('.foo').find { |r| r.declarations.any? { |d| d.property == 'grid-auto-flow' } }
+    foo_base = sheet.with_selector('.foo').find { |r| r.declarations.any? { |d| d.property == 'display' } }
+    foo_media = sheet.with_selector('.foo').find { |r| r.declarations.any? { |d| d.property == 'grid-auto-flow' } }
 
     assert foo_base, 'Should have .foo rule with display'
     assert foo_media, 'Should have .foo rule with grid-auto-flow (in @media)'
@@ -1067,7 +1067,7 @@ class TestCssNesting < Minitest::Test
     assert_has_property({ 'grid-auto-flow': 'column' }, foo_media)
 
     # Check media query is set correctly
-    media_sym = sheet.instance_variable_get(:@media_index).find { |_, ids| ids.include?(foo_media.id) }&.first
+    media_sym = sheet.instance_variable_get(:@_media_index).find { |_, ids| ids.include?(foo_media.id) }&.first
 
     assert media_sym, 'Should have media query for foo_media rule'
     assert_equal :'orientation: landscape', media_sym
@@ -1097,9 +1097,9 @@ class TestCssNesting < Minitest::Test
     # @media (orientation: landscape) and (min-width > 1024px) { .foo { max-inline-size: 1024px; } }
     assert_equal 3, sheet.rules_count
 
-    foo_base = sheet.find_by_selector('.foo').find { |r| r.declarations.any? { |d| d.property == 'display' } }
-    foo_landscape = sheet.find_by_selector('.foo').find { |r| r.declarations.any? { |d| d.property == 'grid-auto-flow' } }
-    foo_nested = sheet.find_by_selector('.foo').find { |r| r.declarations.any? { |d| d.property == 'max-inline-size' } }
+    foo_base = sheet.with_selector('.foo').find { |r| r.declarations.any? { |d| d.property == 'display' } }
+    foo_landscape = sheet.with_selector('.foo').find { |r| r.declarations.any? { |d| d.property == 'grid-auto-flow' } }
+    foo_nested = sheet.with_selector('.foo').find { |r| r.declarations.any? { |d| d.property == 'max-inline-size' } }
 
     assert foo_base, 'Should have .foo rule with display'
     assert foo_landscape, 'Should have .foo rule with grid-auto-flow'
@@ -1110,7 +1110,7 @@ class TestCssNesting < Minitest::Test
     assert_has_property({ 'max-inline-size': '1024px' }, foo_nested)
 
     # Check media queries
-    media_index = sheet.instance_variable_get(:@media_index)
+    media_index = sheet.instance_variable_get(:@_media_index)
     landscape_media = media_index.find { |_, ids| ids.include?(foo_landscape.id) }&.first
     nested_media = media_index.find { |_, ids| ids.include?(foo_nested.id) }&.first
 
@@ -1139,7 +1139,7 @@ class TestCssNesting < Minitest::Test
     # article { color: blue; } (nested rule)
     assert_equal 2, sheet.rules_count
 
-    article_rules = sheet.find_by_selector('article')
+    article_rules = sheet.with_selector('article')
 
     assert_equal 2, article_rules.length, 'Should have 2 article rules'
 

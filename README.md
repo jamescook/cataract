@@ -1,6 +1,6 @@
 # Cataract
 
-A high-performance CSS parser with C extensions for accurate parsing of complex CSS structures.
+A performant CSS parser for accurate parsing of complex CSS structures.
 
 [![codecov](https://codecov.io/github/jamescook/cataract/graph/badge.svg?token=1PTVV1QTV5)](https://codecov.io/github/jamescook/cataract)
 
@@ -74,41 +74,66 @@ sheet.to_s
 # => "body { margin: 0; padding: 0; } @media screen and (min-width: 768px) { .container { width: 750px; } } ..."
 ```
 
-### Advanced Filtering with each_selector
+### Advanced Filtering with Enumerable
 
-The `Stylesheet#each_selector` method provides powerful filtering capabilities for CSS analysis:
+`Cataracy::Stylesheet` implements `Enumerable`, providing standard Ruby collection methods plus chainable scopes:
 
 ```ruby
 sheet = Cataract::Stylesheet.parse(css)
 
+# Basic Enumerable methods work
+sheet.map(&:selector)                    # => ["body", ".container", "div.header > h1:hover"]
+sheet.select(&:selector?).count          # => Count only selector-based rules (excludes @keyframes, etc.)
+sheet.find { |r| r.selector == 'body' }  # => First rule matching selector
+
+# Filter to selector-based rules only (excludes at-rules like @keyframes, @font-face)
+sheet.select(&:selector?).each do |rule|
+  puts "#{rule.selector}: specificity #{rule.specificity}"
+end
+
+# Filter by media query (returns chainable scope)
+sheet.with_media(:print).each do |rule|
+  puts "Print rule: #{rule.selector}"
+end
+
+# Filter by selector (returns chainable scope)
+sheet.with_selector('body').each do |rule|
+  puts "Body rule has #{rule.declarations.length} declarations"
+end
+
+# Filter by specificity (returns chainable scope)
+sheet.with_specificity(100..).each do |rule|
+  puts "High specificity: #{rule.selector} (#{rule.specificity})"
+end
+
+# Chain filters together
+sheet.with_media(:screen)
+     .with_specificity(50..200)
+     .select(&:selector?)
+     .map(&:selector)
+# => ["#header .nav", ".sidebar > ul li"]
+
+# Find all rules with a specific property
+sheet.select(&:selector?).select do |rule|
+  rule.declarations.any? { |d| d.property == 'color' }
+end
+
 # Find high-specificity selectors (potential refactoring targets)
-sheet.each_selector(specificity: 100..) do |selector, declarations, specificity, media_types|
-  puts "High specificity: #{selector} (#{specificity})"
+sheet.with_specificity(100..).select(&:selector?).each do |rule|
+  puts "Refactor candidate: #{rule.selector} (specificity: #{rule.specificity})"
 end
 
-# Find all selectors that define a color property
-sheet.each_selector(property: 'color') do |selector, declarations, specificity, media_types|
-  puts "#{selector} defines color"
+# Find positioned elements in screen media
+sheet.with_media(:screen).select do |rule|
+  rule.selector? && rule.declarations.any? do |d|
+    d.property == 'position' && d.value == 'relative'
+  end
 end
 
-# Find all positioned elements
-sheet.each_selector(property: 'position', property_value: 'relative') do |selector, declarations, specificity, media_types|
-  puts "#{selector} is relatively positioned"
-end
-
-# Find any property with a specific value (useful for finding typos or deprecated values)
-sheet.each_selector(property_value: 'relative') do |selector, declarations, specificity, media_types|
-  puts "#{selector} uses value 'relative'"
-end
-
-# Combine filters for complex queries
-sheet.each_selector(property: 'z-index', specificity: 100.., media: :screen) do |selector, declarations, specificity, media_types|
-  puts "High-specificity z-index usage in screen media: #{selector}"
-end
-
-# Filter by specificity ranges
-sheet.each_selector(specificity: 10..100) { |sel, decls, spec, media| ... }  # Class to ID range
-sheet.each_selector(specificity: ..10) { |sel, decls, spec, media| ... }     # Low specificity (<= 10)
+# Terminal operations force evaluation
+sheet.with_media(:print).to_a         # => Array of rules
+sheet.with_selector('.header').size   # => 3
+sheet.with_specificity(10..50).empty? # => false
 ```
 
 See [BENCHMARKS.md](BENCHMARKS.md) for detailed performance comparisons.
@@ -231,19 +256,7 @@ rake benchmark
 
 ## How It Works
 
-Cataract uses a high-performance C implementation for CSS parsing and serialization. The parser processes CSS into an internal data structure:
-
-```ruby
-# Stylesheet structure
-{
-  rules: [Rule, Rule, ...],          # Flat array of all rules in source order
-  media_index: {                      # Hash mapping media queries to rule IDs
-    screen: [1, 3, 5],                # Rule IDs that appear in @media screen
-    print: [2, 4],                    # Rule IDs that appear in @media print
-    # Rules not in any @media block are not indexed
-  }
-}
-```
+Cataract uses a high-performance C implementation for CSS parsing and serialization.
 
 Each `Rule` is a struct containing:
 - `id`: Integer ID (position in rules array)
@@ -253,10 +266,10 @@ Each `Rule` is a struct containing:
 
 Implementation details:
 - **C implementation**: Critical paths implemented in C (parsing, merging, serialization)
-- **Flat rule array**: All rules in single array, preserving source order
-- **Efficient media query handling**: O(1) lookup via media_index hash
+- **Flat rule array**: All rules stored in a single array, preserving source order
+- **Efficient media query handling**: O(1) lookup via internal media index
 - **Memory efficient**: Minimal allocations, reuses string buffers where possible
-- **Comprehensive**: Handles complex CSS including nested media queries, nested CSS, data URIs, calc() functions
+- **Comprehensive parsing**: Preserves complex CSS structures including nested media queries, nested selectors, data URIs, CSS functions (calc(), var(), etc.)
 
 ## Development Notes
 
