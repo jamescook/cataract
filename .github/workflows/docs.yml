@@ -18,6 +18,9 @@ jobs:
           ruby-version: 3.4
           bundler-cache: true
 
+      - name: Bundle
+        run: bundle install
+
       - name: Generate YARD documentation
         run: rake docs
 
