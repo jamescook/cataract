@@ -336,7 +336,6 @@ void init_merge_constants(void) {
 // Merge CSS rules according to cascade rules
 // Input: Stylesheet object or CSS string
 // Output: Stylesheet with merged declarations
-// TODO: Add instance-level merge! that mutates receiver
 VALUE cataract_merge_new(VALUE self, VALUE input) {
     VALUE rules_array;
 

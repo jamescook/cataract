@@ -13,12 +13,20 @@ module CSSAnalyzer
         important_by_selector = Hash.new(0)
         important_examples = []
 
-        # Iterate through all rule sets
-        stylesheet.each_rule_set do |rule_set, media_types|
-          selector = rule_set.selector
+        # Iterate through all rules
+        stylesheet.rules.each do |rule|
+          # Skip AtRules (like @keyframes) - they don't have declarations
+          next unless rule.is_a?(Cataract::Rule)
+
+          selector = rule.selector
+          media_types = media_queries_for_rule(rule)
           selector_important_count = 0
 
-          rule_set.declarations.each do |property, value, important|
+          rule.declarations.each do |decl|
+            property = decl.property
+            value = decl.value
+            important = decl.important
+
             total_declarations += 1
 
             next unless important

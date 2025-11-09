@@ -571,6 +571,22 @@ module Cataract
       Cataract.merge(self)
     end
 
+    # Merge rules in-place, mutating the receiver.
+    #
+    # This is a convenience method that updates the stylesheet's internal
+    # rules and media_index with the merged result. The Stylesheet object
+    # itself is mutated (same object_id), but note that the C merge function
+    # still allocates new arrays internally.
+    #
+    # @return [self] Returns self for method chaining
+    def merge!
+      merged = Cataract.merge(self)
+      @rules = merged.instance_variable_get(:@rules)
+      @media_index = merged.instance_variable_get(:@media_index)
+      @_has_nesting = merged.instance_variable_get(:@_has_nesting)
+      self
+    end
+
     private
 
     # Check if a rule matches any of the requested media queries

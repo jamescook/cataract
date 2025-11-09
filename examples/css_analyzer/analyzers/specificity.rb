@@ -10,16 +10,20 @@ module CSSAnalyzer
         specificity_data = []
         specificity_histogram = Hash.new(0)
 
-        # Iterate through all rule sets
-        stylesheet.each_rule_set do |rule_set, media_types|
-          spec = rule_set.specificity
+        # Iterate through all rules
+        stylesheet.rules.each do |rule|
+          # Skip AtRules (like @keyframes) - they don't have specificity like regular rules
+          next unless rule.is_a?(Cataract::Rule)
+
+          spec = rule.specificity
+          media_types = media_queries_for_rule(rule)
           specificity_histogram[spec] += 1
 
           specificity_data << {
-            selector: rule_set.selector,
+            selector: rule.selector,
             specificity: spec,
             media: media_types,
-            declaration_count: rule_set.declarations.to_a.length
+            declaration_count: rule.declarations.length
           }
         end
 

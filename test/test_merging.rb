@@ -505,4 +505,29 @@ class TestMerging < Minitest::Test
     assert selectors.any? { |s| s.include?('>') || s.include?('+') },
            'Combinators should be preserved in flattened selectors'
   end
+
+  def test_merge_bang_mutates_receiver
+    sheet = Cataract::Stylesheet.parse(<<~CSS)
+      .test { color: black; }
+      .test { margin: 10px; }
+    CSS
+
+    original_object_id = sheet.object_id
+    original_rules_count = sheet.rules_count
+
+    # merge! should return self
+    result = sheet.merge!
+
+    # Should return the same object
+    assert_same sheet, result, 'merge! should return self'
+    assert_equal original_object_id, sheet.object_id, 'merge! should mutate receiver, not create new object'
+
+    # Should have merged the rules
+    assert_equal 1, sheet.rules_count, 'merge! should have merged duplicate selectors'
+    assert_operator sheet.rules_count, :<, original_rules_count, 'merge! should reduce rule count'
+
+    # Check merged content
+    assert_has_property({ color: 'black' }, sheet.rules.first)
+    assert_has_property({ margin: '10px' }, sheet.rules.first)
+  end
 end

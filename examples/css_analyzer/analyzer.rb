@@ -45,7 +45,7 @@ module CSSAnalyzer
     # Generate summary statistics
     def analyze_summary
       {
-        total_rules: stylesheet.size,
+        total_rules: stylesheet.rules_count,
         file_name: source_name,
         file_path: source,
         generated_at: Time.now
