@@ -40,8 +40,7 @@ gem install cataract
 require 'cataract'
 
 # Parse CSS
-parser = Cataract::Parser.new
-parser.parse(<<~CSS)
+sheet = Cataract::Stylesheet.parse(<<~CSS)
   body { margin: 0; padding: 0 }
 
   @media screen and (min-width: 768px) {
@@ -51,29 +50,28 @@ parser.parse(<<~CSS)
   div.header > h1:hover { color: blue }
 CSS
 
-# Query selectors
-parser.selectors
+# Get all selectors
+sheet.selectors
 # => ["body", ".container", "div.header > h1:hover"]
 
-# Find declarations by selector
-parser.find_by_selector("body")
-# => ["margin: 0;", "padding: 0;"]
-
-# Filter by media type
-parser.find_by_selector(".container", :screen)
-# => ["width: 750px;"]
-
-# Get specificity
-parser.each_selector do |selector, declarations, specificity|
-  puts "#{selector}: specificity=#{specificity}"
+# Get all rules
+sheet.rules.each do |rule|
+  puts "#{rule.selector}: #{rule.declarations.length} declarations"
 end
-# body: specificity=1
-# .container: specificity=10
-# div.header > h1:hover: specificity=23
+
+# Access specific rule
+body_rule = sheet.rules.first
+body_rule.selector       # => "body"
+body_rule.specificity    # => 1
+body_rule.declarations   # => [#<Declaration property="margin" value="0">, ...]
 
 # Count rules
-parser.rules_count
+sheet.rules_count
 # => 3
+
+# Serialize back to CSS
+sheet.to_s
+# => "body { margin: 0; padding: 0; } @media screen and (min-width: 768px) { .container { width: 750px; } } ..."
 ```
 
 ### Advanced Filtering with each_selector
@@ -81,7 +79,7 @@ parser.rules_count
 The `Stylesheet#each_selector` method provides powerful filtering capabilities for CSS analysis:
 
 ```ruby
-sheet = Cataract.parse_css(css)
+sheet = Cataract::Stylesheet.parse(css)
 
 # Find high-specificity selectors (potential refactoring targets)
 sheet.each_selector(specificity: 100..) do |selector, declarations, specificity, media_types|
@@ -135,25 +133,25 @@ require 'cataract'
 require 'cataract/color_conversion'
 
 # Convert hex to RGB
-sheet = Cataract.parse_css('.button { color: #ff0000; background: #00ff00; }')
+sheet = Cataract::Stylesheet.parse('.button { color: #ff0000; background: #00ff00; }')
 sheet.convert_colors!(from: :hex, to: :rgb)
-sheet.to_css
+sheet.to_s
 # => ".button { color: rgb(255 0 0); background: rgb(0 255 0); }"
 
 # Convert RGB to HSL for easier color manipulation
-sheet = Cataract.parse_css('.card { color: rgb(255, 128, 0); }')
+sheet = Cataract::Stylesheet.parse('.card { color: rgb(255, 128, 0); }')
 sheet.convert_colors!(from: :rgb, to: :hsl)
-sheet.to_css
+sheet.to_s
 # => ".card { color: hsl(30, 100%, 50%); }"
 
 # Convert to Oklab for perceptually uniform colors
-sheet = Cataract.parse_css('.gradient { background: linear-gradient(#ff0000, #0000ff); }')
+sheet = Cataract::Stylesheet.parse('.gradient { background: linear-gradient(#ff0000, #0000ff); }')
 sheet.convert_colors!(to: :oklab)
-sheet.to_css
+sheet.to_s
 # => ".gradient { background: linear-gradient(oklab(0.6280 0.2249 0.1258), oklab(0.4520 -0.0325 -0.3115)); }"
 
 # Auto-detect source format and convert all colors
-sheet = Cataract.parse_css(<<~CSS)
+sheet = Cataract::Stylesheet.parse(<<~CSS)
   .mixed {
     color: #ff0000;
     background: rgb(0, 255, 0);
@@ -194,13 +192,13 @@ sheet.convert_colors!(to: :hex)  # Converts all formats to hex
 
 ```ruby
 # Disabled by default
-sheet = Cataract.parse_css(css)  # @import statements are ignored
+sheet = Cataract::Stylesheet.parse(css)  # @import statements are ignored
 
 # Enable with safe defaults (HTTPS only, .css files only, max depth 5)
-sheet = Cataract.parse_css(css, imports: true)
+sheet = Cataract::Stylesheet.parse(css, import: true)
 
 # Custom options for full control
-sheet = Cataract.parse_css(css, imports: {
+sheet = Cataract::Stylesheet.parse(css, import: {
   allowed_schemes: ['https', 'file'],   # Default: ['https']
   extensions: ['css'],                   # Default: ['css']
   max_depth: 3,                          # Default: 5
@@ -233,32 +231,32 @@ rake benchmark
 
 ## How It Works
 
-Cataract uses a high-performance C implementation for CSS parsing and serialization. The parser processes CSS into an internal data structure organized by media queries:
+Cataract uses a high-performance C implementation for CSS parsing and serialization. The parser processes CSS into an internal data structure:
 
 ```ruby
+# Stylesheet structure
 {
-  # Media query string => group info
-  "(min-width: 768px)" => {
-    media_types: [:screen],  # Array of applicable media types
-    rules: [...]             # Array of Rule structs for this media query
-  },
-  nil => {
-    media_types: [:all],     # Rules with no media query
-    rules: [...]
+  rules: [Rule, Rule, ...],          # Flat array of all rules in source order
+  media_index: {                      # Hash mapping media queries to rule IDs
+    screen: [1, 3, 5],                # Rule IDs that appear in @media screen
+    print: [2, 4],                    # Rule IDs that appear in @media print
+    # Rules not in any @media block are not indexed
   }
 }
 ```
 
 Each `Rule` is a struct containing:
+- `id`: Integer ID (position in rules array)
 - `selector`: The CSS selector string
-- `declarations`: Array of `Declarations::Value` structs (property, value, important flag)
+- `declarations`: Array of `Declaration` structs (property, value, important flag)
 - `specificity`: Calculated CSS specificity (cached)
 
 Implementation details:
 - **C implementation**: Critical paths implemented in C (parsing, merging, serialization)
-- **Efficient media query handling**: Rules grouped by media query for O(1) lookups
+- **Flat rule array**: All rules in single array, preserving source order
+- **Efficient media query handling**: O(1) lookup via media_index hash
 - **Memory efficient**: Minimal allocations, reuses string buffers where possible
-- **Comprehensive**: Handles complex CSS including nested media queries, data URIs, calc() functions
+- **Comprehensive**: Handles complex CSS including nested media queries, nested CSS, data URIs, calc() functions
 
 ## Development Notes
 

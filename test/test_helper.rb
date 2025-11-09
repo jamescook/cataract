@@ -24,3 +24,15 @@ end
 require 'minitest/autorun'
 require 'cataract'
 require 'cataract/color_conversion' # Load color conversion extension for tests
+
+# Load test helpers
+require_relative 'support/stylesheet_test_helper'
+require_relative 'support/color_conversion_test_helper'
+
+# Include helpers in all test classes
+module Minitest
+  class Test
+    include StylesheetTestHelper
+    include ColorConversionTestHelper
+  end
+end

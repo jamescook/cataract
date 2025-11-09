@@ -3,13 +3,6 @@
 require_relative 'test_helper'
 
 class TestColorConversionOklab < Minitest::Test
-  # Helper to parse, convert, and get declarations
-  def convert_and_get_declarations(css, **options)
-    sheet = Cataract.parse_css(css)
-    sheet.convert_colors!(**options)
-    Cataract::Declarations.new(sheet.declarations)
-  end
-
   # Tests targeting oklab output
 
   def test_hex_to_oklab_red
@@ -151,12 +144,12 @@ class TestColorConversionOklab < Minitest::Test
     # Test round-trip: hex -> oklab -> hex
     sheet = Cataract.parse_css('.test { color: #ff0000 }')
     sheet.convert_colors!(from: :hex, to: :oklab)
-    decls1 = Cataract::Declarations.new(sheet.declarations)
+    decls1 = Cataract::Declarations.new(sheet.rules.first.declarations)
     oklab_value = decls1['color']
 
     sheet2 = Cataract.parse_css(".test { color: #{oklab_value} }")
     sheet2.convert_colors!(from: :oklab, to: :hex)
-    decls2 = Cataract::Declarations.new(sheet2.declarations)
+    decls2 = Cataract::Declarations.new(sheet2.rules.first.declarations)
 
     assert_equal '#ff0000', decls2['color']
   end

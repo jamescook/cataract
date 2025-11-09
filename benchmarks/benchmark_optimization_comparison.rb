@@ -61,7 +61,7 @@ module OptimizationBenchmark
     puts "\nParsing bootstrap.css to get rules..."
     parser = Cataract::Stylesheet.new
     begin
-      parser.parse(bootstrap_css)
+      parser.add_block(bootstrap_css)
       rules = parser.instance_variable_get(:@raw_rules) # Get raw rules array
       puts "  ✅ Parsed successfully (#{rules.length} rules)"
     rescue StandardError => e

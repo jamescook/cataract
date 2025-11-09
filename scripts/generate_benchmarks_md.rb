@@ -11,9 +11,10 @@ class BenchmarkDocGenerator
   TEMPLATE_PATH = File.expand_path('../benchmarks/templates/benchmarks.md.erb', __dir__)
   OUTPUT_PATH = File.expand_path('../BENCHMARKS.md', __dir__)
 
-  def initialize(results_dir: RESULTS_DIR, output_path: OUTPUT_PATH)
+  def initialize(results_dir: RESULTS_DIR, output_path: OUTPUT_PATH, verbose: true)
     @results_dir = results_dir
     @output_path = output_path
+    @verbose = verbose
     @metadata = load_metadata
     @parsing_data = load_benchmark_data('parsing')
     @serialization_data = load_benchmark_data('serialization')
@@ -26,11 +27,15 @@ class BenchmarkDocGenerator
     # Check if we have any data to generate
     if !@parsing_data && !@serialization_data &&
        !@specificity_data && !@merging_data && !@yjit_data
-      puts '⚠ Warning: No benchmark data found. Run benchmarks first: rake benchmark'
-      puts 'Available data files:'
-      Dir.glob(File.join(@results_dir, '*.json')).each do |file|
-        puts "  - #{File.basename(file)}"
+      # :nocov:
+      if @verbose
+        puts '⚠ Warning: No benchmark data found. Run benchmarks first: rake benchmark'
+        puts 'Available data files:'
+        Dir.glob(File.join(@results_dir, '*.json')).each do |file|
+          puts "  - #{File.basename(file)}"
+        end
       end
+      # :nocov:
       return
     end
 
@@ -38,6 +43,10 @@ class BenchmarkDocGenerator
     output = template.result(binding)
 
     File.write(@output_path, output)
+
+    return unless @verbose
+
+    # :nocov:
     puts '✓ Generated BENCHMARKS.md'
     puts '  Included benchmarks:'
     puts '    - Parsing' if @parsing_data
@@ -57,6 +66,7 @@ class BenchmarkDocGenerator
 
     puts '  Missing benchmarks:'
     missing.each { |name| puts "    - #{name}" }
+    # :nocov:
   end
 
   private

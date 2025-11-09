@@ -3,7 +3,7 @@
 require 'mkmf'
 
 # Add include path for cataract.h from main extension
-$INCFLAGS << " -I$(srcdir)/../cataract"
+$INCFLAGS << ' -I$(srcdir)/../cataract'
 
 # Color conversion extension - separate from core parser
 # Compile C files:
@@ -12,7 +12,8 @@ $INCFLAGS << " -I$(srcdir)/../cataract"
 # - color_conversion_oklab.c (Oklab color space conversions)
 # - color_conversion_lab.c (CIE L*a*b* color space conversions)
 # - color_conversion_named.c (CSS named colors)
-$objs = ['cataract_color.o', 'color_conversion.o', 'color_conversion_oklab.o', 'color_conversion_lab.o', 'color_conversion_named.o']
+$objs = ['cataract_color.o', 'color_conversion.o', 'color_conversion_oklab.o', 'color_conversion_lab.o',
+         'color_conversion_named.o']
 
 # Suppress warnings
 $CFLAGS << ' -Wno-unused-const-variable' if RUBY_PLATFORM.match?(/darwin|linux/)

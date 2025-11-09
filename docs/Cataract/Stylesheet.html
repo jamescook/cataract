@@ -94,7 +94,9 @@
   
   <dl>
     <dt>Defined in:</dt>
-    <dd>lib/cataract/stylesheet.rb</dd>
+    <dd>lib/cataract/stylesheet.rb<span class="defines">,<br />
+  lib/cataract/old_stylesheet.rb,<br /> ext/cataract/cataract.c</span>
+</dd>
   </dl>
   
 </div>
@@ -185,6 +187,93 @@
   
     <span class="summary_desc"><div class='inline'>
 <p>The @charset declaration from the CSS, if present.</p>
+</div></span>
+  
+</li>
+
+    
+      <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#media_index-instance_method" title="#media_index (instance method)">#<strong>media_index</strong>  &#x21d2; Hash&lt;Symbol, Array&lt;Integer&gt;&gt; </a>
+    
+
+    
+  </span>
+  
+  
+  
+    
+      <span class="note title readonly">readonly</span>
+    
+    
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'>
+<p>Internal index mapping media query symbols to rule IDs.</p>
+</div></span>
+  
+</li>
+
+    
+      <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#rule_groups-instance_method" title="#rule_groups (instance method)">#<strong>rule_groups</strong>  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+    
+      <span class="note title readonly">readonly</span>
+    
+    
+  
+  
+  
+  
+  <span class="private note title">private</span>
+
+  
+    <span class="summary_desc"><div class='inline'>
+<p>Expose rule groups for C merge implementation.</p>
+</div></span>
+  
+</li>
+
+    
+      <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#rules-instance_method" title="#rules (instance method)">#<strong>rules</strong>(&amp;block)  &#x21d2; Array&lt;Rule&gt; </a>
+    
+
+    
+  </span>
+  
+  
+  
+    
+      <span class="note title readonly">readonly</span>
+    
+    
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'>
+<p>Array of parsed CSS rules.</p>
 </div></span>
   
 </li>
@@ -361,6 +450,30 @@
         <li class="public ">
   <span class="summary_signature">
     
+      <a href="#base_rules-instance_method" title="#base_rules (instance method)">#<strong>base_rules</strong>  &#x21d2; Array&lt;Rule&gt; </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'>
+<p>Get all rules without media query (rules that apply to all media).</p>
+</div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
       <a href="#clear!-instance_method" title="#clear! (instance method)">#<strong>clear!</strong>  &#x21d2; self </a>
     
 
@@ -385,7 +498,31 @@
         <li class="public ">
   <span class="summary_signature">
     
-      <a href="#declarations-instance_method" title="#declarations (instance method)">#<strong>declarations</strong>  &#x21d2; Array&lt;Declarations::Value&gt; </a>
+      <a href="#convert_colors!-instance_method" title="#convert_colors! (instance method)">#<strong>convert_colors!</strong>  &#x21d2; Object </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'>
+<p>Add convert_colors! instance method to Stylesheet.</p>
+</div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#declarations-instance_method" title="#declarations (instance method)">#<strong>declarations</strong>  &#x21d2; Array&lt;Declaration&gt; </a>
     
 
     
@@ -531,6 +668,30 @@
         <li class="public ">
   <span class="summary_signature">
     
+      <a href="#for_media-instance_method" title="#for_media (instance method)">#<strong>for_media</strong>(media_sym)  &#x21d2; Array&lt;Rule&gt; </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'>
+<p>Query rules by media query symbol.</p>
+</div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
       <a href="#initialize-instance_method" title="#initialize (instance method)">#<strong>initialize</strong>(options = {})  &#x21d2; Stylesheet </a>
     
 
@@ -627,6 +788,78 @@
         <li class="public ">
   <span class="summary_signature">
     
+      <a href="#media_queries-instance_method" title="#media_queries (instance method)">#<strong>media_queries</strong>  &#x21d2; Array&lt;Symbol&gt; </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'>
+<p>Get all unique media query symbols.</p>
+</div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#merge-instance_method" title="#merge (instance method)">#<strong>merge</strong>  &#x21d2; Stylesheet </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'>
+<p>Merge all rules in this stylesheet according to CSS cascade rules.</p>
+</div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#merge!-instance_method" title="#merge! (instance method)">#<strong>merge!</strong>  &#x21d2; self </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'>
+<p>Merge rules in-place, mutating the receiver.</p>
+</div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
       <a href="#parse-instance_method" title="#parse (instance method)">#<strong>parse</strong>(css_string)  &#x21d2; self </a>
     
 
@@ -692,52 +925,6 @@
     <span class="summary_desc"><div class='inline'>
 <p>Remove rules matching the given criteria.</p>
 </div></span>
-  
-</li>
-
-      
-        <li class="public ">
-  <span class="summary_signature">
-    
-      <a href="#rule_groups-instance_method" title="#rule_groups (instance method)">#<strong>rule_groups</strong>  &#x21d2; Object </a>
-    
-
-    
-  </span>
-  
-  
-  
-  
-  
-  
-  <span class="private note title">private</span>
-
-  
-    <span class="summary_desc"><div class='inline'>
-<p>Expose rule groups for C merge implementation.</p>
-</div></span>
-  
-</li>
-
-      
-        <li class="public ">
-  <span class="summary_signature">
-    
-      <a href="#rules-instance_method" title="#rules (instance method)">#<strong>rules</strong>(&amp;block)  &#x21d2; Object </a>
-    
-
-    
-  </span>
-  
-  
-  
-  
-  
-  
-  
-
-  
-    <span class="summary_desc"><div class='inline'></div></span>
   
 </li>
 
@@ -1001,20 +1188,19 @@
       <pre class="lines">
 
 
-59
-60
-61
-62
-63
-64
-65
-66
-67
-68
-69</pre>
+45
+46
+47
+48
+49
+50
+51
+52
+53
+54</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 59</span>
+      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 45</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_initialize'>initialize</span><span class='lparen'>(</span><span class='id identifier rubyid_options'>options</span> <span class='op'>=</span> <span class='lbrace'>{</span><span class='rbrace'>}</span><span class='rparen'>)</span>
   <span class='ivar'>@options</span> <span class='op'>=</span> <span class='lbrace'>{</span>
@@ -1022,10 +1208,9 @@
     <span class='label'>io_exceptions:</span> <span class='kw'>true</span>
   <span class='rbrace'>}</span><span class='period'>.</span><span class='id identifier rubyid_merge'>merge</span><span class='lparen'>(</span><span class='id identifier rubyid_options'>options</span><span class='rparen'>)</span>
 
-  <span class='comment'># YJIT-friendly: define all instance variables upfront
-</span>  <span class='comment'># @rule_groups is a hash: {media_query_string =&gt; {media_types: [...], rules: [...]}}
-</span>  <span class='ivar'>@rule_groups</span> <span class='op'>=</span> <span class='lbrace'>{</span><span class='rbrace'>}</span>
-  <span class='ivar'>@charset</span> <span class='op'>=</span> <span class='kw'>nil</span>
+  <span class='ivar'>@rules</span> <span class='op'>=</span> <span class='lbracket'>[</span><span class='rbracket'>]</span> <span class='comment'># Flat array of Rule structs
+</span>  <span class='ivar'>@media_index</span> <span class='op'>=</span> <span class='lbrace'>{</span><span class='rbrace'>}</span> <span class='comment'># Hash: Symbol =&gt; Array of rule IDs
+</span>  <span class='ivar'>@charset</span> <span class='op'>=</span> <span class='kw'>nil</span>
 <span class='kw'>end</span></pre>
     </td>
   </tr>
@@ -1083,6 +1268,62 @@
       <pre class="lines">
 
 
+22
+23
+24</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 22</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_charset'>charset</span>
+  <span class='ivar'>@charset</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      
+      <span id=""></span>
+      <div class="method_details ">
+  <h3 class="signature " id="media_index-instance_method">
+  
+    #<strong>media_index</strong>  &#x21d2; <tt>Hash&lt;Symbol, Array&lt;Integer&gt;&gt;</tt>  <span class="extras">(readonly)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    
+<p>Internal index mapping media query symbols to rule IDs</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Hash&lt;Symbol, Array&lt;Integer&gt;&gt;</tt>)</span>
+      
+      
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
 32
 33
 34</pre>
@@ -1090,8 +1331,116 @@
     <td>
       <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 32</span>
 
-<span class='kw'>def</span> <span class='id identifier rubyid_charset'>charset</span>
-  <span class='ivar'>@charset</span>
+<span class='kw'>def</span> <span class='id identifier rubyid_media_index'>media_index</span>
+  <span class='ivar'>@media_index</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      
+      <span id=""></span>
+      <div class="method_details ">
+  <h3 class="signature " id="rule_groups-instance_method">
+  
+    #<strong>rule_groups</strong>  &#x21d2; <tt>Object</tt>  <span class="extras">(readonly)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    <p class="note private">
+  <strong>This method is part of a private API.</strong>
+  You should avoid using this method if possible, as it may be removed or be changed in the future.
+</p>
+
+<p>Expose rule groups for C merge implementation</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+1119
+1120
+1121</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/cataract/old_stylesheet.rb', line 1119</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_rule_groups'>rule_groups</span>
+  <span class='ivar'>@rule_groups</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      
+      <span id=""></span>
+      <div class="method_details ">
+  <h3 class="signature " id="rules-instance_method">
+  
+    #<strong>rules</strong>(&amp;block)  &#x21d2; <tt>Array&lt;<span class='object_link'><a href="Rule.html" title="Cataract::Rule (class)">Rule</a></span>&gt;</tt>  <span class="extras">(readonly)</span>
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    
+<p>Returns Array of parsed CSS rules.</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Array&lt;<span class='object_link'><a href="Rule.html" title="Cataract::Rule (class)">Rule</a></span>&gt;</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'>
+<p>Array of parsed CSS rules</p>
+</div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+22
+23
+24</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 22</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_rules'>rules</span>
+  <span class='ivar'>@rules</span>
 <span class='kw'>end</span></pre>
     </td>
   </tr>
@@ -1294,14 +1643,14 @@
       <pre class="lines">
 
 
-117
-118
-119
-120
-121</pre>
+73
+74
+75
+76
+77</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 117</span>
+      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 73</span>
 
 <span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_load_file'>load_file</span><span class='lparen'>(</span><span class='id identifier rubyid_filename'>filename</span><span class='comma'>,</span> <span class='id identifier rubyid_base_dir'>base_dir</span> <span class='op'>=</span> <span class='tstring'><span class='tstring_beg'>&#39;</span><span class='tstring_content'>.</span><span class='tstring_end'>&#39;</span></span><span class='comma'>,</span> <span class='op'>**</span><span class='id identifier rubyid_options'>options</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_sheet'>sheet</span> <span class='op'>=</span> <span class='id identifier rubyid_new'>new</span><span class='lparen'>(</span><span class='id identifier rubyid_options'>options</span><span class='rparen'>)</span>
@@ -1496,14 +1845,14 @@
       <pre class="lines">
 
 
-143
-144
-145
-146
-147</pre>
+84
+85
+86
+87
+88</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 143</span>
+      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 84</span>
 
 <span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_load_uri'>load_uri</span><span class='lparen'>(</span><span class='id identifier rubyid_uri'>uri</span><span class='comma'>,</span> <span class='op'>**</span><span class='id identifier rubyid_options'>options</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_sheet'>sheet</span> <span class='op'>=</span> <span class='id identifier rubyid_new'>new</span><span class='lparen'>(</span><span class='id identifier rubyid_options'>options</span><span class='rparen'>)</span>
@@ -1685,18 +2034,18 @@
       <pre class="lines">
 
 
-91
-92
-93
-94
-95</pre>
+61
+62
+63
+64
+65</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 91</span>
+      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 61</span>
 
 <span class='kw'>def</span> <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_parse'>parse</span><span class='lparen'>(</span><span class='id identifier rubyid_css'>css</span><span class='comma'>,</span> <span class='op'>**</span><span class='id identifier rubyid_options'>options</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_sheet'>sheet</span> <span class='op'>=</span> <span class='id identifier rubyid_new'>new</span><span class='lparen'>(</span><span class='id identifier rubyid_options'>options</span><span class='rparen'>)</span>
-  <span class='id identifier rubyid_sheet'>sheet</span><span class='period'>.</span><span class='id identifier rubyid_parse'>parse</span><span class='lparen'>(</span><span class='id identifier rubyid_css'>css</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_sheet'>sheet</span><span class='period'>.</span><span class='id identifier rubyid_add_block'>add_block</span><span class='lparen'>(</span><span class='id identifier rubyid_css'>css</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_sheet'>sheet</span>
 <span class='kw'>end</span></pre>
     </td>
@@ -1864,14 +2213,6 @@
       <pre class="lines">
 
 
-405
-406
-407
-408
-409
-410
-411
-412
 413
 414
 415
@@ -1921,70 +2262,58 @@
 459
 460
 461
-462
-463
-464</pre>
+462</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 405</span>
+      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 413</span>
 
-<span class='kw'>def</span> <span class='id identifier rubyid_add_block'>add_block</span><span class='lparen'>(</span><span class='id identifier rubyid_css_string'>css_string</span><span class='comma'>,</span> <span class='label'>fix_braces:</span> <span class='kw'>false</span><span class='comma'>,</span> <span class='label'>media_types:</span> <span class='kw'>nil</span><span class='rparen'>)</span>
-  <span class='id identifier rubyid_css_to_parse'>css_to_parse</span> <span class='op'>=</span> <span class='id identifier rubyid_css_string'>css_string</span>
+<span class='kw'>def</span> <span class='id identifier rubyid_add_block'>add_block</span><span class='lparen'>(</span><span class='id identifier rubyid_css'>css</span><span class='comma'>,</span> <span class='label'>fix_braces:</span> <span class='kw'>false</span><span class='comma'>,</span> <span class='label'>media_types:</span> <span class='kw'>nil</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_css'>css</span> <span class='op'>+=</span> <span class='tstring'><span class='tstring_beg'>&#39;</span><span class='tstring_content'> }</span><span class='tstring_end'>&#39;</span></span> <span class='kw'>if</span> <span class='id identifier rubyid_fix_braces'>fix_braces</span> <span class='op'>&amp;&amp;</span> <span class='op'>!</span><span class='id identifier rubyid_css'>css</span><span class='period'>.</span><span class='id identifier rubyid_strip'>strip</span><span class='period'>.</span><span class='id identifier rubyid_end_with?'>end_with?</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&#39;</span><span class='tstring_content'>}</span><span class='tstring_end'>&#39;</span></span><span class='rparen'>)</span>
 
-  <span class='kw'>if</span> <span class='id identifier rubyid_fix_braces'>fix_braces</span>
-    <span class='comment'># Count braces - if unbalanced, add missing closing braces
-</span>    <span class='id identifier rubyid_open_braces'>open_braces</span> <span class='op'>=</span> <span class='id identifier rubyid_css_string'>css_string</span><span class='period'>.</span><span class='id identifier rubyid_count'>count</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&#39;</span><span class='tstring_content'>{</span><span class='tstring_end'>&#39;</span></span><span class='rparen'>)</span>
-    <span class='id identifier rubyid_close_braces'>close_braces</span> <span class='op'>=</span> <span class='id identifier rubyid_css_string'>css_string</span><span class='period'>.</span><span class='id identifier rubyid_count'>count</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&#39;</span><span class='tstring_content'>}</span><span class='tstring_end'>&#39;</span></span><span class='rparen'>)</span>
-    <span class='id identifier rubyid_css_to_parse'>css_to_parse</span> <span class='op'>=</span> <span class='id identifier rubyid_css_string'>css_string</span> <span class='op'>+</span> <span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&#39;</span><span class='tstring_content'> }</span><span class='tstring_end'>&#39;</span></span> <span class='op'>*</span> <span class='lparen'>(</span><span class='id identifier rubyid_open_braces'>open_braces</span> <span class='op'>-</span> <span class='id identifier rubyid_close_braces'>close_braces</span><span class='rparen'>)</span><span class='rparen'>)</span> <span class='kw'>if</span> <span class='id identifier rubyid_open_braces'>open_braces</span> <span class='op'>&gt;</span> <span class='id identifier rubyid_close_braces'>close_braces</span>
-  <span class='kw'>end</span>
-
-  <span class='comment'># Track rules count before parsing to identify newly added rules
-</span>  <span class='id identifier rubyid_rules_before'>rules_before</span> <span class='op'>=</span> <span class='ivar'>@rule_groups</span><span class='period'>.</span><span class='id identifier rubyid_dup'>dup</span>
-
-  <span class='id identifier rubyid_parse'>parse</span><span class='lparen'>(</span><span class='id identifier rubyid_css_to_parse'>css_to_parse</span><span class='rparen'>)</span>
-
-  <span class='comment'># Override media types if specified
+  <span class='comment'># Convenience wrapper: wrap in @media if media_types specified
 </span>  <span class='kw'>if</span> <span class='id identifier rubyid_media_types'>media_types</span>
-    <span class='comment'># Normalize media_types to array
-</span>    <span class='id identifier rubyid_override_media_types'>override_media_types</span> <span class='op'>=</span> <span class='const'>Array</span><span class='lparen'>(</span><span class='id identifier rubyid_media_types'>media_types</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span><span class='lparen'>(</span><span class='op'>&amp;</span><span class='symbol'>:to_sym</span><span class='rparen'>)</span>
+    <span class='id identifier rubyid_media_list'>media_list</span> <span class='op'>=</span> <span class='const'>Array</span><span class='lparen'>(</span><span class='id identifier rubyid_media_types'>media_types</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_join'>join</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&#39;</span><span class='tstring_content'>, </span><span class='tstring_end'>&#39;</span></span><span class='rparen'>)</span>
+    <span class='id identifier rubyid_css'>css</span> <span class='op'>=</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>@media </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_media_list'>media_list</span><span class='embexpr_end'>}</span><span class='tstring_content'> { </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_css'>css</span><span class='embexpr_end'>}</span><span class='tstring_content'> }</span><span class='tstring_end'>&quot;</span></span>
+  <span class='kw'>end</span>
 
-    <span class='comment'># Determine new media key for the overridden rules
-</span>    <span class='id identifier rubyid_new_media_key'>new_media_key</span> <span class='op'>=</span> <span class='kw'>if</span> <span class='id identifier rubyid_override_media_types'>override_media_types</span> <span class='op'>==</span> <span class='lbracket'>[</span><span class='symbol'>:all</span><span class='rbracket'>]</span> <span class='op'>||</span> <span class='id identifier rubyid_override_media_types'>override_media_types</span><span class='period'>.</span><span class='id identifier rubyid_empty?'>empty?</span>
-                      <span class='kw'>nil</span>
-                    <span class='kw'>else</span>
-                      <span class='id identifier rubyid_override_media_types'>override_media_types</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span><span class='lparen'>(</span><span class='op'>&amp;</span><span class='symbol'>:to_s</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_join'>join</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&#39;</span><span class='tstring_content'>, </span><span class='tstring_end'>&#39;</span></span><span class='rparen'>)</span>
-                    <span class='kw'>end</span>
+  <span class='comment'># Resolve @import statements if configured in constructor
+</span>  <span class='id identifier rubyid_css_to_parse'>css_to_parse</span> <span class='op'>=</span> <span class='kw'>if</span> <span class='ivar'>@options</span><span class='lbracket'>[</span><span class='symbol'>:import</span><span class='rbracket'>]</span>
+                   <span class='const'><span class='object_link'><a href="ImportResolver.html" title="Cataract::ImportResolver (module)">ImportResolver</a></span></span><span class='period'>.</span><span class='id identifier rubyid_resolve'><span class='object_link'><a href="ImportResolver.html#resolve-class_method" title="Cataract::ImportResolver.resolve (method)">resolve</a></span></span><span class='lparen'>(</span><span class='id identifier rubyid_css'>css</span><span class='comma'>,</span> <span class='ivar'>@options</span><span class='lbracket'>[</span><span class='symbol'>:import</span><span class='rbracket'>]</span><span class='rparen'>)</span>
+                 <span class='kw'>else</span>
+                   <span class='id identifier rubyid_css'>css</span>
+                 <span class='kw'>end</span>
 
-    <span class='comment'># Collect all rules that were added during this parse call
-</span>    <span class='id identifier rubyid_new_rules'>new_rules</span> <span class='op'>=</span> <span class='lbracket'>[</span><span class='rbracket'>]</span>
-    <span class='ivar'>@rule_groups</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_query_string'>query_string</span><span class='comma'>,</span> <span class='id identifier rubyid_group'>group</span><span class='op'>|</span>
-      <span class='comment'># Skip groups that existed before
-</span>      <span class='kw'>if</span> <span class='id identifier rubyid_rules_before'>rules_before</span><span class='period'>.</span><span class='id identifier rubyid_key?'>key?</span><span class='lparen'>(</span><span class='id identifier rubyid_query_string'>query_string</span><span class='rparen'>)</span>
-        <span class='comment'># Only take rules that weren&#39;t in the group before
-</span>        <span class='id identifier rubyid_old_count'>old_count</span> <span class='op'>=</span> <span class='id identifier rubyid_rules_before'>rules_before</span><span class='lbracket'>[</span><span class='id identifier rubyid_query_string'>query_string</span><span class='rbracket'>]</span><span class='lbracket'>[</span><span class='symbol'>:rules</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_length'>length</span>
-        <span class='id identifier rubyid_new_count'>new_count</span> <span class='op'>=</span> <span class='id identifier rubyid_group'>group</span><span class='lbracket'>[</span><span class='symbol'>:rules</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_length'>length</span>
-        <span class='kw'>if</span> <span class='id identifier rubyid_new_count'>new_count</span> <span class='op'>&gt;</span> <span class='id identifier rubyid_old_count'>old_count</span>
-          <span class='id identifier rubyid_new_rules'>new_rules</span><span class='period'>.</span><span class='id identifier rubyid_concat'>concat</span><span class='lparen'>(</span><span class='id identifier rubyid_group'>group</span><span class='lbracket'>[</span><span class='symbol'>:rules</span><span class='rbracket'>]</span><span class='lbracket'>[</span><span class='id identifier rubyid_old_count'>old_count</span><span class='op'>..</span><span class='rbracket'>]</span><span class='rparen'>)</span>
-          <span class='comment'># Remove the newly added rules from their original group
-</span>          <span class='id identifier rubyid_group'>group</span><span class='lbracket'>[</span><span class='symbol'>:rules</span><span class='rbracket'>]</span> <span class='op'>=</span> <span class='id identifier rubyid_group'>group</span><span class='lbracket'>[</span><span class='symbol'>:rules</span><span class='rbracket'>]</span><span class='lbracket'>[</span><span class='int'>0</span><span class='op'>...</span><span class='id identifier rubyid_old_count'>old_count</span><span class='rbracket'>]</span>
-        <span class='kw'>end</span>
-      <span class='kw'>else</span>
-        <span class='comment'># Entire group is new - take all its rules
-</span>        <span class='id identifier rubyid_new_rules'>new_rules</span><span class='period'>.</span><span class='id identifier rubyid_concat'>concat</span><span class='lparen'>(</span><span class='id identifier rubyid_group'>group</span><span class='lbracket'>[</span><span class='symbol'>:rules</span><span class='rbracket'>]</span><span class='rparen'>)</span>
-        <span class='comment'># Clear the group
-</span>        <span class='id identifier rubyid_group'>group</span><span class='lbracket'>[</span><span class='symbol'>:rules</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_clear'>clear</span>
-      <span class='kw'>end</span>
-    <span class='kw'>end</span>
+  <span class='comment'># Get current rule ID offset
+</span>  <span class='id identifier rubyid_offset'>offset</span> <span class='op'>=</span> <span class='ivar'>@_last_rule_id</span> <span class='op'>||</span> <span class='int'>0</span>
 
-    <span class='comment'># Remove empty groups
-</span>    <span class='ivar'>@rule_groups</span><span class='period'>.</span><span class='id identifier rubyid_delete_if'>delete_if</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid__key'>_key</span><span class='comma'>,</span> <span class='id identifier rubyid_group'>group</span><span class='op'>|</span> <span class='id identifier rubyid_group'>group</span><span class='lbracket'>[</span><span class='symbol'>:rules</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_empty?'>empty?</span> <span class='rbrace'>}</span>
+  <span class='comment'># Parse CSS with C function (returns hash)
+</span>  <span class='id identifier rubyid_result'>result</span> <span class='op'>=</span> <span class='const'><span class='object_link'><a href="../Cataract.html" title="Cataract (module)">Cataract</a></span></span><span class='period'>.</span><span class='id identifier rubyid__parse_css'><span class='object_link'><a href="../Cataract.html#_parse_css-class_method" title="Cataract._parse_css (method)">_parse_css</a></span></span><span class='lparen'>(</span><span class='id identifier rubyid_css_to_parse'>css_to_parse</span><span class='rparen'>)</span>
 
-    <span class='comment'># Add all new rules to the override media type group
-</span>    <span class='kw'>unless</span> <span class='id identifier rubyid_new_rules'>new_rules</span><span class='period'>.</span><span class='id identifier rubyid_empty?'>empty?</span>
-      <span class='ivar'>@rule_groups</span><span class='lbracket'>[</span><span class='id identifier rubyid_new_media_key'>new_media_key</span><span class='rbracket'>]</span> <span class='op'>||=</span> <span class='lbrace'>{</span> <span class='label'>media_types:</span> <span class='id identifier rubyid_override_media_types'>override_media_types</span><span class='comma'>,</span> <span class='label'>rules:</span> <span class='lbracket'>[</span><span class='rbracket'>]</span> <span class='rbrace'>}</span>
-      <span class='ivar'>@rule_groups</span><span class='lbracket'>[</span><span class='id identifier rubyid_new_media_key'>new_media_key</span><span class='rbracket'>]</span><span class='lbracket'>[</span><span class='symbol'>:rules</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_concat'>concat</span><span class='lparen'>(</span><span class='id identifier rubyid_new_rules'>new_rules</span><span class='rparen'>)</span>
+  <span class='comment'># Merge rules with offsetted IDs
+</span>  <span class='id identifier rubyid_new_rules'>new_rules</span> <span class='op'>=</span> <span class='id identifier rubyid_result'>result</span><span class='lbracket'>[</span><span class='symbol'>:rules</span><span class='rbracket'>]</span>
+  <span class='id identifier rubyid_new_rules'>new_rules</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_rule'>rule</span><span class='op'>|</span>
+    <span class='id identifier rubyid_rule'>rule</span><span class='period'>.</span><span class='id identifier rubyid_id'>id</span> <span class='op'>+=</span> <span class='id identifier rubyid_offset'>offset</span>
+    <span class='ivar'>@rules</span> <span class='op'>&lt;&lt;</span> <span class='id identifier rubyid_rule'>rule</span>
+  <span class='kw'>end</span>
+
+  <span class='comment'># Merge media_index with offsetted IDs
+</span>  <span class='id identifier rubyid_result'>result</span><span class='lbracket'>[</span><span class='symbol'>:media_index</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_media_sym'>media_sym</span><span class='comma'>,</span> <span class='id identifier rubyid_rule_ids'>rule_ids</span><span class='op'>|</span>
+    <span class='id identifier rubyid_offsetted_ids'>offsetted_ids</span> <span class='op'>=</span> <span class='id identifier rubyid_rule_ids'>rule_ids</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_id'>id</span><span class='op'>|</span> <span class='id identifier rubyid_id'>id</span> <span class='op'>+</span> <span class='id identifier rubyid_offset'>offset</span> <span class='rbrace'>}</span>
+    <span class='kw'>if</span> <span class='ivar'>@media_index</span><span class='lbracket'>[</span><span class='id identifier rubyid_media_sym'>media_sym</span><span class='rbracket'>]</span>
+      <span class='ivar'>@media_index</span><span class='lbracket'>[</span><span class='id identifier rubyid_media_sym'>media_sym</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_concat'>concat</span><span class='lparen'>(</span><span class='id identifier rubyid_offsetted_ids'>offsetted_ids</span><span class='rparen'>)</span>
+    <span class='kw'>else</span>
+      <span class='ivar'>@media_index</span><span class='lbracket'>[</span><span class='id identifier rubyid_media_sym'>media_sym</span><span class='rbracket'>]</span> <span class='op'>=</span> <span class='id identifier rubyid_offsetted_ids'>offsetted_ids</span>
     <span class='kw'>end</span>
   <span class='kw'>end</span>
+
+  <span class='comment'># Update last rule ID
+</span>  <span class='ivar'>@_last_rule_id</span> <span class='op'>=</span> <span class='id identifier rubyid_offset'>offset</span> <span class='op'>+</span> <span class='id identifier rubyid_new_rules'>new_rules</span><span class='period'>.</span><span class='id identifier rubyid_length'>length</span>
+
+  <span class='comment'># Set charset if not already set
+</span>  <span class='ivar'>@charset</span> <span class='op'>||=</span> <span class='id identifier rubyid_result'>result</span><span class='lbracket'>[</span><span class='symbol'>:charset</span><span class='rbracket'>]</span>
+
+  <span class='comment'># Track if we have any nesting (for serialization optimization)
+</span>  <span class='ivar'>@_has_nesting</span> <span class='op'>=</span> <span class='id identifier rubyid_result'>result</span><span class='lbracket'>[</span><span class='symbol'>:_has_nesting</span><span class='rbracket'>]</span>
 
   <span class='kw'>self</span>
 <span class='kw'>end</span></pre>
@@ -2135,77 +2464,19 @@
       <pre class="lines">
 
 
-522
-523
-524
-525
-526
-527
-528
-529
-530
-531
-532
-533
-534
-535
-536
-537
-538
-539
-540
-541
-542
-543
-544
-545
-546
-547
-548
-549
-550
-551
-552
-553
-554
-555</pre>
+470
+471
+472
+473
+474</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 522</span>
+      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 470</span>
 
-<span class='kw'>def</span> <span class='id identifier rubyid_add_rule'>add_rule</span><span class='lparen'>(</span><span class='label'>selector:</span><span class='comma'>,</span> <span class='label'>declarations:</span><span class='comma'>,</span> <span class='label'>media_types:</span> <span class='lbracket'>[</span><span class='symbol'>:all</span><span class='rbracket'>]</span><span class='rparen'>)</span>
-  <span class='comment'># Convert declarations to Declarations object if needed
-</span>  <span class='id identifier rubyid_decls'>decls</span> <span class='op'>=</span> <span class='id identifier rubyid_declarations'>declarations</span><span class='period'>.</span><span class='id identifier rubyid_is_a?'>is_a?</span><span class='lparen'>(</span><span class='const'><span class='object_link'><a href="Declarations.html" title="Cataract::Declarations (class)">Declarations</a></span></span><span class='rparen'>)</span> <span class='op'>?</span> <span class='id identifier rubyid_declarations'>declarations</span> <span class='op'>:</span> <span class='const'><span class='object_link'><a href="Declarations.html" title="Cataract::Declarations (class)">Declarations</a></span></span><span class='period'>.</span><span class='id identifier rubyid_new'><span class='object_link'><a href="Declarations.html#initialize-instance_method" title="Cataract::Declarations#initialize (method)">new</a></span></span><span class='lparen'>(</span><span class='id identifier rubyid_declarations'>declarations</span><span class='rparen'>)</span>
-
-  <span class='comment'># Create Rule struct (no media_query field - stored at group level)
-</span>  <span class='id identifier rubyid_rule'>rule</span> <span class='op'>=</span> <span class='const'><span class='object_link'><a href="../Cataract.html" title="Cataract (module)">Cataract</a></span></span><span class='op'>::</span><span class='const'><span class='object_link'><a href="Rule.html" title="Cataract::Rule (class)">Rule</a></span></span><span class='period'>.</span><span class='id identifier rubyid_new'>new</span><span class='lparen'>(</span>
-    <span class='id identifier rubyid_selector'>selector</span><span class='period'>.</span><span class='id identifier rubyid_to_s'>to_s</span><span class='comma'>,</span>
-    <span class='id identifier rubyid_decls'>decls</span><span class='period'>.</span><span class='id identifier rubyid_to_a'>to_a</span><span class='comma'>,</span>
-    <span class='kw'>nil</span> <span class='comment'># specificity calculated on demand
-</span>  <span class='rparen'>)</span>
-
-  <span class='comment'># Normalize media_types to array
-</span>  <span class='id identifier rubyid_media_types_array'>media_types_array</span> <span class='op'>=</span> <span class='const'>Array</span><span class='lparen'>(</span><span class='id identifier rubyid_media_types'>media_types</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span><span class='lparen'>(</span><span class='op'>&amp;</span><span class='symbol'>:to_sym</span><span class='rparen'>)</span>
-
-  <span class='comment'># Determine media query string key
-</span>  <span class='comment'># For now, map media_types to simple strings
-</span>  <span class='comment'># TODO: This is a simplified approach - may need enhancement
-</span>  <span class='id identifier rubyid_media_key'>media_key</span> <span class='op'>=</span> <span class='kw'>if</span> <span class='id identifier rubyid_media_types_array'>media_types_array</span> <span class='op'>==</span> <span class='lbracket'>[</span><span class='symbol'>:all</span><span class='rbracket'>]</span> <span class='op'>||</span> <span class='id identifier rubyid_media_types_array'>media_types_array</span><span class='period'>.</span><span class='id identifier rubyid_empty?'>empty?</span>
-                <span class='kw'>nil</span> <span class='comment'># No media query
-</span>              <span class='kw'>else</span>
-                <span class='id identifier rubyid_media_types_array'>media_types_array</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span><span class='lparen'>(</span><span class='op'>&amp;</span><span class='symbol'>:to_s</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_join'>join</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&#39;</span><span class='tstring_content'>, </span><span class='tstring_end'>&#39;</span></span><span class='rparen'>)</span>
-              <span class='kw'>end</span>
-
-  <span class='comment'># Get or create group
-</span>  <span class='ivar'>@rule_groups</span><span class='lbracket'>[</span><span class='id identifier rubyid_media_key'>media_key</span><span class='rbracket'>]</span> <span class='op'>||=</span> <span class='lbrace'>{</span> <span class='label'>media_types:</span> <span class='id identifier rubyid_media_types_array'>media_types_array</span><span class='comma'>,</span> <span class='label'>rules:</span> <span class='lbracket'>[</span><span class='rbracket'>]</span> <span class='rbrace'>}</span>
-  <span class='ivar'>@rule_groups</span><span class='lbracket'>[</span><span class='id identifier rubyid_media_key'>media_key</span><span class='rbracket'>]</span><span class='lbracket'>[</span><span class='symbol'>:rules</span><span class='rbracket'>]</span> <span class='op'>&lt;&lt;</span> <span class='id identifier rubyid_rule'>rule</span>
-
-  <span class='comment'># Return RuleSet wrapper for user-facing API (css_parser compatibility)
-</span>  <span class='const'><span class='object_link'><a href="RuleSet.html" title="Cataract::RuleSet (class)">RuleSet</a></span></span><span class='period'>.</span><span class='id identifier rubyid_new'><span class='object_link'><a href="RuleSet.html#initialize-instance_method" title="Cataract::RuleSet#initialize (method)">new</a></span></span><span class='lparen'>(</span>
-    <span class='label'>selector:</span> <span class='id identifier rubyid_rule'>rule</span><span class='period'>.</span><span class='id identifier rubyid_selector'>selector</span><span class='comma'>,</span>
-    <span class='label'>declarations:</span> <span class='const'><span class='object_link'><a href="Declarations.html" title="Cataract::Declarations (class)">Declarations</a></span></span><span class='period'>.</span><span class='id identifier rubyid_new'><span class='object_link'><a href="Declarations.html#initialize-instance_method" title="Cataract::Declarations#initialize (method)">new</a></span></span><span class='lparen'>(</span><span class='id identifier rubyid_rule'>rule</span><span class='period'>.</span><span class='id identifier rubyid_declarations'>declarations</span><span class='rparen'>)</span><span class='comma'>,</span>
-    <span class='label'>media_types:</span> <span class='id identifier rubyid_media_types_array'>media_types_array</span>
-  <span class='rparen'>)</span>
+<span class='kw'>def</span> <span class='id identifier rubyid_add_rule'>add_rule</span><span class='lparen'>(</span><span class='label'>selector:</span><span class='comma'>,</span> <span class='label'>declarations:</span><span class='comma'>,</span> <span class='label'>media_types:</span> <span class='kw'>nil</span><span class='rparen'>)</span>
+  <span class='comment'># Wrap in CSS syntax and add as block
+</span>  <span class='id identifier rubyid_css'>css</span> <span class='op'>=</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_selector'>selector</span><span class='embexpr_end'>}</span><span class='tstring_content'> { </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_declarations'>declarations</span><span class='embexpr_end'>}</span><span class='tstring_content'> }</span><span class='tstring_end'>&quot;</span></span>
+  <span class='id identifier rubyid_add_block'>add_block</span><span class='lparen'>(</span><span class='id identifier rubyid_css'>css</span><span class='comma'>,</span> <span class='label'>media_types:</span> <span class='id identifier rubyid_media_types'>media_types</span><span class='rparen'>)</span>
 <span class='kw'>end</span></pre>
     </td>
   </tr>
@@ -2332,7 +2603,7 @@
 606</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 587</span>
+      <pre class="code"><span class="info file"># File 'lib/cataract/old_stylesheet.rb', line 587</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_add_rule_set!'>add_rule_set!</span><span class='lparen'>(</span><span class='id identifier rubyid_rule_set'>rule_set</span><span class='rparen'>)</span>
   <span class='comment'># Convert RuleSet to Rule struct
@@ -2353,6 +2624,69 @@
 </span>  <span class='ivar'>@rule_groups</span><span class='lbracket'>[</span><span class='id identifier rubyid_media_key'>media_key</span><span class='rbracket'>]</span> <span class='op'>||=</span> <span class='lbrace'>{</span> <span class='label'>media_types:</span> <span class='const'>Array</span><span class='lparen'>(</span><span class='id identifier rubyid_rule_set'>rule_set</span><span class='period'>.</span><span class='id identifier rubyid_media_types'>media_types</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span><span class='lparen'>(</span><span class='op'>&amp;</span><span class='symbol'>:to_sym</span><span class='rparen'>)</span><span class='comma'>,</span> <span class='label'>rules:</span> <span class='lbracket'>[</span><span class='rbracket'>]</span> <span class='rbrace'>}</span>
   <span class='ivar'>@rule_groups</span><span class='lbracket'>[</span><span class='id identifier rubyid_media_key'>media_key</span><span class='rbracket'>]</span><span class='lbracket'>[</span><span class='symbol'>:rules</span><span class='rbracket'>]</span> <span class='op'>&lt;&lt;</span> <span class='id identifier rubyid_rule'>rule</span>
   <span class='kw'>self</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="base_rules-instance_method">
+  
+    #<strong>base_rules</strong>  &#x21d2; <tt>Array&lt;<span class='object_link'><a href="Rule.html" title="Cataract::Rule (class)">Rule</a></span>&gt;</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    
+<p>Get all rules without media query (rules that apply to all media)</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Array&lt;<span class='object_link'><a href="Rule.html" title="Cataract::Rule (class)">Rule</a></span>&gt;</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'>
+<p>Rules with no media query</p>
+</div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+102
+103
+104
+105
+106</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 102</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_base_rules'>base_rules</span>
+  <span class='comment'># Rules not in any media_index entry
+</span>  <span class='id identifier rubyid_media_rule_ids'>media_rule_ids</span> <span class='op'>=</span> <span class='ivar'>@media_index</span><span class='period'>.</span><span class='id identifier rubyid_values'>values</span><span class='period'>.</span><span class='id identifier rubyid_flatten'>flatten</span><span class='period'>.</span><span class='id identifier rubyid_uniq'>uniq</span>
+  <span class='ivar'>@rules</span><span class='period'>.</span><span class='id identifier rubyid_select'>select</span><span class='period'>.</span><span class='id identifier rubyid_with_index'>with_index</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid__rule'>_rule</span><span class='comma'>,</span> <span class='id identifier rubyid_idx'>idx</span><span class='op'>|</span> <span class='op'>!</span><span class='id identifier rubyid_media_rule_ids'>media_rule_ids</span><span class='period'>.</span><span class='id identifier rubyid_include?'>include?</span><span class='lparen'>(</span><span class='id identifier rubyid_idx'>idx</span><span class='rparen'>)</span> <span class='rbrace'>}</span>
 <span class='kw'>end</span></pre>
     </td>
   </tr>
@@ -2434,20 +2768,61 @@
       <pre class="lines">
 
 
-900
-901
-902
-903
-904</pre>
+264
+265
+266
+267
+268
+269
+270</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 900</span>
+      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 264</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_clear!'>clear!</span>
-  <span class='ivar'>@rule_groups</span> <span class='op'>=</span> <span class='lbrace'>{</span><span class='rbrace'>}</span>
+  <span class='ivar'>@rules</span><span class='period'>.</span><span class='id identifier rubyid_clear'>clear</span>
+  <span class='ivar'>@media_index</span><span class='period'>.</span><span class='id identifier rubyid_clear'>clear</span>
   <span class='ivar'>@charset</span> <span class='op'>=</span> <span class='kw'>nil</span>
-  <span class='kw'>self</span>
+  <span class='ivar'>@selectors</span> <span class='op'>=</span> <span class='kw'>nil</span> <span class='comment'># Clear memoized cache
+</span>  <span class='kw'>self</span>
 <span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="convert_colors!-instance_method">
+  
+    #<strong>convert_colors!</strong>  &#x21d2; <tt>Object</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    
+<p>Add convert_colors! instance method to Stylesheet</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+140</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'ext/cataract_color/color_conversion.c', line 140</span>
+
+VALUE rb_stylesheet_convert_colors(int argc, VALUE *argv, VALUE self);</pre>
     </td>
   </tr>
 </table>
@@ -2456,7 +2831,7 @@
       <div class="method_details ">
   <h3 class="signature " id="declarations-instance_method">
   
-    #<strong>declarations</strong>  &#x21d2; <tt>Array&lt;Declarations::Value&gt;</tt> 
+    #<strong>declarations</strong>  &#x21d2; <tt>Array&lt;Declaration&gt;</tt> 
   
 
   
@@ -2503,7 +2878,7 @@
     <li>
       
       
-        <span class='type'>(<tt>Array&lt;Declarations::Value&gt;</tt>)</span>
+        <span class='type'>(<tt>Array&lt;Declaration&gt;</tt>)</span>
       
       
       
@@ -2537,7 +2912,7 @@
 493</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 488</span>
+      <pre class="code"><span class="info file"># File 'lib/cataract/old_stylesheet.rb', line 488</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_declarations'>declarations</span>
   <span class='comment'># Flatten all rules for cascade
@@ -2742,7 +3117,7 @@
 997</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 972</span>
+      <pre class="code"><span class="info file"># File 'lib/cataract/old_stylesheet.rb', line 972</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_each_rule_set'>each_rule_set</span><span class='lparen'>(</span><span class='id identifier rubyid_media_types'>media_types</span> <span class='op'>=</span> <span class='symbol'>:all</span><span class='rparen'>)</span> <span class='comment'># :yields: rule_set, media_types
 </span>  <span class='kw'>return</span> <span class='id identifier rubyid_enum_for'>enum_for</span><span class='lparen'>(</span><span class='symbol'>:each_rule_set</span><span class='comma'>,</span> <span class='id identifier rubyid_media_types'>media_types</span><span class='rparen'>)</span> <span class='kw'>unless</span> <span class='id identifier rubyid_block_given?'>block_given?</span>
@@ -3082,150 +3457,54 @@
       <pre class="lines">
 
 
-300
-301
-302
-303
-304
-305
-306
-307
-308
-309
-310
-311
-312
-313
-314
-315
-316
-317
-318
-319
-320
-321
-322
-323
-324
-325
-326
-327
-328
-329
-330
-331
-332
-333
-334
-335
-336
-337
-338
-339
-340
-341
-342
-343
-344
-345
-346
-347
-348
-349
-350
-351
-352
-353
-354
-355
-356
-357
-358
-359
-360
-361
-362
-363
-364
-365
-366
-367
-368
-369
-370</pre>
+517
+518
+519
+520
+521
+522
+523
+524
+525
+526
+527
+528
+529
+530
+531
+532
+533
+534
+535
+536
+537
+538
+539</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 300</span>
+      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 517</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_each_selector'>each_selector</span><span class='lparen'>(</span><span class='label'>media:</span> <span class='symbol'>:all</span><span class='comma'>,</span> <span class='label'>specificity:</span> <span class='kw'>nil</span><span class='comma'>,</span> <span class='label'>property:</span> <span class='kw'>nil</span><span class='comma'>,</span> <span class='label'>property_value:</span> <span class='kw'>nil</span><span class='rparen'>)</span>
   <span class='kw'>unless</span> <span class='id identifier rubyid_block_given?'>block_given?</span>
-    <span class='kw'>return</span> <span class='id identifier rubyid_enum_for'>enum_for</span><span class='lparen'>(</span><span class='symbol'>:each_selector</span><span class='comma'>,</span> <span class='label'>media:</span> <span class='id identifier rubyid_media'>media</span><span class='comma'>,</span> <span class='label'>specificity:</span> <span class='id identifier rubyid_specificity'>specificity</span><span class='comma'>,</span> <span class='label'>property:</span> <span class='id identifier rubyid_property'>property</span><span class='comma'>,</span>
-                                    <span class='label'>property_value:</span> <span class='id identifier rubyid_property_value'>property_value</span><span class='rparen'>)</span>
+    <span class='kw'>return</span> <span class='id identifier rubyid_enum_for'>enum_for</span><span class='lparen'>(</span><span class='symbol'>:each_selector</span><span class='comma'>,</span> <span class='label'>media:</span> <span class='id identifier rubyid_media'>media</span><span class='comma'>,</span> <span class='label'>specificity:</span> <span class='id identifier rubyid_specificity'>specificity</span><span class='comma'>,</span>
+                                    <span class='label'>property:</span> <span class='id identifier rubyid_property'>property</span><span class='comma'>,</span> <span class='label'>property_value:</span> <span class='id identifier rubyid_property_value'>property_value</span><span class='rparen'>)</span>
   <span class='kw'>end</span>
 
-  <span class='id identifier rubyid_query_media_types'>query_media_types</span> <span class='op'>=</span> <span class='const'>Array</span><span class='lparen'>(</span><span class='id identifier rubyid_media'>media</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span><span class='lparen'>(</span><span class='op'>&amp;</span><span class='symbol'>:to_sym</span><span class='rparen'>)</span>
+  <span class='comment'># Normalize media to array once
+</span>  <span class='id identifier rubyid_query_media'>query_media</span> <span class='op'>=</span> <span class='id identifier rubyid_media'>media</span><span class='period'>.</span><span class='id identifier rubyid_is_a?'>is_a?</span><span class='lparen'>(</span><span class='const'>Array</span><span class='rparen'>)</span> <span class='op'>?</span> <span class='id identifier rubyid_media'>media</span> <span class='op'>:</span> <span class='lbracket'>[</span><span class='id identifier rubyid_media'>media</span><span class='rbracket'>]</span>
+  <span class='id identifier rubyid_check_media'>check_media</span> <span class='op'>=</span> <span class='op'>!</span><span class='id identifier rubyid_query_media'>query_media</span><span class='period'>.</span><span class='id identifier rubyid_include?'>include?</span><span class='lparen'>(</span><span class='symbol'>:all</span><span class='rparen'>)</span>
 
-  <span class='ivar'>@rule_groups</span><span class='period'>.</span><span class='id identifier rubyid_each_value'>each_value</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_group'>group</span><span class='op'>|</span>
-    <span class='comment'># Filter by media types at group level
-</span>    <span class='id identifier rubyid_group_media_types'>group_media_types</span> <span class='op'>=</span> <span class='id identifier rubyid_group'>group</span><span class='lbracket'>[</span><span class='symbol'>:media_types</span><span class='rbracket'>]</span> <span class='op'>||</span> <span class='lbracket'>[</span><span class='rbracket'>]</span>
+  <span class='ivar'>@rules</span><span class='period'>.</span><span class='id identifier rubyid_each_with_index'>each_with_index</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_rule'>rule</span><span class='comma'>,</span> <span class='id identifier rubyid_rule_id'>rule_id</span><span class='op'>|</span>
+    <span class='comment'># Skip at-rules (they&#39;re definitions, not selectors)
+</span>    <span class='kw'>next</span> <span class='kw'>unless</span> <span class='id identifier rubyid_rule'>rule</span><span class='period'>.</span><span class='id identifier rubyid_supports_each_selector?'>supports_each_selector?</span>
 
-    <span class='comment'># :all matches everything
-</span>    <span class='comment'># But specific media queries (like :screen, :print) should NOT match [:all] groups
-</span>    <span class='id identifier rubyid_should_include'>should_include</span> <span class='op'>=</span> <span class='kw'>if</span> <span class='id identifier rubyid_query_media_types'>query_media_types</span><span class='period'>.</span><span class='id identifier rubyid_include?'>include?</span><span class='lparen'>(</span><span class='symbol'>:all</span><span class='rparen'>)</span>
-                       <span class='comment'># :all means iterate everything
-</span>                       <span class='kw'>true</span>
-                     <span class='kw'>elsif</span> <span class='id identifier rubyid_group_media_types'>group_media_types</span><span class='period'>.</span><span class='id identifier rubyid_include?'>include?</span><span class='lparen'>(</span><span class='symbol'>:all</span><span class='rparen'>)</span>
-                       <span class='comment'># Group is universal (no media query) - only include if querying for :all
-</span>                       <span class='kw'>false</span>
-                     <span class='kw'>else</span>
-                       <span class='comment'># Check for intersection
-</span>                       <span class='id identifier rubyid_group_media_types'>group_media_types</span><span class='period'>.</span><span class='id identifier rubyid_intersect?'>intersect?</span><span class='lparen'>(</span><span class='id identifier rubyid_query_media_types'>query_media_types</span><span class='rparen'>)</span>
-                     <span class='kw'>end</span>
+    <span class='comment'># Apply filters
+</span>    <span class='kw'>next</span> <span class='kw'>if</span> <span class='id identifier rubyid_check_media'>check_media</span> <span class='op'>&amp;&amp;</span> <span class='op'>!</span><span class='id identifier rubyid_rule_matches_media?'>rule_matches_media?</span><span class='lparen'>(</span><span class='id identifier rubyid_rule_id'>rule_id</span><span class='comma'>,</span> <span class='id identifier rubyid_query_media'>query_media</span><span class='rparen'>)</span>
+    <span class='kw'>next</span> <span class='kw'>if</span> <span class='id identifier rubyid_specificity'>specificity</span> <span class='op'>&amp;&amp;</span> <span class='op'>!</span><span class='id identifier rubyid_rule_matches_specificity?'>rule_matches_specificity?</span><span class='lparen'>(</span><span class='id identifier rubyid_rule'>rule</span><span class='comma'>,</span> <span class='id identifier rubyid_specificity'>specificity</span><span class='rparen'>)</span>
+    <span class='kw'>next</span> <span class='kw'>if</span> <span class='lparen'>(</span><span class='id identifier rubyid_property'>property</span> <span class='op'>||</span> <span class='id identifier rubyid_property_value'>property_value</span><span class='rparen'>)</span> <span class='op'>&amp;&amp;</span> <span class='op'>!</span><span class='id identifier rubyid_rule_matches_property?'>rule_matches_property?</span><span class='lparen'>(</span><span class='id identifier rubyid_rule'>rule</span><span class='comma'>,</span> <span class='id identifier rubyid_property'>property</span><span class='comma'>,</span> <span class='id identifier rubyid_property_value'>property_value</span><span class='rparen'>)</span>
 
-    <span class='kw'>next</span> <span class='kw'>unless</span> <span class='id identifier rubyid_should_include'>should_include</span>
-
-    <span class='id identifier rubyid_group'>group</span><span class='lbracket'>[</span><span class='symbol'>:rules</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_rule'>rule</span><span class='op'>|</span>
-      <span class='comment'># Filter by specificity if provided
-</span>      <span class='kw'>if</span> <span class='id identifier rubyid_specificity'>specificity</span>
-        <span class='id identifier rubyid_rule_specificity'>rule_specificity</span> <span class='op'>=</span> <span class='id identifier rubyid_rule'>rule</span><span class='period'>.</span><span class='id identifier rubyid_specificity'>specificity</span>
-        <span class='id identifier rubyid_matches'>matches</span> <span class='op'>=</span> <span class='kw'>case</span> <span class='id identifier rubyid_specificity'>specificity</span>
-                  <span class='kw'>when</span> <span class='const'>Range</span>
-                    <span class='id identifier rubyid_specificity'>specificity</span><span class='period'>.</span><span class='id identifier rubyid_cover?'>cover?</span><span class='lparen'>(</span><span class='id identifier rubyid_rule_specificity'>rule_specificity</span><span class='rparen'>)</span>
-                  <span class='kw'>else</span>
-                    <span class='id identifier rubyid_specificity'>specificity</span> <span class='op'>==</span> <span class='id identifier rubyid_rule_specificity'>rule_specificity</span>
-                  <span class='kw'>end</span>
-        <span class='kw'>next</span> <span class='kw'>unless</span> <span class='id identifier rubyid_matches'>matches</span>
-      <span class='kw'>end</span>
-
-      <span class='comment'># Filter by property and/or property_value if provided
-</span>      <span class='kw'>if</span> <span class='id identifier rubyid_property'>property</span> <span class='op'>||</span> <span class='id identifier rubyid_property_value'>property_value</span>
-        <span class='id identifier rubyid_has_match'>has_match</span> <span class='op'>=</span> <span class='kw'>false</span>
-
-        <span class='id identifier rubyid_rule'>rule</span><span class='period'>.</span><span class='id identifier rubyid_declarations'>declarations</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_decl'>decl</span><span class='op'>|</span>
-          <span class='comment'># Check property name match (if specified)
-</span>          <span class='id identifier rubyid_property_matches'>property_matches</span> <span class='op'>=</span> <span class='id identifier rubyid_property'>property</span><span class='period'>.</span><span class='id identifier rubyid_nil?'>nil?</span> <span class='op'>||</span> <span class='id identifier rubyid_decl'>decl</span><span class='period'>.</span><span class='id identifier rubyid_property'>property</span> <span class='op'>==</span> <span class='id identifier rubyid_property'>property</span>
-
-          <span class='comment'># Check property value match (if specified)
-</span>          <span class='comment'># Compare against raw value (without !important flag)
-</span>          <span class='id identifier rubyid_value_matches'>value_matches</span> <span class='op'>=</span> <span class='id identifier rubyid_property_value'>property_value</span><span class='period'>.</span><span class='id identifier rubyid_nil?'>nil?</span> <span class='op'>||</span> <span class='id identifier rubyid_decl'>decl</span><span class='period'>.</span><span class='id identifier rubyid_value'>value</span> <span class='op'>==</span> <span class='id identifier rubyid_property_value'>property_value</span>
-
-          <span class='comment'># If both filters specified, both must match
-</span>          <span class='comment'># If only one specified, just that one must match
-</span>          <span class='kw'>if</span> <span class='id identifier rubyid_property_matches'>property_matches</span> <span class='op'>&amp;&amp;</span> <span class='id identifier rubyid_value_matches'>value_matches</span>
-            <span class='id identifier rubyid_has_match'>has_match</span> <span class='op'>=</span> <span class='kw'>true</span>
-            <span class='kw'>break</span>
-          <span class='kw'>end</span>
-        <span class='kw'>end</span>
-
-        <span class='kw'>next</span> <span class='kw'>unless</span> <span class='id identifier rubyid_has_match'>has_match</span>
-      <span class='kw'>end</span>
-
-      <span class='comment'># Wrap declarations in Declarations object for user-facing API
-</span>      <span class='id identifier rubyid_declarations_obj'>declarations_obj</span> <span class='op'>=</span> <span class='const'><span class='object_link'><a href="Declarations.html" title="Cataract::Declarations (class)">Declarations</a></span></span><span class='period'>.</span><span class='id identifier rubyid_new'><span class='object_link'><a href="Declarations.html#initialize-instance_method" title="Cataract::Declarations#initialize (method)">new</a></span></span><span class='lparen'>(</span><span class='id identifier rubyid_rule'>rule</span><span class='period'>.</span><span class='id identifier rubyid_declarations'>declarations</span><span class='rparen'>)</span>
-
-      <span class='comment'># Return the group&#39;s media_types, not from the rule
-</span>      <span class='kw'>yield</span> <span class='id identifier rubyid_rule'>rule</span><span class='period'>.</span><span class='id identifier rubyid_selector'>selector</span><span class='comma'>,</span> <span class='id identifier rubyid_declarations_obj'>declarations_obj</span><span class='comma'>,</span> <span class='id identifier rubyid_rule'>rule</span><span class='period'>.</span><span class='id identifier rubyid_specificity'>specificity</span><span class='comma'>,</span> <span class='id identifier rubyid_group'>group</span><span class='lbracket'>[</span><span class='symbol'>:media_types</span><span class='rbracket'>]</span>
-    <span class='kw'>end</span>
+    <span class='comment'># Yield the rule object
+</span>    <span class='kw'>yield</span> <span class='id identifier rubyid_rule'>rule</span>
   <span class='kw'>end</span>
 <span class='kw'>end</span></pre>
     </td>
@@ -3297,15 +3576,15 @@
       <pre class="lines">
 
 
-879
-880
-881</pre>
+257
+258
+259</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 879</span>
+      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 257</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_empty?'>empty?</span>
-  <span class='ivar'>@rule_groups</span><span class='period'>.</span><span class='id identifier rubyid_empty?'>empty?</span> <span class='op'>||</span> <span class='ivar'>@rule_groups</span><span class='period'>.</span><span class='id identifier rubyid_values'>values</span><span class='period'>.</span><span class='id identifier rubyid_all?'>all?</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_group'>group</span><span class='op'>|</span> <span class='id identifier rubyid_group'>group</span><span class='lbracket'>[</span><span class='symbol'>:rules</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_empty?'>empty?</span> <span class='rbrace'>}</span>
+  <span class='ivar'>@rules</span><span class='period'>.</span><span class='id identifier rubyid_empty?'>empty?</span>
 <span class='kw'>end</span></pre>
     </td>
   </tr>
@@ -3443,27 +3722,39 @@
       <pre class="lines">
 
 
-225
-226
-227
-228
-229
-230
-231
-232
-233</pre>
+481
+482
+483
+484
+485
+486
+487
+488
+489
+490
+491
+492
+493
+494
+495</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 225</span>
+      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 481</span>
 
-<span class='kw'>def</span> <span class='id identifier rubyid_find_by_selector'>find_by_selector</span><span class='lparen'>(</span><span class='id identifier rubyid_selector'>selector</span><span class='comma'>,</span> <span class='id identifier rubyid_media_types'>media_types</span> <span class='op'>=</span> <span class='symbol'>:all</span><span class='rparen'>)</span>
-  <span class='id identifier rubyid_matching_declarations'>matching_declarations</span> <span class='op'>=</span> <span class='lbracket'>[</span><span class='rbracket'>]</span>
+<span class='kw'>def</span> <span class='id identifier rubyid_find_by_selector'>find_by_selector</span><span class='lparen'>(</span><span class='id identifier rubyid_selector'>selector</span><span class='comma'>,</span> <span class='label'>media:</span> <span class='symbol'>:all</span><span class='rparen'>)</span>
+  <span class='comment'># Normalize media to array
+</span>  <span class='id identifier rubyid_media_array'>media_array</span> <span class='op'>=</span> <span class='id identifier rubyid_media'>media</span><span class='period'>.</span><span class='id identifier rubyid_is_a?'>is_a?</span><span class='lparen'>(</span><span class='const'>Array</span><span class='rparen'>)</span> <span class='op'>?</span> <span class='id identifier rubyid_media'>media</span> <span class='op'>:</span> <span class='lbracket'>[</span><span class='id identifier rubyid_media'>media</span><span class='rbracket'>]</span>
 
-  <span class='id identifier rubyid_each_selector'>each_selector</span><span class='lparen'>(</span><span class='label'>media:</span> <span class='id identifier rubyid_media_types'>media_types</span><span class='rparen'>)</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_sel'>sel</span><span class='comma'>,</span> <span class='id identifier rubyid_declarations'>declarations</span><span class='comma'>,</span> <span class='id identifier rubyid__specificity'>_specificity</span><span class='comma'>,</span> <span class='id identifier rubyid__media'>_media</span><span class='op'>|</span>
-    <span class='id identifier rubyid_matching_declarations'>matching_declarations</span> <span class='op'>&lt;&lt;</span> <span class='id identifier rubyid_declarations'>declarations</span> <span class='kw'>if</span> <span class='id identifier rubyid_sel'>sel</span> <span class='op'>==</span> <span class='id identifier rubyid_selector'>selector</span>
-  <span class='kw'>end</span>
+  <span class='comment'># Get rule IDs for the media query
+</span>  <span class='id identifier rubyid_rule_ids'>rule_ids</span> <span class='op'>=</span> <span class='kw'>if</span> <span class='id identifier rubyid_media_array'>media_array</span><span class='period'>.</span><span class='id identifier rubyid_include?'>include?</span><span class='lparen'>(</span><span class='symbol'>:all</span><span class='rparen'>)</span>
+               <span class='lparen'>(</span><span class='int'>0</span><span class='op'>...</span><span class='ivar'>@rules</span><span class='period'>.</span><span class='id identifier rubyid_length'>length</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_to_a'>to_a</span> <span class='comment'># All rule IDs
+</span>             <span class='kw'>else</span>
+               <span class='comment'># Collect rule IDs from all requested media types
+</span>               <span class='id identifier rubyid_media_array'>media_array</span><span class='period'>.</span><span class='id identifier rubyid_flat_map'>flat_map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_m'>m</span><span class='op'>|</span> <span class='ivar'>@media_index</span><span class='lbracket'>[</span><span class='id identifier rubyid_m'>m</span><span class='rbracket'>]</span> <span class='op'>||</span> <span class='lbracket'>[</span><span class='rbracket'>]</span> <span class='rbrace'>}</span><span class='period'>.</span><span class='id identifier rubyid_uniq'>uniq</span>
+             <span class='kw'>end</span>
 
-  <span class='id identifier rubyid_matching_declarations'>matching_declarations</span>
+  <span class='comment'># Filter by selector
+</span>  <span class='id identifier rubyid_rule_ids'>rule_ids</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_id'>id</span><span class='op'>|</span> <span class='ivar'>@rules</span><span class='lbracket'>[</span><span class='id identifier rubyid_id'>id</span><span class='rbracket'>]</span> <span class='rbrace'>}</span><span class='period'>.</span><span class='id identifier rubyid_select'>select</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_r'>r</span><span class='op'>|</span> <span class='id identifier rubyid_r'>r</span><span class='period'>.</span><span class='id identifier rubyid_selector'>selector</span> <span class='op'>==</span> <span class='id identifier rubyid_selector'>selector</span> <span class='rbrace'>}</span>
 <span class='kw'>end</span></pre>
     </td>
   </tr>
@@ -3608,7 +3899,7 @@
 1037</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 1023</span>
+      <pre class="code"><span class="info file"># File 'lib/cataract/old_stylesheet.rb', line 1023</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_find_rule_sets'>find_rule_sets</span><span class='lparen'>(</span><span class='id identifier rubyid_selectors'>selectors</span><span class='comma'>,</span> <span class='id identifier rubyid_media_types'>media_types</span> <span class='op'>=</span> <span class='symbol'>:all</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_rule_sets'>rule_sets</span> <span class='op'>=</span> <span class='lbracket'>[</span><span class='rbracket'>]</span>
@@ -3631,6 +3922,87 @@
 </div>
     
       <div class="method_details ">
+  <h3 class="signature " id="for_media-instance_method">
+  
+    #<strong>for_media</strong>(media_sym)  &#x21d2; <tt>Array&lt;<span class='object_link'><a href="Rule.html" title="Cataract::Rule (class)">Rule</a></span>&gt;</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    
+<p>Query rules by media query symbol</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>media_sym</span>
+      
+      
+        <span class='type'>(<tt>Symbol</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'>
+<p>Media query symbol to filter by</p>
+</div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Array&lt;<span class='object_link'><a href="Rule.html" title="Cataract::Rule (class)">Rule</a></span>&gt;</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'>
+<p>Matching rules</p>
+</div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+94
+95
+96
+97</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 94</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_for_media'>for_media</span><span class='lparen'>(</span><span class='id identifier rubyid_media_sym'>media_sym</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_rule_ids'>rule_ids</span> <span class='op'>=</span> <span class='ivar'>@media_index</span><span class='lbracket'>[</span><span class='id identifier rubyid_media_sym'>media_sym</span><span class='rbracket'>]</span> <span class='op'>||</span> <span class='lbracket'>[</span><span class='rbracket'>]</span>
+  <span class='id identifier rubyid_rule_ids'>rule_ids</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_id'>id</span><span class='op'>|</span> <span class='ivar'>@rules</span><span class='lbracket'>[</span><span class='id identifier rubyid_id'>id</span><span class='rbracket'>]</span> <span class='rbrace'>}</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
   <h3 class="signature " id="inspect-instance_method">
   
     #<strong>inspect</strong>  &#x21d2; <tt>Object</tt> 
@@ -3645,42 +4017,28 @@
       <pre class="lines">
 
 
-1099
-1100
-1101
-1102
-1103
-1104
-1105
-1106
-1107
-1108
-1109
-1110
-1111
-1112
-1113
-1114
-1115</pre>
+551
+552
+553
+554
+555
+556
+557
+558
+559
+560</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 1099</span>
+      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 551</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_inspect'>inspect</span>
   <span class='id identifier rubyid_total_rules'>total_rules</span> <span class='op'>=</span> <span class='id identifier rubyid_size'>size</span>
   <span class='kw'>if</span> <span class='id identifier rubyid_total_rules'>total_rules</span><span class='period'>.</span><span class='id identifier rubyid_zero?'>zero?</span>
     <span class='tstring'><span class='tstring_beg'>&#39;</span><span class='tstring_content'>#&lt;Cataract::Stylesheet empty&gt;</span><span class='tstring_end'>&#39;</span></span>
   <span class='kw'>else</span>
-    <span class='comment'># Get first 3 rules across all groups
-</span>    <span class='id identifier rubyid_preview_rules'>preview_rules</span> <span class='op'>=</span> <span class='lbracket'>[</span><span class='rbracket'>]</span>
-    <span class='ivar'>@rule_groups</span><span class='period'>.</span><span class='id identifier rubyid_each_value'>each_value</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_group'>group</span><span class='op'>|</span>
-      <span class='id identifier rubyid_preview_rules'>preview_rules</span><span class='period'>.</span><span class='id identifier rubyid_concat'>concat</span><span class='lparen'>(</span><span class='id identifier rubyid_group'>group</span><span class='lbracket'>[</span><span class='symbol'>:rules</span><span class='rbracket'>]</span><span class='rparen'>)</span>
-      <span class='kw'>break</span> <span class='kw'>if</span> <span class='id identifier rubyid_preview_rules'>preview_rules</span><span class='period'>.</span><span class='id identifier rubyid_length'>length</span> <span class='op'>&gt;=</span> <span class='int'>3</span>
-    <span class='kw'>end</span>
-    <span class='id identifier rubyid_preview'>preview</span> <span class='op'>=</span> <span class='id identifier rubyid_preview_rules'>preview_rules</span><span class='period'>.</span><span class='id identifier rubyid_first'>first</span><span class='lparen'>(</span><span class='int'>3</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span><span class='lparen'>(</span><span class='op'>&amp;</span><span class='symbol'>:selector</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_join'>join</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&#39;</span><span class='tstring_content'>, </span><span class='tstring_end'>&#39;</span></span><span class='rparen'>)</span>
+    <span class='id identifier rubyid_preview'>preview</span> <span class='op'>=</span> <span class='ivar'>@rules</span><span class='period'>.</span><span class='id identifier rubyid_first'>first</span><span class='lparen'>(</span><span class='int'>3</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span><span class='lparen'>(</span><span class='op'>&amp;</span><span class='symbol'>:selector</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_join'>join</span><span class='lparen'>(</span><span class='tstring'><span class='tstring_beg'>&#39;</span><span class='tstring_content'>, </span><span class='tstring_end'>&#39;</span></span><span class='rparen'>)</span>
     <span class='id identifier rubyid_more'>more</span> <span class='op'>=</span> <span class='id identifier rubyid_total_rules'>total_rules</span> <span class='op'>&gt;</span> <span class='int'>3</span> <span class='op'>?</span> <span class='tstring'><span class='tstring_beg'>&#39;</span><span class='tstring_content'>, ...</span><span class='tstring_end'>&#39;</span></span> <span class='op'>:</span> <span class='tstring'><span class='tstring_beg'>&#39;</span><span class='tstring_end'>&#39;</span></span>
-    <span class='id identifier rubyid_resolved_info'>resolved_info</span> <span class='op'>=</span> <span class='ivar'>@resolved</span> <span class='op'>?</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>, </span><span class='embexpr_beg'>#{</span><span class='ivar'>@resolved</span><span class='period'>.</span><span class='id identifier rubyid_length'>length</span><span class='embexpr_end'>}</span><span class='tstring_content'> declarations resolved</span><span class='tstring_end'>&quot;</span></span> <span class='op'>:</span> <span class='tstring'><span class='tstring_beg'>&#39;</span><span class='tstring_end'>&#39;</span></span>
-    <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>#&lt;Cataract::Stylesheet </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_total_rules'>total_rules</span><span class='embexpr_end'>}</span><span class='tstring_content'> rules: </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_preview'>preview</span><span class='embexpr_end'>}</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_more'>more</span><span class='embexpr_end'>}</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_resolved_info'>resolved_info</span><span class='embexpr_end'>}</span><span class='tstring_content'>&gt;</span><span class='tstring_end'>&quot;</span></span>
+    <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>#&lt;Cataract::Stylesheet </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_total_rules'>total_rules</span><span class='embexpr_end'>}</span><span class='tstring_content'> rules: </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_preview'>preview</span><span class='embexpr_end'>}</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_more'>more</span><span class='embexpr_end'>}</span><span class='tstring_content'>&gt;</span><span class='tstring_end'>&quot;</span></span>
   <span class='kw'>end</span>
 <span class='kw'>end</span></pre>
     </td>
@@ -3845,17 +4203,17 @@
       <pre class="lines">
 
 
-789
-790
-791
-792
-793
-794
-795
-796</pre>
+277
+278
+279
+280
+281
+282
+283
+284</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 789</span>
+      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 277</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_load_file'>load_file</span><span class='lparen'>(</span><span class='id identifier rubyid_filename'>filename</span><span class='comma'>,</span> <span class='id identifier rubyid_base_dir'>base_dir</span> <span class='op'>=</span> <span class='tstring'><span class='tstring_beg'>&#39;</span><span class='tstring_content'>.</span><span class='tstring_end'>&#39;</span></span><span class='comma'>,</span> <span class='id identifier rubyid__media_types'>_media_types</span> <span class='op'>=</span> <span class='symbol'>:all</span><span class='rparen'>)</span>
   <span class='comment'># Normalize file path and convert to file:// URI
@@ -4058,57 +4416,57 @@
       <pre class="lines">
 
 
-713
-714
-715
-716
-717
-718
-719
-720
-721
-722
-723
-724
-725
-726
-727
-728
-729
-730
-731
-732
-733
-734
-735
-736
-737
-738
-739
-740
-741
-742
-743
-744
-745
-746
-747
-748
-749
-750
-751
-752
-753
-754
-755
-756
-757
-758
-759
-760</pre>
+291
+292
+293
+294
+295
+296
+297
+298
+299
+300
+301
+302
+303
+304
+305
+306
+307
+308
+309
+310
+311
+312
+313
+314
+315
+316
+317
+318
+319
+320
+321
+322
+323
+324
+325
+326
+327
+328
+329
+330
+331
+332
+333
+334
+335
+336
+337
+338</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 713</span>
+      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 291</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_load_uri'>load_uri</span><span class='lparen'>(</span><span class='id identifier rubyid_uri'>uri</span><span class='comma'>,</span> <span class='id identifier rubyid_options'>options</span> <span class='op'>=</span> <span class='lbrace'>{</span><span class='rbrace'>}</span><span class='rparen'>)</span>
   <span class='id identifier rubyid_require'>require</span> <span class='tstring'><span class='tstring_beg'>&#39;</span><span class='tstring_content'>uri</span><span class='tstring_end'>&#39;</span></span>
@@ -4137,7 +4495,7 @@
     <span class='id identifier rubyid_file_path'>file_path</span> <span class='op'>=</span> <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_expand_path'>expand_path</span><span class='lparen'>(</span><span class='id identifier rubyid_path'>path</span><span class='rparen'>)</span>
 
     <span class='comment'># If imports are enabled and base_path not already set, set it for resolving relative imports
-</span>    <span class='kw'>if</span> <span class='ivar'>@options</span><span class='lbracket'>[</span><span class='symbol'>:import</span><span class='rbracket'>]</span> <span class='op'>&amp;&amp;</span> <span class='ivar'>@options</span><span class='lbracket'>[</span><span class='symbol'>:import</span><span class='rbracket'>]</span><span class='lbracket'>[</span><span class='symbol'>:base_path</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_nil?'>nil?</span>
+</span>    <span class='kw'>if</span> <span class='ivar'>@options</span><span class='lbracket'>[</span><span class='symbol'>:import</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_is_a?'>is_a?</span><span class='lparen'>(</span><span class='const'>Hash</span><span class='rparen'>)</span> <span class='op'>&amp;&amp;</span> <span class='ivar'>@options</span><span class='lbracket'>[</span><span class='symbol'>:import</span><span class='rbracket'>]</span><span class='lbracket'>[</span><span class='symbol'>:base_path</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_nil?'>nil?</span>
       <span class='id identifier rubyid_file_dir'>file_dir</span> <span class='op'>=</span> <span class='const'>File</span><span class='period'>.</span><span class='id identifier rubyid_dirname'>dirname</span><span class='lparen'>(</span><span class='id identifier rubyid_file_path'>file_path</span><span class='rparen'>)</span>
       <span class='ivar'>@options</span><span class='lbracket'>[</span><span class='symbol'>:import</span><span class='rbracket'>]</span> <span class='op'>=</span> <span class='ivar'>@options</span><span class='lbracket'>[</span><span class='symbol'>:import</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_merge'>merge</span><span class='lparen'>(</span><span class='label'>base_path:</span> <span class='id identifier rubyid_file_dir'>file_dir</span><span class='rparen'>)</span>
     <span class='kw'>end</span>
@@ -4147,7 +4505,7 @@
     <span class='id identifier rubyid_raise'>raise</span> <span class='const'>ArgumentError</span><span class='comma'>,</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>Unsupported URI scheme: </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_uri_obj'>uri_obj</span><span class='period'>.</span><span class='id identifier rubyid_scheme'>scheme</span><span class='embexpr_end'>}</span><span class='tstring_end'>&quot;</span></span>
   <span class='kw'>end</span>
 
-  <span class='id identifier rubyid_parse'>parse</span><span class='lparen'>(</span><span class='id identifier rubyid_css_content'>css_content</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_add_block'>add_block</span><span class='lparen'>(</span><span class='id identifier rubyid_css_content'>css_content</span><span class='rparen'>)</span>
   <span class='kw'>self</span>
 <span class='kw'>rescue</span> <span class='const'>Errno</span><span class='op'>::</span><span class='const'>ENOENT</span>
   <span class='id identifier rubyid_raise'>raise</span> <span class='const'>IOError</span><span class='comma'>,</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>File not found: </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_uri'>uri</span><span class='embexpr_end'>}</span><span class='tstring_end'>&quot;</span></span> <span class='kw'>if</span> <span class='ivar'>@options</span><span class='lbracket'>[</span><span class='symbol'>:io_exceptions</span><span class='rbracket'>]</span>
@@ -4156,6 +4514,197 @@
 <span class='kw'>rescue</span> <span class='const'>StandardError</span> <span class='op'>=&gt;</span> <span class='id identifier rubyid_e'>e</span>
   <span class='id identifier rubyid_raise'>raise</span> <span class='const'>IOError</span><span class='comma'>,</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='tstring_content'>Error loading URI: </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_uri'>uri</span><span class='embexpr_end'>}</span><span class='tstring_content'> - </span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_e'>e</span><span class='period'>.</span><span class='id identifier rubyid_message'>message</span><span class='embexpr_end'>}</span><span class='tstring_end'>&quot;</span></span> <span class='kw'>if</span> <span class='ivar'>@options</span><span class='lbracket'>[</span><span class='symbol'>:io_exceptions</span><span class='rbracket'>]</span>
 
+  <span class='kw'>self</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="media_queries-instance_method">
+  
+    #<strong>media_queries</strong>  &#x21d2; <tt>Array&lt;Symbol&gt;</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    
+<p>Get all unique media query symbols</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Array&lt;Symbol&gt;</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'>
+<p>Array of unique media query symbols</p>
+</div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+111
+112
+113</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 111</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_media_queries'>media_queries</span>
+  <span class='ivar'>@media_index</span><span class='period'>.</span><span class='id identifier rubyid_keys'>keys</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="merge-instance_method">
+  
+    #<strong>merge</strong>  &#x21d2; <tt><span class='object_link'><a href="" title="Cataract::Stylesheet (class)">Stylesheet</a></span></tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    
+<p>Merge all rules in this stylesheet according to CSS cascade rules</p>
+
+<p>Applies specificity and !important precedence rules to compute the final set of declarations. Also recreates shorthand properties from longhand properties where possible.</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt><span class='object_link'><a href="" title="Cataract::Stylesheet (class)">Stylesheet</a></span></tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'>
+<p>New stylesheet with a single merged rule</p>
+</div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+569
+570
+571
+572</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 569</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_merge'>merge</span>
+  <span class='comment'># C function handles everything - returns new Stylesheet
+</span>  <span class='const'><span class='object_link'><a href="../Cataract.html" title="Cataract (module)">Cataract</a></span></span><span class='period'>.</span><span class='id identifier rubyid_merge'><span class='object_link'><a href="../Cataract.html#merge-class_method" title="Cataract.merge (method)">merge</a></span></span><span class='lparen'>(</span><span class='kw'>self</span><span class='rparen'>)</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="merge!-instance_method">
+  
+    #<strong>merge!</strong>  &#x21d2; <tt>self</tt> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    
+<p>Merge rules in-place, mutating the receiver.</p>
+
+<p>This is a convenience method that updates the stylesheet’s internal rules and media_index with the merged result. The Stylesheet object itself is mutated (same object_id), but note that the C merge function still allocates new arrays internally.</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>self</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'>
+<p>Returns self for method chaining</p>
+</div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+582
+583
+584
+585
+586
+587
+588</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 582</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_merge!'>merge!</span>
+  <span class='id identifier rubyid_merged'>merged</span> <span class='op'>=</span> <span class='const'><span class='object_link'><a href="../Cataract.html" title="Cataract (module)">Cataract</a></span></span><span class='period'>.</span><span class='id identifier rubyid_merge'><span class='object_link'><a href="../Cataract.html#merge-class_method" title="Cataract.merge (method)">merge</a></span></span><span class='lparen'>(</span><span class='kw'>self</span><span class='rparen'>)</span>
+  <span class='ivar'>@rules</span> <span class='op'>=</span> <span class='id identifier rubyid_merged'>merged</span><span class='period'>.</span><span class='id identifier rubyid_instance_variable_get'>instance_variable_get</span><span class='lparen'>(</span><span class='symbol'>:@rules</span><span class='rparen'>)</span>
+  <span class='ivar'>@media_index</span> <span class='op'>=</span> <span class='id identifier rubyid_merged'>merged</span><span class='period'>.</span><span class='id identifier rubyid_instance_variable_get'>instance_variable_get</span><span class='lparen'>(</span><span class='symbol'>:@media_index</span><span class='rparen'>)</span>
+  <span class='ivar'>@_has_nesting</span> <span class='op'>=</span> <span class='id identifier rubyid_merged'>merged</span><span class='period'>.</span><span class='id identifier rubyid_instance_variable_get'>instance_variable_get</span><span class='lparen'>(</span><span class='symbol'>:@_has_nesting</span><span class='rparen'>)</span>
   <span class='kw'>self</span>
 <span class='kw'>end</span></pre>
     </td>
@@ -4304,7 +4853,7 @@
 195</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 172</span>
+      <pre class="code"><span class="info file"># File 'lib/cataract/old_stylesheet.rb', line 172</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_parse'>parse</span><span class='lparen'>(</span><span class='id identifier rubyid_css_string'>css_string</span><span class='rparen'>)</span>
   <span class='comment'># Resolve @import statements if configured in constructor
@@ -4314,7 +4863,7 @@
                    <span class='id identifier rubyid_css_string'>css_string</span>
                  <span class='kw'>end</span>
 
-  <span class='id identifier rubyid_result'>result</span> <span class='op'>=</span> <span class='const'><span class='object_link'><a href="../Cataract.html" title="Cataract (module)">Cataract</a></span></span><span class='period'>.</span><span class='id identifier rubyid_parse_css_internal'><span class='object_link'><a href="../Cataract.html#parse_css_internal-class_method" title="Cataract.parse_css_internal (method)">parse_css_internal</a></span></span><span class='lparen'>(</span><span class='id identifier rubyid_css_to_parse'>css_to_parse</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_result'>result</span> <span class='op'>=</span> <span class='const'><span class='object_link'><a href="../Cataract.html" title="Cataract (module)">Cataract</a></span></span><span class='period'>.</span><span class='id identifier rubyid_parse_css_internal'>parse_css_internal</span><span class='lparen'>(</span><span class='id identifier rubyid_css_to_parse'>css_to_parse</span><span class='rparen'>)</span>
   <span class='comment'># parse_css_internal returns {rules: {query_string =&gt; {media_types: [...], rules: [...]}}, charset: &quot;...&quot; | nil}
 </span>
   <span class='comment'># Store charset if not already set
@@ -4437,7 +4986,7 @@
 634</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 623</span>
+      <pre class="code"><span class="info file"># File 'lib/cataract/old_stylesheet.rb', line 623</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_remove_rule_set!'>remove_rule_set!</span><span class='lparen'>(</span><span class='id identifier rubyid_rule_set'>rule_set</span><span class='rparen'>)</span>
   <span class='comment'># Iterate through each media query group
@@ -4582,144 +5131,111 @@
       <pre class="lines">
 
 
-661
-662
-663
-664
-665
-666
-667
-668
-669
-670
-671
-672
-673
-674
-675
-676
-677
-678
-679
-680
-681
-682
-683
-684
-685</pre>
+354
+355
+356
+357
+358
+359
+360
+361
+362
+363
+364
+365
+366
+367
+368
+369
+370
+371
+372
+373
+374
+375
+376
+377
+378
+379
+380
+381
+382
+383
+384
+385
+386
+387
+388
+389
+390
+391
+392
+393
+394
+395
+396
+397
+398
+399
+400
+401
+402
+403
+404</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 661</span>
+      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 354</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_remove_rules!'>remove_rules!</span><span class='lparen'>(</span><span class='label'>selector:</span> <span class='kw'>nil</span><span class='comma'>,</span> <span class='label'>media_types:</span> <span class='kw'>nil</span><span class='rparen'>)</span>
-  <span class='comment'># Normalize media_types filter
-</span>  <span class='id identifier rubyid_filter_media_types'>filter_media_types</span> <span class='op'>=</span> <span class='lparen'>(</span><span class='const'>Array</span><span class='lparen'>(</span><span class='id identifier rubyid_media_types'>media_types</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span><span class='lparen'>(</span><span class='op'>&amp;</span><span class='symbol'>:to_sym</span><span class='rparen'>)</span> <span class='kw'>if</span> <span class='id identifier rubyid_media_types'>media_types</span><span class='rparen'>)</span>
+  <span class='comment'># Normalize media_types to array
+</span>  <span class='id identifier rubyid_filter_media'>filter_media</span> <span class='op'>=</span> <span class='id identifier rubyid_media_types'>media_types</span> <span class='op'>?</span> <span class='const'>Array</span><span class='lparen'>(</span><span class='id identifier rubyid_media_types'>media_types</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span><span class='lparen'>(</span><span class='op'>&amp;</span><span class='symbol'>:to_sym</span><span class='rparen'>)</span> <span class='op'>:</span> <span class='kw'>nil</span>
 
-  <span class='ivar'>@rule_groups</span><span class='period'>.</span><span class='id identifier rubyid_each_value'>each_value</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_group'>group</span><span class='op'>|</span>
-    <span class='comment'># Skip groups that don&#39;t match media_types filter
-</span>    <span class='kw'>if</span> <span class='id identifier rubyid_filter_media_types'>filter_media_types</span>
-      <span class='id identifier rubyid_group_media_types'>group_media_types</span> <span class='op'>=</span> <span class='id identifier rubyid_group'>group</span><span class='lbracket'>[</span><span class='symbol'>:media_types</span><span class='rbracket'>]</span> <span class='op'>||</span> <span class='lbracket'>[</span><span class='rbracket'>]</span>
-      <span class='comment'># Check if this group matches the filter
-</span>      <span class='kw'>next</span> <span class='kw'>unless</span> <span class='id identifier rubyid_filter_media_types'>filter_media_types</span><span class='period'>.</span><span class='id identifier rubyid_include?'>include?</span><span class='lparen'>(</span><span class='symbol'>:all</span><span class='rparen'>)</span> <span class='op'>||</span>
-                  <span class='id identifier rubyid_group_media_types'>group_media_types</span><span class='period'>.</span><span class='id identifier rubyid_intersect?'>intersect?</span><span class='lparen'>(</span><span class='id identifier rubyid_filter_media_types'>filter_media_types</span><span class='rparen'>)</span>
+  <span class='comment'># Find rules to remove
+</span>  <span class='id identifier rubyid_rules_to_remove'>rules_to_remove</span> <span class='op'>=</span> <span class='const'>Set</span><span class='period'>.</span><span class='id identifier rubyid_new'>new</span>
+  <span class='ivar'>@rules</span><span class='period'>.</span><span class='id identifier rubyid_each_with_index'>each_with_index</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_rule'>rule</span><span class='comma'>,</span> <span class='id identifier rubyid_rule_id'>rule_id</span><span class='op'>|</span>
+    <span class='comment'># Check selector match
+</span>    <span class='kw'>next</span> <span class='kw'>if</span> <span class='id identifier rubyid_selector'>selector</span> <span class='op'>&amp;&amp;</span> <span class='id identifier rubyid_rule'>rule</span><span class='period'>.</span><span class='id identifier rubyid_selector'>selector</span> <span class='op'>!=</span> <span class='id identifier rubyid_selector'>selector</span>
+
+    <span class='comment'># Check media type match
+</span>    <span class='kw'>if</span> <span class='id identifier rubyid_filter_media'>filter_media</span>
+      <span class='id identifier rubyid_rule_media_types'>rule_media_types</span> <span class='op'>=</span> <span class='ivar'>@media_index</span><span class='period'>.</span><span class='id identifier rubyid_select'>select</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid__media'>_media</span><span class='comma'>,</span> <span class='id identifier rubyid_ids'>ids</span><span class='op'>|</span> <span class='id identifier rubyid_ids'>ids</span><span class='period'>.</span><span class='id identifier rubyid_include?'>include?</span><span class='lparen'>(</span><span class='id identifier rubyid_rule_id'>rule_id</span><span class='rparen'>)</span> <span class='rbrace'>}</span><span class='period'>.</span><span class='id identifier rubyid_keys'>keys</span>
+      <span class='comment'># Extract individual media types from complex queries
+</span>      <span class='id identifier rubyid_individual_types'>individual_types</span> <span class='op'>=</span> <span class='id identifier rubyid_rule_media_types'>rule_media_types</span><span class='period'>.</span><span class='id identifier rubyid_flat_map'>flat_map</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_key'>key</span><span class='op'>|</span> <span class='const'><span class='object_link'><a href="../Cataract.html" title="Cataract (module)">Cataract</a></span></span><span class='period'>.</span><span class='id identifier rubyid_parse_media_types'><span class='object_link'><a href="../Cataract.html#parse_media_types-class_method" title="Cataract.parse_media_types (method)">parse_media_types</a></span></span><span class='lparen'>(</span><span class='id identifier rubyid_key'>key</span><span class='rparen'>)</span> <span class='rbrace'>}</span><span class='period'>.</span><span class='id identifier rubyid_uniq'>uniq</span>
+
+      <span class='comment'># If rule is not in any media query (base rule), skip if filtering by media
+</span>      <span class='kw'>if</span> <span class='id identifier rubyid_individual_types'>individual_types</span><span class='period'>.</span><span class='id identifier rubyid_empty?'>empty?</span>
+        <span class='kw'>next</span> <span class='kw'>unless</span> <span class='id identifier rubyid_filter_media'>filter_media</span><span class='period'>.</span><span class='id identifier rubyid_include?'>include?</span><span class='lparen'>(</span><span class='symbol'>:all</span><span class='rparen'>)</span>
+      <span class='kw'>else</span>
+        <span class='comment'># Check if rule&#39;s media types intersect with filter
+</span>        <span class='kw'>next</span> <span class='kw'>unless</span> <span class='id identifier rubyid_individual_types'>individual_types</span><span class='period'>.</span><span class='id identifier rubyid_intersect?'>intersect?</span><span class='lparen'>(</span><span class='id identifier rubyid_filter_media'>filter_media</span><span class='rparen'>)</span>
+      <span class='kw'>end</span>
     <span class='kw'>end</span>
 
-    <span class='comment'># Remove matching rules from this group
-</span>    <span class='id identifier rubyid_group'>group</span><span class='lbracket'>[</span><span class='symbol'>:rules</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_reject!'>reject!</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_rule'>rule</span><span class='op'>|</span>
-      <span class='id identifier rubyid_match'>match</span> <span class='op'>=</span> <span class='kw'>true</span>
-      <span class='id identifier rubyid_match'>match</span> <span class='op'>&amp;&amp;=</span> <span class='lparen'>(</span><span class='id identifier rubyid_rule'>rule</span><span class='period'>.</span><span class='id identifier rubyid_selector'>selector</span> <span class='op'>==</span> <span class='id identifier rubyid_selector'>selector</span><span class='rparen'>)</span> <span class='kw'>if</span> <span class='id identifier rubyid_selector'>selector</span>
-      <span class='id identifier rubyid_match'>match</span>
+    <span class='id identifier rubyid_rules_to_remove'>rules_to_remove</span> <span class='op'>&lt;&lt;</span> <span class='id identifier rubyid_rule_id'>rule_id</span>
+  <span class='kw'>end</span>
+
+  <span class='comment'># Remove rules and update media_index
+</span>  <span class='id identifier rubyid_rules_to_remove'>rules_to_remove</span><span class='period'>.</span><span class='id identifier rubyid_sort'>sort</span><span class='period'>.</span><span class='id identifier rubyid_reverse_each'>reverse_each</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_rule_id'>rule_id</span><span class='op'>|</span>
+    <span class='ivar'>@rules</span><span class='period'>.</span><span class='id identifier rubyid_delete_at'>delete_at</span><span class='lparen'>(</span><span class='id identifier rubyid_rule_id'>rule_id</span><span class='rparen'>)</span>
+
+    <span class='comment'># Remove from media_index and update IDs for rules after this one
+</span>    <span class='ivar'>@media_index</span><span class='period'>.</span><span class='id identifier rubyid_each_value'>each_value</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_ids'>ids</span><span class='op'>|</span>
+      <span class='id identifier rubyid_ids'>ids</span><span class='period'>.</span><span class='id identifier rubyid_delete'>delete</span><span class='lparen'>(</span><span class='id identifier rubyid_rule_id'>rule_id</span><span class='rparen'>)</span>
+      <span class='comment'># Decrement IDs greater than removed ID
+</span>      <span class='id identifier rubyid_ids'>ids</span><span class='period'>.</span><span class='id identifier rubyid_map!'>map!</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_id'>id</span><span class='op'>|</span> <span class='id identifier rubyid_id'>id</span> <span class='op'>&gt;</span> <span class='id identifier rubyid_rule_id'>rule_id</span> <span class='op'>?</span> <span class='id identifier rubyid_id'>id</span> <span class='op'>-</span> <span class='int'>1</span> <span class='op'>:</span> <span class='id identifier rubyid_id'>id</span> <span class='rbrace'>}</span>
     <span class='kw'>end</span>
   <span class='kw'>end</span>
 
-  <span class='comment'># Clean up empty groups
-</span>  <span class='ivar'>@rule_groups</span><span class='period'>.</span><span class='id identifier rubyid_delete_if'>delete_if</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid__key'>_key</span><span class='comma'>,</span> <span class='id identifier rubyid_group'>group</span><span class='op'>|</span> <span class='id identifier rubyid_group'>group</span><span class='lbracket'>[</span><span class='symbol'>:rules</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_empty?'>empty?</span> <span class='rbrace'>}</span>
+  <span class='comment'># Clean up empty media_index entries
+</span>  <span class='ivar'>@media_index</span><span class='period'>.</span><span class='id identifier rubyid_delete_if'>delete_if</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid__media'>_media</span><span class='comma'>,</span> <span class='id identifier rubyid_ids'>ids</span><span class='op'>|</span> <span class='id identifier rubyid_ids'>ids</span><span class='period'>.</span><span class='id identifier rubyid_empty?'>empty?</span> <span class='rbrace'>}</span>
+
+  <span class='comment'># Update rule IDs in remaining rules
+</span>  <span class='ivar'>@rules</span><span class='period'>.</span><span class='id identifier rubyid_each_with_index'>each_with_index</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_rule'>rule</span><span class='comma'>,</span> <span class='id identifier rubyid_new_id'>new_id</span><span class='op'>|</span> <span class='id identifier rubyid_rule'>rule</span><span class='period'>.</span><span class='id identifier rubyid_id'>id</span> <span class='op'>=</span> <span class='id identifier rubyid_new_id'>new_id</span> <span class='rbrace'>}</span>
+
+  <span class='comment'># Clear memoized cache
+</span>  <span class='ivar'>@selectors</span> <span class='op'>=</span> <span class='kw'>nil</span>
+
   <span class='kw'>self</span>
-<span class='kw'>end</span></pre>
-    </td>
-  </tr>
-</table>
-</div>
-    
-      <div class="method_details ">
-  <h3 class="signature " id="rule_groups-instance_method">
-  
-    #<strong>rule_groups</strong>  &#x21d2; <tt>Object</tt> 
-  
-
-  
-
-  
-</h3><div class="docstring">
-  <div class="discussion">
-    <p class="note private">
-  <strong>This method is part of a private API.</strong>
-  You should avoid using this method if possible, as it may be removed or be changed in the future.
-</p>
-
-<p>Expose rule groups for C merge implementation</p>
-
-
-  </div>
-</div>
-<div class="tags">
-  
-
-</div><table class="source_code">
-  <tr>
-    <td>
-      <pre class="lines">
-
-
-1119
-1120
-1121</pre>
-    </td>
-    <td>
-      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 1119</span>
-
-<span class='kw'>def</span> <span class='id identifier rubyid_rule_groups'>rule_groups</span>
-  <span class='ivar'>@rule_groups</span>
-<span class='kw'>end</span></pre>
-    </td>
-  </tr>
-</table>
-</div>
-    
-      <div class="method_details ">
-  <h3 class="signature " id="rules-instance_method">
-  
-    #<strong>rules</strong>(&amp;block)  &#x21d2; <tt>Object</tt> 
-  
-
-  
-
-  
-</h3><table class="source_code">
-  <tr>
-    <td>
-      <pre class="lines">
-
-
-557
-558
-559
-560
-561
-562
-563
-564</pre>
-    </td>
-    <td>
-      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 557</span>
-
-<span class='kw'>def</span> <span class='id identifier rubyid_rules'>rules</span><span class='lparen'>(</span><span class='op'>&amp;</span><span class='id identifier rubyid_block'>block</span><span class='rparen'>)</span>
-  <span class='kw'>return</span> <span class='id identifier rubyid_enum_for'>enum_for</span><span class='lparen'>(</span><span class='symbol'>:rules</span><span class='rparen'>)</span> <span class='kw'>unless</span> <span class='id identifier rubyid_block_given?'>block_given?</span>
-
-  <span class='comment'># Iterate over all rules in all media query groups
-</span>  <span class='ivar'>@rule_groups</span><span class='period'>.</span><span class='id identifier rubyid_each_value'>each_value</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_group'>group</span><span class='op'>|</span>
-    <span class='id identifier rubyid_group'>group</span><span class='lbracket'>[</span><span class='symbol'>:rules</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span><span class='lparen'>(</span><span class='op'>&amp;</span><span class='id identifier rubyid_block'>block</span><span class='rparen'>)</span>
-  <span class='kw'>end</span>
 <span class='kw'>end</span></pre>
     </td>
   </tr>
@@ -4828,45 +5344,15 @@
       <pre class="lines">
 
 
-926
-927
-928
-929
-930
-931
-932
-933
-934
-935
-936
-937
-938
-939
-940
-941
-942
-943</pre>
+118
+119
+120</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 926</span>
+      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 118</span>
 
-<span class='kw'>def</span> <span class='id identifier rubyid_selectors'>selectors</span><span class='lparen'>(</span><span class='id identifier rubyid_media_types'>media_types</span> <span class='op'>=</span> <span class='symbol'>:all</span><span class='rparen'>)</span>
-  <span class='id identifier rubyid_query_media_types'>query_media_types</span> <span class='op'>=</span> <span class='const'>Array</span><span class='lparen'>(</span><span class='id identifier rubyid_media_types'>media_types</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span><span class='lparen'>(</span><span class='op'>&amp;</span><span class='symbol'>:to_sym</span><span class='rparen'>)</span>
-  <span class='id identifier rubyid_result'>result</span> <span class='op'>=</span> <span class='lbracket'>[</span><span class='rbracket'>]</span>
-
-  <span class='ivar'>@rule_groups</span><span class='period'>.</span><span class='id identifier rubyid_each_value'>each_value</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_group'>group</span><span class='op'>|</span>
-    <span class='comment'># Filter by media types at group level
-</span>    <span class='id identifier rubyid_group_media_types'>group_media_types</span> <span class='op'>=</span> <span class='id identifier rubyid_group'>group</span><span class='lbracket'>[</span><span class='symbol'>:media_types</span><span class='rbracket'>]</span> <span class='op'>||</span> <span class='lbracket'>[</span><span class='rbracket'>]</span>
-
-    <span class='comment'># :all matches everything
-</span>    <span class='kw'>next</span> <span class='kw'>unless</span> <span class='id identifier rubyid_query_media_types'>query_media_types</span><span class='period'>.</span><span class='id identifier rubyid_include?'>include?</span><span class='lparen'>(</span><span class='symbol'>:all</span><span class='rparen'>)</span> <span class='op'>||</span>
-                <span class='lparen'>(</span><span class='id identifier rubyid_group_media_types'>group_media_types</span><span class='period'>.</span><span class='id identifier rubyid_empty?'>empty?</span> <span class='op'>&amp;&amp;</span> <span class='id identifier rubyid_query_media_types'>query_media_types</span><span class='period'>.</span><span class='id identifier rubyid_include?'>include?</span><span class='lparen'>(</span><span class='symbol'>:all</span><span class='rparen'>)</span><span class='rparen'>)</span> <span class='op'>||</span>
-                <span class='id identifier rubyid_group_media_types'>group_media_types</span><span class='period'>.</span><span class='id identifier rubyid_intersect?'>intersect?</span><span class='lparen'>(</span><span class='id identifier rubyid_query_media_types'>query_media_types</span><span class='rparen'>)</span>
-
-    <span class='id identifier rubyid_result'>result</span><span class='period'>.</span><span class='id identifier rubyid_concat'>concat</span><span class='lparen'>(</span><span class='id identifier rubyid_group'>group</span><span class='lbracket'>[</span><span class='symbol'>:rules</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span><span class='lparen'>(</span><span class='op'>&amp;</span><span class='symbol'>:selector</span><span class='rparen'>)</span><span class='rparen'>)</span>
-  <span class='kw'>end</span>
-
-  <span class='id identifier rubyid_result'>result</span>
+<span class='kw'>def</span> <span class='id identifier rubyid_selectors'>selectors</span>
+  <span class='ivar'>@selectors</span> <span class='op'>||=</span> <span class='ivar'>@rules</span><span class='period'>.</span><span class='id identifier rubyid_map'>map</span><span class='lparen'>(</span><span class='op'>&amp;</span><span class='symbol'>:selector</span><span class='rparen'>)</span>
 <span class='kw'>end</span></pre>
     </td>
   </tr>
@@ -4954,15 +5440,15 @@
       <pre class="lines">
 
 
-864
-865
-866</pre>
+248
+249
+250</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 864</span>
+      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 248</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_size'>size</span>
-  <span class='ivar'>@rule_groups</span><span class='period'>.</span><span class='id identifier rubyid_values'>values</span><span class='period'>.</span><span class='id identifier rubyid_sum'>sum</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_group'>group</span><span class='op'>|</span> <span class='id identifier rubyid_group'>group</span><span class='lbracket'>[</span><span class='symbol'>:rules</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_length'>length</span> <span class='rbrace'>}</span>
+  <span class='ivar'>@rules</span><span class='period'>.</span><span class='id identifier rubyid_length'>length</span>
 <span class='kw'>end</span></pre>
     </td>
   </tr>
@@ -5080,15 +5566,91 @@
       <pre class="lines">
 
 
-1093
-1094
-1095</pre>
+203
+204
+205
+206
+207
+208
+209
+210
+211
+212
+213
+214
+215
+216
+217
+218
+219
+220
+221
+222
+223
+224
+225
+226
+227
+228
+229
+230
+231
+232
+233
+234
+235
+236
+237
+238
+239
+240
+241
+242
+243</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 1093</span>
+      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 203</span>
 
-<span class='kw'>def</span> <span class='id identifier rubyid_to_formatted_s'>to_formatted_s</span><span class='lparen'>(</span><span class='id identifier rubyid_which_media'>which_media</span> <span class='op'>=</span> <span class='symbol'>:all</span><span class='rparen'>)</span>
-  <span class='id identifier rubyid_serialize_with_media_filter'>serialize_with_media_filter</span><span class='lparen'>(</span><span class='id identifier rubyid_which_media'>which_media</span><span class='comma'>,</span> <span class='label'>formatted:</span> <span class='kw'>true</span><span class='rparen'>)</span>
+<span class='kw'>def</span> <span class='id identifier rubyid_to_formatted_s'>to_formatted_s</span><span class='lparen'>(</span><span class='label'>media:</span> <span class='symbol'>:all</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_which_media'>which_media</span> <span class='op'>=</span> <span class='id identifier rubyid_media'>media</span>
+  <span class='comment'># Normalize to array for consistent filtering
+</span>  <span class='id identifier rubyid_which_media_array'>which_media_array</span> <span class='op'>=</span> <span class='id identifier rubyid_which_media'>which_media</span><span class='period'>.</span><span class='id identifier rubyid_is_a?'>is_a?</span><span class='lparen'>(</span><span class='const'>Array</span><span class='rparen'>)</span> <span class='op'>?</span> <span class='id identifier rubyid_which_media'>which_media</span> <span class='op'>:</span> <span class='lbracket'>[</span><span class='id identifier rubyid_which_media'>which_media</span><span class='rbracket'>]</span>
+
+  <span class='comment'># If :all is present, return everything (no filtering)
+</span>  <span class='kw'>if</span> <span class='id identifier rubyid_which_media_array'>which_media_array</span><span class='period'>.</span><span class='id identifier rubyid_include?'>include?</span><span class='lparen'>(</span><span class='symbol'>:all</span><span class='rparen'>)</span>
+    <span class='const'><span class='object_link'><a href="../Cataract.html" title="Cataract (module)">Cataract</a></span></span><span class='period'>.</span><span class='id identifier rubyid__stylesheet_to_formatted_s'><span class='object_link'><a href="../Cataract.html#_stylesheet_to_formatted_s-class_method" title="Cataract._stylesheet_to_formatted_s (method)">_stylesheet_to_formatted_s</a></span></span><span class='lparen'>(</span><span class='ivar'>@rules</span><span class='comma'>,</span> <span class='ivar'>@media_index</span><span class='comma'>,</span> <span class='ivar'>@charset</span><span class='comma'>,</span> <span class='ivar'>@_has_nesting</span> <span class='op'>||</span> <span class='kw'>false</span><span class='rparen'>)</span>
+  <span class='kw'>else</span>
+    <span class='comment'># Collect all rule IDs that match the requested media types
+</span>    <span class='id identifier rubyid_matching_rule_ids'>matching_rule_ids</span> <span class='op'>=</span> <span class='const'>Set</span><span class='period'>.</span><span class='id identifier rubyid_new'>new</span>
+
+    <span class='comment'># Include rules not in any media query (they apply to all media)
+</span>    <span class='id identifier rubyid_media_rule_ids'>media_rule_ids</span> <span class='op'>=</span> <span class='ivar'>@media_index</span><span class='period'>.</span><span class='id identifier rubyid_values'>values</span><span class='period'>.</span><span class='id identifier rubyid_flatten'>flatten</span><span class='period'>.</span><span class='id identifier rubyid_uniq'>uniq</span>
+    <span class='id identifier rubyid_all_rule_ids'>all_rule_ids</span> <span class='op'>=</span> <span class='lparen'>(</span><span class='int'>0</span><span class='op'>...</span><span class='ivar'>@rules</span><span class='period'>.</span><span class='id identifier rubyid_length'>length</span><span class='rparen'>)</span><span class='period'>.</span><span class='id identifier rubyid_to_a'>to_a</span>
+    <span class='id identifier rubyid_non_media_rule_ids'>non_media_rule_ids</span> <span class='op'>=</span> <span class='id identifier rubyid_all_rule_ids'>all_rule_ids</span> <span class='op'>-</span> <span class='id identifier rubyid_media_rule_ids'>media_rule_ids</span>
+    <span class='id identifier rubyid_matching_rule_ids'>matching_rule_ids</span><span class='period'>.</span><span class='id identifier rubyid_merge'>merge</span><span class='lparen'>(</span><span class='id identifier rubyid_non_media_rule_ids'>non_media_rule_ids</span><span class='rparen'>)</span>
+
+    <span class='comment'># Include rules from requested media types
+</span>    <span class='id identifier rubyid_which_media_array'>which_media_array</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_media_sym'>media_sym</span><span class='op'>|</span>
+      <span class='kw'>if</span> <span class='ivar'>@media_index</span><span class='lbracket'>[</span><span class='id identifier rubyid_media_sym'>media_sym</span><span class='rbracket'>]</span>
+        <span class='id identifier rubyid_matching_rule_ids'>matching_rule_ids</span><span class='period'>.</span><span class='id identifier rubyid_merge'>merge</span><span class='lparen'>(</span><span class='ivar'>@media_index</span><span class='lbracket'>[</span><span class='id identifier rubyid_media_sym'>media_sym</span><span class='rbracket'>]</span><span class='rparen'>)</span>
+      <span class='kw'>end</span>
+    <span class='kw'>end</span>
+
+    <span class='comment'># Build filtered rules array (keep original IDs, no recreation needed)
+</span>    <span class='id identifier rubyid_filtered_rules'>filtered_rules</span> <span class='op'>=</span> <span class='id identifier rubyid_matching_rule_ids'>matching_rule_ids</span><span class='period'>.</span><span class='id identifier rubyid_sort'>sort</span><span class='period'>.</span><span class='id identifier rubyid_map!'>map!</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_rule_id'>rule_id</span><span class='op'>|</span> <span class='ivar'>@rules</span><span class='lbracket'>[</span><span class='id identifier rubyid_rule_id'>rule_id</span><span class='rbracket'>]</span> <span class='rbrace'>}</span>
+
+    <span class='comment'># Build filtered media_index (keep original IDs, just filter to included rules)
+</span>    <span class='id identifier rubyid_filtered_media_index'>filtered_media_index</span> <span class='op'>=</span> <span class='lbrace'>{</span><span class='rbrace'>}</span>
+    <span class='id identifier rubyid_which_media_array'>which_media_array</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_media_sym'>media_sym</span><span class='op'>|</span>
+      <span class='kw'>if</span> <span class='ivar'>@media_index</span><span class='lbracket'>[</span><span class='id identifier rubyid_media_sym'>media_sym</span><span class='rbracket'>]</span>
+        <span class='id identifier rubyid_filtered_media_index'>filtered_media_index</span><span class='lbracket'>[</span><span class='id identifier rubyid_media_sym'>media_sym</span><span class='rbracket'>]</span> <span class='op'>=</span> <span class='ivar'>@media_index</span><span class='lbracket'>[</span><span class='id identifier rubyid_media_sym'>media_sym</span><span class='rbracket'>]</span> <span class='op'>&amp;</span> <span class='id identifier rubyid_matching_rule_ids'>matching_rule_ids</span><span class='period'>.</span><span class='id identifier rubyid_to_a'>to_a</span>
+      <span class='kw'>end</span>
+    <span class='kw'>end</span>
+
+    <span class='comment'># C serialization with filtered data
+</span>    <span class='comment'># Note: Filtered rules might still contain nesting, so pass the flag
+</span>    <span class='const'><span class='object_link'><a href="../Cataract.html" title="Cataract (module)">Cataract</a></span></span><span class='period'>.</span><span class='id identifier rubyid__stylesheet_to_formatted_s'><span class='object_link'><a href="../Cataract.html#_stylesheet_to_formatted_s-class_method" title="Cataract._stylesheet_to_formatted_s (method)">_stylesheet_to_formatted_s</a></span></span><span class='lparen'>(</span><span class='id identifier rubyid_filtered_rules'>filtered_rules</span><span class='comma'>,</span> <span class='id identifier rubyid_filtered_media_index'>filtered_media_index</span><span class='comma'>,</span> <span class='ivar'>@charset</span><span class='comma'>,</span> <span class='ivar'>@_has_nesting</span> <span class='op'>||</span> <span class='kw'>false</span><span class='rparen'>)</span>
+  <span class='kw'>end</span>
 <span class='kw'>end</span></pre>
     </td>
   </tr>
@@ -5173,57 +5735,21 @@
       <pre class="lines">
 
 
-823
-824
-825
-826
-827
-828
-829
-830
-831
-832
-833
-834
-835
-836
-837
-838
-839
-840
-841
-842
-843
-844
-845
-846</pre>
+544
+545
+546
+547
+548
+549</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 823</span>
+      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 544</span>
 
 <span class='kw'>def</span> <span class='id identifier rubyid_to_h'>to_h</span>
-  <span class='id identifier rubyid_result'>result</span> <span class='op'>=</span> <span class='lbrace'>{</span><span class='rbrace'>}</span>
-
-  <span class='ivar'>@rule_groups</span><span class='period'>.</span><span class='id identifier rubyid_each_value'>each_value</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_group'>group</span><span class='op'>|</span>
-    <span class='id identifier rubyid_group_media_types'>group_media_types</span> <span class='op'>=</span> <span class='id identifier rubyid_group'>group</span><span class='lbracket'>[</span><span class='symbol'>:media_types</span><span class='rbracket'>]</span> <span class='op'>||</span> <span class='lbracket'>[</span><span class='symbol'>:all</span><span class='rbracket'>]</span>
-
-    <span class='id identifier rubyid_group_media_types'>group_media_types</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_media_type'>media_type</span><span class='op'>|</span>
-      <span class='id identifier rubyid_media_key'>media_key</span> <span class='op'>=</span> <span class='id identifier rubyid_media_type'>media_type</span><span class='period'>.</span><span class='id identifier rubyid_to_s'>to_s</span>
-      <span class='id identifier rubyid_result'>result</span><span class='lbracket'>[</span><span class='id identifier rubyid_media_key'>media_key</span><span class='rbracket'>]</span> <span class='op'>||=</span> <span class='lbrace'>{</span><span class='rbrace'>}</span>
-
-      <span class='id identifier rubyid_group'>group</span><span class='lbracket'>[</span><span class='symbol'>:rules</span><span class='rbracket'>]</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_rule'>rule</span><span class='op'>|</span>
-        <span class='id identifier rubyid_result'>result</span><span class='lbracket'>[</span><span class='id identifier rubyid_media_key'>media_key</span><span class='rbracket'>]</span><span class='lbracket'>[</span><span class='id identifier rubyid_rule'>rule</span><span class='period'>.</span><span class='id identifier rubyid_selector'>selector</span><span class='rbracket'>]</span> <span class='op'>||=</span> <span class='lbrace'>{</span><span class='rbrace'>}</span>
-
-        <span class='comment'># Iterate declarations array directly - no intermediate object
-</span>        <span class='id identifier rubyid_rule'>rule</span><span class='period'>.</span><span class='id identifier rubyid_declarations'>declarations</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_decl'>decl</span><span class='op'>|</span>
-          <span class='id identifier rubyid_result'>result</span><span class='lbracket'>[</span><span class='id identifier rubyid_media_key'>media_key</span><span class='rbracket'>]</span><span class='lbracket'>[</span><span class='id identifier rubyid_rule'>rule</span><span class='period'>.</span><span class='id identifier rubyid_selector'>selector</span><span class='rbracket'>]</span><span class='lbracket'>[</span><span class='id identifier rubyid_decl'>decl</span><span class='period'>.</span><span class='id identifier rubyid_property'>property</span><span class='rbracket'>]</span> <span class='op'>=</span>
-            <span class='id identifier rubyid_decl'>decl</span><span class='period'>.</span><span class='id identifier rubyid_important'>important</span> <span class='op'>?</span> <span class='tstring'><span class='tstring_beg'>&quot;</span><span class='embexpr_beg'>#{</span><span class='id identifier rubyid_decl'>decl</span><span class='period'>.</span><span class='id identifier rubyid_value'>value</span><span class='embexpr_end'>}</span><span class='tstring_content'> !important</span><span class='tstring_end'>&quot;</span></span> <span class='op'>:</span> <span class='id identifier rubyid_decl'>decl</span><span class='period'>.</span><span class='id identifier rubyid_value'>value</span>
-        <span class='kw'>end</span>
-      <span class='kw'>end</span>
-    <span class='kw'>end</span>
-  <span class='kw'>end</span>
-
-  <span class='id identifier rubyid_result'>result</span>
+  <span class='lbrace'>{</span>
+    <span class='label'>rules:</span> <span class='ivar'>@rules</span><span class='comma'>,</span>
+    <span class='label'>charset:</span> <span class='ivar'>@charset</span>
+  <span class='rbrace'>}</span>
 <span class='kw'>end</span></pre>
     </td>
   </tr>
@@ -5339,15 +5865,75 @@
       <pre class="lines">
 
 
-1064
-1065
-1066</pre>
+147
+148
+149
+150
+151
+152
+153
+154
+155
+156
+157
+158
+159
+160
+161
+162
+163
+164
+165
+166
+167
+168
+169
+170
+171
+172
+173
+174
+175
+176
+177
+178
+179</pre>
     </td>
     <td>
-      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 1064</span>
+      <pre class="code"><span class="info file"># File 'lib/cataract/stylesheet.rb', line 147</span>
 
-<span class='kw'>def</span> <span class='id identifier rubyid_to_s'>to_s</span><span class='lparen'>(</span><span class='id identifier rubyid_which_media'>which_media</span> <span class='op'>=</span> <span class='symbol'>:all</span><span class='rparen'>)</span>
-  <span class='id identifier rubyid_serialize_with_media_filter'>serialize_with_media_filter</span><span class='lparen'>(</span><span class='id identifier rubyid_which_media'>which_media</span><span class='comma'>,</span> <span class='label'>formatted:</span> <span class='kw'>false</span><span class='rparen'>)</span>
+<span class='kw'>def</span> <span class='id identifier rubyid_to_s'>to_s</span><span class='lparen'>(</span><span class='label'>media:</span> <span class='symbol'>:all</span><span class='rparen'>)</span>
+  <span class='id identifier rubyid_which_media'>which_media</span> <span class='op'>=</span> <span class='id identifier rubyid_media'>media</span>
+  <span class='comment'># Normalize to array for consistent filtering
+</span>  <span class='id identifier rubyid_which_media_array'>which_media_array</span> <span class='op'>=</span> <span class='id identifier rubyid_which_media'>which_media</span><span class='period'>.</span><span class='id identifier rubyid_is_a?'>is_a?</span><span class='lparen'>(</span><span class='const'>Array</span><span class='rparen'>)</span> <span class='op'>?</span> <span class='id identifier rubyid_which_media'>which_media</span> <span class='op'>:</span> <span class='lbracket'>[</span><span class='id identifier rubyid_which_media'>which_media</span><span class='rbracket'>]</span>
+
+  <span class='comment'># If :all is present, return everything (no filtering)
+</span>  <span class='kw'>if</span> <span class='id identifier rubyid_which_media_array'>which_media_array</span><span class='period'>.</span><span class='id identifier rubyid_include?'>include?</span><span class='lparen'>(</span><span class='symbol'>:all</span><span class='rparen'>)</span>
+    <span class='const'><span class='object_link'><a href="../Cataract.html" title="Cataract (module)">Cataract</a></span></span><span class='period'>.</span><span class='id identifier rubyid__stylesheet_to_s'><span class='object_link'><a href="../Cataract.html#_stylesheet_to_s-class_method" title="Cataract._stylesheet_to_s (method)">_stylesheet_to_s</a></span></span><span class='lparen'>(</span><span class='ivar'>@rules</span><span class='comma'>,</span> <span class='ivar'>@media_index</span><span class='comma'>,</span> <span class='ivar'>@charset</span><span class='comma'>,</span> <span class='ivar'>@_has_nesting</span> <span class='op'>||</span> <span class='kw'>false</span><span class='rparen'>)</span>
+  <span class='kw'>else</span>
+    <span class='comment'># Collect all rule IDs that match the requested media types
+</span>    <span class='id identifier rubyid_matching_rule_ids'>matching_rule_ids</span> <span class='op'>=</span> <span class='const'>Set</span><span class='period'>.</span><span class='id identifier rubyid_new'>new</span>
+    <span class='id identifier rubyid_which_media_array'>which_media_array</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_media_sym'>media_sym</span><span class='op'>|</span>
+      <span class='kw'>if</span> <span class='ivar'>@media_index</span><span class='lbracket'>[</span><span class='id identifier rubyid_media_sym'>media_sym</span><span class='rbracket'>]</span>
+        <span class='id identifier rubyid_matching_rule_ids'>matching_rule_ids</span><span class='period'>.</span><span class='id identifier rubyid_merge'>merge</span><span class='lparen'>(</span><span class='ivar'>@media_index</span><span class='lbracket'>[</span><span class='id identifier rubyid_media_sym'>media_sym</span><span class='rbracket'>]</span><span class='rparen'>)</span>
+      <span class='kw'>end</span>
+    <span class='kw'>end</span>
+
+    <span class='comment'># Build filtered rules array (keep original IDs, no recreation needed)
+</span>    <span class='id identifier rubyid_filtered_rules'>filtered_rules</span> <span class='op'>=</span> <span class='id identifier rubyid_matching_rule_ids'>matching_rule_ids</span><span class='period'>.</span><span class='id identifier rubyid_sort'>sort</span><span class='period'>.</span><span class='id identifier rubyid_map!'>map!</span> <span class='lbrace'>{</span> <span class='op'>|</span><span class='id identifier rubyid_rule_id'>rule_id</span><span class='op'>|</span> <span class='ivar'>@rules</span><span class='lbracket'>[</span><span class='id identifier rubyid_rule_id'>rule_id</span><span class='rbracket'>]</span> <span class='rbrace'>}</span>
+
+    <span class='comment'># Build filtered media_index (keep original IDs, just filter to included rules)
+</span>    <span class='id identifier rubyid_filtered_media_index'>filtered_media_index</span> <span class='op'>=</span> <span class='lbrace'>{</span><span class='rbrace'>}</span>
+    <span class='id identifier rubyid_which_media_array'>which_media_array</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_media_sym'>media_sym</span><span class='op'>|</span>
+      <span class='kw'>if</span> <span class='ivar'>@media_index</span><span class='lbracket'>[</span><span class='id identifier rubyid_media_sym'>media_sym</span><span class='rbracket'>]</span>
+        <span class='id identifier rubyid_filtered_media_index'>filtered_media_index</span><span class='lbracket'>[</span><span class='id identifier rubyid_media_sym'>media_sym</span><span class='rbracket'>]</span> <span class='op'>=</span> <span class='ivar'>@media_index</span><span class='lbracket'>[</span><span class='id identifier rubyid_media_sym'>media_sym</span><span class='rbracket'>]</span> <span class='op'>&amp;</span> <span class='id identifier rubyid_matching_rule_ids'>matching_rule_ids</span><span class='period'>.</span><span class='id identifier rubyid_to_a'>to_a</span>
+      <span class='kw'>end</span>
+    <span class='kw'>end</span>
+
+    <span class='comment'># C serialization with filtered data
+</span>    <span class='comment'># Note: Filtered rules might still contain nesting, so pass the flag
+</span>    <span class='const'><span class='object_link'><a href="../Cataract.html" title="Cataract (module)">Cataract</a></span></span><span class='period'>.</span><span class='id identifier rubyid__stylesheet_to_s'><span class='object_link'><a href="../Cataract.html#_stylesheet_to_s-class_method" title="Cataract._stylesheet_to_s (method)">_stylesheet_to_s</a></span></span><span class='lparen'>(</span><span class='id identifier rubyid_filtered_rules'>filtered_rules</span><span class='comma'>,</span> <span class='id identifier rubyid_filtered_media_index'>filtered_media_index</span><span class='comma'>,</span> <span class='ivar'>@charset</span><span class='comma'>,</span> <span class='ivar'>@_has_nesting</span> <span class='op'>||</span> <span class='kw'>false</span><span class='rparen'>)</span>
+  <span class='kw'>end</span>
 <span class='kw'>end</span></pre>
     </td>
   </tr>
@@ -5359,9 +5945,9 @@
 </div>
 
       <div id="footer">
-  Generated on Tue Nov  4 13:33:24 2025 by
+  Generated on Sun Nov  9 09:22:06 2025 by
   <a href="https://yardoc.org" title="Yay! A Ruby Documentation Tool" target="_parent">yard</a>
-  0.9.37 (ruby-3.4.5).
+  0.9.37 (ruby-3.4.7).
 </div>
 
     </div>

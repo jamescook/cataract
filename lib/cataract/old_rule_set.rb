@@ -23,7 +23,7 @@ module Cataract
                       when Declarations
                         decl_input.dup
                       when Hash, Array
-                        # Hash: {'color' => 'red'} or Array of Cataract::Declarations::Value structs
+                        # Hash: {'color' => 'red'} or Array of Cataract::Declaration structs
                         Declarations.new(decl_input)
                       when String
                         parse_declaration_string(decl_input)

@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
-require 'minitest/autorun'
-require 'cataract'
+require_relative 'test_helper'
 
 # Test CSS at-rules support
 # Based on W3C specifications:
@@ -16,7 +15,7 @@ class TestAtRules < Minitest::Test
 
   # @font-face tests
   def test_font_face_basic
-    @sheet.parse(<<~CSS)
+    @sheet.add_block(<<~CSS)
       @font-face {
         font-family: 'MyFont';
         src: url('font.woff2');
@@ -26,16 +25,16 @@ class TestAtRules < Minitest::Test
     assert_equal 1, @sheet.size
 
     # @font-face should be treated as a selector
-    rule = @sheet.each_selector.first
+    assert_has_selector '@font-face', @sheet
 
-    assert_equal '@font-face', rule[0]
-    # rule[1] is now a Declarations object, check for properties properly
-    assert rule[1].key?('font-family')
-    assert rule[1].key?('src')
+    rule = @sheet.find_by_selector('@font-face').first
+
+    assert_has_property({ 'font-family': "'MyFont'" }, rule)
+    assert_has_property({ src: "url('font.woff2')" }, rule)
   end
 
   def test_font_face_with_descriptors
-    @sheet.parse(<<~CSS)
+    @sheet.add_block(<<~CSS)
       @font-face {
         font-family: 'Open Sans';
         src: url('opensans.woff2') format('woff2'),
@@ -50,7 +49,7 @@ class TestAtRules < Minitest::Test
   end
 
   def test_multiple_font_faces
-    @sheet.parse(<<~CSS)
+    @sheet.add_block(<<~CSS)
       @font-face {
         font-family: 'Regular';
         src: url('regular.woff2');
@@ -67,7 +66,7 @@ class TestAtRules < Minitest::Test
   end
 
   def test_font_face_with_other_rules
-    @sheet.parse(<<~CSS)
+    @sheet.add_block(<<~CSS)
       body { margin: 0; }
 
       @font-face {
@@ -83,7 +82,7 @@ class TestAtRules < Minitest::Test
 
   # @keyframes tests
   def test_keyframes_basic
-    @sheet.parse(<<~CSS)
+    @sheet.add_block(<<~CSS)
       @keyframes slide {
         from { left: 0; }
         to { left: 100px; }
@@ -92,25 +91,11 @@ class TestAtRules < Minitest::Test
 
     assert_equal 1, @sheet.size
 
-    rule = @sheet.each_selector.first
-
-    assert_equal '@keyframes slide', rule[0]
-  end
-
-  def test_keyframes_with_percentages
-    @sheet.parse(<<~CSS)
-      @keyframes fade {
-        0% { opacity: 0; }
-        50% { opacity: 0.5; }
-        100% { opacity: 1; }
-      }
-    CSS
-
-    assert_equal 1, @sheet.size
+    assert_has_selector '@keyframes slide', @sheet
   end
 
   def test_keyframes_webkit_prefix
-    @sheet.parse(<<~CSS)
+    @sheet.add_block(<<~CSS)
       @-webkit-keyframes bounce {
         0% { top: 0; }
         100% { top: 100px; }
@@ -122,7 +107,7 @@ class TestAtRules < Minitest::Test
 
   def test_keyframes_webkit_from_bootstrap
     # Real pattern from Bootstrap CSS
-    @sheet.parse(<<~CSS)
+    @sheet.add_block(<<~CSS)
       @-webkit-keyframes spinner-grow {
         0% {
           transform: scale(0);
@@ -145,7 +130,7 @@ class TestAtRules < Minitest::Test
 
   def test_webkit_animation_property
     # Bootstrap pattern that fails: -webkit-animation property
-    @sheet.parse(<<~CSS)
+    @sheet.add_block(<<~CSS)
       @-webkit-keyframes spinner-border {
         to {
           transform: rotate(360deg) /* rtl:ignore */;
@@ -175,7 +160,7 @@ class TestAtRules < Minitest::Test
 
   def test_css_custom_properties
     # Bootstrap pattern: CSS custom properties (CSS variables) with -- prefix
-    @sheet.parse(<<~CSS)
+    @sheet.add_block(<<~CSS)
       .ratio-1x1 {
         --bs-aspect-ratio: 100%;
       }
@@ -198,7 +183,7 @@ class TestAtRules < Minitest::Test
 
   # @supports tests
   def test_supports_basic
-    @sheet.parse(<<~CSS)
+    @sheet.add_block(<<~CSS)
       @supports (display: grid) {
         .grid { display: grid; }
       }
@@ -208,7 +193,7 @@ class TestAtRules < Minitest::Test
   end
 
   def test_supports_with_not
-    @sheet.parse(<<~CSS)
+    @sheet.add_block(<<~CSS)
       @supports not (display: flex) {
         .fallback { display: block; }
       }
@@ -218,7 +203,7 @@ class TestAtRules < Minitest::Test
   end
 
   def test_supports_with_and
-    @sheet.parse(<<~CSS)
+    @sheet.add_block(<<~CSS)
       @supports (display: grid) and (gap: 1rem) {
         .modern { display: grid; gap: 1rem; }
       }
@@ -228,7 +213,7 @@ class TestAtRules < Minitest::Test
   end
 
   def test_supports_with_or
-    @sheet.parse(<<~CSS)
+    @sheet.add_block(<<~CSS)
       @supports (display: flex) or (display: -webkit-flex) {
         .flex { display: flex; }
       }
@@ -239,7 +224,7 @@ class TestAtRules < Minitest::Test
 
   # Nested @media tests
   def test_nested_media_queries
-    @sheet.parse(<<~CSS)
+    @sheet.add_block(<<~CSS)
       @media screen {
         @media (min-width: 500px) {
           body { color: red; }
@@ -249,15 +234,18 @@ class TestAtRules < Minitest::Test
 
     assert_equal 1, @sheet.size
 
-    rule = @sheet.each_selector.first
+    rule = @sheet.rules.first
 
-    assert_equal 'body', rule[0]
-    # Should combine media types: screen AND (min-width: 500px)
-    assert_includes rule[3], :screen
+    assert_equal 'body', rule.selector
+    # Should combine media queries: screen AND (min-width: 500px)
+    # Check that this rule is in the combined media query
+    combined_media = :'screen and (min-width: 500px)'
+
+    assert_equal [0], @sheet.media_index[combined_media]
   end
 
   def test_nested_media_complex
-    @sheet.parse(<<~CSS)
+    @sheet.add_block(<<~CSS)
       @media screen {
         .outer { color: blue; }
 
@@ -272,7 +260,7 @@ class TestAtRules < Minitest::Test
 
   # Mixed at-rules
   def test_mixed_at_rules
-    @sheet.parse(<<~CSS)
+    @sheet.add_block(<<~CSS)
       @font-face {
         font-family: 'Custom';
         src: url('custom.woff2');
@@ -295,5 +283,172 @@ class TestAtRules < Minitest::Test
     CSS
 
     assert_equal 5, @sheet.size
+  end
+
+  # Test keyframes serialization round-trip
+  def test_keyframes_roundtrip
+    css = <<~CSS
+      @keyframes fade {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+    CSS
+
+    @sheet.add_block(css)
+    dumped = @sheet.to_s
+
+    # Should have all closing braces
+    assert_includes dumped, '@keyframes fade'
+    assert_includes dumped, 'from'
+    assert_includes dumped, 'opacity: 0'
+    assert_includes dumped, 'opacity: 1'
+
+    # Count braces - should be balanced
+    open_braces = dumped.count('{')
+    close_braces = dumped.count('}')
+
+    assert_equal open_braces, close_braces, "Braces should be balanced in:\n#{dumped}"
+  end
+
+  def test_webkit_keyframes_roundtrip
+    css = <<~CSS
+      @-webkit-keyframes progress-bar-stripes {
+        from { background-position: 1rem 0; }
+        to { background-position: 0 0; }
+      }
+    CSS
+
+    @sheet.add_block(css)
+    dumped = @sheet.to_s
+
+    # Should preserve vendor prefix
+    assert_includes dumped, '@-webkit-keyframes progress-bar-stripes'
+
+    # Count braces - should be balanced
+    open_braces = dumped.count('{')
+    close_braces = dumped.count('}')
+
+    assert_equal open_braces, close_braces, "Braces should be balanced in:\n#{dumped}"
+  end
+
+  def test_keyframes_with_percentages
+    css = <<~CSS
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        50% { transform: rotate(180deg); }
+        100% { transform: rotate(360deg); }
+      }
+    CSS
+
+    @sheet.add_block(css)
+    dumped = @sheet.to_s
+
+    assert_includes dumped, '@keyframes spin'
+    assert_includes dumped, '0%'
+    assert_includes dumped, '50%'
+    assert_includes dumped, '100%'
+
+    # Count braces - should be balanced
+    open_braces = dumped.count('{')
+    close_braces = dumped.count('}')
+
+    assert_equal open_braces, close_braces, "Braces should be balanced in:\n#{dumped}"
+  end
+
+  # Other at-rules tests
+  def test_page_rule
+    @sheet.add_block(<<~CSS)
+      @page {
+        margin: 1in;
+      }
+      @page :first {
+        margin-top: 2in;
+      }
+    CSS
+
+    assert_equal 2, @sheet.size
+  end
+
+  def test_layer_rule
+    @sheet.add_block(<<~CSS)
+      @layer utilities {
+        .padding-sm { padding: 0.5rem; }
+      }
+    CSS
+
+    assert_equal 1, @sheet.size
+    assert_has_selector '.padding-sm', @sheet
+  end
+
+  def test_container_rule
+    @sheet.add_block(<<~CSS)
+      @container (min-width: 700px) {
+        .card { display: grid; }
+      }
+    CSS
+
+    assert_equal 1, @sheet.size
+    assert_has_selector '.card', @sheet
+  end
+
+  def test_scope_rule
+    @sheet.add_block(<<~CSS)
+      @scope (.card) {
+        .title { font-size: 1.2em; }
+      }
+    CSS
+
+    assert_equal 1, @sheet.size
+    assert_has_selector '.title', @sheet
+  end
+
+  def test_property_rule
+    # @property defines a CSS custom property
+    @sheet.add_block(<<~CSS)
+      @property --my-color {
+        syntax: '<color>';
+        inherits: false;
+        initial-value: #c0ffee;
+      }
+    CSS
+
+    assert_equal 1, @sheet.size
+  end
+
+  def test_counter_style_rule
+    @sheet.add_block(<<~CSS)
+      @counter-style thumbs {
+        system: cyclic;
+        symbols: "\\1F44D";
+        suffix: " ";
+      }
+    CSS
+
+    assert_equal 1, @sheet.size
+  end
+
+  def test_mixed_nested_at_rules
+    # Mix of different at-rule types
+    @sheet.add_block(<<~CSS)
+      @layer base {
+        body { margin: 0; }
+      }
+
+      @font-face {
+        font-family: 'Custom';
+        src: url('custom.woff2');
+      }
+
+      @keyframes slide {
+        from { left: 0; }
+        to { left: 100px; }
+      }
+
+      @page {
+        margin: 1cm;
+      }
+    CSS
+
+    assert_equal 4, @sheet.size
   end
 end

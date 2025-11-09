@@ -3,13 +3,6 @@
 require_relative 'test_helper'
 
 class TestColorConversionRgb < Minitest::Test
-  # Helper to parse, convert, and get declarations
-  def convert_and_get_declarations(css, **options)
-    sheet = Cataract.parse_css(css)
-    sheet.convert_colors!(**options)
-    Cataract::Declarations.new(sheet.declarations)
-  end
-
   # Tests targeting rgb/rgba output
 
   def test_hex_to_rgb_three_digit

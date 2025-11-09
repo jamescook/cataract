@@ -3,13 +3,6 @@
 require_relative 'test_helper'
 
 class TestColorConversionHex < Minitest::Test
-  # Helper to parse, convert, and get declarations
-  def convert_and_get_declarations(css, **options)
-    sheet = Cataract.parse_css(css)
-    sheet.convert_colors!(**options)
-    Cataract::Declarations.new(sheet.declarations)
-  end
-
   # Tests targeting hex output
 
   def test_rgb_to_hex_white

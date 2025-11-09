@@ -69,8 +69,8 @@
 // --------------------------------------------------
 // Add a STARTS_WITH_FORMAT macro to detect the format in CSS strings:
 //
-//   #define STARTS_WITH_HSL(p, remaining) \
-//       ((remaining) >= 4 && (p)[0] == 'h' && (p)[1] == 's' && (p)[2] == 'l' && \
+//   #define STARTS_WITH_HSL(p, remaining)
+//       ((remaining) >= 4 && (p)[0] == 'h' && (p)[1] == 's' && (p)[2] == 'l' &&
 //        ((p)[3] == '(' || (p)[3] == 'a'))
 //
 // STEP 5: Register in Dispatchers
@@ -305,9 +305,12 @@ static VALUE format_rgb(struct color_ir color, int use_modern_syntax) {
         double lr = color.linear_r, lg = color.linear_g, lb = color.linear_b;
 
         // Clamp to [0.0, 1.0]
-        if (lr < 0.0) lr = 0.0; if (lr > 1.0) lr = 1.0;
-        if (lg < 0.0) lg = 0.0; if (lg > 1.0) lg = 1.0;
-        if (lb < 0.0) lb = 0.0; if (lb > 1.0) lb = 1.0;
+        if (lr < 0.0) lr = 0.0;
+        if (lr > 1.0) lr = 1.0;
+        if (lg < 0.0) lg = 0.0;
+        if (lg > 1.0) lg = 1.0;
+        if (lb < 0.0) lb = 0.0;
+        if (lb > 1.0) lb = 1.0;
 
         // Apply sRGB gamma correction
         double rs = (lr <= 0.0031308) ? lr * 12.92 : 1.055 * pow(lr, 1.0/2.4) - 0.055;
@@ -544,9 +547,12 @@ static struct color_ir parse_rgb_percent(VALUE rgb_value) {
     double bs = b_pct / 100.0;
 
     // Clamp to [0, 1]
-    if (rs < 0.0) rs = 0.0; if (rs > 1.0) rs = 1.0;
-    if (gs < 0.0) gs = 0.0; if (gs > 1.0) gs = 1.0;
-    if (bs < 0.0) bs = 0.0; if (bs > 1.0) bs = 1.0;
+    if (rs < 0.0) rs = 0.0;
+    if (rs > 1.0) rs = 1.0;
+    if (gs < 0.0) gs = 0.0;
+    if (gs > 1.0) gs = 1.0;
+    if (bs < 0.0) bs = 0.0;
+    if (bs > 1.0) bs = 1.0;
 
     // Apply inverse gamma to get linear RGB for precision
     double lr = (rs <= 0.04045) ? rs / 12.92 : pow((rs + 0.055) / 1.055, 2.4);
@@ -1489,130 +1495,13 @@ static int convert_expanded_property_callback(VALUE prop_name, VALUE prop_value,
             prop_value = ctx->formatter(color, ctx->use_modern_syntax);
         }
 
-        VALUE new_decl = rb_struct_new(cDeclarationsValue, prop_name, prop_value, ctx->important, NULL);
+        VALUE new_decl = rb_struct_new(cDeclaration, prop_name, prop_value, ctx->important, NULL);
         rb_ary_push(ctx->new_declarations, new_decl);
     }
 
     return ST_CONTINUE;
 }
 
-// Hash iterator callback for processing each rule group
-static int process_rule_group_callback(VALUE media_key, VALUE group, VALUE arg) {
-    struct convert_colors_context *ctx = (struct convert_colors_context *)arg;
-
-    if (NIL_P(group) || TYPE(group) != T_HASH) {
-        return ST_CONTINUE;
-    }
-
-    // Get the rules array from the group
-    VALUE rules = rb_hash_aref(group, ID2SYM(rb_intern("rules")));
-
-    if (NIL_P(rules) || TYPE(rules) != T_ARRAY) {
-        return ST_CONTINUE;
-    }
-
-    // Process each rule in the array
-    long rules_count = RARRAY_LEN(rules);
-
-    for (long i = 0; i < rules_count; i++) {
-        VALUE rule = rb_ary_entry(rules, i);
-
-        // Get declarations array from the rule struct
-        // Rule = Struct.new(:selector, :declarations, :specificity)
-        // where declarations is an Array of Declarations::Value structs
-        VALUE declarations = rb_struct_aref(rule, INT2FIX(RULE_DECLARATIONS));
-
-        if (NIL_P(declarations) || TYPE(declarations) != T_ARRAY) {
-            continue;
-        }
-
-        // Iterate through each Declarations::Value struct in the array
-        long decl_count = RARRAY_LEN(declarations);
-
-        // Build new declarations array with expanded and converted values
-        VALUE new_declarations = rb_ary_new();
-
-        for (long j = 0; j < decl_count; j++) {
-            VALUE decl_struct = rb_ary_entry(declarations, j);
-
-            // Declarations::Value = Struct.new(:property, :value, :important)
-            VALUE property = rb_struct_aref(decl_struct, INT2FIX(DECL_PROPERTY));
-            VALUE value = rb_struct_aref(decl_struct, INT2FIX(DECL_VALUE));
-            VALUE important = rb_struct_aref(decl_struct, INT2FIX(DECL_IMPORTANT));
-
-            if (NIL_P(value) || TYPE(value) != T_STRING) {
-                rb_ary_push(new_declarations, decl_struct);
-                continue;
-            }
-
-            // Check if this property needs expansion (e.g., background shorthand)
-            VALUE expanded = expand_property_if_needed(property, value);
-
-            if (!NIL_P(expanded) && TYPE(expanded) == T_HASH && RHASH_SIZE(expanded) > 0) {
-                // Expand and convert each sub-property
-                struct expand_convert_context exp_ctx = {
-                    .parser = ctx->parser,
-                    .formatter = ctx->formatter,
-                    .use_modern_syntax = ctx->use_modern_syntax,
-                    .from_format = ctx->from_format,
-                    .new_declarations = new_declarations,
-                    .important = important
-                };
-                rb_hash_foreach(expanded, convert_expanded_property_callback, (VALUE)&exp_ctx);
-                continue;
-            }
-            // If expansion returned empty hash, keep original declaration (e.g., gradients)
-
-            // Try to convert as a value with potentially multiple colors
-            // (e.g., "border-color: #fff #000 #ccc" or "box-shadow: 0 0 10px #ff0000")
-            VALUE converted_multi = convert_value_with_colors(value, ctx->parser, ctx->formatter, ctx->use_modern_syntax);
-
-            if (!NIL_P(converted_multi)) {
-                DEBUG_PRINTF("Creating new decl with property='%s' value='%s'\n",
-                        StringValueCStr(property), StringValueCStr(converted_multi));
-                // Successfully converted multi-value property
-                VALUE new_decl = rb_struct_new(cDeclarationsValue, property, converted_multi, important, NULL);
-                rb_ary_push(new_declarations, new_decl);
-                DEBUG_PRINTF("Pushed new_decl to new_declarations\n");
-                continue;
-            }
-
-            // Try single-value color conversion
-            color_parser_fn parser;
-
-            // Auto-detect or use specified format
-            if (ctx->parser == NULL) {
-                parser = detect_color_format(value);
-            } else if (matches_color_format(value, ctx->from_format)) {
-                parser = ctx->parser;
-            } else {
-                parser = NULL;
-            }
-
-            if (parser != NULL) {
-                // Parse → IR → Format
-                struct color_ir color = parser(value);
-
-                // Check if parse was successful (named colors can fail lookup)
-                if (color.red < 0) {
-                    // Invalid color - keep original declaration
-                    rb_ary_push(new_declarations, decl_struct);
-                } else {
-                    VALUE new_value = ctx->formatter(color, ctx->use_modern_syntax);
-                    VALUE new_decl = rb_struct_new(cDeclarationsValue, property, new_value, important, NULL);
-                    rb_ary_push(new_declarations, new_decl);
-                }
-            } else {
-                rb_ary_push(new_declarations, decl_struct);
-            }
-        }
-
-        // Replace rule's declarations array
-        rb_struct_aset(rule, INT2FIX(RULE_DECLARATIONS), new_declarations);
-    }
-
-    return ST_CONTINUE;
-}
 
 // Ruby method: stylesheet.convert_colors!(from: :hex, to: :rgb, variant: :modern)
 // Returns self for method chaining
@@ -1681,31 +1570,118 @@ VALUE rb_stylesheet_convert_colors(int argc, VALUE *argv, VALUE self) {
     ID modern_id = rb_intern("modern");
     int use_modern_syntax = (variant_id == modern_id) ? 1 : 0;
 
-    // Get the rule_groups hash from the stylesheet
-    // @rule_groups is {media_query_string => {media_types: [...], rules: [...]}}
-    VALUE rule_groups = rb_ivar_get(self, rb_intern("@rule_groups"));
+    // Get the @rules array from the stylesheet
+    // @rules is an Array of Rule structs
+    VALUE rules = rb_ivar_get(self, rb_intern("@rules"));
 
-    if (NIL_P(rule_groups)) {
+    if (NIL_P(rules)) {
         return self;  // No rules, nothing to convert
     }
 
-    if (TYPE(rule_groups) != T_HASH) {
-        rb_raise(rb_eTypeError, "Stylesheet @rule_groups must be a Hash, got %s",
-                 rb_obj_classname(rule_groups));
+    if (TYPE(rules) != T_ARRAY) {
+        rb_raise(rb_eTypeError, "Stylesheet @rules must be an Array, got %s",
+                 rb_obj_classname(rules));
     }
 
-    // Iterate through each media query group using rb_hash_foreach
-    struct convert_colors_context ctx = {
-        .parser = parser,
-        .formatter = formatter,
-        .use_modern_syntax = use_modern_syntax,
-        .from_format = from_format
-    };
+    // Iterate through each rule
+    long rules_count = RARRAY_LEN(rules);
 
-    rb_hash_foreach(rule_groups, process_rule_group_callback, (VALUE)&ctx);
+    for (long i = 0; i < rules_count; i++) {
+        VALUE rule = rb_ary_entry(rules, i);
 
-    // Clear the @declarations cache so it gets regenerated on next access
-    rb_ivar_set(self, rb_intern("@declarations"), Qnil);
+        // Get declarations array from the rule struct
+        // Rule = Struct.new(:id, :selector, :declarations, :specificity)
+        // where declarations is an Array of Declaration structs
+        VALUE declarations = rb_struct_aref(rule, INT2FIX(RULE_DECLARATIONS));
+
+        if (NIL_P(declarations) || TYPE(declarations) != T_ARRAY) {
+            continue;
+        }
+
+        // Iterate through each Declaration struct in the array
+        long decl_count = RARRAY_LEN(declarations);
+
+        // Build new declarations array with expanded and converted values
+        VALUE new_declarations = rb_ary_new();
+
+        for (long j = 0; j < decl_count; j++) {
+            VALUE decl_struct = rb_ary_entry(declarations, j);
+
+            // Declaration = Struct.new(:property, :value, :important)
+            VALUE property = rb_struct_aref(decl_struct, INT2FIX(DECL_PROPERTY));
+            VALUE value = rb_struct_aref(decl_struct, INT2FIX(DECL_VALUE));
+            VALUE important = rb_struct_aref(decl_struct, INT2FIX(DECL_IMPORTANT));
+
+            if (NIL_P(value) || TYPE(value) != T_STRING) {
+                rb_ary_push(new_declarations, decl_struct);
+                continue;
+            }
+
+            // Check if this property needs expansion (e.g., background shorthand)
+            VALUE expanded = expand_property_if_needed(property, value);
+
+            if (!NIL_P(expanded) && TYPE(expanded) == T_HASH && RHASH_SIZE(expanded) > 0) {
+                // Expand and convert each sub-property
+                struct expand_convert_context exp_ctx = {
+                    .parser = parser,
+                    .formatter = formatter,
+                    .use_modern_syntax = use_modern_syntax,
+                    .from_format = from_format,
+                    .new_declarations = new_declarations,
+                    .important = important
+                };
+                rb_hash_foreach(expanded, convert_expanded_property_callback, (VALUE)&exp_ctx);
+                continue;
+            }
+            // If expansion returned empty hash, keep original declaration (e.g., gradients)
+
+            // Try to convert as a value with potentially multiple colors
+            // (e.g., "border-color: #fff #000 #ccc" or "box-shadow: 0 0 10px #ff0000")
+            VALUE converted_multi = convert_value_with_colors(value, parser, formatter, use_modern_syntax);
+
+            if (!NIL_P(converted_multi)) {
+                DEBUG_PRINTF("Creating new decl with property='%s' value='%s'\n",
+                        StringValueCStr(property), StringValueCStr(converted_multi));
+                // Successfully converted multi-value property
+                VALUE new_decl = rb_struct_new(cDeclaration, property, converted_multi, important, NULL);
+                rb_ary_push(new_declarations, new_decl);
+                DEBUG_PRINTF("Pushed new_decl to new_declarations\n");
+                continue;
+            }
+
+            // Try single-value color conversion
+            color_parser_fn single_parser;
+
+            // Auto-detect or use specified format
+            if (parser == NULL) {
+                single_parser = detect_color_format(value);
+            } else if (matches_color_format(value, from_format)) {
+                single_parser = parser;
+            } else {
+                single_parser = NULL;
+            }
+
+            if (single_parser != NULL) {
+                // Parse → IR → Format
+                struct color_ir color = single_parser(value);
+
+                // Check if parse was successful (named colors can fail lookup)
+                if (color.red < 0) {
+                    // Invalid color - keep original declaration
+                    rb_ary_push(new_declarations, decl_struct);
+                } else {
+                    VALUE new_value = formatter(color, use_modern_syntax);
+                    VALUE new_decl = rb_struct_new(cDeclaration, property, new_value, important, NULL);
+                    rb_ary_push(new_declarations, new_decl);
+                }
+            } else {
+                rb_ary_push(new_declarations, decl_struct);
+            }
+        }
+
+        // Replace rule's declarations array
+        rb_struct_aset(rule, INT2FIX(RULE_DECLARATIONS), new_declarations);
+    }
 
     return self;  // Return self for chaining
 }

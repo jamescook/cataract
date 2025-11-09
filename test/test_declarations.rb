@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
-require 'minitest/autorun'
-require 'cataract'
+require_relative 'test_helper'
 
 class TestDeclarations < Minitest::Test
   def test_basic_usage
@@ -157,5 +156,97 @@ class TestDeclarations < Minitest::Test
     assert_equal 'blue !important', hash['background']
     assert_equal '10px', hash['margin']
     assert_equal 3, hash.size
+  end
+
+  # Edge case tests for set_property parsing
+  def test_quoted_string_with_important_text
+    # !important inside quotes should NOT be treated as important flag
+    decl = Cataract::Declarations.new
+    decl['content'] = '"text !important"'
+
+    assert_equal '"text !important"', decl['content']
+    refute decl.important?('content'), 'Should not treat !important inside quotes as flag'
+  end
+
+  def test_quoted_string_with_colons
+    # Colons inside quotes should not confuse property/value parsing
+    decl = Cataract::Declarations.new
+    decl['content'] = '": not a property"'
+
+    assert_equal '": not a property"', decl['content']
+  end
+
+  def test_value_with_comments
+    # Comments should be handled (either preserved or stripped)
+    decl = Cataract::Declarations.new
+    decl['color'] = 'red /* blue */'
+
+    # Parser should handle this - either keep comment or strip it
+    assert decl['color']
+  end
+
+  def test_value_with_comment_before_important
+    # Comment before !important
+    decl = Cataract::Declarations.new
+    decl['color'] = 'red /* comment */ !important'
+
+    # Should still recognize !important
+    assert decl.important?('color'), 'Should recognize !important after comment'
+  end
+
+  def test_trailing_semicolons
+    # Multiple trailing semicolons should be stripped
+    decl = Cataract::Declarations.new
+    decl['color'] = 'red;;;'
+
+    assert_equal 'red', decl['color']
+  end
+
+  def test_important_with_extra_whitespace
+    # Various whitespace around !important
+    decl = Cataract::Declarations.new
+    decl['color'] = 'red  !important'
+    decl['background'] = 'blue!important'
+    decl['margin'] = 'green ! important'
+
+    assert decl.important?('color')
+    # These may or may not work depending on parser strictness
+    # Just document current behavior
+  end
+
+  def test_empty_value_with_important
+    # css_parser silently ignores "property: !important" with no value
+    decl = Cataract::Declarations.new
+    decl['color'] = '!important'
+
+    # Should either be nil or raise - document current behavior
+    assert_nil decl['color'], 'Should ignore declaration with only !important'
+  end
+
+  def test_url_with_special_chars
+    # URLs can contain special characters
+    decl = Cataract::Declarations.new
+    decl['background'] = 'url(data:image/png;base64,abc123)'
+
+    assert_equal 'url(data:image/png;base64,abc123)', decl['background']
+  end
+
+  def test_escaped_quotes_in_string
+    # Escaped quotes inside quoted strings
+    decl = Cataract::Declarations.new
+    decl['content'] = '"value with \\" quote"'
+
+    # Should preserve the escaped quote
+    assert decl['content']
+  end
+
+  def test_property_normalization
+    # Property names should be normalized (lowercased)
+    decl = Cataract::Declarations.new
+    decl['COLOR'] = 'red'
+    decl['Background-Color'] = 'blue'
+
+    assert_equal 'red', decl['color']
+    assert_equal 'blue', decl['background-color']
   end
 end

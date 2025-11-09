@@ -1,120 +1,419 @@
 /*
- * css_parser.c - CSS parser implementation
+ * css_parser_new.c - New CSS parser implementation with flat rule array
  *
- * Handles: selectors, declaration blocks, @media, @supports, @keyframes, @font-face, etc.
+ * Key differences from original:
+ * - Flat @rules array with rule IDs (0-indexed)
+ * - Separate @media_index hash mapping media queries to rule ID arrays
+ * - Handles nested @media queries by combining conditions
  *
- * This is a character-by-character state machine parser.
+ * TODO: Unify !important detection into a macro/helper function
+ *       Currently duplicated in parse_declarations() and parse_mixed_block()
  */
 
 #include "cataract.h"
 #include <string.h>
 
-// Parser states
-typedef enum {
-    STATE_INITIAL,       // Start of parsing or after closing }
-    STATE_SELECTOR,      // Parsing selector
-    STATE_DECLARATIONS   // Inside { } parsing declarations
-} ParserState;
+// Parser context passed through recursive calls
+typedef struct {
+    VALUE rules_array;        // Array of Rule structs
+    VALUE media_index;        // Hash: Symbol => Array of rule IDs
+    int rule_id_counter;      // Next rule ID (0-indexed)
+    int media_query_count;    // Safety limit for media queries
+    st_table *media_cache;    // Parse-time cache: string => parsed media types
+    int has_nesting;          // Set to 1 if any nested rules are created
+    int depth;                // Current recursion depth (safety limit)
+} ParserContext;
 
-// Forward declarations
-VALUE parse_css_impl(VALUE css_string, int depth, VALUE parent_media_query);
-VALUE parse_media_query(const char *query_str, long query_len);
-VALUE parse_declarations_string(const char *start, const char *end);
-static char* copy_without_comments(const char *start, const char *end, long *out_len);
-
-// Context for merging hash callbacks
-struct merge_hash_ctx {
-    VALUE target_hash;
-};
-
-// Callback for merging inner_hash into target hash
-// Both inner and target have structure: {query_string => {media_types: [...], rules: [...]}}
-static int merge_hash_callback(VALUE key, VALUE inner_group, VALUE arg) {
-    struct merge_hash_ctx *ctx = (struct merge_hash_ctx *)arg;
-    VALUE our_group = rb_hash_aref(ctx->target_hash, key);
-
-    if (NIL_P(our_group)) {
-        // No existing group for this query string - just add it
-        rb_hash_aset(ctx->target_hash, key, inner_group);
-    } else {
-        // Merge the rules arrays from both groups
-        VALUE our_rules = rb_hash_aref(our_group, ID2SYM(rb_intern("rules")));
-        VALUE inner_rules = rb_hash_aref(inner_group, ID2SYM(rb_intern("rules")));
-
-        long inner_len = RARRAY_LEN(inner_rules);
-        for (long i = 0; i < inner_len; i++) {
-            rb_ary_push(our_rules, RARRAY_AREF(inner_rules, i));
-        }
+// Macro to skip CSS comments /* ... */
+// Usage: SKIP_COMMENT(p, end) where p is current position, end is limit
+// Side effect: advances p past the comment and continues to next iteration
+// Note: Uses RB_UNLIKELY since comments are rare in typical CSS
+#define SKIP_COMMENT(ptr, limit) \
+    if (RB_UNLIKELY((ptr) + 1 < (limit) && *(ptr) == '/' && *((ptr) + 1) == '*')) { \
+        (ptr) += 2; \
+        while ((ptr) + 1 < (limit) && !(*(ptr) == '*' && *((ptr) + 1) == '/')) (ptr)++; \
+        if ((ptr) + 1 < (limit)) (ptr) += 2; \
+        continue; \
     }
 
-    return ST_CONTINUE;
+// Find matching closing brace for a block
+// Input: start = position after opening '{', end = limit
+// Returns: pointer to matching '}' (or end if not found)
+// Note: Handles nested braces by tracking depth
+static inline const char* find_matching_brace(const char *start, const char *end) {
+    int depth = 1;
+    const char *p = start;
+    while (p < end && depth > 0) {
+        if (*p == '{') depth++;
+        else if (*p == '}') depth--;
+        if (depth > 0) p++;
+    }
+    return p;
 }
 
-// ============================================================================
-// CSS Parsing Helper Functions
-// ============================================================================
+// Find matching closing paren
+// Input: start = position after opening '(', end = limit
+// Returns: pointer to matching ')' (or end if not found)
+// Note: Handles nested parens by tracking depth
+static inline const char* find_matching_paren(const char *start, const char *end) {
+    int depth = 1;
+    const char *p = start;
+    while (p < end && depth > 0) {
+        if (*p == '(') depth++;
+        else if (*p == ')') depth--;
+        if (depth > 0) p++;
+    }
+    return p;
+}
 
-// Parse declaration block and extract Declaration::Value structs
-void capture_declarations_fn(
-    const char **decl_start_ptr,
-    const char *p,
-    VALUE *current_declarations,
-    const char *css_string_base
-) {
-    // Guard against multiple firings - only process if decl_start is set
-    if (*decl_start_ptr == NULL) {
-        DEBUG_PRINTF("[capture_declarations] SKIPPED: decl_start is NULL\n");
-        return;
+// Lowercase property name (CSS property names are ASCII-only)
+// Non-static so merge_new.c can use it
+VALUE lowercase_property(VALUE property_str) {
+    Check_Type(property_str, T_STRING);
+
+    long len = RSTRING_LEN(property_str);
+    const char *src = RSTRING_PTR(property_str);
+
+    VALUE result = rb_str_buf_new(len);
+    rb_enc_associate(result, rb_usascii_encoding());
+
+    for (long i = 0; i < len; i++) {
+        char c = src[i];
+        if (c >= 'A' && c <= 'Z') {
+            c += 32;  // Lowercase
+        }
+        rb_str_buf_cat(result, &c, 1);
     }
 
-    const char *decl_start = *decl_start_ptr;
+    return result;
+}
 
-    // Initialize declarations array if needed
-    if (NIL_P(*current_declarations)) {
-        *current_declarations = rb_ary_new();
+/*
+ * Check if a block contains nested selectors (not just declarations)
+ *
+ * Per W3C spec, nested selectors cannot start with identifiers to avoid ambiguity.
+ * They must start with: &, ., #, [, :, *, >, +, ~, or @media/@supports/etc
+ *
+ * Example CSS blocks:
+ *   "color: red; font-size: 14px;"     -> 0 (declarations only)
+ *   "color: red; & .child { ... }"     -> 1 (has nested selector)
+ *   "color: red; @media (...) { ... }" -> 1 (has nested @media)
+ *
+ * Returns: 1 if nested selectors found, 0 if only declarations
+ */
+static int has_nested_selectors(const char *start, const char *end) {
+    const char *p = start;
+
+    while (p < end) {
+        // Skip whitespace
+        trim_leading(&p, end);
+        if (p >= end) break;
+
+        // Skip comments
+        SKIP_COMMENT(p, end);
+
+        // Check for nested selector indicators
+        // Example: "color: red; & .child { font: 14px; }"
+        //                       ^p (at &) - nested selector indicator
+        char c = *p;
+        if (c == '&' || c == '.' || c == '#' || c == '[' || c == ':' ||
+            c == '*' || c == '>' || c == '+' || c == '~') {
+            // Look ahead - if followed by {, it's likely a nested selector
+            // Example: "& .child { font: 14px; }"
+            //           ^p      ^lookahead (at {) - confirms nested selector
+            const char *lookahead = p + 1;
+            while (lookahead < end && *lookahead != '{' && *lookahead != ';' && *lookahead != '\n') {
+                lookahead++;
+            }
+            if (lookahead < end && *lookahead == '{') {
+                return 1;  // Found nested selector
+            }
+        }
+
+        // Check for @media, @supports, etc nested inside
+        // Example: "color: red; @media (min-width: 768px) { ... }"
+        //                       ^p (at @) - nested at-rule
+        if (c == '@') {
+            return 1;  // Nested at-rule
+        }
+
+        // Skip to next line or semicolon
+        // Example: "color: red; font-size: 14px;"
+        //                    ^p              ^p (after skip) - continue checking
+        while (p < end && *p != ';' && *p != '\n') p++;
+        if (p < end) p++;
     }
 
-    const char *start = decl_start;
-    const char *end = p;
+    return 0;  // No nested selectors found
+}
 
-    DEBUG_PRINTF("[capture_declarations] Parsing declarations from %td to %td: '%.*s'\n",
-                 (ptrdiff_t)(decl_start - css_string_base), (ptrdiff_t)(p - css_string_base),
-                 (int)(end - start), start);
+/*
+ * Resolve nested selector against parent selector
+ *
+ * Examples:
+ *   resolve_nested_selector(".parent", "& .child")     => ".parent .child"  (explicit)
+ *   resolve_nested_selector(".parent", "&:hover")      => ".parent:hover"   (explicit)
+ *   resolve_nested_selector(".parent", "&.active")     => ".parent.active"  (explicit)
+ *   resolve_nested_selector(".parent", ".child")       => ".parent .child"  (implicit)
+ *   resolve_nested_selector(".parent", "> .child")     => ".parent > .child" (implicit combinator)
+ *
+ * Returns: [resolved_selector (String), nesting_style (Fixnum)]
+ *   nesting_style: 0 = NESTING_STYLE_IMPLICIT, 1 = NESTING_STYLE_EXPLICIT
+ */
+static VALUE resolve_nested_selector(VALUE parent_selector, const char *nested_sel, long nested_len) {
+    const char *parent = RSTRING_PTR(parent_selector);
+    long parent_len = RSTRING_LEN(parent_selector);
 
-    // Fast path: check if there are any comments in the declaration block
-    int has_comments = 0;
-    for (const char *check = start; check + 1 < end; check++) {
-        if (*check == '/' && *(check + 1) == '*') {
-            has_comments = 1;
+    // Check if nested selector contains &
+    int has_ampersand = 0;
+    for (long i = 0; i < nested_len; i++) {
+        if (nested_sel[i] == '&') {
+            has_ampersand = 1;
             break;
         }
     }
 
-    // If there are comments, strip them first (rare case)
-    char *clean_buffer = NULL;
-    const char *clean_end = end;
-    if (has_comments) {
-        long clean_len;
-        clean_buffer = copy_without_comments(start, end, &clean_len);
-        start = clean_buffer;
-        clean_end = clean_buffer + clean_len;
+    VALUE resolved;
+    int nesting_style;
+
+    if (has_ampersand) {
+        // Explicit nesting - replace & with parent
+        // Example: parent=".button", nested="&:hover" => ".button:hover"
+        //          &:hover
+        //          ^       - Replace & with ".button"
+        //           ^^^^^^ - Copy rest as-is
+        nesting_style = NESTING_STYLE_EXPLICIT;
+
+        // Check if selector starts with a combinator (relative selector)
+        // Example: "+ .bar + &" should become ".foo + .bar + .foo"
+        const char *nested_trimmed = nested_sel;
+        const char *nested_trimmed_end = nested_sel + nested_len;
+        trim_leading(&nested_trimmed, nested_trimmed_end);
+
+        int starts_with_combinator = 0;
+        if (nested_trimmed < nested_trimmed_end) {
+            char first_char = *nested_trimmed;
+            if (first_char == '+' || first_char == '>' || first_char == '~') {
+                starts_with_combinator = 1;
+            }
+        }
+
+        // Build result by replacing & with parent (add extra space if starts with combinator)
+        VALUE result = rb_str_buf_new(parent_len + nested_len + (starts_with_combinator ? parent_len + 2 : 0));
+        rb_enc_associate(result, rb_utf8_encoding());
+
+        // If starts with combinator, prepend parent first with space
+        // Example: "+ .bar + &" => ".foo + .bar + .foo"
+        if (starts_with_combinator) {
+            rb_str_buf_cat(result, parent, parent_len);
+            rb_str_buf_cat(result, " ", 1);
+        }
+
+        long i = 0;
+        while (i < nested_len) {
+            if (nested_sel[i] == '&') {                                        // At: '&'
+                // Replace & with parent selector
+                rb_str_buf_cat(result, parent, parent_len);                   // Output: ".button"
+                i++;                                                           // Move to: ':'
+            } else {
+                // Copy character as-is
+                rb_str_buf_cat(result, &nested_sel[i], 1);                    // Output: ':hover'
+                i++;
+            }
+        }
+
+        resolved = result;
+    } else {
+        // Implicit nesting - prepend parent with appropriate spacing
+        // Example: parent=".parent", nested=".child" => ".parent .child"
+        //          .child
+        //          - Prepend ".parent " before ".child"
+        // Example: parent=".parent", nested="> .child" => ".parent > .child"
+        //          > .child
+        //          - Prepend ".parent " before "> .child"
+        nesting_style = NESTING_STYLE_IMPLICIT;
+
+        const char *nested_trimmed = nested_sel;
+        const char *nested_end = nested_sel + nested_len;
+
+        // Trim leading whitespace from nested selector
+        trim_leading(&nested_trimmed, nested_end);
+        long trimmed_len = nested_end - nested_trimmed;
+
+        VALUE result = rb_str_buf_new(parent_len + 1 + trimmed_len);
+        rb_enc_associate(result, rb_utf8_encoding());
+
+        // Add parent                                                          // Output: ".parent"
+        rb_str_buf_cat(result, parent, parent_len);
+
+        // Add separator space (before combinator or for implicit descendant) // Output: " "
+        rb_str_buf_cat(result, " ", 1);
+
+        // Add nested selector (trimmed)                                       // Output: ".child"
+        rb_str_buf_cat(result, nested_trimmed, trimmed_len);
+
+        resolved = result;
     }
 
-    // Simple C-level parser for declarations
-    // Input: "color: red; background: blue !important"
-    // Output: Array of Declarations::Value structs
+    // Return array [resolved_selector, nesting_style]
+    VALUE result_array = rb_ary_new_from_args(2, resolved, INT2FIX(nesting_style));
+
+    // Guard parent_selector since we extracted C pointer and did allocations
+    RB_GC_GUARD(parent_selector);
+
+    return result_array;
+}
+
+/*
+ * Extract media types from a media query string
+ * Examples:
+ *   "screen" => [:screen]
+ *   "screen, print" => [:screen, :print]
+ *   "screen and (min-width: 768px)" => [:screen]
+ *   "(min-width: 768px)" => []  // No media type, just condition
+ *
+ * Returns: Ruby array of symbols
+ */
+static VALUE extract_media_types(const char *query, long query_len) {
+    VALUE types = rb_ary_new();
+
+    const char *p = query;
+    const char *end = query + query_len;
+
+    while (p < end) {
+        // Skip whitespace
+        while (p < end && IS_WHITESPACE(*p)) p++;
+        if (p >= end) break;
+
+        // Check for opening paren (skip conditions like "(min-width: 768px)")
+        if (*p == '(') {
+            // Skip to matching closing paren
+            const char *closing = find_matching_paren(p, end);
+            p = (closing < end) ? closing + 1 : closing;
+            continue;
+        }
+
+        // Find end of word (media type or keyword)
+        const char *word_start = p;
+        while (p < end && !IS_WHITESPACE(*p) && *p != ',' && *p != '(' && *p != ':') {
+            p++;
+        }
+
+        if (p > word_start) {
+            long word_len = p - word_start;
+
+            // Check if this is a media feature (followed by ':')
+            // Example: "orientation" in "orientation: landscape" is not a media type
+            int is_media_feature = (p < end && *p == ':');
+
+            // Check if it's a keyword (and, or, not, only)
+            int is_keyword = (word_len == 3 && strncmp(word_start, "and", 3) == 0) ||
+                           (word_len == 2 && strncmp(word_start, "or", 2) == 0) ||
+                           (word_len == 3 && strncmp(word_start, "not", 3) == 0) ||
+                           (word_len == 4 && strncmp(word_start, "only", 4) == 0);
+
+            if (!is_keyword && !is_media_feature) {
+                // This is a media type - add it as symbol
+                VALUE type_sym = ID2SYM(rb_intern2(word_start, word_len));
+                rb_ary_push(types, type_sym);
+            }
+        }
+
+        // Skip to comma or end
+        while (p < end && *p != ',') {
+            if (*p == '(') {
+                // Skip condition
+                const char *closing = find_matching_paren(p, end);
+                p = (closing < end) ? closing + 1 : closing;
+            } else {
+                p++;
+            }
+        }
+
+        if (p < end && *p == ',') p++;  // Skip comma
+    }
+
+    return types;
+}
+
+/*
+ * Add rule ID to media index for a given media query symbol
+ * Creates array if it doesn't exist yet
+ */
+static void add_to_media_index(VALUE media_index, VALUE media_sym, int rule_id) {
+    VALUE rule_ids = rb_hash_aref(media_index, media_sym);
+
+    if (NIL_P(rule_ids)) {
+        rule_ids = rb_ary_new();
+        rb_hash_aset(media_index, media_sym, rule_ids);
+    }
+
+    rb_ary_push(rule_ids, INT2FIX(rule_id));
+}
+
+/*
+ * Update media index with rule ID for given media query
+ * Extracts media types and adds rule to each type's array
+ * Also adds to the full query symbol
+ */
+static void update_media_index(ParserContext *ctx, VALUE media_sym, int rule_id) {
+    if (NIL_P(media_sym)) {
+        return;  // No media query - rule applies to all media
+    }
+
+    // Add to full query symbol
+    add_to_media_index(ctx->media_index, media_sym, rule_id);
+
+    // Extract media types and add to each (if different from full query)
+    VALUE media_str = rb_sym2str(media_sym);
+    const char *query = RSTRING_PTR(media_str);
+    long query_len = RSTRING_LEN(media_str);
+
+    VALUE media_types = extract_media_types(query, query_len);
+    long types_len = RARRAY_LEN(media_types);
+
+    for (long i = 0; i < types_len; i++) {
+        VALUE type_sym = rb_ary_entry(media_types, i);
+        // Only add if different from full query (avoid duplicates)
+        if (type_sym != media_sym) {
+            add_to_media_index(ctx->media_index, type_sym, rule_id);
+        }
+    }
+
+    // Guard media_str since we extracted C pointer and called extract_media_types (which allocates)
+    RB_GC_GUARD(media_str);
+}
+
+/*
+ * Parse declaration block into array of Declaration structs
+ *
+ * Example input: "color: red; background: url(image.png); font-size: 14px !important"
+ * Example output: [Declaration("color", "red", false),
+ *                  Declaration("background", "url(image.png)", false),
+ *                  Declaration("font-size", "14px", true)]
+ *
+ * Handles:
+ *   - Multiple declarations separated by semicolons
+ *   - Values containing parentheses (e.g., url(...), rgba(...))
+ *   - !important flag
+ */
+static VALUE parse_declarations(const char *start, const char *end) {
+    VALUE declarations = rb_ary_new();
+
     const char *pos = start;
-    while (pos < clean_end) {
+    while (pos < end) {
         // Skip whitespace and semicolons
-        while (pos < clean_end && (IS_WHITESPACE(*pos) || *pos == ';')) {
+        while (pos < end && (IS_WHITESPACE(*pos) || *pos == ';')) {
             pos++;
         }
-        if (pos >= clean_end) break;
+        if (pos >= end) break;
 
         // Find property (up to colon)
+        // Example: "color: red; ..."
+        //           ^pos  ^pos (at :)
         const char *prop_start = pos;
-        while (pos < clean_end && *pos != ':') pos++;
-        if (pos >= clean_end) break;  // No colon found
+        while (pos < end && *pos != ':') pos++;
+        if (pos >= end) break;  // No colon found
 
         const char *prop_end = pos;
         // Trim whitespace from property
@@ -124,20 +423,22 @@ void capture_declarations_fn(
         pos++;  // Skip colon
 
         // Skip whitespace after colon
-        while (pos < clean_end && IS_WHITESPACE(*pos)) {
+        while (pos < end && IS_WHITESPACE(*pos)) {
             pos++;
         }
 
         // Find value (up to semicolon or end)
-        // Handle parentheses: semicolons inside () don't terminate the value
+        // Must track paren depth to avoid breaking on semicolons inside url() or rgba()
+        // Example: "url(data:image/svg+xml;base64,...); next-prop: ..."
+        //           ^val_start                        ^pos (at ; outside parens)
         const char *val_start = pos;
         int paren_depth = 0;
-        while (pos < clean_end) {
-            if (*pos == '(') {
-                paren_depth++;
-            } else if (*pos == ')') {
-                paren_depth--;
-            } else if (*pos == ';' && paren_depth == 0) {
+        while (pos < end) {
+            if (*pos == '(') {                      // At: '('
+                paren_depth++;                       // Depth: 1
+            } else if (*pos == ')') {                // At: ')'
+                paren_depth--;                       // Depth: 0
+            } else if (*pos == ';' && paren_depth == 0) {  // At: ';' (outside parens)
                 break;  // Found terminating semicolon
             }
             pos++;
@@ -149,14 +450,14 @@ void capture_declarations_fn(
 
         // Check for !important
         int is_important = 0;
-        // Look backwards for "!important"
         if (val_end - val_start >= 10) {  // strlen("!important") = 10
             const char *check = val_end - 10;
             while (check < val_end && IS_WHITESPACE(*check)) check++;
             if (check < val_end && *check == '!') {
                 check++;
                 while (check < val_end && IS_WHITESPACE(*check)) check++;
-                if ((val_end - check) >= 9 && strncmp(check, "important", 9) == 0) {
+                // strncmp safely handles remaining length check
+                if (check + 9 <= val_end && strncmp(check, "important", 9) == 0) {
                     is_important = 1;
                     const char *important_pos = check - 1;
                     while (important_pos > val_start && (IS_WHITESPACE(*(important_pos-1)) || *(important_pos-1) == '!')) {
@@ -167,406 +468,927 @@ void capture_declarations_fn(
             }
         }
 
-        // Final trim of trailing whitespace/newlines from value (after !important removal)
+        // Final trim
         trim_trailing(val_start, &val_end);
-
-        // Skip if value is empty (e.g., "color: !important" with no actual value)
-        if (val_end > val_start) {
-            // Sanity check: property name length
-            long prop_len = prop_end - prop_start;
-            if (prop_len > MAX_PROPERTY_NAME_LENGTH) {
-                DEBUG_PRINTF("[capture_declarations] Skipping property: name too long (%ld > %d)\n",
-                             prop_len, MAX_PROPERTY_NAME_LENGTH);
-                continue;
-            }
-
-            // Sanity check: value length
-            long val_len = val_end - val_start;
-            if (val_len > MAX_PROPERTY_VALUE_LENGTH) {
-                DEBUG_PRINTF("[capture_declarations] Skipping property: value too long (%ld > %d)\n",
-                             val_len, MAX_PROPERTY_VALUE_LENGTH);
-                continue;
-            }
-
-            // Create property string and lowercase it (CSS property names are ASCII-only)
-            VALUE property_raw = rb_usascii_str_new(prop_start, prop_len);
-            VALUE property = lowercase_property(property_raw);
-            VALUE value = rb_utf8_str_new(val_start, val_end - val_start);
-
-            DEBUG_PRINTF("[capture_declarations] Found: property='%s' value='%s' important=%d\n",
-                         RSTRING_PTR(property), RSTRING_PTR(value), is_important);
-
-            // Create Declarations::Value struct
-            VALUE decl = rb_struct_new(
-                cDeclarationsValue,
-                property,
-                value,
-                is_important ? Qtrue : Qfalse
-            );
-
-            rb_ary_push(*current_declarations, decl);
-
-            // Protect temporaries from GC (in case compiler optimizes them to registers)
-            RB_GC_GUARD(property);
-            RB_GC_GUARD(value);
-            RB_GC_GUARD(decl);
-        } else {
-            DEBUG_PRINTF("[capture_declarations] Skipping empty value for property at pos %td\n",
-                         (ptrdiff_t)(prop_start - css_string_base));
-        }
-
-        if (pos < clean_end && *pos == ';') pos++;  // Skip semicolon if present
-    }
-
-    // Free temporary buffer if allocated
-    if (clean_buffer) {
-        xfree(clean_buffer);
-    }
-
-    // Reset for next rule
-    *decl_start_ptr = NULL;
-}
-
-// Create Rule structs from current selectors and declarations
-void finish_rule_fn(
-    int inside_at_rule_block,
-    VALUE *current_selectors,
-    VALUE *current_declarations,
-    VALUE *current_media_types,
-    VALUE rules_by_media,  // Hash: {query_string => {media_types: [...], rules: [...]}}
-    const char **mark_ptr
-) {
-    // Skip if we're scanning at-rule block content (will be parsed recursively)
-    if (inside_at_rule_block) {
-        DEBUG_PRINTF("[finish_rule] SKIPPED (inside media block)\n");
-        goto cleanup;
-    }
-
-    // Create one rule for each selector in the list
-    if (NIL_P(*current_selectors) || NIL_P(*current_declarations)) {
-        goto cleanup;
-    }
-
-    long len = RARRAY_LEN(*current_selectors);
-    DEBUG_PRINTF("[finish_rule] Creating %ld rule(s)\n", len);
-
-    for (long i = 0; i < len; i++) {
-        VALUE sel = RARRAY_AREF(*current_selectors, i);
-        DEBUG_PRINTF("[finish_rule] Rule %ld: selector='%s'\n", i, RSTRING_PTR(sel));
-
-        // Determine media query string for grouping
-        VALUE query_string = Qnil;
-        VALUE media_types_array = Qnil;
-
-        if (!NIL_P(*current_media_types)) {
-            query_string = rb_hash_aref(*current_media_types, ID2SYM(rb_intern("query_string")));
-            media_types_array = rb_hash_aref(*current_media_types, ID2SYM(rb_intern("media_types")));
-            DEBUG_PRINTF("[finish_rule] current_media_types present, query_string=%s\n",
-                        NIL_P(query_string) ? "nil" : RSTRING_PTR(query_string));
-        } else {
-            DEBUG_PRINTF("[finish_rule] No media types (default/all)\n");
-        }
-        // query_string is nil for non-media rules (default/all)
-
-        // Create rule (media info stored at group level, not on rule)
-        VALUE rule = rb_struct_new(cRule,
-            sel,                                // selector
-            rb_ary_dup(*current_declarations),   // declarations
-            Qnil                                // specificity (calculated on demand)
-        );
-
-        // Get or create the group structure for this media query
-        VALUE group = rb_hash_aref(rules_by_media, query_string);
-        if (NIL_P(group)) {
-            // Create new group: {media_types: [...], rules: [...]}
-            group = rb_hash_new();
-            // Default to [:all] for non-media rules (css_parser gem compatibility)
-            VALUE media_types_for_group = NIL_P(media_types_array) ?
-                                         rb_ary_new_from_args(1, ID2SYM(rb_intern("all"))) :
-                                         media_types_array;
-            rb_hash_aset(group, ID2SYM(rb_intern("media_types")), media_types_for_group);
-            rb_hash_aset(group, ID2SYM(rb_intern("rules")), rb_ary_new());
-            rb_hash_aset(rules_by_media, query_string, group);
-        }
-
-        // Add rule to the group's rules array
-        VALUE rules_array = rb_hash_aref(group, ID2SYM(rb_intern("rules")));
-        rb_ary_push(rules_array, rule);
-    }
-
-cleanup:
-    *current_selectors = Qnil;
-    *current_declarations = Qnil;
-    // Reset mark for next rule (in case it wasn't reset by capture action)
-    *mark_ptr = NULL;
-}
-
-// Parse media query string and return hash with query string and media types
-// Returns: {query_string: "...", media_types: [...]}
-// Example: "screen and (min-width: 768px)" -> {query_string: "screen and (min-width: 768px)", media_types: [:screen]}
-// Example: "screen, print" -> {query_string: "screen, print", media_types: [:screen, :print]}
-//
-// Algorithm: Scan for identifiers (alphanumeric + dash), skip keywords and parens
-VALUE parse_media_query(const char *query_str, long query_len) {
-    VALUE mq_types = rb_ary_new();
-
-    const char *p = query_str;
-    const char *pe = query_str + query_len;
-    int in_parens = 0;
-
-    while (p < pe) {
-        // Skip whitespace
-        while (p < pe && IS_WHITESPACE(*p)) p++;
-        if (p >= pe) break;
-
-        // Track parentheses (skip content inside parens like "(min-width: 768px)")
-        if (*p == '(') {
-            in_parens++;
-            p++;
-            continue;
-        }
-        if (*p == ')') {
-            if (in_parens > 0) in_parens--;
-            p++;
-            continue;
-        }
-
-        // Skip non-identifier characters when not in parens
-        if (!in_parens && (*p == ',' || *p == ':' || *p == ';')) {
-            p++;
-            continue;
-        }
-
-        // Inside parens - skip everything
-        if (in_parens) {
-            p++;
-            continue;
-        }
-
-        // Check if this looks like an identifier start (letter or dash)
-        if ((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') || *p == '-') {
-            const char *ident_start = p;
-
-            // Scan identifier (letters, digits, dashes)
-            while (p < pe && ((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') ||
-                              (*p >= '0' && *p <= '9') || *p == '-')) {
-                p++;
-            }
-
-            long ident_len = p - ident_start;
-
-            // Check if it's a keyword to skip
-            int is_keyword =
-                (ident_len == 3 && (strncmp(ident_start, "and", 3) == 0 || strncmp(ident_start, "not", 3) == 0)) ||
-                (ident_len == 2 && strncmp(ident_start, "or", 2) == 0) ||
-                (ident_len == 4 && strncmp(ident_start, "only", 4) == 0);
-
-            if (!is_keyword) {
-                // Capture as media type
-                ID media_id = rb_intern2(ident_start, ident_len);
-                VALUE media_sym = ID2SYM(media_id);
-                rb_ary_push(mq_types, media_sym);
-                DEBUG_PRINTF("[mq_parser] captured media type: %.*s\n", (int)ident_len, ident_start);
-            } else {
-                DEBUG_PRINTF("[mq_parser] skipped keyword: %.*s\n", (int)ident_len, ident_start);
-            }
-        } else {
-            // Not an identifier, skip character
-            p++;
-        }
-    }
-
-    // Return hash with both query string and media types array
-    VALUE result = rb_hash_new();
-    VALUE query_string = rb_utf8_str_new(query_str, query_len);
-    rb_hash_aset(result, ID2SYM(rb_intern("query_string")), query_string);
-    rb_hash_aset(result, ID2SYM(rb_intern("media_types")), mq_types);
-
-    return result;
-}
-
-// Helper: Copy string segment skipping comments
-// Allocates new buffer and returns it with new length
-static char* copy_without_comments(const char *start, const char *end, long *out_len) {
-    long max_len = end - start;
-    char *buffer = ALLOC_N(char, max_len);
-    char *write_pos = buffer;
-    const char *read_pos = start;
-
-    while (read_pos < end) {
-        // Check for comment start
-        if (read_pos + 1 < end && *read_pos == '/' && *(read_pos + 1) == '*') {
-            // Skip past comment
-            read_pos += 2;
-            while (read_pos + 1 < end) {
-                if (*read_pos == '*' && *(read_pos + 1) == '/') {
-                    read_pos += 2;
-                    break;
-                }
-                read_pos++;
-            }
-        } else {
-            // Copy character
-            *write_pos++ = *read_pos++;
-        }
-    }
-
-    *out_len = write_pos - buffer;
-    return buffer;
-}
-
-// Parse declarations string into array of Declarations::Value structs
-// Used by parse_declarations Ruby wrapper
-VALUE parse_declarations_string(const char *start, const char *end) {
-    VALUE declarations = rb_ary_new();
-
-    // Fast path: check if there are any comments
-    int has_comments = 0;
-    for (const char *check = start; check + 1 < end; check++) {
-        if (*check == '/' && *(check + 1) == '*') {
-            has_comments = 1;
-            break;
-        }
-    }
-
-    // If there are comments, strip them first (rare case)
-    char *clean_buffer = NULL;
-    const char *clean_end = end;
-    if (has_comments) {
-        long clean_len;
-        clean_buffer = copy_without_comments(start, end, &clean_len);
-        start = clean_buffer;
-        clean_end = clean_buffer + clean_len;
-    }
-
-    const char *pos = start;
-    while (pos < clean_end) {
-        // Skip whitespace and semicolons
-        while (pos < clean_end && (IS_WHITESPACE(*pos) || *pos == ';')) pos++;
-        if (pos >= clean_end) break;
-
-        // Find property (up to colon)
-        const char *prop_start = pos;
-        while (pos < clean_end && *pos != ':') pos++;
-        if (pos >= clean_end) break;  // No colon found
-
-        const char *prop_end = pos;
-        trim_trailing(prop_start, &prop_end);
-        trim_leading(&prop_start, prop_end);
-
-        pos++;  // Skip colon
-        trim_leading(&pos, clean_end);
-
-        // Find value (up to semicolon or end), handling parentheses
-        const char *val_start = pos;
-        int paren_depth = 0;
-        while (pos < clean_end) {
-            if (*pos == '(') paren_depth++;
-            else if (*pos == ')') paren_depth--;
-            else if (*pos == ';' && paren_depth == 0) break;
-            pos++;
-        }
-        const char *val_end = pos;
-        trim_trailing(val_start, &val_end);
-
-        // Check for !important
-        int is_important = 0;
-        if (val_end - val_start >= 10) {  // strlen("!important") = 10
-            const char *check = val_end - 10;
-            while (check < val_end && IS_WHITESPACE(*check)) check++;
-            if (check < val_end && *check == '!') {
-                check++;
-                while (check < val_end && IS_WHITESPACE(*check)) check++;
-                if ((val_end - check) >= 9 && strncmp(check, "important", 9) == 0) {
-                    is_important = 1;
-                    const char *important_pos = check - 1;
-                    while (important_pos > val_start && (IS_WHITESPACE(*(important_pos-1)) || *(important_pos-1) == '!')) {
-                        important_pos--;
-                    }
-                    val_end = important_pos;
-                    trim_trailing(val_start, &val_end);
-                }
-            }
-        }
 
         // Skip if value is empty
         if (val_end > val_start) {
             long prop_len = prop_end - prop_start;
-            if (prop_len > MAX_PROPERTY_NAME_LENGTH) continue;
-
             long val_len = val_end - val_start;
-            if (val_len > MAX_PROPERTY_VALUE_LENGTH) continue;
+
+            // Check property name length
+            if (prop_len > MAX_PROPERTY_NAME_LENGTH) {
+                rb_raise(eSizeError,
+                         "Property name too long: %ld bytes (max %d)",
+                         prop_len, MAX_PROPERTY_NAME_LENGTH);
+            }
+
+            // Check property value length
+            if (val_len > MAX_PROPERTY_VALUE_LENGTH) {
+                rb_raise(eSizeError,
+                         "Property value too long: %ld bytes (max %d)",
+                         val_len, MAX_PROPERTY_VALUE_LENGTH);
+            }
 
             // Create property string and lowercase it
             VALUE property_raw = rb_usascii_str_new(prop_start, prop_len);
             VALUE property = lowercase_property(property_raw);
             VALUE value = rb_utf8_str_new(val_start, val_len);
 
-            // Create Declarations::Value struct
-            VALUE decl = rb_struct_new(cDeclarationsValue,
-                property, value, is_important ? Qtrue : Qfalse);
+            // Create Declaration struct
+            VALUE decl = rb_struct_new(cDeclaration,
+                property,
+                value,
+                is_important ? Qtrue : Qfalse
+            );
 
             rb_ary_push(declarations, decl);
         }
-    }
 
-    // Free temporary buffer if allocated
-    if (clean_buffer) {
-        xfree(clean_buffer);
+        if (pos < end && *pos == ';') pos++;  // Skip semicolon if present
     }
 
     return declarations;
 }
 
-// ============================================================================
-// Main CSS Parser
-// ============================================================================
+// Forward declarations
+static void parse_css_recursive(ParserContext *ctx, const char *css, const char *pe,
+                                 VALUE parent_media_sym, VALUE parent_selector, VALUE parent_rule_id);
+static VALUE combine_media_queries(VALUE parent, VALUE child);
 
 /*
- * CSS parser implementation
- *
- * Parses selectors, declarations, and @rules. Creates Rule structs.
- *
- * @param css_string [String] CSS to parse
- * @param depth [Integer] Recursion depth (for error handling)
- * @param parent_media_query [VALUE] Parent media query hash (for nested @media), or Qnil
- * @return [Hash] {query_string => [Rule]} grouped by media query
+ * Combine parent and child media queries
+ * Examples:
+ *   parent="screen", child="min-width: 500px" => "screen and (min-width: 500px)"
+ *   parent=nil, child="print" => "print"
+ * Note: child may have had outer parens stripped, so we re-add them for conditions
  */
-VALUE parse_css_impl(VALUE css_string, int depth, VALUE parent_media_query) {
-    Check_Type(css_string, T_STRING);
+static VALUE combine_media_queries(VALUE parent, VALUE child) {
+    if (NIL_P(parent)) {
+        return child;
+    }
+    if (NIL_P(child)) {
+        return parent;
+    }
 
-    const char *p = RSTRING_PTR(css_string);
-    const char *pe = p + RSTRING_LEN(css_string);
-    const char *css_string_base = p;
+    // Combine: "parent and child"
+    VALUE parent_str = rb_sym2str(parent);
+    VALUE child_str = rb_sym2str(child);
 
-    // State variables
-    ParserState state = STATE_INITIAL;
-    const char *mark = NULL;
-    const char *decl_start = NULL;
+    VALUE combined = rb_str_dup(parent_str);
+    rb_str_cat2(combined, " and ");
+
+    // If child is a condition (contains ':'), wrap it in parentheses
+    // Example: "min-width: 500px" => "(min-width: 500px)"
+    const char *child_ptr = RSTRING_PTR(child_str);
+    long child_len = RSTRING_LEN(child_str);
+    int has_colon = 0;
+    int already_wrapped = (child_len >= 2 && child_ptr[0] == '(' && child_ptr[child_len - 1] == ')');
+
+    for (long i = 0; i < child_len && !has_colon; i++) {
+        if (child_ptr[i] == ':') {
+            has_colon = 1;
+        }
+    }
+
+    if (has_colon && !already_wrapped) {
+        rb_str_cat2(combined, "(");
+        rb_str_append(combined, child_str);
+        rb_str_cat2(combined, ")");
+    } else {
+        rb_str_append(combined, child_str);
+    }
+
+    return ID2SYM(rb_intern_str(combined));
+}
+
+/*
+ * Intern media query string to symbol with safety check
+ * Strips outer parentheses from standalone conditions like "(orientation: landscape)"
+ */
+static VALUE intern_media_query_safe(ParserContext *ctx, const char *query_str, long query_len) {
+    if (query_len == 0) {
+        return Qnil;
+    }
+
+    // Safety check
+    if (ctx->media_query_count >= MAX_MEDIA_QUERIES) {
+        rb_raise(eSizeError,
+                "Exceeded maximum unique media queries (%d)",
+                MAX_MEDIA_QUERIES);
+    }
+
+    // Strip outer parentheses from standalone conditions
+    // Example: "(orientation: landscape)" => "orientation: landscape"
+    // But keep: "screen and (min-width: 500px)" as-is
+    const char *start = query_str;
+    const char *end = query_str + query_len;
+
+    // Trim whitespace
+    while (start < end && IS_WHITESPACE(*start)) start++;
+    while (end > start && IS_WHITESPACE(*(end - 1))) end--;
+
+    if (end > start && *start == '(' && *(end - 1) == ')') {
+        // Check if this is a simple wrapped condition (no other parens/operators)
+        int depth = 0;
+        int has_and_or = 0;
+        for (const char *p = start; p < end; p++) {
+            if (*p == '(') depth++;
+            else if (*p == ')') depth--;
+            // Check for "and" or "or" at depth 0 (outside our outer parens)
+            if (depth == 0 && p + 3 < end &&
+                (strncmp(p, " and ", 5) == 0 || strncmp(p, " or ", 4) == 0)) {
+                has_and_or = 1;
+                break;
+            }
+        }
+
+        // Strip outer parens if depth stays >= 1 (no operators outside) and no and/or
+        if (!has_and_or && depth == 0) {
+            start++;  // Skip opening (
+            end--;    // Skip closing )
+        }
+    }
+
+    long final_len = end - start;
+    VALUE query_string = rb_usascii_str_new(start, final_len);
+    VALUE sym = ID2SYM(rb_intern_str(query_string));
+    ctx->media_query_count++;
+
+    return sym;
+}
+
+/*
+ * Parse mixed declarations and nested selectors from a block
+ * Used when a CSS rule block contains both declarations and nested rules
+ *
+ * Example CSS block being parsed:
+ *   .parent {
+ *     color: red;           <- declaration
+ *     & .child {            <- nested selector
+ *       font-size: 14px;
+ *     }
+ *     @media (min-width: 768px) {  <- nested @media
+ *       padding: 10px;
+ *     }
+ *   }
+ *
+ * Returns: Array of declarations (only the declarations, not nested rules)
+ */
+static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char *end,
+                                VALUE parent_selector, VALUE parent_rule_id, VALUE parent_media_sym) {
+    // Check recursion depth to prevent stack overflow
+    if (ctx->depth > MAX_PARSE_DEPTH) {
+        rb_raise(eDepthError,
+                 "CSS nesting too deep: exceeded maximum depth of %d",
+                 MAX_PARSE_DEPTH);
+    }
+
+    VALUE declarations = rb_ary_new();
+    const char *p = start;
+
+    while (p < end) {
+        trim_leading(&p, end);
+        if (p >= end) break;
+
+        SKIP_COMMENT(p, end);
+
+        // Check if this is a nested @media query
+        if (*p == '@' && p + 6 < end && strncmp(p, "@media", 6) == 0 &&
+            (p + 6 == end || IS_WHITESPACE(p[6]))) {
+            // Nested @media - parse with parent selector as context
+            const char *media_start = p + 6;
+            trim_leading(&media_start, end);
+
+            // Find opening brace
+            const char *media_query_end = media_start;
+            while (media_query_end < end && *media_query_end != '{') {
+                media_query_end++;
+            }
+            if (media_query_end >= end) break;
+
+            // Extract media query
+            const char *media_query_start = media_start;
+            const char *media_query_end_trimmed = media_query_end;
+            trim_trailing(media_query_start, &media_query_end_trimmed);
+            VALUE media_sym = intern_media_query_safe(ctx, media_query_start, media_query_end_trimmed - media_query_start);
+
+            p = media_query_end + 1;  // Skip {
+
+            // Find matching closing brace
+            const char *media_block_start = p;
+            const char *media_block_end = find_matching_brace(p, end);
+            p = media_block_end;
+
+            if (p < end) p++;  // Skip }
+
+            // Combine media queries: parent + child
+            VALUE combined_media_sym = combine_media_queries(parent_media_sym, media_sym);
+
+            // Parse the block with parse_mixed_block to support further nesting
+            // Create a rule ID for this media rule
+            int media_rule_id = ctx->rule_id_counter++;
+
+            // Reserve position for parent rule
+            long parent_pos = RARRAY_LEN(ctx->rules_array);
+            rb_ary_push(ctx->rules_array, Qnil);
+
+            // Parse mixed block (may contain declarations and/or nested @media)
+            ctx->depth++;
+            VALUE media_declarations = parse_mixed_block(ctx, media_block_start, media_block_end,
+                                                        parent_selector, INT2FIX(media_rule_id), combined_media_sym);
+            ctx->depth--;
+
+            // Create rule with the parent selector and declarations, associated with combined media query
+            VALUE rule = rb_struct_new(cRule,
+                INT2FIX(media_rule_id),
+                parent_selector,
+                media_declarations,
+                Qnil,  // specificity
+                parent_rule_id,  // Link to parent for nested @media serialization
+                Qnil   // nesting_style (nil for @media nesting)
+            );
+
+            // Mark that we have nesting (only set once)
+            if (!ctx->has_nesting && !NIL_P(parent_rule_id)) {
+                ctx->has_nesting = 1;
+            }
+
+            // Replace placeholder with actual rule
+            rb_ary_store(ctx->rules_array, parent_pos, rule);
+            update_media_index(ctx, combined_media_sym, media_rule_id);
+
+            continue;
+        }
+
+        // Check if this is a nested selector (starts with nesting indicators)
+        // Example within parse_mixed_block:
+        //   Input block: "color: red; & .child { font: 14px; }"
+        //                              ^p (at &) - nested selector detected
+        char c = *p;
+        if (c == '&' || c == '.' || c == '#' || c == '[' || c == ':' ||
+            c == '*' || c == '>' || c == '+' || c == '~' || c == '@') {
+            // This is likely a nested selector - find the opening brace
+            // Example: "& .child { font: 14px; }"
+            //           ^nested_sel_start  ^p (at {)
+            const char *nested_sel_start = p;
+            while (p < end && *p != '{') p++;
+            if (p >= end) break;
+
+            const char *nested_sel_end = p;
+            trim_trailing(nested_sel_start, &nested_sel_end);
+
+            p++;  // Skip {
+
+            // Find matching closing brace
+            // Example: "& .child { font: 14px; }"
+            //                     ^nested_block_start  ^nested_block_end (at })
+            const char *nested_block_start = p;
+            const char *nested_block_end = find_matching_brace(p, end);
+            p = nested_block_end;
+
+            if (p < end) p++;  // Skip }
+
+            // Split nested selector on commas and create a rule for each
+            // Example: "& .child, & .sibling { ... }" creates 2 nested rules
+            const char *seg_start = nested_sel_start;
+            const char *seg = nested_sel_start;
+
+            while (seg <= nested_sel_end) {
+                if (seg == nested_sel_end || *seg == ',') {  // At: ',' or end
+                    // Trim segment
+                    while (seg_start < seg && IS_WHITESPACE(*seg_start)) {
+                        seg_start++;
+                    }
+
+                    const char *seg_end_ptr = seg;
+                    while (seg_end_ptr > seg_start && IS_WHITESPACE(*(seg_end_ptr - 1))) {
+                        seg_end_ptr--;
+                    }
+
+                    if (seg_end_ptr > seg_start) {
+                        // Resolve nested selector
+                        VALUE result = resolve_nested_selector(parent_selector, seg_start, seg_end_ptr - seg_start);
+                        VALUE resolved_selector = rb_ary_entry(result, 0);
+                        VALUE nesting_style = rb_ary_entry(result, 1);
+
+                        // Get rule ID
+                        int rule_id = ctx->rule_id_counter++;
+
+                        // Recursively parse nested block
+                        ctx->depth++;
+                        VALUE nested_declarations = parse_mixed_block(ctx, nested_block_start, nested_block_end,
+                                                                     resolved_selector, INT2FIX(rule_id), parent_media_sym);
+                        ctx->depth--;
+
+                        // Create rule for nested selector
+                        VALUE rule = rb_struct_new(cRule,
+                            INT2FIX(rule_id),
+                            resolved_selector,
+                            nested_declarations,
+                            Qnil,  // specificity
+                            parent_rule_id,
+                            nesting_style
+                        );
+
+                        // Mark that we have nesting (only set once)
+                        if (!ctx->has_nesting && !NIL_P(parent_rule_id)) {
+                            ctx->has_nesting = 1;
+                        }
+
+                        rb_ary_push(ctx->rules_array, rule);
+                        update_media_index(ctx, parent_media_sym, rule_id);
+                    }
+
+                    seg_start = seg + 1;
+                }
+                seg++;
+            }
+
+            continue;
+        }
+
+        // This is a declaration - parse it
+        const char *prop_start = p;
+        while (p < end && *p != ':' && *p != ';' && *p != '{') p++;
+        if (p >= end || *p != ':') {
+            // Malformed - skip to semicolon
+            while (p < end && *p != ';') p++;
+            if (p < end) p++;
+            continue;
+        }
+
+        const char *prop_end = p;
+        trim_trailing(prop_start, &prop_end);
+
+        p++;  // Skip :
+        trim_leading(&p, end);
+
+        const char *val_start = p;
+        int important = 0;
+
+        // Find end of value (semicolon or closing brace or end)
+        while (p < end && *p != ';' && *p != '}') p++;
+        const char *val_end = p;
+
+        // Check for !important
+        const char *important_check = val_end - 10;  // " !important"
+        if (important_check >= val_start) {
+            trim_trailing(val_start, &val_end);
+            if (val_end - val_start >= 10) {
+                if (strncmp(val_end - 10, "!important", 10) == 0) {
+                    important = 1;
+                    val_end -= 10;
+                    trim_trailing(val_start, &val_end);
+                }
+            }
+        } else {
+            trim_trailing(val_start, &val_end);
+        }
+
+        if (p < end && *p == ';') p++;
+
+        // Create declaration
+        if (prop_end > prop_start && val_end > val_start) {
+            long prop_len = prop_end - prop_start;
+            long val_len = val_end - val_start;
+
+            // Check property name length
+            if (prop_len > MAX_PROPERTY_NAME_LENGTH) {
+                rb_raise(eSizeError,
+                         "Property name too long: %ld bytes (max %d)",
+                         prop_len, MAX_PROPERTY_NAME_LENGTH);
+            }
+
+            // Check property value length
+            if (val_len > MAX_PROPERTY_VALUE_LENGTH) {
+                rb_raise(eSizeError,
+                         "Property value too long: %ld bytes (max %d)",
+                         val_len, MAX_PROPERTY_VALUE_LENGTH);
+            }
+
+            VALUE property_raw = rb_usascii_str_new(prop_start, prop_len);
+            VALUE property = lowercase_property(property_raw);
+            VALUE value = rb_utf8_str_new(val_start, val_len);
+
+            VALUE decl = rb_struct_new(cDeclaration,
+                property,
+                value,
+                important ? Qtrue : Qfalse
+            );
+
+            rb_ary_push(declarations, decl);
+        }
+    }
+
+    return declarations;
+}
+
+/*
+ * Parse CSS recursively with media query context and optional parent selector for nesting
+ *
+ * parent_media_sym: Parent media query symbol (or Qnil for no media context)
+ * parent_selector:  Parent selector string for nested rules (or Qnil for top-level)
+ * parent_rule_id:   Parent rule ID (Fixnum) for nested rules (or Qnil for top-level)
+ */
+static void parse_css_recursive(ParserContext *ctx, const char *css, const char *pe,
+                                 VALUE parent_media_sym, VALUE parent_selector, VALUE parent_rule_id) {
+    // Check recursion depth to prevent stack overflow
+    if (ctx->depth > MAX_PARSE_DEPTH) {
+        rb_raise(eDepthError,
+                 "CSS nesting too deep: exceeded maximum depth of %d",
+                 MAX_PARSE_DEPTH);
+    }
+
+    const char *p = css;
+
     const char *selector_start = NULL;
-
-    // Ruby objects
-    VALUE rules_by_media = rb_hash_new();  // Hash: {query_string => {media_types: [...], rules: [...]}}
-    VALUE current_selectors = Qnil;
-    VALUE current_declarations = Qnil;
-    VALUE selector = Qnil;
-    VALUE current_media_types = parent_media_query;  // Inherit parent's media context
+    const char *decl_start = NULL;
+    int brace_depth = 0;
 
     while (p < pe) {
-        char c = *p;
+        // Skip whitespace
+        while (p < pe && IS_WHITESPACE(*p)) p++;
+        if (p >= pe) break;
 
-        // Skip whitespace in most states
-        if (IS_WHITESPACE(c) && state != STATE_DECLARATIONS && state != STATE_SELECTOR) {
+        // Skip comments (rare in typical CSS)
+        SKIP_COMMENT(p, pe);
+
+        // Check for @media at-rule (only at depth 0)
+        if (RB_UNLIKELY(brace_depth == 0 && p + 6 < pe && *p == '@' &&
+            strncmp(p + 1, "media", 5) == 0 && IS_WHITESPACE(p[6]))) {
+            p += 6;  // Skip "@media"
+
+            // Skip whitespace
+            while (p < pe && IS_WHITESPACE(*p)) p++;
+
+            // Find media query (up to opening brace)
+            const char *mq_start = p;
+            while (p < pe && *p != '{') p++;
+            const char *mq_end = p;
+
+            // Trim
+            trim_trailing(mq_start, &mq_end);
+
+            if (p >= pe || *p != '{') {
+                continue;  // Malformed
+            }
+
+            // Intern media query
+            VALUE child_media_sym = intern_media_query_safe(ctx, mq_start, mq_end - mq_start);
+
+            // Combine with parent
+            VALUE combined_media_sym = combine_media_queries(parent_media_sym, child_media_sym);
+
+            p++;  // Skip opening {
+
+            // Find matching closing brace
+            const char *block_start = p;
+            const char *block_end = find_matching_brace(p, pe);
+            p = block_end;
+
+            // Recursively parse @media block with combined media context
+            ctx->depth++;
+            parse_css_recursive(ctx, block_start, block_end, combined_media_sym, NO_PARENT_SELECTOR, NO_PARENT_RULE_ID);
+            ctx->depth--;
+
+            if (p < pe && *p == '}') p++;
+            continue;
+        }
+
+        // Check for conditional group at-rules: @supports, @layer, @container, @scope
+        // AND nested block at-rules: @keyframes, @font-face, @page
+        // These behave like @media but don't affect media context
+        if (RB_UNLIKELY(brace_depth == 0 && *p == '@')) {
+            const char *at_start = p + 1;
+            const char *at_name_end = at_start;
+
+            // Find end of at-rule name (stop at whitespace or opening brace)
+            while (at_name_end < pe && !IS_WHITESPACE(*at_name_end) && *at_name_end != '{') {
+                at_name_end++;
+            }
+
+            long at_name_len = at_name_end - at_start;
+
+            // Check if this is a conditional group rule
+            int is_conditional_group =
+                (at_name_len == 8 && strncmp(at_start, "supports", 8) == 0) ||
+                (at_name_len == 5 && strncmp(at_start, "layer", 5) == 0) ||
+                (at_name_len == 9 && strncmp(at_start, "container", 9) == 0) ||
+                (at_name_len == 5 && strncmp(at_start, "scope", 5) == 0);
+
+            if (is_conditional_group) {
+                // Skip to opening brace
+                p = at_name_end;
+                while (p < pe && *p != '{') p++;
+
+                if (p >= pe || *p != '{') {
+                    continue;  // Malformed
+                }
+
+                p++;  // Skip opening {
+
+                // Find matching closing brace
+                const char *block_start = p;
+                const char *block_end = find_matching_brace(p, pe);
+                p = block_end;
+
+                // Recursively parse block content (preserve parent media context)
+                ctx->depth++;
+                parse_css_recursive(ctx, block_start, block_end, parent_media_sym, parent_selector, parent_rule_id);
+                ctx->depth--;
+
+                if (p < pe && *p == '}') p++;
+                continue;
+            }
+
+            // Check for @keyframes (contains <rule-list>)
+            // TODO: Test perf gains by using RB_UNLIKELY(is_keyframes) wrapper
+            int is_keyframes =
+                (at_name_len == 9 && strncmp(at_start, "keyframes", 9) == 0) ||
+                (at_name_len == 17 && strncmp(at_start, "-webkit-keyframes", 17) == 0) ||
+                (at_name_len == 13 && strncmp(at_start, "-moz-keyframes", 13) == 0);
+
+            if (is_keyframes) {
+                // Build full selector string: "@keyframes fade"
+                const char *selector_start = p;  // Points to '@'
+                p = at_name_end;
+                while (p < pe && *p != '{') p++;
+
+                if (p >= pe || *p != '{') {
+                    continue;  // Malformed
+                }
+
+                const char *selector_end = p;
+                while (selector_end > selector_start && IS_WHITESPACE(*(selector_end - 1))) {
+                    selector_end--;
+                }
+                VALUE selector = rb_utf8_str_new(selector_start, selector_end - selector_start);
+
+                p++;  // Skip opening {
+
+                // Find matching closing brace
+                const char *block_start = p;
+                const char *block_end = find_matching_brace(p, pe);
+                p = block_end;
+
+                // Parse keyframe blocks as rules (from/to/0%/50% etc)
+                ParserContext nested_ctx = {
+                    .rules_array = rb_ary_new(),
+                    .media_index = rb_hash_new(),
+                    .rule_id_counter = 0,
+                    .media_query_count = 0,
+                    .media_cache = NULL,
+                    .has_nesting = 0,
+                    .depth = 0
+                };
+                parse_css_recursive(&nested_ctx, block_start, block_end, NO_PARENT_MEDIA, NO_PARENT_SELECTOR, NO_PARENT_RULE_ID);
+
+                // Get rule ID and increment
+                int rule_id = ctx->rule_id_counter++;
+
+                // Create AtRule with nested rules
+                VALUE at_rule = rb_struct_new(cAtRule,
+                    INT2FIX(rule_id),
+                    selector,
+                    nested_ctx.rules_array,  // Array of Rule (keyframe blocks)
+                    Qnil);
+
+                // Add to rules array
+                rb_ary_push(ctx->rules_array, at_rule);
+
+                // Add to media index if in media query
+                if (!NIL_P(parent_media_sym)) {
+                    VALUE rule_ids = rb_hash_aref(ctx->media_index, parent_media_sym);
+                    if (NIL_P(rule_ids)) {
+                        rule_ids = rb_ary_new();
+                        rb_hash_aset(ctx->media_index, parent_media_sym, rule_ids);
+                    }
+                    rb_ary_push(rule_ids, INT2FIX(rule_id));
+                }
+
+                if (p < pe && *p == '}') p++;
+                continue;
+            }
+
+            // Check for @font-face (contains <declaration-list>)
+            int is_font_face = (at_name_len == 9 && strncmp(at_start, "font-face", 9) == 0);
+
+            if (is_font_face) {
+                // Build selector string: "@font-face"
+                const char *selector_start = p;  // Points to '@'
+                p = at_name_end;
+                while (p < pe && *p != '{') p++;
+
+                if (p >= pe || *p != '{') {
+                    continue;  // Malformed
+                }
+
+                const char *selector_end = p;
+                while (selector_end > selector_start && IS_WHITESPACE(*(selector_end - 1))) {
+                    selector_end--;
+                }
+                VALUE selector = rb_utf8_str_new(selector_start, selector_end - selector_start);
+
+                p++;  // Skip opening {
+
+                // Find matching closing brace
+                const char *decl_start = p;
+                const char *decl_end = find_matching_brace(p, pe);
+                p = decl_end;
+
+                // Parse declarations
+                VALUE declarations = parse_declarations(decl_start, decl_end);
+
+                // Get rule ID and increment
+                int rule_id = ctx->rule_id_counter++;
+
+                // Create AtRule with declarations
+                VALUE at_rule = rb_struct_new(cAtRule,
+                    INT2FIX(rule_id),
+                    selector,
+                    declarations,  // Array of Declaration
+                    Qnil);
+
+                // Add to rules array
+                rb_ary_push(ctx->rules_array, at_rule);
+
+                // Add to media index if in media query
+                if (!NIL_P(parent_media_sym)) {
+                    VALUE rule_ids = rb_hash_aref(ctx->media_index, parent_media_sym);
+                    if (NIL_P(rule_ids)) {
+                        rule_ids = rb_ary_new();
+                        rb_hash_aset(ctx->media_index, parent_media_sym, rule_ids);
+                    }
+                    rb_ary_push(rule_ids, INT2FIX(rule_id));
+                }
+
+                if (p < pe && *p == '}') p++;
+                continue;
+            }
+        }
+
+        // Opening brace
+        if (*p == '{') {
+            if (brace_depth == 0 && selector_start != NULL) {
+                decl_start = p + 1;
+            }
+            brace_depth++;
             p++;
             continue;
         }
 
-        // Skip comments everywhere
-        if (c == '/' && p + 1 < pe && *(p + 1) == '*') {
-            // Find end of comment
+        // Closing brace
+        if (*p == '}') {
+            brace_depth--;
+            if (brace_depth == 0 && selector_start != NULL && decl_start != NULL) {
+                // We've found a complete CSS rule block - now determine if it has nesting
+                // Example: .parent { color: red; & .child { font-size: 14px; } }
+                //          ^selector_start    ^decl_start                    ^p (at })
+                int has_nesting = has_nested_selectors(decl_start, p);
+
+                // Get selector string
+                const char *sel_end = decl_start - 1;
+                while (sel_end > selector_start && IS_WHITESPACE(*(sel_end - 1))) {
+                    sel_end--;
+                }
+
+                if (!has_nesting) {
+                    // FAST PATH: No nesting - parse as pure declarations
+                    VALUE declarations = parse_declarations(decl_start, p);
+
+                    // Split on commas to handle multi-selector rules
+                    // Example: ".a, .b, .c { color: red; }" creates 3 separate rules
+                    //           ^selector_start      ^sel_end
+                    //              ^seg_start=seg (scanning for commas)
+                    const char *seg_start = selector_start;
+                    const char *seg = selector_start;
+
+                    while (seg <= sel_end) {
+                        if (seg == sel_end || *seg == ',') {  // At: ',' or end
+                            // Trim segment
+                            while (seg_start < seg && IS_WHITESPACE(*seg_start)) {
+                                seg_start++;
+                            }
+
+                            const char *seg_end_ptr = seg;
+                            while (seg_end_ptr > seg_start && IS_WHITESPACE(*(seg_end_ptr - 1))) {
+                                seg_end_ptr--;
+                            }
+
+                            if (seg_end_ptr > seg_start) {
+                                VALUE selector = rb_utf8_str_new(seg_start, seg_end_ptr - seg_start);
+
+                                // Resolve against parent if nested
+                                VALUE resolved_selector;
+                                VALUE nesting_style_val;
+                                VALUE parent_id_val;
+
+                                if (!NIL_P(parent_selector)) {
+                                    // This is a nested rule - resolve selector
+                                    VALUE result = resolve_nested_selector(parent_selector, RSTRING_PTR(selector), RSTRING_LEN(selector));
+                                    resolved_selector = rb_ary_entry(result, 0);
+                                    nesting_style_val = rb_ary_entry(result, 1);
+                                    parent_id_val = parent_rule_id;
+                                } else {
+                                    // Top-level rule
+                                    resolved_selector = selector;
+                                    nesting_style_val = Qnil;
+                                    parent_id_val = Qnil;
+                                }
+
+                                // Get rule ID and increment
+                                int rule_id = ctx->rule_id_counter++;
+
+                                // Create Rule
+                                VALUE rule = rb_struct_new(cRule,
+                                    INT2FIX(rule_id),
+                                    resolved_selector,
+                                    rb_ary_dup(declarations),
+                                    Qnil,  // specificity
+                                    parent_id_val,
+                                    nesting_style_val
+                                );
+
+                                // Mark that we have nesting (only set once)
+                                if (!ctx->has_nesting && !NIL_P(parent_id_val)) {
+                                    ctx->has_nesting = 1;
+                                }
+
+                                rb_ary_push(ctx->rules_array, rule);
+
+                                // Update media index
+                                update_media_index(ctx, parent_media_sym, rule_id);
+                            }
+
+                            seg_start = seg + 1;
+                        }
+                        seg++;
+                    }
+                } else {
+                    // NESTED PATH: Parse mixed declarations + nested rules
+                    // For each comma-separated parent selector, parse the block with that parent
+                    //
+                    // Example: ".a, .b { color: red; & .child { font: 14px; } }"
+                    //           ^selector_start ^sel_end
+                    // Creates:
+                    //   - .a with declarations [color: red]
+                    //   - .a .child with declarations [font: 14px]
+                    //   - .b with declarations [color: red]
+                    //   - .b .child with declarations [font: 14px]
+                    const char *seg_start = selector_start;
+                    const char *seg = selector_start;
+
+                    while (seg <= sel_end) {
+                        if (seg == sel_end || *seg == ',') {  // At: ',' or end
+                            // Trim segment
+                            while (seg_start < seg && IS_WHITESPACE(*seg_start)) {
+                                seg_start++;
+                            }
+
+                            const char *seg_end_ptr = seg;
+                            while (seg_end_ptr > seg_start && IS_WHITESPACE(*(seg_end_ptr - 1))) {
+                                seg_end_ptr--;
+                            }
+
+                            if (seg_end_ptr > seg_start) {
+                                VALUE current_selector = rb_utf8_str_new(seg_start, seg_end_ptr - seg_start);
+
+                                // Resolve against parent if we're already nested
+                                VALUE resolved_current;
+                                VALUE current_nesting_style;
+                                VALUE current_parent_id;
+
+                                if (!NIL_P(parent_selector)) {
+                                    VALUE result = resolve_nested_selector(parent_selector, RSTRING_PTR(current_selector), RSTRING_LEN(current_selector));
+                                    resolved_current = rb_ary_entry(result, 0);
+                                    current_nesting_style = rb_ary_entry(result, 1);
+                                    current_parent_id = parent_rule_id;
+                                } else {
+                                    resolved_current = current_selector;
+                                    current_nesting_style = Qnil;
+                                    current_parent_id = Qnil;
+                                }
+
+                                // Get rule ID for current selector (increment to reserve it)
+                                int current_rule_id = ctx->rule_id_counter++;
+
+                                // Reserve parent's position in rules array with placeholder
+                                // This ensures parent comes before nested rules in array order (per W3C spec)
+                                long parent_position = RARRAY_LEN(ctx->rules_array);
+                                rb_ary_push(ctx->rules_array, Qnil);
+
+                                // Parse mixed block (declarations + nested selectors)
+                                // Nested rules will be added AFTER the placeholder
+                                ctx->depth++;
+                                VALUE parent_declarations = parse_mixed_block(ctx, decl_start, p,
+                                                                             resolved_current, INT2FIX(current_rule_id), parent_media_sym);
+                                ctx->depth--;
+
+                                // Create parent rule and replace placeholder
+                                // Always create the rule (even if empty) to avoid edge cases
+                                VALUE rule = rb_struct_new(cRule,
+                                    INT2FIX(current_rule_id),
+                                    resolved_current,
+                                    parent_declarations,
+                                    Qnil,  // specificity
+                                    current_parent_id,
+                                    current_nesting_style
+                                );
+
+                                // Mark that we have nesting (only set once)
+                                if (!ctx->has_nesting && !NIL_P(current_parent_id)) {
+                                    ctx->has_nesting = 1;
+                                }
+
+                                // Replace placeholder with actual rule - just pointer assignment, fast!
+                                rb_ary_store(ctx->rules_array, parent_position, rule);
+                                update_media_index(ctx, parent_media_sym, current_rule_id);
+                            }
+
+                            seg_start = seg + 1;
+                        }
+                        seg++;
+                    }
+                }
+
+                selector_start = NULL;
+                decl_start = NULL;
+            }
+            p++;
+            continue;
+        }
+
+        // Start of selector
+        if (brace_depth == 0 && selector_start == NULL) {
+            selector_start = p;
+        }
+
+        p++;
+    }
+}
+
+/*
+ * Parse media query string and extract media types (Ruby-facing function)
+ * Example: "screen, print" => [:screen, :print]
+ * Example: "screen and (min-width: 768px)" => [:screen]
+ *
+ * @param media_query_sym [Symbol] Media query as symbol
+ * @return [Array<Symbol>] Array of media type symbols
+ */
+VALUE parse_media_types(VALUE self, VALUE media_query_sym) {
+    Check_Type(media_query_sym, T_SYMBOL);
+
+    VALUE query_string = rb_sym2str(media_query_sym);
+    const char *query_str = RSTRING_PTR(query_string);
+    long query_len = RSTRING_LEN(query_string);
+
+    return extract_media_types(query_str, query_len);
+}
+
+/*
+ * Main parse entry point
+ * Returns: { rules: [...], media_index: {...}, charset: "..." | nil, last_rule_id: N }
+ */
+VALUE parse_css_new_impl(VALUE css_string, int rule_id_offset) {
+    Check_Type(css_string, T_STRING);
+
+    const char *css = RSTRING_PTR(css_string);
+    const char *pe = css + RSTRING_LEN(css_string);
+    const char *p = css;
+
+    VALUE charset = Qnil;
+
+    // Extract @charset
+    if (RSTRING_LEN(css_string) > 10 && strncmp(css, "@charset ", 9) == 0) {
+        char *quote_start = strchr(css + 9, '"');
+        if (quote_start != NULL) {
+            char *quote_end = strchr(quote_start + 1, '"');
+            if (quote_end != NULL) {
+                charset = rb_str_new(quote_start + 1, quote_end - quote_start - 1);
+                char *semicolon = quote_end + 1;
+                while (semicolon < pe && IS_WHITESPACE(*semicolon)) {
+                    semicolon++;
+                }
+                if (semicolon < pe && *semicolon == ';') {
+                    p = semicolon + 1;
+                }
+            }
+        }
+    }
+
+    // Skip @import statements - they should be handled by ImportResolver at Ruby level
+    // Per CSS spec, @import must come before all rules (except @charset)
+    while (p < pe) {
+        // Skip whitespace
+        while (p < pe && IS_WHITESPACE(*p)) p++;
+        if (p >= pe) break;
+
+        // Skip comments
+        if (p + 1 < pe && p[0] == '/' && p[1] == '*') {
             p += 2;
             while (p + 1 < pe) {
-                if (*p == '*' && *(p + 1) == '/') {
+                if (p[0] == '*' && p[1] == '/') {
                     p += 2;
                     break;
                 }
@@ -575,359 +1397,39 @@ VALUE parse_css_impl(VALUE css_string, int depth, VALUE parent_media_query) {
             continue;
         }
 
-        switch (state) {
-            case STATE_INITIAL:
-                if (c == '@') {
-                    // @rule detected - parse it
-                    const char *at_start = p + 1;  // Skip @
-                    const char *at_end = at_start;
-
-                    // Find end of @rule name (until space or {)
-                    while (at_end < pe && !IS_WHITESPACE(*at_end) && *at_end != '{' && *at_end != ';') {
-                        at_end++;
-                    }
-
-                    long name_len = at_end - at_start;
-                    char at_name[256];
-                    if (name_len > 255) name_len = 255;
-                    strncpy(at_name, at_start, name_len);
-                    at_name[name_len] = '\0';
-
-                    DEBUG_PRINTF("[pure_c] @rule detected: @%s at pos %td\n", at_name, (ptrdiff_t)(p - css_string_base));
-
-                    // Skip to prelude start (after name, before {)
-                    p = at_end;
-                    while (p < pe && IS_WHITESPACE(*p)) p++;
-
-                    const char *prelude_start = p;
-
-                    // Check for statement-style @rule (ends with ;)
-                    const char *check = p;
-                    while (check < pe && *check != '{' && *check != ';') check++;
-
-                    if (check >= pe) {
-                        // Incomplete - skip
-                        p = pe;
-                        break;
-                    }
-
-                    if (*check == ';') {
-                        // Statement-style @rule (@charset, @import, etc.) - skip it
-                        p = check + 1;
-                        DEBUG_PRINTF("[pure_c] Skipped statement @rule @%s\n", at_name);
-                        break;
-                    }
-
-                    // Block-style @rule - find prelude end (the {)
-                    while (p < pe && *p != '{') p++;
-
-                    if (p >= pe) break;  // Incomplete
-
-                    const char *prelude_end = p;
-
-                    // Trim whitespace from prelude
-                    while (prelude_end > prelude_start && IS_WHITESPACE(*(prelude_end - 1))) {
-                        prelude_end--;
-                    }
-
-                    long prelude_len = prelude_end - prelude_start;
-
-                    p++;  // Skip opening {
-
-                    // Find matching closing brace
-                    int brace_depth = 1;
-                    const char *block_start = p;
-
-                    while (p < pe && brace_depth > 0) {
-                        if (*p == '{') {
-                            brace_depth++;
-                        } else if (*p == '}') {
-                            brace_depth--;
-                        } else if (*p == '/' && p + 1 < pe && *(p + 1) == '*') {
-                            // Skip comments when counting braces
-                            p += 2;
-                            while (p + 1 < pe && !(*p == '*' && *(p + 1) == '/')) p++;
-                            if (p + 1 < pe) p += 2;
-                            continue;
-                        }
-                        p++;
-                    }
-
-                    const char *block_end = p - 1;  // Before closing }
-                    long block_len = block_end - block_start;
-
-                    DEBUG_PRINTF("[pure_c] @%s block: %ld bytes\n", at_name, block_len);
-
-                    // Process based on @rule type
-                    if (strcmp(at_name, "media") == 0) {
-                        // Parse media query for this block
-                        VALUE media_query = parse_media_query(prelude_start, prelude_len);
-
-                        // Combine with parent media query if nested (per W3C spec)
-                        VALUE combined_media_query = media_query;
-                        if (!NIL_P(parent_media_query)) {
-                            VALUE parent_qs = rb_hash_aref(parent_media_query, ID2SYM(rb_intern("query_string")));
-                            VALUE current_qs = rb_hash_aref(media_query, ID2SYM(rb_intern("query_string")));
-
-                            // Combine: "screen" + " and " + "(min-width: 768px)" = "screen and (min-width: 768px)"
-                            VALUE combined_qs = rb_str_new_cstr("");
-                            if (!NIL_P(parent_qs)) rb_str_append(combined_qs, parent_qs);
-                            if (!NIL_P(parent_qs) && !NIL_P(current_qs)) rb_str_cat2(combined_qs, " and ");
-                            if (!NIL_P(current_qs)) rb_str_append(combined_qs, current_qs);
-
-                            // Combine media_types arrays (union of parent and current)
-                            VALUE parent_media_types = rb_hash_aref(parent_media_query, ID2SYM(rb_intern("media_types")));
-                            VALUE current_media_types = rb_hash_aref(media_query, ID2SYM(rb_intern("media_types")));
-                            VALUE combined_media_types = rb_ary_dup(parent_media_types);
-
-                            // Add current media types if they're not already in the array
-                            long current_len = RARRAY_LEN(current_media_types);
-                            for (long i = 0; i < current_len; i++) {
-                                VALUE media_type = RARRAY_AREF(current_media_types, i);
-                                if (!rb_ary_includes(combined_media_types, media_type)) {
-                                    rb_ary_push(combined_media_types, media_type);
-                                }
-                            }
-
-                            combined_media_query = rb_hash_new();
-                            rb_hash_aset(combined_media_query, ID2SYM(rb_intern("query_string")), combined_qs);
-                            rb_hash_aset(combined_media_query, ID2SYM(rb_intern("media_types")), combined_media_types);
-                        }
-
-                        // Recursively parse block content with combined media context
-                        VALUE block_content = rb_str_new(block_start, block_len);
-                        VALUE inner_hash = parse_css_impl(block_content, depth + 1, combined_media_query);
-
-                        // Merge inner_hash into our rules_by_media using rb_hash_foreach
-                        struct merge_hash_ctx merge_ctx = { rules_by_media };
-                        rb_hash_foreach(inner_hash, merge_hash_callback, (VALUE)&merge_ctx);
-
-                        RB_GC_GUARD(media_query);
-                        RB_GC_GUARD(combined_media_query);
-                        RB_GC_GUARD(block_content);
-                        RB_GC_GUARD(inner_hash);
-
-                    } else if (strcmp(at_name, "supports") == 0 || strcmp(at_name, "layer") == 0 ||
-                               strcmp(at_name, "container") == 0 || strcmp(at_name, "scope") == 0) {
-                        // Conditional group rules - recursively parse and merge
-                        VALUE block_content = rb_str_new(block_start, block_len);
-                        VALUE inner_hash = parse_css_impl(block_content, depth + 1, parent_media_query);
-
-                        // Merge inner_hash into rules_by_media using rb_hash_foreach
-                        struct merge_hash_ctx merge_ctx = { rules_by_media };
-                        rb_hash_foreach(inner_hash, merge_hash_callback, (VALUE)&merge_ctx);
-
-                        RB_GC_GUARD(block_content);
-                        RB_GC_GUARD(inner_hash);
-
-                    } else if (strstr(at_name, "keyframes") != NULL) {
-                        // @keyframes - create dummy rule with animation name
-                        // Strip whitespace without rb_funcall
-                        VALUE animation_name = strip_string(prelude_start, prelude_len);
-
-                        // Build selector: "@keyframes " + name
-                        VALUE sel = UTF8_STR("@");
-                        rb_str_cat(sel, at_name, strlen(at_name));
-                        rb_str_cat2(sel, " ");
-                        rb_str_append(sel, animation_name);
-
-                        VALUE rule = rb_struct_new(cRule,
-                            sel,                                    // selector
-                            rb_ary_new(),                          // declarations (empty)
-                            Qnil                                    // specificity
-                        );
-
-                        // Add to rules_by_media under current media context
-                        VALUE query_string = NIL_P(parent_media_query) ? Qnil :
-                                            rb_hash_aref(parent_media_query, ID2SYM(rb_intern("query_string")));
-                        VALUE media_types_array = NIL_P(parent_media_query) ?
-                                                 rb_ary_new_from_args(1, ID2SYM(rb_intern("all"))) :
-                                                 rb_hash_aref(parent_media_query, ID2SYM(rb_intern("media_types")));
-
-                        // Get or create group
-                        VALUE group = rb_hash_aref(rules_by_media, query_string);
-                        if (NIL_P(group)) {
-                            group = rb_hash_new();
-                            rb_hash_aset(group, ID2SYM(rb_intern("media_types")), media_types_array);
-                            rb_hash_aset(group, ID2SYM(rb_intern("rules")), rb_ary_new());
-                            rb_hash_aset(rules_by_media, query_string, group);
-                        }
-
-                        VALUE rules_array = rb_hash_aref(group, ID2SYM(rb_intern("rules")));
-                        rb_ary_push(rules_array, rule);
-
-                        RB_GC_GUARD(animation_name);
-                        RB_GC_GUARD(sel);
-                        RB_GC_GUARD(rule);
-
-                    } else if (strcmp(at_name, "font-face") == 0 || strcmp(at_name, "property") == 0 ||
-                               strcmp(at_name, "page") == 0 || strcmp(at_name, "counter-style") == 0) {
-                        // Descriptor-based @rules - parse block as declarations
-                        // Wrap in dummy selector for parsing
-                        VALUE wrapped = UTF8_STR("* { ");
-                        rb_str_cat(wrapped, block_start, block_len);
-                        rb_str_cat2(wrapped, " }");
-
-                        VALUE dummy_hash = parse_css_impl(wrapped, depth + 1, parent_media_query);
-                        VALUE declarations = Qnil;
-
-                        // Extract first rule from the dummy parse (should be under nil key)
-                        // dummy_hash structure: {query_string => {media_types: [...], rules: [...]}}
-                        VALUE dummy_group = rb_hash_aref(dummy_hash, Qnil);
-                        if (!NIL_P(dummy_group)) {
-                            VALUE dummy_rules = rb_hash_aref(dummy_group, ID2SYM(rb_intern("rules")));
-                            if (!NIL_P(dummy_rules) && RARRAY_LEN(dummy_rules) > 0) {
-                                VALUE first_rule = RARRAY_AREF(dummy_rules, 0);
-                                declarations = rb_struct_aref(first_rule, INT2FIX(RULE_DECLARATIONS));
-
-                                // Build selector: "@" + name + [" " + prelude]
-                                VALUE sel = UTF8_STR("@");
-                                rb_str_cat(sel, at_name, strlen(at_name));
-
-                                if (prelude_len > 0) {
-                                    // Strip whitespace without rb_funcall
-                                    VALUE prelude_val = strip_string(prelude_start, prelude_len);
-                                    if (RSTRING_LEN(prelude_val) > 0) {
-                                        rb_str_cat2(sel, " ");
-                                        rb_str_append(sel, prelude_val);
-                                    }
-                                    RB_GC_GUARD(prelude_val);
-                                }
-
-                                VALUE rule = rb_struct_new(cRule,
-                                    sel,                                    // selector
-                                    declarations,                           // declarations
-                                    Qnil                                    // specificity
-                                );
-
-                                // Add to rules_by_media under current media context
-                                VALUE query_string = NIL_P(parent_media_query) ? Qnil :
-                                                    rb_hash_aref(parent_media_query, ID2SYM(rb_intern("query_string")));
-                                VALUE media_types_array = NIL_P(parent_media_query) ?
-                                                         rb_ary_new_from_args(1, ID2SYM(rb_intern("all"))) :
-                                                         rb_hash_aref(parent_media_query, ID2SYM(rb_intern("media_types")));
-
-                                // Get or create group
-                                VALUE group = rb_hash_aref(rules_by_media, query_string);
-                                if (NIL_P(group)) {
-                                    group = rb_hash_new();
-                                    rb_hash_aset(group, ID2SYM(rb_intern("media_types")), media_types_array);
-                                    rb_hash_aset(group, ID2SYM(rb_intern("rules")), rb_ary_new());
-                                    rb_hash_aset(rules_by_media, query_string, group);
-                                }
-
-                                VALUE rules_array = rb_hash_aref(group, ID2SYM(rb_intern("rules")));
-                                rb_ary_push(rules_array, rule);
-
-                                RB_GC_GUARD(sel);
-                                RB_GC_GUARD(rule);
-                            }
-                        }
-
-                        RB_GC_GUARD(wrapped);
-                        RB_GC_GUARD(dummy_hash);
-                        RB_GC_GUARD(dummy_group);
-                        RB_GC_GUARD(declarations);
-
-                    } else {
-                        // Unknown @rule - skip it
-                        DEBUG_PRINTF("[pure_c] Skipping unknown @rule: @%s\n", at_name);
-                    }
-
-                } else if (c == '}') {
-                    // Stray closing brace - ignore
-                    p++;
-                } else if (!IS_WHITESPACE(c)) {
-                    // Start of selector
-                    selector_start = p;
-                    state = STATE_SELECTOR;
-                    DEBUG_PRINTF("[pure_c] Starting selector at pos %td\n", (ptrdiff_t)(p - css_string_base));
-                }
-                break;
-
-            case STATE_SELECTOR:
-                if (c == '{') {
-                    // End of selector, start of declarations
-                    if (selector_start != NULL) {
-                        const char *selector_end = p;
-
-                        // Trim trailing whitespace
-                        while (selector_end > selector_start && IS_WHITESPACE(*(selector_end - 1))) {
-                            selector_end--;
-                        }
-
-                        // Split on comma and capture each selector
-                        const char *seg_start = selector_start;
-                        const char *seg = selector_start;
-
-                        if (NIL_P(current_selectors)) {
-                            current_selectors = rb_ary_new();
-                        }
-
-                        while (seg <= selector_end) {
-                            if (seg == selector_end || *seg == ',') {
-                                // Capture segment
-                                const char *seg_end = seg;
-
-                                // Trim whitespace from segment
-                                while (seg_end > seg_start && IS_WHITESPACE(*(seg_end - 1))) {
-                                    seg_end--;
-                                }
-                                while (seg_start < seg_end && IS_WHITESPACE(*seg_start)) {
-                                    seg_start++;
-                                }
-
-                                if (seg_end > seg_start) {
-                                    VALUE sel = rb_utf8_str_new(seg_start, seg_end - seg_start);
-                                    rb_ary_push(current_selectors, sel);
-                                    DEBUG_PRINTF("[pure_c] Captured selector: '%s'\n", RSTRING_PTR(sel));
-                                }
-
-                                seg_start = seg + 1;  // Skip comma
-                            }
-                            seg++;
-                        }
-
-                        selector_start = NULL;
-                    }
-
-                    p++;  // Skip {
-                    decl_start = p;
-                    state = STATE_DECLARATIONS;
-                    DEBUG_PRINTF("[pure_c] Starting declarations at pos %td\n", (ptrdiff_t)(p - css_string_base));
-                } else {
-                    // Continue parsing selector
-                    p++;
-                }
-                break;
-
-            case STATE_DECLARATIONS:
-                if (c == '}') {
-                    // End of declaration block
-                    // Capture declarations
-                    capture_declarations_fn(&decl_start, p, &current_declarations, css_string_base);
-
-                    // Create rule(s)
-                    finish_rule_fn(0, &current_selectors, &current_declarations,
-                                   &current_media_types, rules_by_media, &mark);
-
-                    p++;  // Skip }
-                    state = STATE_INITIAL;
-                    DEBUG_PRINTF("[pure_c] Finished rule, back to initial at pos %td\n", (ptrdiff_t)(p - css_string_base));
-                } else {
-                    // Continue parsing declarations
-                    p++;
-                }
-                break;
+        // Check for @import
+        if (p + 7 <= pe && *p == '@' && strncasecmp(p + 1, "import", 6) == 0 &&
+            (p + 7 >= pe || IS_WHITESPACE(p[7]) || p[7] == '\'' || p[7] == '"')) {
+            // Skip to semicolon
+            while (p < pe && *p != ';') p++;
+            if (p < pe) p++; // Skip semicolon
+            continue;
         }
+
+        // Hit non-@import content, stop skipping
+        break;
     }
 
-    // Cleanup: if we ended in the middle of parsing, try to finish
-    if (state == STATE_DECLARATIONS && decl_start != NULL) {
-        capture_declarations_fn(&decl_start, p, &current_declarations, css_string_base);
-        finish_rule_fn(0, &current_selectors, &current_declarations,
-                       &current_media_types, rules_by_media, &mark);
-    }
+    // Initialize parser context with offset
+    ParserContext ctx;
+    ctx.rules_array = rb_ary_new();
+    ctx.media_index = rb_hash_new();
+    ctx.rule_id_counter = rule_id_offset;  // Start from offset
+    ctx.media_query_count = 0;
+    ctx.media_cache = NULL;  // Removed - no perf benefit
+    ctx.has_nesting = 0;  // Will be set to 1 if any nested rules are created
+    ctx.depth = 0;  // Start at depth 0
 
-    return rules_by_media;
+    // Parse CSS (top-level, no parent context)
+    parse_css_recursive(&ctx, p, pe, NO_PARENT_MEDIA, NO_PARENT_SELECTOR, NO_PARENT_RULE_ID);
+
+    // Build result hash
+    VALUE result = rb_hash_new();
+    rb_hash_aset(result, ID2SYM(rb_intern("rules")), ctx.rules_array);
+    rb_hash_aset(result, ID2SYM(rb_intern("media_index")), ctx.media_index);
+    rb_hash_aset(result, ID2SYM(rb_intern("charset")), charset);
+    rb_hash_aset(result, ID2SYM(rb_intern("last_rule_id")), INT2FIX(ctx.rule_id_counter));
+    rb_hash_aset(result, ID2SYM(rb_intern("_has_nesting")), ctx.has_nesting ? Qtrue : Qfalse);
+
+    return result;
 }
