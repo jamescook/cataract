@@ -6,8 +6,8 @@ module Cataract
   # AtRule is a C struct defined as: `Struct.new(:id, :selector, :content, :specificity)`
   #
   # At-rules define CSS resources or control structures rather than selecting elements.
-  # Unlike regular rules, they don't have CSS specificity and can't be iterated with
-  # `each_selector`.
+  # Unlike regular rules, they don't have CSS specificity and are filtered out when
+  # using `select(&:selector?)`.
   #
   # The content field varies by at-rule type:
   # - `@keyframes`: Array of Rule (keyframe percentage blocks like "0%", "100%")
@@ -33,15 +33,65 @@ module Cataract
   # @attr [Array<Rule>, Array<Declaration>] content Nested rules or declarations
   # @attr [nil] specificity Always nil for at-rules (they don't have CSS specificity)
   class AtRule
-    # Check if this rule type supports each_selector iteration.
-    #
-    # At-rules define resources or conditions rather than selecting elements,
-    # so they don't participate in selector iteration.
+    # Check if this is a selector-based rule (vs an at-rule like @keyframes).
     #
     # @return [Boolean] Always returns false for AtRule objects
-    # @api private
-    def supports_each_selector?
+    def selector?
       false
     end
+
+    # Check if this is an at-rule.
+    #
+    # @return [Boolean] Always returns true for AtRule objects
+    def at_rule?
+      true
+    end
+
+    # Check if this is a specific at-rule type.
+    #
+    # @param type [Symbol] At-rule type (e.g., :keyframes, :font_face)
+    # @return [Boolean] true if at-rule matches the type
+    #
+    # @example Check for @keyframes
+    #   at_rule.at_rule_type?(:keyframes) #=> true if selector is "@keyframes ..."
+    #
+    # @example Check for @font-face
+    #   at_rule.at_rule_type?(:font_face) #=> true if selector is "@font-face"
+    def at_rule_type?(type)
+      type_str = "@#{type.to_s.tr('_', '-')}"
+      selector.start_with?(type_str)
+    end
+
+    # Check if this at-rule has a declaration with the specified property.
+    #
+    # @param _property [String] CSS property name
+    # @param _value [String, nil] Optional value to match
+    # @return [Boolean] Always returns false for AtRule objects
+    def has_property?(_property, _value = nil)
+      false
+    end
+
+    # Check if this at-rule has any !important declarations.
+    #
+    # @param _property [String, nil] Optional property name
+    # @return [Boolean] Always returns false for AtRule objects
+    def has_important?(_property = nil)
+      false
+    end
+
+    # Compare at-rules by their attributes rather than object identity.
+    #
+    # Two at-rules are equal if they have the same id, selector, and content.
+    #
+    # @param other [Object] Object to compare with
+    # @return [Boolean] true if at-rules have same attributes
+    def ==(other)
+      return false unless other.is_a?(AtRule)
+
+      id == other.id &&
+        selector == other.selector &&
+        content == other.content
+    end
+    alias eql? ==
   end
 end

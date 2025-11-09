@@ -181,7 +181,7 @@ class TestRoundtrip < Minitest::Test
     sheet2 = Cataract::Stylesheet.parse(dumped)
 
     # Check declarations are in some order (order preserved within each rule)
-    sheet2.each_selector do |rule|
+    sheet2.select(&:selector?).each do |rule|
       next unless rule.selector == '.test'
 
       properties = rule.declarations.map(&:property)

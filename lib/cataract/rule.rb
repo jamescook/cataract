@@ -53,15 +53,79 @@ module Cataract
       calculated
     end
 
-    # Check if this rule type supports each_selector iteration.
-    #
-    # Regular CSS rules support iteration, but at-rules (like @keyframes, @font-face)
-    # do not since they define resources rather than selecting elements.
+    # Check if this is a selector-based rule (vs an at-rule like @keyframes).
     #
     # @return [Boolean] Always returns true for Rule objects
-    # @api private
-    def supports_each_selector?
+    def selector?
       true
     end
+
+    # Check if this is an at-rule.
+    #
+    # @return [Boolean] Always returns false for Rule objects
+    def at_rule?
+      false
+    end
+
+    # Check if this is a specific at-rule type.
+    #
+    # @param _type [Symbol] At-rule type (e.g., :keyframes, :font_face)
+    # @return [Boolean] Always returns false for Rule objects
+    def at_rule_type?(_type)
+      false
+    end
+
+    # Check if this rule has a declaration with the specified property and optional value.
+    #
+    # @param property [String] CSS property name to match
+    # @param value [String, nil] Optional value to match
+    # @return [Boolean] true if rule has matching declaration
+    #
+    # @example Check for color property
+    #   rule.has_property?('color') #=> true
+    #
+    # @example Check for specific property value
+    #   rule.has_property?('color', 'red') #=> true
+    def has_property?(property, value = nil)
+      declarations.any? do |decl|
+        property_matches = decl.property == property
+        value_matches = value.nil? || decl.value == value
+        property_matches && value_matches
+      end
+    end
+
+    # Check if this rule has any !important declarations, optionally for a specific property.
+    #
+    # @param property [String, nil] Optional property name to match
+    # @return [Boolean] true if rule has matching !important declaration
+    #
+    # @example Check for any !important
+    #   rule.has_important? #=> true
+    #
+    # @example Check for color !important
+    #   rule.has_important?('color') #=> true
+    def has_important?(property = nil)
+      if property
+        declarations.any? { |d| d.property == property && d.important }
+      else
+        declarations.any?(&:important)
+      end
+    end
+
+    # Compare rules by their attributes rather than object identity.
+    #
+    # Two rules are equal if they have the same id, selector, declarations, and specificity.
+    #
+    # @param other [Object] Object to compare with
+    # @return [Boolean] true if rules have same attributes
+    def ==(other)
+      return false unless other.is_a?(Rule)
+
+      id == other.id &&
+        selector == other.selector &&
+        declarations == other.declarations &&
+        specificity == other.specificity
+    end
+    alias eql? ==
   end
 end

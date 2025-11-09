@@ -16,7 +16,7 @@ module StylesheetTestHelper
       if media == :all
         refute_empty object.rules, 'Expected stylesheet to have rules for :all media'
       else
-        rule_ids = object.media_index[media]
+        rule_ids = object.instance_variable_get(:@_media_index)[media]
 
         refute_nil rule_ids, "Expected stylesheet to have media index entry for #{media.inspect}"
         refute_empty rule_ids, "Expected stylesheet to have rules for media #{media.inspect}"
@@ -36,7 +36,7 @@ module StylesheetTestHelper
   # @param media [Symbol] Media query symbol
   # @param stylesheet [Stylesheet] The stylesheet containing the rule
   def assert_rule_in_media(rule, media, stylesheet)
-    rule_ids = stylesheet.media_index[media]
+    rule_ids = stylesheet.instance_variable_get(:@_media_index)[media]
 
     assert rule_ids, "Expected stylesheet to have media index entry for #{media.inspect}"
     assert_includes rule_ids, rule.id,
@@ -82,7 +82,8 @@ module StylesheetTestHelper
   # @param count [Integer, nil] Expected number of matches (nil = any)
   # @param css_preview [String, nil] Optional CSS preview for error messages
   def assert_has_selector(selector, stylesheet, media: :all, count: nil, css_preview: nil)
-    rules = stylesheet.find_by_selector(selector, media: media)
+    scope = media == :all ? stylesheet : stylesheet.with_media(media)
+    rules = scope.with_selector(selector).to_a
 
     if count
       assert_equal count, rules.length,
@@ -99,22 +100,21 @@ module StylesheetTestHelper
   # @param stylesheet [Stylesheet] Stylesheet to search
   # @param media [Symbol] Optional media query filter (default: :all)
   def assert_no_selector_matches(selector, stylesheet, media: :all)
-    rules = stylesheet.find_by_selector(selector, media: media)
+    scope = media == :all ? stylesheet : stylesheet.with_media(media)
+    rules = scope.with_selector(selector).to_a
 
     assert_predicate rules, :empty?,
                      "Expected no rules to match selector #{selector.inspect} for media #{media.inspect}, but found #{rules.length}"
   end
 
-  # Assert that each_selector yields expected selectors for a given media query
+  # Assert that iteration yields expected selectors for a given media query
   #
   # @param expected_selectors [Array<String>] Expected selectors in order
   # @param stylesheet [Stylesheet] The stylesheet
   # @param media [Symbol] Media query filter (default: :all)
   def assert_selectors_match(expected_selectors, stylesheet, media: :all)
-    actual_selectors = []
-    stylesheet.each_selector(media: media) do |rule|
-      actual_selectors << rule.selector
-    end
+    enumerator = media == :all ? stylesheet : stylesheet.with_media(media)
+    actual_selectors = enumerator.select(&:selector?).map(&:selector)
 
     assert_equal expected_selectors, actual_selectors,
                  "Expected selectors #{expected_selectors.inspect} for media #{media.inspect}, but got #{actual_selectors.inspect}"
@@ -180,7 +180,7 @@ module StylesheetTestHelper
   # @param selector_or_rule [String, Rule] Either a selector string or a Rule object
   #
   # @example With rule object
-  #   rule = @sheet.find_by_selector('div > p').first
+  #   rule = @sheet.with_selector('div > p').first
   #   assert_specificity(2, rule)
   #
   # @example With selector string
@@ -215,7 +215,8 @@ module StylesheetTestHelper
   # @example Check selector count for specific media
   #   assert_selector_count(2, @sheet, media: :screen)
   def assert_selector_count(expected_count, stylesheet, media: :all)
-    actual_count = stylesheet.each_selector(media: media).count
+    enumerator = media == :all ? stylesheet : stylesheet.with_media(media)
+    actual_count = enumerator.count(&:selector?)
 
     assert_equal expected_count, actual_count,
                  "Expected #{expected_count} selector(s) for media #{media.inspect}, but got #{actual_count}"
@@ -228,11 +229,11 @@ module StylesheetTestHelper
   # @param stylesheet [Stylesheet] Stylesheet containing the rule
   #
   # @example
-  #   rule = @sheet.find_by_selector('.header').first
+  #   rule = @sheet.with_selector('.header').first
   #   assert_media_types([:screen, :print], rule, @sheet)
   def assert_media_types(expected, rule, stylesheet)
     # Find which media index entries contain this rule ID
-    media_keys = stylesheet.media_index.select { |_media, ids| ids.include?(rule.id) }.keys
+    media_keys = stylesheet.instance_variable_get(:@_media_index).select { |_media, ids| ids.include?(rule.id) }.keys
 
     # Extract media types from each key using C parser
     # This handles complex queries like "screen (min-width: 400px)" => [:screen]

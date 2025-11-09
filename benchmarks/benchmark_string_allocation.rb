@@ -100,7 +100,7 @@ Benchmark.ips do |x|
     parser.add_block(LARGE_CSS_FIXTURE)
 
     count = 0
-    parser.each_selector do |rule|
+    parser.select(&:selector?).each do |rule|
       # Force string to be used
       _ = rule.selector.length
       _ = rule.declarations.to_s

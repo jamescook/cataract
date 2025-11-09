@@ -137,7 +137,7 @@ void init_merge_constants(void) {
 
     // Initialize ivar IDs for Stylesheet
     id_ivar_rules = rb_intern("@rules");
-    id_ivar_media_index = rb_intern("@media_index");
+    id_ivar_media_index = rb_intern("@_media_index");
 
     // Margin properties
     str_margin = rb_str_freeze(USASCII_STR("margin"));

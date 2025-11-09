@@ -132,7 +132,7 @@ module YjitTests
       x.report("#{yjit_label}: parse + iterate") do
         parser = Cataract::Stylesheet.new
         parser.add_block(SAMPLE_CSS)
-        parser.each_selector do |rule|
+        parser.select(&:selector?).each do |rule|
           _ = rule.declarations
         end
       end

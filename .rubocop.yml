@@ -77,3 +77,7 @@ Style/FrozenStringLiteralComment:
 Naming/VariableNumber:
   Exclude:
     - 'test/**/*'
+
+Naming/PredicatePrefix:
+  Exclude:
+    - 'lib/**/*.rb'
