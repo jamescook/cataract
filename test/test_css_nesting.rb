@@ -156,10 +156,8 @@ class TestCssNesting < Minitest::Test
 
     @sheet.add_block(css)
 
-    # Should produce two rules:
-    # .parent:first-child { margin: 0; }
-    # .parent:last-child { margin: 0; }
-    assert_equal 2, @sheet.rules_count
+    # With nesting: 3 rules (.parent:first-child, .parent:last-child, .parent placeholder)
+    assert_equal 3, @sheet.rules_count
 
     first_rule = @sheet.find_by_selector('.parent:first-child').first
     last_rule = @sheet.find_by_selector('.parent:last-child').first
@@ -183,10 +181,8 @@ class TestCssNesting < Minitest::Test
 
     @sheet.add_block(css)
 
-    # Should produce two rules:
-    # .a .c { color: red; }
-    # .b .c { color: red; }
-    assert_equal 2, @sheet.rules_count
+    # With nesting support, creates 4 rules: .a -> .a .c -> .b -> .b .c
+    assert_equal 4, @sheet.rules_count
 
     a_c_rule = @sheet.find_by_selector('.a .c').first
     b_c_rule = @sheet.find_by_selector('.b .c').first
@@ -217,13 +213,13 @@ class TestCssNesting < Minitest::Test
 
     @sheet.add_block(css)
 
-    # Should produce rules:
+    # With nesting: 6 rules (5 with declarations + table.colortable placeholder)
     # table.colortable td { text-align: center; }
     # table.colortable td.c { text-transform: uppercase; }
     # table.colortable td:first-child { border: 1px solid black; }
     # table.colortable td:first-child + td { border: 1px solid black; }
     # table.colortable th { text-align: center; background: black; color: white; }
-    assert_equal 5, @sheet.rules_count
+    assert_equal 6, @sheet.rules_count
 
     td_rule = @sheet.find_by_selector('table.colortable td').first
     td_c_rule = @sheet.find_by_selector('table.colortable td.c').first
@@ -258,8 +254,8 @@ class TestCssNesting < Minitest::Test
 
     @sheet.add_block(css)
 
-    # Should only produce .parent .child rule (no .parent rule with declarations)
-    assert_equal 1, @sheet.rules_count
+    # With nesting: 2 rules (.parent .child + .parent placeholder)
+    assert_equal 2, @sheet.rules_count
 
     child_rule = @sheet.find_by_selector('.parent .child').first
 
@@ -307,7 +303,8 @@ class TestCssNesting < Minitest::Test
 
     @sheet.add_block(css)
 
-    assert_equal 3, @sheet.rules_count
+    # With nesting: 4 rules (3 with combinators + .parent placeholder)
+    assert_equal 4, @sheet.rules_count
 
     child_rule = @sheet.find_by_selector('.parent > .child').first
     sibling_rule = @sheet.find_by_selector('.parent + .sibling').first
@@ -650,5 +647,78 @@ class TestCssNesting < Minitest::Test
     output2 = sheet2.to_formatted_s
 
     assert_equal output, output2, 'to_formatted_s should be idempotent'
+  end
+
+  # ============================================================================
+  # Nested @media serialization tests
+  # ============================================================================
+
+  def test_to_s_with_nested_media
+    css = <<~CSS
+      .foo {
+        color: red;
+        @media screen {
+          color: blue;
+        }
+      }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css)
+    output = sheet.to_s
+
+    # Should reconstruct nested @media
+    expected = <<~CSS
+      .foo { color: red; @media screen { color: blue; } }
+    CSS
+
+    assert_equal expected, output
+  end
+
+  def test_to_formatted_s_with_nested_media
+    css = <<~CSS
+      .foo {
+        color: red;
+        @media screen {
+          color: blue;
+        }
+      }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css)
+    output = sheet.to_formatted_s
+
+    expected = <<~CSS
+      .foo {
+        color: red;
+        @media screen {
+          color: blue;
+        }
+      }
+    CSS
+
+    assert_equal expected, output
+  end
+
+  def test_to_s_with_multiple_nested_media
+    css = <<~CSS
+      .container {
+        padding: 10px;
+        @media screen {
+          padding: 20px;
+        }
+        @media print {
+          padding: 0;
+        }
+      }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css)
+    output = sheet.to_s
+
+    expected = <<~CSS
+      .container { padding: 10px; @media screen { padding: 20px; } @media print { padding: 0; } }
+    CSS
+
+    assert_equal expected, output
   end
 end

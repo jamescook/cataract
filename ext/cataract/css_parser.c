@@ -20,6 +20,7 @@ typedef struct {
     int rule_id_counter;      // Next rule ID (0-indexed)
     int media_query_count;    // Safety limit for media queries
     st_table *media_cache;    // Parse-time cache: string => parsed media types
+    int has_nesting;          // Set to 1 if any nested rules are created
 } ParserContext;
 
 // Macro to skip CSS comments /* ... */
@@ -541,9 +542,14 @@ static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char
                     parent_selector,
                     media_declarations,
                     Qnil,  // specificity
-                    Qnil,  // parent_rule_id (not nested - this is top-level but in media)
-                    Qnil   // nesting_style (not nested)
+                    parent_rule_id,  // Link to parent for nested @media serialization
+                    Qnil   // nesting_style (nil for @media nesting)
                 );
+
+                // Mark that we have nesting (only set once)
+                if (!ctx->has_nesting && !NIL_P(parent_rule_id)) {
+                    ctx->has_nesting = 1;
+                }
 
                 rb_ary_push(ctx->rules_array, rule);
                 update_media_index(ctx, media_sym, rule_id);
@@ -611,6 +617,11 @@ static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char
                             parent_rule_id,
                             nesting_style
                         );
+
+                        // Mark that we have nesting (only set once)
+                        if (!ctx->has_nesting && !NIL_P(parent_rule_id)) {
+                            ctx->has_nesting = 1;
+                        }
 
                         rb_ary_push(ctx->rules_array, rule);
                         update_media_index(ctx, parent_media_sym, rule_id);
@@ -827,7 +838,8 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                     .media_index = rb_hash_new(),
                     .rule_id_counter = 0,
                     .media_query_count = 0,
-                    .media_cache = NULL
+                    .media_cache = NULL,
+                    .has_nesting = 0
                 };
                 parse_css_recursive(&nested_ctx, block_start, block_end, NO_PARENT_MEDIA, NO_PARENT_SELECTOR, NO_PARENT_RULE_ID);
 
@@ -992,6 +1004,11 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                                     nesting_style_val
                                 );
 
+                                // Mark that we have nesting (only set once)
+                                if (!ctx->has_nesting && !NIL_P(parent_id_val)) {
+                                    ctx->has_nesting = 1;
+                                }
+
                                 rb_ary_push(ctx->rules_array, rule);
 
                                 // Update media index
@@ -1039,16 +1056,23 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                                     current_parent_id = Qnil;
                                 }
 
-                                // Get rule ID for current selector
-                                int current_rule_id = ctx->rule_id_counter;
+                                // Get rule ID for current selector (increment to reserve it)
+                                int current_rule_id = ctx->rule_id_counter++;
+
+                                // Track rules array length to detect if nested rules were added
+                                long rules_before = RARRAY_LEN(ctx->rules_array);
 
                                 // Parse mixed block (declarations + nested selectors)
                                 VALUE parent_declarations = parse_mixed_block(ctx, decl_start, p,
                                                                              resolved_current, INT2FIX(current_rule_id), parent_media_sym);
 
-                                // Create rule for parent selector if it has declarations
-                                if (RARRAY_LEN(parent_declarations) > 0) {
-                                    ctx->rule_id_counter++;  // Increment since we're creating a rule
+                                long rules_after = RARRAY_LEN(ctx->rules_array);
+                                int has_nested_children = (rules_after > rules_before);
+
+                                // Create rule for parent selector if it has nested children OR declarations
+                                // (Check has_nested_children first - it's a cheap boolean vs RARRAY_LEN call)
+                                if (has_nested_children || RARRAY_LEN(parent_declarations) > 0) {
+                                    // Note: rule ID already reserved above
 
                                     VALUE rule = rb_struct_new(cRule,
                                         INT2FIX(current_rule_id),
@@ -1058,6 +1082,11 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                                         current_parent_id,
                                         current_nesting_style
                                     );
+
+                                    // Mark that we have nesting (only set once)
+                                    if (!ctx->has_nesting && !NIL_P(current_parent_id)) {
+                                        ctx->has_nesting = 1;
+                                    }
 
                                     rb_ary_push(ctx->rules_array, rule);
                                     update_media_index(ctx, parent_media_sym, current_rule_id);
@@ -1175,6 +1204,7 @@ VALUE parse_css_new_impl(VALUE css_string, int rule_id_offset) {
     ctx.rule_id_counter = rule_id_offset;  // Start from offset
     ctx.media_query_count = 0;
     ctx.media_cache = NULL;  // Removed - no perf benefit
+    ctx.has_nesting = 0;  // Will be set to 1 if any nested rules are created
 
     // Parse CSS (top-level, no parent context)
     parse_css_recursive(&ctx, p, pe, NO_PARENT_MEDIA, NO_PARENT_SELECTOR, NO_PARENT_RULE_ID);
@@ -1185,6 +1215,7 @@ VALUE parse_css_new_impl(VALUE css_string, int rule_id_offset) {
     rb_hash_aset(result, ID2SYM(rb_intern("media_index")), ctx.media_index);
     rb_hash_aset(result, ID2SYM(rb_intern("charset")), charset);
     rb_hash_aset(result, ID2SYM(rb_intern("last_rule_id")), INT2FIX(ctx.rule_id_counter));
+    rb_hash_aset(result, ID2SYM(rb_intern("_has_nesting")), ctx.has_nesting ? Qtrue : Qfalse);
 
     return result;
 }

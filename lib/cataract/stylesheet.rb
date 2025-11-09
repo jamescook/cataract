@@ -151,7 +151,7 @@ module Cataract
 
       # If :all is present, return everything (no filtering)
       if which_media_array.include?(:all)
-        Cataract._stylesheet_to_s(@rules, @media_index, @charset)
+        Cataract._stylesheet_to_s(@rules, @media_index, @charset, @_has_nesting || false)
       else
 
         # Collect all rule IDs that match the requested media types
@@ -181,7 +181,8 @@ module Cataract
         end
 
         # C serialization with filtered data
-        Cataract._stylesheet_to_s(filtered_rules, filtered_media_index, @charset)
+        # Note: Filtered rules might still contain nesting, so pass the flag
+        Cataract._stylesheet_to_s(filtered_rules, filtered_media_index, @charset, @_has_nesting || false)
       end
     end
     alias to_css to_s
@@ -213,7 +214,7 @@ module Cataract
 
       # If :all is present, return everything (no filtering)
       if which_media_array.include?(:all)
-        Cataract._stylesheet_to_formatted_s(@rules, @media_index, @charset)
+        Cataract._stylesheet_to_formatted_s(@rules, @media_index, @charset, @_has_nesting || false)
       else
         # Collect all rule IDs that match the requested media types
         matching_rule_ids = Set.new
@@ -242,7 +243,8 @@ module Cataract
         end
 
         # C serialization with filtered data
-        Cataract._stylesheet_to_formatted_s(filtered_rules, filtered_media_index, @charset)
+        # Note: Filtered rules might still contain nesting, so pass the flag
+        Cataract._stylesheet_to_formatted_s(filtered_rules, filtered_media_index, @charset, @_has_nesting || false)
       end
     end
 
@@ -458,6 +460,9 @@ module Cataract
 
       # Set charset if not already set
       @charset ||= result[:charset]
+
+      # Track if we have any nesting (for serialization optimization)
+      @_has_nesting = true if result[:_has_nesting]
 
       self
     end
