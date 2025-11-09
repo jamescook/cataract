@@ -193,9 +193,11 @@ begin
                           '--title', 'Cataract - Fast CSS Parser',
                           'lib/**/*.rb', 'ext/**/*.c', '-', 'docs/files/EXAMPLE.md')
 
-    # Open in browser
-    system('open docs/index.html') if RUBY_PLATFORM.include?('darwin')
-    system('xdg-open docs/index.html') if RUBY_PLATFORM.include?('linux')
+    # Open in browser (skip in CI)
+    unless ENV['CI']
+      system('open docs/index.html') if RUBY_PLATFORM.include?('darwin')
+      system('xdg-open docs/index.html') if RUBY_PLATFORM.include?('linux')
+    end
   end
 
   desc 'List undocumented code'
