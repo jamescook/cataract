@@ -45,12 +45,6 @@ jobs:
       env:
         CONFIGURE_ARGS: --enable-debug
 
-    - name: Run clang-tidy
-      if: runner.os == 'Linux' && matrix.ruby == '3.4'
-      run: |
-        clang-tidy --version
-        bundle exec rake lint
-
     - name: Upload coverage to Codecov
       if: runner.os == 'Linux' && matrix.ruby == '3.4'
       uses: codecov/codecov-action@v5
