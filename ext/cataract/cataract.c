@@ -534,12 +534,10 @@ static void serialize_rule_with_children(VALUE result, VALUE rules_array, long r
                                          VALUE rule_to_media, VALUE parent_to_children,
                                          int formatted, int indent_level) {
     VALUE rule = rb_ary_entry(rules_array, rule_idx);
-    VALUE rule_id = rb_struct_aref(rule, INT2FIX(RULE_ID));
     VALUE selector = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR));
     VALUE declarations = rb_struct_aref(rule, INT2FIX(RULE_DECLARATIONS));
 
-    DEBUG_PRINTF("[SERIALIZE] Rule %ld (id=%s): selector=%s\n", rule_idx,
-                RSTRING_PTR(rb_inspect(rule_id)), RSTRING_PTR(selector));
+    DEBUG_PRINTF("[SERIALIZE] Rule %ld: selector=%s\n", rule_idx, RSTRING_PTR(selector));
 
     if (formatted) {
         // Formatted output with indentation
@@ -626,10 +624,10 @@ static VALUE stylesheet_to_s_new(VALUE self, VALUE rules_array, VALUE media_inde
     for (long i = 0; i < total_rules; i++) {
         VALUE rule = rb_ary_entry(rules_array, i);
         VALUE parent_id = rb_struct_aref(rule, INT2FIX(RULE_PARENT_RULE_ID));
-        VALUE selector = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR));
 
         DEBUG_PRINTF("[SERIALIZE] Rule %ld: selector=%s, parent_id=%s\n", i,
-                    RSTRING_PTR(selector), NIL_P(parent_id) ? "nil" : RSTRING_PTR(rb_inspect(parent_id)));
+                    RSTRING_PTR(rb_struct_aref(rule, INT2FIX(RULE_SELECTOR))),
+                    NIL_P(parent_id) ? "nil" : RSTRING_PTR(rb_inspect(parent_id)));
 
         // Skip child rules - they're serialized when we hit their parent
         if (!NIL_P(parent_id)) {
