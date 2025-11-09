@@ -40,7 +40,7 @@ class TestBenchmarkDocGenerator < Minitest::Test
   end
 
   def test_generates_benchmarks_md
-    generator = BenchmarkDocGenerator.new(results_dir: @results_dir, output_path: @output_path)
+    generator = BenchmarkDocGenerator.new(results_dir: @results_dir, output_path: @output_path, verbose: false)
     generator.generate
 
     assert_path_exists @output_path, 'BENCHMARKS.md should be generated'
@@ -70,9 +70,9 @@ class TestBenchmarkDocGenerator < Minitest::Test
       File.delete(file) unless file.end_with?('metadata.json')
     end
 
-    generator = BenchmarkDocGenerator.new(results_dir: @results_dir, output_path: @output_path)
+    generator = BenchmarkDocGenerator.new(results_dir: @results_dir, output_path: @output_path, verbose: false)
 
-    # Should not crash with missing data, but will warn
+    # Should not crash with missing data, but will warn (when verbose)
     generator.generate
 
     # Verify no output file was created since there's no data

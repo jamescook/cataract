@@ -4,7 +4,14 @@
 static ID id_value = 0;
 static ID id_specificity = 0;
 static ID id_important = 0;
-static ID id_struct_class = 0;
+static ID id_all = 0;
+
+// Cached ivar IDs for Stylesheet
+static ID id_ivar_rules = 0;
+static ID id_ivar_media_index = 0;
+
+// Cached "merged" selector string
+static VALUE str_merged_selector = Qnil;
 
 // Cached property name strings (frozen, never GC'd)
 // Initialized in init_merge_constants() at module load time
@@ -57,16 +64,14 @@ struct expand_context {
     VALUE properties_hash;
     int specificity;
     VALUE important;
-    VALUE value_struct;
 };
 
 // Callback for rb_hash_foreach - process expanded properties and apply cascade
 static int merge_expanded_callback(VALUE exp_prop, VALUE exp_value, VALUE ctx_val) {
     struct expand_context *ctx = (struct expand_context *)ctx_val;
 
-    // Lowercase expanded property
-    exp_prop = lowercase_property(exp_prop);
-
+    // Expanded properties from shorthand expanders are already lowercase
+    // No need to lowercase again
     int is_important = RTEST(ctx->important);
 
     // Apply cascade rules for expanded property
@@ -77,7 +82,7 @@ static int merge_expanded_callback(VALUE exp_prop, VALUE exp_value, VALUE ctx_va
         rb_hash_aset(prop_data, ID2SYM(id_value), exp_value);
         rb_hash_aset(prop_data, ID2SYM(id_specificity), INT2NUM(ctx->specificity));
         rb_hash_aset(prop_data, ID2SYM(id_important), ctx->important);
-        rb_hash_aset(prop_data, ID2SYM(id_struct_class), ctx->value_struct);
+        // Note: declaration_struct not stored - use global cDeclaration instead
         rb_hash_aset(ctx->properties_hash, exp_prop, prop_data);
     } else {
         VALUE existing_spec = rb_hash_aref(existing, ID2SYM(id_specificity));
@@ -111,13 +116,12 @@ static int merge_expanded_callback(VALUE exp_prop, VALUE exp_value, VALUE ctx_va
 
 // Callback for rb_hash_foreach - builds result array from properties hash
 static int merge_build_result_callback(VALUE property, VALUE prop_data, VALUE result_ary) {
-    // Get Declarations::Value struct class (cached in prop_data for efficiency)
-    VALUE value_struct = rb_hash_aref(prop_data, ID2SYM(id_struct_class));
+    // Extract value and important flag from prop_data
     VALUE value = rb_hash_aref(prop_data, ID2SYM(id_value));
     VALUE important = rb_hash_aref(prop_data, ID2SYM(id_important));
 
-    // Create Declarations::Value struct
-    VALUE decl_struct = rb_struct_new(value_struct, property, value, important);
+    // Create Declaration struct (use global cDeclaration)
+    VALUE decl_struct = rb_struct_new(cDeclaration, property, value, important);
     rb_ary_push(result_ary, decl_struct);
 
     return ST_CONTINUE;
@@ -129,7 +133,11 @@ void init_merge_constants(void) {
     id_value = rb_intern("value");
     id_specificity = rb_intern("specificity");
     id_important = rb_intern("important");
-    id_struct_class = rb_intern("_struct_class");
+    id_all = rb_intern("all");
+
+    // Initialize ivar IDs for Stylesheet
+    id_ivar_rules = rb_intern("@rules");
+    id_ivar_media_index = rb_intern("@media_index");
 
     // Margin properties
     str_margin = rb_str_freeze(USASCII_STR("margin"));
@@ -236,6 +244,10 @@ void init_merge_constants(void) {
     rb_gc_register_mark_object(str_background_repeat);
     rb_gc_register_mark_object(str_background_attachment);
     rb_gc_register_mark_object(str_background_position);
+
+    // Cached "merged" selector string
+    str_merged_selector = rb_str_freeze(USASCII_STR("merged"));
+    rb_gc_register_mark_object(str_merged_selector);
 }
 
 // Helper macros to extract property data from properties_hash
@@ -267,7 +279,7 @@ void init_merge_constants(void) {
 // 3. Call shorthand creator function
 // 4. Add shorthand to properties_hash and remove longhands
 // Note: Uses cached static strings (VALUE) for property names - no runtime allocation
-#define TRY_CREATE_FOUR_SIDED_SHORTHAND(hash, str_top, str_right, str_bottom, str_left, str_shorthand, creator_func, vstruct) \
+#define TRY_CREATE_FOUR_SIDED_SHORTHAND(hash, str_top, str_right, str_bottom, str_left, str_shorthand, creator_func) \
     do { \
         VALUE _top = GET_PROP_VALUE_STR(hash, str_top); \
         VALUE _right = GET_PROP_VALUE_STR(hash, str_right); \
@@ -307,7 +319,6 @@ void init_merge_constants(void) {
                     rb_hash_aset(_shorthand_data, ID2SYM(id_value), _shorthand_value); \
                     rb_hash_aset(_shorthand_data, ID2SYM(id_specificity), INT2NUM(_specificity)); \
                     rb_hash_aset(_shorthand_data, ID2SYM(id_important), _top_imp); \
-                    rb_hash_aset(_shorthand_data, ID2SYM(id_struct_class), vstruct); \
                     rb_hash_aset(hash, str_shorthand, _shorthand_data); \
                     \
                     rb_hash_delete(hash, str_top); \
@@ -323,40 +334,230 @@ void init_merge_constants(void) {
     } while(0)
 
 // Merge CSS rules according to cascade rules
-// Input: array of parsed rules from parse_css
-// Output: array of Declarations::Value structs (merged and with shorthand recreated)
-VALUE cataract_merge(VALUE self, VALUE rules_array) {
+// Input: Stylesheet object or CSS string
+// Output: Stylesheet with merged declarations
+VALUE cataract_merge_new(VALUE self, VALUE input) {
+    VALUE rules_array;
+
+    // Handle different input types
+    // Most calls pass Stylesheet (common case), String is rare
+    if (TYPE(input) == T_STRING) {
+        // Parse CSS string first
+        VALUE parsed = parse_css_new(self, input);
+        rules_array = rb_hash_aref(parsed, ID2SYM(rb_intern("rules")));
+    } else if (rb_obj_is_kind_of(input, cStylesheet)) {
+        // Extract @rules from Stylesheet (common case)
+        rules_array = rb_ivar_get(input, id_ivar_rules);
+    } else {
+        rb_raise(rb_eTypeError, "Expected Stylesheet or String, got %s",
+                rb_obj_classname(input));
+    }
+
     Check_Type(rules_array, T_ARRAY);
 
+    // Check if stylesheet has nesting (affects selector rollup)
+    int has_nesting = 0;
+    if (rb_obj_is_kind_of(input, cStylesheet)) {
+        VALUE has_nesting_ivar = rb_ivar_get(input, rb_intern("@_has_nesting"));
+        has_nesting = RTEST(has_nesting_ivar);
+    }
+
     // Initialize cached symbol IDs on first call (thread-safe since GVL is held)
+    // This only happens once, so unlikely
     if (id_value == 0) {
         id_value = rb_intern("value");
         id_specificity = rb_intern("specificity");
         id_important = rb_intern("important");
-        id_struct_class = rb_intern("_struct_class");
     }
 
     long num_rules = RARRAY_LEN(rules_array);
+    // Empty stylesheets are rare
     if (num_rules == 0) {
-        return rb_ary_new();
+        // Return empty stylesheet
+        VALUE empty_sheet = rb_class_new_instance(0, NULL, cStylesheet);
+        return empty_sheet;
     }
 
-    // Get Declarations::Value struct class once
-    VALUE cataract_module = rb_const_get(rb_cObject, rb_intern("Cataract"));
-    VALUE declarations_class = rb_const_get(cataract_module, rb_intern("Declarations"));
-    VALUE value_struct = rb_const_get(declarations_class, rb_intern("Value"));
+    // For nested CSS: identify parent rules (rules that have children)
+    // These should be skipped during merge, even if they have declarations
+    // Use Ruby hash as a set: parent_id => true
+    VALUE parent_ids = Qnil;
+    if (has_nesting) {
+        DEBUG_PRINTF("\n=== MERGE: has_nesting=true, num_rules=%ld ===\n", num_rules);
+        parent_ids = rb_hash_new();
+        for (long i = 0; i < num_rules; i++) {
+            VALUE rule = RARRAY_AREF(rules_array, i);
+            VALUE parent_rule_id = rb_struct_aref(rule, INT2FIX(RULE_PARENT_RULE_ID));
+            DEBUG_PRINTF("  Rule %ld: selector='%s', rule_id=%d, parent_rule_id=%s\n",
+                         i,
+                         RSTRING_PTR(rb_struct_aref(rule, INT2FIX(RULE_SELECTOR))),
+                         FIX2INT(rb_struct_aref(rule, INT2FIX(RULE_ID))),
+                         NIL_P(parent_rule_id) ? "nil" : RSTRING_PTR(rb_inspect(parent_rule_id)));
+            if (!NIL_P(parent_rule_id)) {
+                // This rule has a parent, so mark that parent ID
+                rb_hash_aset(parent_ids, parent_rule_id, Qtrue);
+            }
+        }
+    }
 
-    // Use Ruby hash for temporary storage: property => {value:, specificity:, important:, _struct_class:}
+    // For nested CSS with different selectors from SAME parent: group rules by selector
+    // Only split into multiple rules if ALL rules share the same parent_rule_id
+    // selector => [rule indices]
+    VALUE selector_groups = Qnil;
+    VALUE common_parent = Qundef;  // Qundef = not set yet
+
+    if (has_nesting) {
+        DEBUG_PRINTF("\n=== Building selector groups ===\n");
+        selector_groups = rb_hash_new();
+        for (long i = 0; i < num_rules; i++) {
+            VALUE rule = RARRAY_AREF(rules_array, i);
+            VALUE declarations = rb_struct_aref(rule, INT2FIX(RULE_DECLARATIONS));
+            VALUE parent_rule_id = rb_struct_aref(rule, INT2FIX(RULE_PARENT_RULE_ID));
+            VALUE selector = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR));
+
+            // Per W3C spec: parent and child are SEPARATE rules with different selectors
+            // Both should be included in merge output
+            // Don't skip parent rules - they have their own selector and declarations
+
+            // Skip empty rules (no declarations)
+            if (RARRAY_LEN(declarations) == 0) {
+                DEBUG_PRINTF("  Skipping rule %ld: selector='%s' (empty declarations)\n",
+                             i, RSTRING_PTR(selector));
+                continue;
+            }
+
+            DEBUG_PRINTF("  Processing rule %ld: selector='%s', parent_rule_id=%s\n",
+                         i, RSTRING_PTR(selector),
+                         NIL_P(parent_rule_id) ? "nil" : RSTRING_PTR(rb_inspect(parent_rule_id)));
+
+            // Track if all rules share the same parent
+            if (common_parent == Qundef) {
+                common_parent = parent_rule_id;
+                DEBUG_PRINTF("    Setting common_parent=%s\n",
+                             NIL_P(common_parent) ? "nil" : RSTRING_PTR(rb_inspect(common_parent)));
+            }
+
+            VALUE group = rb_hash_aref(selector_groups, selector);
+            if (NIL_P(group)) {
+                group = rb_ary_new();
+                rb_hash_aset(selector_groups, selector, group);
+                DEBUG_PRINTF("    Created new group for selector='%s'\n", RSTRING_PTR(selector));
+            }
+            rb_ary_push(group, LONG2FIX(i));
+        }
+        DEBUG_PRINTF("  Total selector groups: %ld\n", RHASH_SIZE(selector_groups));
+    }
+
+    // If nested CSS with multiple distinct selectors, return separate rules
+    // Per W3C spec: each unique selector (parent or child) is a separate rule
+    // Example: .parent { color: red; .child { color: blue; } } .other { color: green; }
+    // Should return 3 rules: .parent, .parent .child, .other
+    DEBUG_PRINTF("\n=== Decision point ===\n");
+    DEBUG_PRINTF("  has_nesting=%d\n", has_nesting);
+    DEBUG_PRINTF("  selector_groups is nil? %d\n", NIL_P(selector_groups));
+    if (!NIL_P(selector_groups)) {
+        DEBUG_PRINTF("  selector_groups size=%ld\n", RHASH_SIZE(selector_groups));
+    }
+    DEBUG_PRINTF("  Condition: has_nesting && !NIL_P(selector_groups) && RHASH_SIZE(selector_groups) > 1 = %d\n",
+                 has_nesting && !NIL_P(selector_groups) && RHASH_SIZE(selector_groups) > 1);
+
+    if (has_nesting && !NIL_P(selector_groups) && RHASH_SIZE(selector_groups) > 1) {
+        DEBUG_PRINTF("  -> Taking MULTI-SELECTOR path (separate rules)\n");
+        VALUE merged_sheet = rb_class_new_instance(0, NULL, cStylesheet);
+        VALUE merged_rules = rb_ary_new();
+        int rule_id_counter = 0;
+
+        // Iterate through each selector group
+        VALUE selectors = rb_funcall(selector_groups, rb_intern("keys"), 0);
+        long num_selectors = RARRAY_LEN(selectors);
+
+        for (long s = 0; s < num_selectors; s++) {
+            VALUE selector = rb_ary_entry(selectors, s);
+            VALUE group_indices = rb_hash_aref(selector_groups, selector);
+
+            // For now, just take first rule from each group (no merging within group)
+            // TODO: Merge declarations within same-selector group
+            long first_idx = FIX2LONG(rb_ary_entry(group_indices, 0));
+            VALUE orig_rule = RARRAY_AREF(rules_array, first_idx);
+            VALUE orig_decls = rb_struct_aref(orig_rule, INT2FIX(RULE_DECLARATIONS));
+
+            // Create new rule with this selector and declarations
+            VALUE new_rule = rb_struct_new(cRule,
+                INT2FIX(rule_id_counter++),
+                selector,
+                orig_decls,
+                Qnil,  // specificity
+                Qnil,  // parent_rule_id
+                Qnil   // nesting_style
+            );
+            rb_ary_push(merged_rules, new_rule);
+        }
+
+        rb_ivar_set(merged_sheet, id_ivar_rules, merged_rules);
+
+        // Set @media_index with :all pointing to all rule IDs
+        VALUE media_idx = rb_hash_new();
+        VALUE all_ids = rb_ary_new();
+        for (int i = 0; i < rule_id_counter; i++) {
+            rb_ary_push(all_ids, INT2FIX(i));
+        }
+        rb_hash_aset(media_idx, ID2SYM(id_all), all_ids);
+        rb_ivar_set(merged_sheet, id_ivar_media_index, media_idx);
+
+        return merged_sheet;
+    }
+
+    // Single-merge path: merge all rules into one
     VALUE properties_hash = rb_hash_new();
+
+    // Track selector for rollup (minimize allocations)
+    // Store pointer + length to first non-parent selector
+    // Also keep the VALUE alive since we extract C pointer before allocations
+    const char *first_selector_ptr = NULL;
+    long first_selector_len = 0;
+    VALUE first_selector_value = Qnil;
+    int all_same_selector = 1;
 
     // Iterate through each rule
     for (long i = 0; i < num_rules; i++) {
         VALUE rule = RARRAY_AREF(rules_array, i);
         Check_Type(rule, T_STRUCT);
 
-        // Extract selector, declarations, specificity from Rule struct
+        // Extract rule fields
+        VALUE rule_id = rb_struct_aref(rule, INT2FIX(RULE_ID));
         VALUE selector = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR));
         VALUE declarations = rb_struct_aref(rule, INT2FIX(RULE_DECLARATIONS));
+
+        // Skip parent rules when handling nested CSS
+        // Example: .button { color: black; &:hover { color: red; } }
+        //   - Rule id=0, selector=".button", declarations=[color: black] (SKIP - has children)
+        //   - Rule id=1, selector=".button:hover", declarations=[color: red] (PROCESS)
+        if (has_nesting && !NIL_P(parent_ids)) {
+            VALUE is_parent = rb_hash_aref(parent_ids, rule_id);
+            if (RTEST(is_parent)) {
+                continue;
+            }
+        }
+
+        long num_decls = RARRAY_LEN(declarations);
+        // Skip rules with no declarations (empty parent containers)
+        if (num_decls == 0) {
+            continue;
+        }
+
+        // Track selectors for rollup (delay allocation)
+        const char *sel_ptr = RSTRING_PTR(selector);
+        long sel_len = RSTRING_LEN(selector);
+        if (first_selector_ptr == NULL) {
+            first_selector_ptr = sel_ptr;
+            first_selector_len = sel_len;
+            first_selector_value = selector;  // Keep VALUE alive for RB_GC_GUARD
+        } else if (all_same_selector) {
+            if (sel_len != first_selector_len || memcmp(sel_ptr, first_selector_ptr, sel_len) != 0) {
+                all_same_selector = 0;
+            }
+        }
+
         VALUE specificity_val = rb_struct_aref(rule, INT2FIX(RULE_SPECIFICITY));
 
         // Calculate specificity if not provided (lazy)
@@ -370,21 +571,21 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
 
         // Process each declaration in this rule
         Check_Type(declarations, T_ARRAY);
-        long num_decls = RARRAY_LEN(declarations);
 
         for (long j = 0; j < num_decls; j++) {
             VALUE decl = RARRAY_AREF(declarations, j);
 
-            // Extract property, value, important from Declarations::Value struct
+            // Extract property, value, important from Declaration struct
             VALUE property = rb_struct_aref(decl, INT2FIX(DECL_PROPERTY));
             VALUE value = rb_struct_aref(decl, INT2FIX(DECL_VALUE));
             VALUE important = rb_struct_aref(decl, INT2FIX(DECL_IMPORTANT));
 
-            // Lowercase property name (safe - CSS properties are ASCII)
-            property = lowercase_property(property);
+            // Properties are already lowercased during parsing (see cataract_new.c)
+            // No need to lowercase again
             int is_important = RTEST(important);
 
             // Expand shorthand properties if needed
+            // Most properties are NOT shorthands, so hint compiler accordingly
             const char *prop_str = StringValueCStr(property);
             VALUE expanded = Qnil;
 
@@ -417,6 +618,7 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
             }
 
             // If property was expanded, iterate and apply cascade using rb_hash_foreach
+            // Expansion is rare (most properties are not shorthands)
             if (!NIL_P(expanded)) {
                 Check_Type(expanded, T_HASH);
 
@@ -424,7 +626,6 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
                 ctx.properties_hash = properties_hash;
                 ctx.specificity = specificity;
                 ctx.important = important;
-                ctx.value_struct = value_struct;
 
                 rb_hash_foreach(expanded, merge_expanded_callback, (VALUE)&ctx);
 
@@ -435,13 +636,15 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
             // Apply CSS cascade rules
             VALUE existing = rb_hash_aref(properties_hash, property);
 
+            // In merge scenarios, properties often collide (same property in multiple rules)
+            // so existing property is the common case
             if (NIL_P(existing)) {
                 // New property - add it
                 VALUE prop_data = rb_hash_new();
                 rb_hash_aset(prop_data, ID2SYM(id_value), value);
                 rb_hash_aset(prop_data, ID2SYM(id_specificity), INT2NUM(specificity));
                 rb_hash_aset(prop_data, ID2SYM(id_important), important);
-                rb_hash_aset(prop_data, ID2SYM(id_struct_class), value_struct);
+                // Note: declaration_struct not stored - use global cDeclaration instead
                 rb_hash_aset(properties_hash, property, prop_data);
             } else {
                 // Property exists - check cascade rules
@@ -453,6 +656,7 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
 
                 int should_replace = 0;
 
+                // Most declarations are NOT !important
                 if (is_important) {
                     // New is !important - wins if existing is NOT important OR equal/higher specificity
                     if (!existing_is_important || existing_spec_int <= specificity) {
@@ -465,6 +669,7 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
                     }
                 }
 
+                // Replacement is common in merge scenarios
                 if (should_replace) {
                     rb_hash_aset(existing, ID2SYM(id_value), value);
                     rb_hash_aset(existing, ID2SYM(id_specificity), INT2NUM(specificity));
@@ -488,27 +693,27 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
     // Try to create margin shorthand
     TRY_CREATE_FOUR_SIDED_SHORTHAND(properties_hash,
         str_margin_top, str_margin_right, str_margin_bottom, str_margin_left,
-        str_margin, cataract_create_margin_shorthand, value_struct);
+        str_margin, cataract_create_margin_shorthand);
 
     // Try to create padding shorthand
     TRY_CREATE_FOUR_SIDED_SHORTHAND(properties_hash,
         str_padding_top, str_padding_right, str_padding_bottom, str_padding_left,
-        str_padding, cataract_create_padding_shorthand, value_struct);
+        str_padding, cataract_create_padding_shorthand);
 
     // Create border-width from individual sides
     TRY_CREATE_FOUR_SIDED_SHORTHAND(properties_hash,
         str_border_top_width, str_border_right_width, str_border_bottom_width, str_border_left_width,
-        str_border_width, cataract_create_border_width_shorthand, value_struct);
+        str_border_width, cataract_create_border_width_shorthand);
 
     // Create border-style from individual sides
     TRY_CREATE_FOUR_SIDED_SHORTHAND(properties_hash,
         str_border_top_style, str_border_right_style, str_border_bottom_style, str_border_left_style,
-        str_border_style, cataract_create_border_style_shorthand, value_struct);
+        str_border_style, cataract_create_border_style_shorthand);
 
     // Create border-color from individual sides
     TRY_CREATE_FOUR_SIDED_SHORTHAND(properties_hash,
         str_border_top_color, str_border_right_color, str_border_bottom_color, str_border_left_color,
-        str_border_color, cataract_create_border_color_shorthand, value_struct);
+        str_border_color, cataract_create_border_color_shorthand);
 
     // Now create border shorthand from border-{width,style,color}
     VALUE border_width = GET_PROP_VALUE_STR(properties_hash, str_border_width);
@@ -542,7 +747,6 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
                 rb_hash_aset(border_data, ID2SYM(id_value), border_shorthand);
                 rb_hash_aset(border_data, ID2SYM(id_specificity), INT2NUM(border_spec));
                 rb_hash_aset(border_data, ID2SYM(id_important), border_important);
-                rb_hash_aset(border_data, ID2SYM(id_struct_class), value_struct);
                 rb_hash_aset(properties_hash, str_border, border_data);
 
                 if (!NIL_P(border_width)) rb_hash_delete(properties_hash, str_border_width);
@@ -594,7 +798,6 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
                 rb_hash_aset(font_data, ID2SYM(id_value), font_shorthand);
                 rb_hash_aset(font_data, ID2SYM(id_specificity), INT2NUM(font_spec));
                 rb_hash_aset(font_data, ID2SYM(id_important), font_important);
-                rb_hash_aset(font_data, ID2SYM(id_struct_class), value_struct);
                 rb_hash_aset(properties_hash, str_font, font_data);
 
                 // Remove longhand properties
@@ -647,7 +850,6 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
                 rb_hash_aset(list_style_data, ID2SYM(id_value), list_style_shorthand);
                 rb_hash_aset(list_style_data, ID2SYM(id_specificity), INT2NUM(list_style_spec));
                 rb_hash_aset(list_style_data, ID2SYM(id_important), list_style_important);
-                rb_hash_aset(list_style_data, ID2SYM(id_struct_class), value_struct);
                 rb_hash_aset(properties_hash, str_list_style, list_style_data);
 
                 // Remove longhand properties
@@ -707,7 +909,6 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
                 rb_hash_aset(background_data, ID2SYM(id_value), background_shorthand);
                 rb_hash_aset(background_data, ID2SYM(id_specificity), INT2NUM(background_spec));
                 rb_hash_aset(background_data, ID2SYM(id_important), background_important);
-                rb_hash_aset(background_data, ID2SYM(id_struct_class), value_struct);
                 rb_hash_aset(properties_hash, str_background, background_data);
 
                 // Remove longhand properties
@@ -725,54 +926,48 @@ VALUE cataract_merge(VALUE self, VALUE rules_array) {
     #undef GET_PROP_VALUE
     #undef GET_PROP_DATA
 
-    // Build result array by iterating properties_hash using rb_hash_foreach
-    VALUE result = rb_ary_new();
-    rb_hash_foreach(properties_hash, merge_build_result_callback, result);
+    // Build merged declarations array
+    VALUE merged_declarations = rb_ary_new();
+    rb_hash_foreach(properties_hash, merge_build_result_callback, merged_declarations);
 
-    RB_GC_GUARD(properties_hash);
-    RB_GC_GUARD(result);
-    RB_GC_GUARD(rules_array);
-
-    return result;
-}
-
-// Context for flattening hash structure callback
-struct flatten_hash_ctx {
-    VALUE rules_array;
-};
-
-// Callback to flatten {query_string => {media_types: [...], rules: [...]}} to array
-static int flatten_hash_callback(VALUE query_string, VALUE group_hash, VALUE arg) {
-    struct flatten_hash_ctx *ctx = (struct flatten_hash_ctx *)arg;
-
-    VALUE rules = rb_hash_aref(group_hash, ID2SYM(rb_intern("rules")));
-    if (!NIL_P(rules) && TYPE(rules) == T_ARRAY) {
-        long rules_len = RARRAY_LEN(rules);
-        for (long i = 0; i < rules_len; i++) {
-            rb_ary_push(ctx->rules_array, RARRAY_AREF(rules, i));
-        }
+    // Determine final selector (allocate only once at the end)
+    VALUE final_selector;
+    if (has_nesting && all_same_selector && first_selector_ptr != NULL) {
+        // All rules have same selector - use it for rollup
+        final_selector = rb_usascii_str_new(first_selector_ptr, first_selector_len);
+    } else {
+        // Mixed selectors or no nesting - use "merged"
+        final_selector = str_merged_selector;
     }
 
-    return ST_CONTINUE;
-}
+    // Create a new Stylesheet with a single merged rule
+    // Use rb_class_new_instance instead of rb_funcall for better performance
+    VALUE merged_sheet = rb_class_new_instance(0, NULL, cStylesheet);
 
-// Wrapper function that accepts either array or hash structure
-// This is called from Ruby as Cataract.merge_rules
-VALUE cataract_merge_wrapper(VALUE self, VALUE input) {
-    // Check if input is a hash (new structure from Stylesheet)
-    if (TYPE(input) == T_HASH) {
-        // Flatten hash structure to array
-        VALUE rules_array = rb_ary_new();
-        struct flatten_hash_ctx ctx = { rules_array };
-        rb_hash_foreach(input, flatten_hash_callback, (VALUE)&ctx);
+    // Create merged rule
+    VALUE merged_rule = rb_struct_new(cRule,
+        INT2FIX(0),              // id
+        final_selector,          // selector (rolled-up or "merged")
+        merged_declarations,      // declarations
+        Qnil,                     // specificity (not applicable)
+        Qnil,                     // parent_rule_id (not nested)
+        Qnil                      // nesting_style (not nested)
+    );
 
-        // Call the original merge function
-        VALUE result = cataract_merge(self, rules_array);
+    // Set @rules array with single merged rule (use cached ID)
+    VALUE rules_ary = rb_ary_new_from_args(1, merged_rule);
+    rb_ivar_set(merged_sheet, id_ivar_rules, rules_ary);
 
-        RB_GC_GUARD(rules_array);
-        return result;
-    }
+    // Set @media_index with :all pointing to rule 0 (use cached ID)
+    VALUE media_idx = rb_hash_new();
+    VALUE all_ids = rb_ary_new_from_args(1, INT2FIX(0));
+    rb_hash_aset(media_idx, ID2SYM(id_all), all_ids);
+    rb_ivar_set(merged_sheet, id_ivar_media_index, media_idx);
 
-    // Input is already an array - call original function directly
-    return cataract_merge(self, input);
+    // Guard first_selector_value: C pointer extracted via RSTRING_PTR during iteration,
+    // then used after many allocations (hash operations, shorthand expansions) when
+    // creating final_selector with rb_usascii_str_new
+    RB_GC_GUARD(first_selector_value);
+
+    return merged_sheet;
 }

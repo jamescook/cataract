@@ -26,12 +26,19 @@ module CSSAnalyzer
         color_counts = Hash.new(0)
         color_examples = Hash.new { |h, k| h[k] = [] }
 
-        # Iterate through all rule sets
-        stylesheet.each_rule_set do |rule_set, media_types|
-          selector = rule_set.selector
+        # Iterate through all rules
+        stylesheet.rules.each do |rule|
+          # Skip AtRules (like @keyframes) - they don't have declarations
+          next unless rule.is_a?(Cataract::Rule)
+
+          selector = rule.selector
+          media_types = media_queries_for_rule(rule)
 
           # Check each declaration for color values
-          rule_set.declarations.each do |property, value, _important|
+          rule.declarations.each do |decl|
+            property = decl.property
+            value = decl.value
+
             next unless COLOR_PROPERTIES.include?(property)
 
             # Extract color values from the declaration

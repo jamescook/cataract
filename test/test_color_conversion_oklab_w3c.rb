@@ -6,13 +6,6 @@ require_relative 'test_helper'
 # These tests verify our implementation matches the official W3C test suite
 # Reference: https://github.com/web-platform-tests/wpt/tree/master/css/css-color
 class TestColorConversionOklabW3c < Minitest::Test
-  # Helper to parse, convert, and get declarations
-  def convert_and_get_declarations(css, **options)
-    sheet = Cataract.parse_css(css)
-    sheet.convert_colors!(**options)
-    Cataract::Declarations.new(sheet.declarations)
-  end
-
   # W3C Test: https://github.com/web-platform-tests/wpt/blob/2835fc2170/css/css-color/oklab-001.html
   # oklab(51.975% -0.1403 0.10768) should equal #008000 (green)
   def test_w3c_oklab_001_green

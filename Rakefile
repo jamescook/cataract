@@ -94,7 +94,7 @@ namespace :benchmark do
     puts "\n#{'=' * 80}"
     puts 'Compiling with DYNAMIC allocation (rb_str_new_cstr)'
     puts '=' * 80
-    system({ 'DISABLE_STR_BUF_OPTIMIZATION' => '1' }, 'rake', 'compile')
+    system({ 'CONFIGURE_ARGS' => '--disable-str-buf-optimization' }, 'rake', 'compile')
     system({}, RbConfig.ruby, 'benchmarks/benchmark_string_allocation.rb')
 
     puts "\n\n#{'=' * 80}"

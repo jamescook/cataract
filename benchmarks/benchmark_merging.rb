@@ -69,8 +69,10 @@ class MergingBenchmark < BenchmarkHarness
     cataract_rules = Cataract.parse_css(css)
     cataract_merged = Cataract.merge(cataract_rules)
 
-    raise 'Cataract merge failed' if cataract_merged.empty?
-    raise 'Cataract merge incorrect' unless cataract_merged.any? { |d| d.property == 'color' }
+    raise 'Cataract merge failed' if cataract_merged.rules.empty?
+
+    merged_decls = cataract_merged.rules.first.declarations
+    raise 'Cataract merge incorrect' unless merged_decls.any? { |d| d.property == 'color' }
   end
 
   def call

@@ -22,14 +22,14 @@ class TestDeclarationsToS < Minitest::Test
   end
 
   def test_single_declaration
-    decl = Cataract::Declarations::Value.new('color', 'red', false)
+    decl = Cataract::Declaration.new('color', 'red', false)
     result = Cataract::Declarations.new([decl]).to_s
 
     assert_equal 'color: red;', result
   end
 
   def test_single_declaration_with_important
-    decl = Cataract::Declarations::Value.new('color', 'red', true)
+    decl = Cataract::Declaration.new('color', 'red', true)
     result = Cataract::Declarations.new([decl]).to_s
 
     assert_equal 'color: red !important;', result
@@ -37,9 +37,9 @@ class TestDeclarationsToS < Minitest::Test
 
   def test_multiple_declarations
     decls = [
-      Cataract::Declarations::Value.new('color', 'red', false),
-      Cataract::Declarations::Value.new('margin', '10px', false),
-      Cataract::Declarations::Value.new('padding', '5px', false)
+      Cataract::Declaration.new('color', 'red', false),
+      Cataract::Declaration.new('margin', '10px', false),
+      Cataract::Declaration.new('padding', '5px', false)
     ]
     result = Cataract::Declarations.new(decls).to_s
 
@@ -48,9 +48,9 @@ class TestDeclarationsToS < Minitest::Test
 
   def test_mixed_important_and_normal
     decls = [
-      Cataract::Declarations::Value.new('color', 'red', true),
-      Cataract::Declarations::Value.new('margin', '10px', false),
-      Cataract::Declarations::Value.new('background', 'blue', true)
+      Cataract::Declaration.new('color', 'red', true),
+      Cataract::Declaration.new('margin', '10px', false),
+      Cataract::Declaration.new('background', 'blue', true)
     ]
     result = Cataract::Declarations.new(decls).to_s
 
@@ -63,7 +63,7 @@ class TestDeclarationsToS < Minitest::Test
       .test { padding: 5px; }
     CSS
 
-    merged = Cataract.merge(rules)
+    merged = rules.merge.rules.first.declarations
     result = Cataract::Declarations.new(merged).to_s
 
     # Should contain all three properties
@@ -77,7 +77,7 @@ class TestDeclarationsToS < Minitest::Test
       .test { color: black !important; margin: 10px; }
     CSS
 
-    merged = Cataract.merge(rules)
+    merged = rules.merge.rules.first.declarations
     result = Cataract::Declarations.new(merged).to_s
 
     assert_includes result, 'color: black !important'
@@ -86,8 +86,8 @@ class TestDeclarationsToS < Minitest::Test
 
   def test_complex_values
     decls = [
-      Cataract::Declarations::Value.new('font', 'bold 14px/1.5 Arial, sans-serif', false),
-      Cataract::Declarations::Value.new('background', 'url(image.png) no-repeat center', false)
+      Cataract::Declaration.new('font', 'bold 14px/1.5 Arial, sans-serif', false),
+      Cataract::Declaration.new('background', 'url(image.png) no-repeat center', false)
     ]
     result = Cataract::Declarations.new(decls).to_s
 

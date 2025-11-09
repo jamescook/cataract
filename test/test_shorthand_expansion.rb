@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
-require 'minitest/autorun'
-require 'cataract'
+require_relative 'test_helper'
 
 # Test CSS shorthand/longhand behavior through merge operations
 # Verifies that merge correctly expands shorthands when cascading,
@@ -10,8 +9,10 @@ class TestShorthandExpansion < Minitest::Test
   # Helper to parse CSS and merge rules
   def parse_and_merge(css)
     sheet = Cataract.parse_css(css)
-    merged = Cataract.merge(sheet)
-    Cataract::Declarations.new(merged)
+    merged = sheet.merge
+
+    # The merged stylesheet should have exactly one rule with all declarations
+    Cataract::Declarations.new(merged.rules.first.declarations)
   end
 
   # ===========================================================================

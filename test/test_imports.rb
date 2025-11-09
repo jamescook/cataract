@@ -1,8 +1,7 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-require 'minitest/autorun'
-require_relative '../lib/cataract'
+require_relative 'test_helper'
 require 'tmpdir'
 require 'webmock/minitest'
 
@@ -20,10 +19,7 @@ body { color: red; }'
     # Only body rule should be parsed
     assert_equal 1, sheet.size
 
-    selectors = []
-    sheet.each_selector { |sel, _, _, _| selectors << sel }
-
-    assert_equal ['body'], selectors
+    assert_selectors_match ['body'], sheet
   end
 
   # ============================================================================
@@ -68,11 +64,8 @@ body { color: red; }'
 
     assert_equal 2, sheet.size
 
-    selectors = []
-    sheet.each_selector { |sel, _, _, _| selectors << sel }
-
-    assert_includes selectors, '.imported'
-    assert_includes selectors, 'body'
+    assert_has_selector '.imported', sheet
+    assert_has_selector 'body', sheet
   end
 
   def test_import_with_http_url_rejected_by_default
@@ -113,11 +106,8 @@ body { color: red; }'
 
     assert_equal 2, sheet.size
 
-    selectors = []
-    sheet.each_selector { |sel, _, _, _| selectors << sel }
-
-    assert_includes selectors, '.level1'
-    assert_includes selectors, '.level2'
+    assert_has_selector '.level1', sheet
+    assert_has_selector '.level2', sheet
   end
 
   def test_import_http_404_error
@@ -155,10 +145,7 @@ body { color: red; }'
 
     assert_equal 1, sheet.size
 
-    selectors = []
-    sheet.each_selector { |sel, _, _, _| selectors << sel }
-
-    assert_includes selectors, '.imported'
+    assert_has_selector '.imported', sheet
   end
 
   # ============================================================================
@@ -178,11 +165,8 @@ body { color: red; }"
       # Should have both imported rule and body rule
       assert_equal 2, sheet.size
 
-      selectors = []
-      sheet.each_selector { |sel, _, _, _| selectors << sel }
-
-      assert_includes selectors, '.imported'
-      assert_includes selectors, 'body'
+      assert_has_selector '.imported', sheet
+      assert_has_selector 'body', sheet
     end
   end
 
@@ -219,10 +203,7 @@ body { color: red; }"
       # Should work with custom extensions
       sheet = Cataract.parse_css(css, imports: { allowed_schemes: ['file'], extensions: ['txt'] })
 
-      selectors = []
-      sheet.each_selector { |sel, _, _, _| selectors << sel }
-
-      assert_includes selectors, '.from-txt'
+      assert_has_selector '.from-txt', sheet
     end
   end
 
@@ -238,10 +219,7 @@ body { color: red; }"
         # Relative paths are converted to file:// URLs
         sheet = Cataract.parse_css(css, imports: { allowed_schemes: ['file'], extensions: ['css'] })
 
-        selectors = []
-        sheet.each_selector { |sel, _, _, _| selectors << sel }
-
-        assert_includes selectors, '.imported'
+        assert_has_selector '.imported', sheet
       end
     end
   end
@@ -257,10 +235,7 @@ body { color: red; }"
       # Absolute paths without scheme are converted to file:// URLs
       sheet = Cataract.parse_css(css, imports: { allowed_schemes: ['file'], extensions: ['css'] })
 
-      selectors = []
-      sheet.each_selector { |sel, _, _, _| selectors << sel }
-
-      assert_includes selectors, '.imported'
+      assert_has_selector '.imported', sheet
     end
   end
 
@@ -303,10 +278,7 @@ body { color: red; }"
       # Should import with print media type
       assert_equal 1, sheet.size
 
-      print_rules = []
-      sheet.each_selector(media: :print) { |sel, _, _, _| print_rules << sel }
-
-      assert_includes print_rules, '.print-only'
+      assert_has_selector '.print-only', sheet, media: :print
     end
   end
 
@@ -327,12 +299,9 @@ body { color: red; }"
 
       assert_equal 3, sheet.size
 
-      selectors = []
-      sheet.each_selector { |sel, _, _, _| selectors << sel }
-
-      assert_includes selectors, '*'
-      assert_includes selectors, 'body'
-      assert_includes selectors, '.main'
+      assert_has_selector '*', sheet
+      assert_has_selector 'body', sheet
+      assert_has_selector '.main', sheet
     end
   end
 
@@ -397,11 +366,8 @@ body { color: red; }"
 
       assert_equal 2, sheet.size
 
-      selectors = []
-      sheet.each_selector { |sel, _, _, _| selectors << sel }
-
-      assert_includes selectors, '.imported'
-      assert_includes selectors, 'body'
+      assert_has_selector '.imported', sheet
+      assert_has_selector 'body', sheet
     end
   end
 
@@ -428,11 +394,8 @@ body { color: red; }"
 
       assert_equal 2, sheet.size
 
-      selectors = []
-      sheet.each_selector { |sel, _, _, _| selectors << sel }
-
-      assert_includes selectors, '.imported'
-      assert_includes selectors, 'body'
+      assert_has_selector '.imported', sheet
+      assert_has_selector 'body', sheet
     end
   end
 
@@ -473,11 +436,8 @@ body { color: red; }"
 
       assert_equal 2, sheet.size
 
-      selectors = []
-      sheet.each_selector { |sel, _, _, _| selectors << sel }
-
-      assert_includes selectors, '.imported'
-      assert_includes selectors, 'body'
+      assert_has_selector '.imported', sheet
+      assert_has_selector 'body', sheet
     end
   end
 
@@ -494,11 +454,8 @@ body { color: red; }"
 
       assert_equal 2, sheet.size
 
-      selectors = []
-      sheet.each_selector { |sel, _, _, _| selectors << sel }
-
-      assert_includes selectors, '.imported'
-      assert_includes selectors, 'body'
+      assert_has_selector '.imported', sheet
+      assert_has_selector 'body', sheet
     end
   end
 
@@ -519,11 +476,8 @@ body { color: red; }"
 
       assert_equal 2, sheet.size
 
-      selectors = []
-      sheet.each_selector { |sel, _, _, _| selectors << sel }
-
-      assert_includes selectors, '.imported', 'load_uri should resolve relative @import from file:// URI'
-      assert_includes selectors, 'body'
+      assert_has_selector '.imported', sheet
+      assert_has_selector 'body', sheet
     end
   end
 end

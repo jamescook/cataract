@@ -3,13 +3,6 @@
 require_relative 'test_helper'
 
 class TestColorConversionOklch < Minitest::Test
-  # Helper to parse, convert, and get declarations
-  def convert_and_get_declarations(css, **options)
-    sheet = Cataract.parse_css(css)
-    sheet.convert_colors!(**options)
-    Cataract::Declarations.new(sheet.declarations)
-  end
-
   # W3C reference tests from CSS Color 4 spec
 
   def test_oklch_green_to_hex
@@ -226,7 +219,7 @@ class TestColorConversionOklch < Minitest::Test
     sheet = Cataract.parse_css(original)
     sheet.convert_colors!(from: :oklch, to: :rgb)
     sheet.convert_colors!(from: :rgb, to: :oklch)
-    decls = Cataract::Declarations.new(sheet.declarations)
+    decls = Cataract::Declarations.new(sheet.rules.first.declarations)
     # Should be close to original (allow for rounding)
     assert_match(/oklch\(0\.628/, decls['color'])
   end

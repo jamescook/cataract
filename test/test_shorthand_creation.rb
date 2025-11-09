@@ -11,8 +11,10 @@ class TestShorthandCreation < Minitest::Test
   # Helper to parse CSS with longhand properties and merge to trigger shorthand creation
   def parse_and_merge(css)
     sheet = Cataract.parse_css(css)
-    merged = Cataract.merge(sheet)
-    Cataract::Declarations.new(merged)
+    merged = sheet.merge
+
+    # The merged stylesheet should have exactly one rule with all declarations
+    Cataract::Declarations.new(merged.rules.first.declarations)
   end
 
   # ===========================================================================

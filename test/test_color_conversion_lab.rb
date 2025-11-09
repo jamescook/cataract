@@ -3,13 +3,6 @@
 require_relative 'test_helper'
 
 class TestColorConversionLab < Minitest::Test
-  # Helper to parse, convert, and get declarations
-  def convert_and_get_declarations(css, **options)
-    sheet = Cataract.parse_css(css)
-    sheet.convert_colors!(**options)
-    Cataract::Declarations.new(sheet.declarations)
-  end
-
   # W3C Spec Examples - Basic colors
 
   def test_lab_green_to_hex
@@ -164,7 +157,7 @@ class TestColorConversionLab < Minitest::Test
   def test_hex_to_lab_red
     sheet = Cataract.parse_css('.test { color: #ff0000; }')
     sheet.convert_colors!(from: :hex, to: :lab)
-    decls = Cataract::Declarations.new(sheet.declarations)
+    decls = Cataract::Declarations.new(sheet.rules.first.declarations)
 
     # Red (#ff0000) in Lab
     assert_equal 'lab(54.2943% 80.8192 69.8969)', decls['color']
@@ -173,7 +166,7 @@ class TestColorConversionLab < Minitest::Test
   def test_hex_to_lab_green
     sheet = Cataract.parse_css('.test { color: #00ff00; }')
     sheet.convert_colors!(from: :hex, to: :lab)
-    decls = Cataract::Declarations.new(sheet.declarations)
+    decls = Cataract::Declarations.new(sheet.rules.first.declarations)
 
     # Green (#00ff00) in Lab
     assert_equal 'lab(87.8177% -79.2608 80.9982)', decls['color']
@@ -182,7 +175,7 @@ class TestColorConversionLab < Minitest::Test
   def test_hex_to_lab_blue
     sheet = Cataract.parse_css('.test { color: #0000ff; }')
     sheet.convert_colors!(from: :hex, to: :lab)
-    decls = Cataract::Declarations.new(sheet.declarations)
+    decls = Cataract::Declarations.new(sheet.rules.first.declarations)
 
     # Blue (#0000ff) in Lab
     assert_equal 'lab(29.5647% 68.2889 -112.0126)', decls['color']
@@ -192,12 +185,12 @@ class TestColorConversionLab < Minitest::Test
     # Test round-trip: hex -> lab -> hex
     sheet = Cataract.parse_css('.test { color: #ff0000; }')
     sheet.convert_colors!(from: :hex, to: :lab)
-    decls1 = Cataract::Declarations.new(sheet.declarations)
+    decls1 = Cataract::Declarations.new(sheet.rules.first.declarations)
     lab_value = decls1['color']
 
     sheet2 = Cataract.parse_css(".test { color: #{lab_value}; }")
     sheet2.convert_colors!(from: :lab, to: :hex)
-    decls2 = Cataract::Declarations.new(sheet2.declarations)
+    decls2 = Cataract::Declarations.new(sheet2.rules.first.declarations)
 
     # Should round-trip back to red
     assert_equal '#ff0000', decls2['color']
@@ -253,7 +246,7 @@ class TestColorConversionLab < Minitest::Test
     CSS
     sheet.convert_colors!(to: :hex)
 
-    decls = Cataract::Declarations.new(sheet.declarations)
+    decls = Cataract::Declarations.new(sheet.rules.first.declarations)
 
     assert_equal '#9168a2', decls['color']
   end

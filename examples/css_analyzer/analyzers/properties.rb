@@ -10,13 +10,21 @@ module CSSAnalyzer
         property_counts = Hash.new(0)
         property_examples = Hash.new { |h, k| h[k] = [] }
 
-        # Use public API: each_rule_set yields rule_set and media_types
-        stylesheet.each_rule_set do |rule_set, media_types|
-          selector = rule_set.selector
+        # Iterate through all rules
+        stylesheet.rules.each do |rule|
+          # Skip AtRules (like @keyframes) - they don't have declarations
+          next unless rule.is_a?(Cataract::Rule)
 
-          # Iterate through declarations using Declarations#each
-          # which yields property, value, important
-          rule_set.declarations.each do |property, value, important|
+          selector = rule.selector
+          media_types = media_queries_for_rule(rule)
+
+          # Iterate through declarations
+          # Each declaration is a struct with property, value, important
+          rule.declarations.each do |decl|
+            property = decl.property
+            value = decl.value
+            important = decl.important
+
             property_counts[property] += 1
 
             # Store example (limit to 3 examples per property)

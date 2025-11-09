@@ -26,18 +26,18 @@ Time to parse CSS into internal data structures
 
 | Parser | Speed | Time per operation |
 |--------|-------|-------------------|
-| css_parser | 6.27K i/s | 159.47 μs |
-| **Cataract** | **65.25K i/s** | **15.33 μs** |
-| **Speedup** | **10.41x faster** | |
+| css_parser | 6.16K i/s | 162.34 μs |
+| **Cataract** | **63.79K i/s** | **15.68 μs** |
+| **Speedup** | **10.36x faster** | |
 
 ### Medium CSS with @media (139 lines, 1.6KB)
 
 
 | Parser | Speed | Time per operation |
 |--------|-------|-------------------|
-| css_parser | 3.29K i/s | 303.61 μs |
-| **Cataract** | **42.52K i/s** | **23.52 μs** |
-| **Speedup** | **12.91x faster** | |
+| css_parser | 3.44K i/s | 290.64 μs |
+| **Cataract** | **41.45K i/s** | **24.13 μs** |
+| **Speedup** | **12.05x faster** | |
 
 
 </details>
@@ -105,14 +105,14 @@ Time to merge multiple CSS rule sets with same selector
 
 | Test Case | Speedup |
 |-----------|---------|
-| No shorthand properties (large) | **3.34x faster** |
-| Simple properties | **3.42x faster** |
-| Cascade with specificity | **5.19x faster** |
-| Important declarations | **5.37x faster** |
-| Shorthand expansion | **3.65x faster** |
-| Complex merging | **2.65x faster** |
+| No shorthand properties (large) | **4.14x faster** |
+| Simple properties | **3.86x faster** |
+| Cascade with specificity | **5.75x faster** |
+| Important declarations | **6.1x faster** |
+| Shorthand expansion | **4.16x faster** |
+| Complex merging | **3.07x faster** |
 
-**Summary:** 2.65x faster to 5.37x faster (avg 3.94x faster)
+**Summary:** 3.07x faster to 6.1x faster (avg 4.51x faster)
 
 ### What's Being Tested
 - Specificity-based CSS cascade (ID > class > element)
@@ -156,10 +156,10 @@ Ruby-side operations with and without YJIT
 
 | Category | Min Speedup | Max Speedup | Avg Speedup |
 |----------|-------------|-------------|-------------|
-| **Parsing** | 10.41x faster | 12.91x faster | 11.66x faster |
+| **Parsing** | 10.36x faster | 12.05x faster | 11.2x faster |
 | **Serialization** | 21.02x faster | 57.26x faster | 39.14x faster |
 | **Specificity** | 22.03x faster | 49.17x faster | 33.3x faster |
-| **Merging** | 2.65x faster | 5.37x faster | 3.94x faster |
+| **Merging** | 3.07x faster | 6.1x faster | 4.51x faster |
 
 ### Implementation Notes
 
