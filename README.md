@@ -4,6 +4,8 @@ A performant CSS parser for accurate parsing of complex CSS structures.
 
 [![codecov](https://codecov.io/github/jamescook/cataract/graph/badge.svg?token=1PTVV1QTV5)](https://codecov.io/github/jamescook/cataract)
 
+**[API Documentation](https://jamescook.github.io/cataract/)**
+
 ## Features
 
 - **C Extension**: Performance-focused C implementation for parsing and serialization
