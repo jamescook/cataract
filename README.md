@@ -254,7 +254,13 @@ rake test
 
 # Run benchmarks
 rake benchmark
+
+# Run fuzzer to test parser robustness
+rake fuzz                      # 10,000 iterations (default)
+rake fuzz ITERATIONS=100000    # Custom iteration count
 ```
+
+**Fuzzer**: Generates random CSS input to test parser robustness against malformed or edge-case CSS. Helps catch crashes, memory leaks, and parsing edge cases.
 
 ## How It Works
 
