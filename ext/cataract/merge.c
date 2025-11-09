@@ -387,11 +387,11 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
         parent_ids = rb_hash_new();
         for (long i = 0; i < num_rules; i++) {
             VALUE rule = RARRAY_AREF(rules_array, i);
-            VALUE selector = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR));
-            VALUE rule_id = rb_struct_aref(rule, INT2FIX(RULE_ID));
             VALUE parent_rule_id = rb_struct_aref(rule, INT2FIX(RULE_PARENT_RULE_ID));
             DEBUG_PRINTF("  Rule %ld: selector='%s', rule_id=%d, parent_rule_id=%s\n",
-                         i, RSTRING_PTR(selector), FIX2INT(rule_id),
+                         i,
+                         RSTRING_PTR(rb_struct_aref(rule, INT2FIX(RULE_SELECTOR))),
+                         FIX2INT(rb_struct_aref(rule, INT2FIX(RULE_ID))),
                          NIL_P(parent_rule_id) ? "nil" : RSTRING_PTR(rb_inspect(parent_rule_id)));
             if (!NIL_P(parent_rule_id)) {
                 // This rule has a parent, so mark that parent ID
@@ -411,7 +411,6 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
         selector_groups = rb_hash_new();
         for (long i = 0; i < num_rules; i++) {
             VALUE rule = RARRAY_AREF(rules_array, i);
-            VALUE rule_id = rb_struct_aref(rule, INT2FIX(RULE_ID));
             VALUE declarations = rb_struct_aref(rule, INT2FIX(RULE_DECLARATIONS));
             VALUE parent_rule_id = rb_struct_aref(rule, INT2FIX(RULE_PARENT_RULE_ID));
             VALUE selector = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR));
