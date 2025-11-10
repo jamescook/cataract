@@ -16,16 +16,9 @@ module CSSAnalyzer
     def initialize(source, options = {})
       @source = source
       @options = {
-        top: 20,
-        use_shim: false
+        top: 20
       }.merge(options)
       @timings = {}
-
-      # Load shim if requested
-      if @options[:use_shim]
-        require_relative '../../lib/cataract/css_parser_compat'
-        Cataract.mimic_CssParser!
-      end
 
       # Load CSS based on source type
       @stylesheet = load_css(source)
