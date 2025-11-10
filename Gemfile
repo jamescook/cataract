@@ -14,6 +14,7 @@ gem 'benchmark-ips', '~> 2.0'
 gem 'css_parser', '~> 1.0' # for benchmarking against
 gem 'minitest'
 gem 'minitest-spec'
+gem 'nokogiri' # for docs
 gem 'simplecov', require: false
 gem 'simplecov-cobertura', require: false
 gem 'webmock', '~> 3.0' # for testing URL loading
