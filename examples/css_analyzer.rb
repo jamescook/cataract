@@ -25,18 +25,11 @@ if __FILE__ == $PROGRAM_NAME
       options[:output] = file
     end
 
-    opts.on('--use-shim', 'Use Cataract shim for css_parser (for Premailer)') do
-      options[:use_shim] = true
-    end
-
     opts.on('-h', '--help', 'Show this help message') do
       puts opts
       exit
     end
   end.parse!
-
-  # Check for ENV var to enable shim
-  options[:use_shim] = true if ENV['CATARACT_SHIM']
 
   # Check for required argument
   if ARGV.empty?
