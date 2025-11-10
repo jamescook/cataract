@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require_relative 'test_helper'
-
 # Test CSS shorthand/longhand behavior through merge operations
 # Verifies that merge correctly expands shorthands when cascading,
 # and recreates optimized shorthands in the final output

@@ -1,12 +1,6 @@
 # frozen_string_literal: true
 
-require_relative 'test_helper'
-
 class TestColorConversion < Minitest::Test
-  # Edge cases and format-agnostic tests
-
-  # Error handling tests
-
   def test_hex_to_rgb_invalid_length
     stylesheet = Cataract.parse_css('.test { color: #ff }')
     error = assert_raises(Cataract::ColorConversionError) do

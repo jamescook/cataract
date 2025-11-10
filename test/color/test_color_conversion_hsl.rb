@@ -1,10 +1,6 @@
 # frozen_string_literal: true
 
-require_relative 'test_helper'
-
 class TestColorConversionHsl < Minitest::Test
-  # Tests targeting hsl/hsla output
-
   def test_hex_to_hsl_red
     decls = convert_and_get_declarations(
       '.test { color: #ff0000 }',

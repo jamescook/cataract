@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require_relative 'test_helper'
-
 class TestColorConversionOklch < Minitest::Test
   # W3C reference tests from CSS Color 4 spec
 

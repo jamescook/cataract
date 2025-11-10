@@ -1,7 +1,4 @@
-#!/usr/bin/env ruby
 # frozen_string_literal: true
-
-require_relative 'test_helper'
 
 class TestMerging < Minitest::Test
   # Test simple merge of two rules with different properties

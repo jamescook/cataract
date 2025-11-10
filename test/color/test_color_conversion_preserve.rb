@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require_relative 'test_helper'
-
 class TestColorConversionPreserve < Minitest::Test
   # Test that unsupported/modern CSS color syntax is preserved unchanged
   # This ensures the converter doesn't break on CSS it doesn't understand

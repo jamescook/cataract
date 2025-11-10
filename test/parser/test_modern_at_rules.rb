@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require_relative 'test_helper'
-
 # Test modern CSS at-rules (CSS3+)
 # These use the generic at-rule pattern and should be handled automatically
 class TestModernAtRules < Minitest::Test

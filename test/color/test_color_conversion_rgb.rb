@@ -1,10 +1,6 @@
 # frozen_string_literal: true
 
-require_relative 'test_helper'
-
 class TestColorConversionRgb < Minitest::Test
-  # Tests targeting rgb/rgba output
-
   def test_hex_to_rgb_three_digit
     decls = convert_and_get_declarations(
       '.test { color: #fff }',

@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require_relative 'test_helper'
-
 class TestColorConversionLch < Minitest::Test
   # W3C Spec Examples - Basic colors
 
