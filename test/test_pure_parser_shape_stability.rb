@@ -28,31 +28,31 @@ class TestPureParserShapeStability < Minitest::Test
     ivars1_empty = sheet1.instance_variables.sort
 
     # Sanity check: should have some ivars
-    assert ivars1_empty.length > 0,
-      "Stylesheet should have at least one instance variable"
+    assert_predicate ivars1_empty.length, :positive?,
+                     'Stylesheet should have at least one instance variable'
 
     # Parse simple CSS
-    css_simple = ".foo { color: red; }"
+    css_simple = '.foo { color: red; }'
     sheet1.add_block(css_simple)
     ivars1_after = sheet1.instance_variables.sort
 
     # Test 2: Stylesheet with nested CSS
-    css_nested = ".parent { .child { color: blue; } }"
+    css_nested = '.parent { .child { color: blue; } }'
     sheet2 = Cataract::Stylesheet.parse(css_nested)
     ivars2 = sheet2.instance_variables.sort
 
     # Test 3: Stylesheet with media queries
-    css_media = "@media print { .footer { display: none; } }"
+    css_media = '@media print { .footer { display: none; } }'
     sheet3 = Cataract::Stylesheet.parse(css_media)
     ivars3 = sheet3.instance_variables.sort
 
     # Assert: All stylesheets have identical ivar sets
     assert_equal ivars1_empty, ivars1_after,
-      "Parsing CSS should not add new ivars to Stylesheet (would cause shape transition)"
+                 'Parsing CSS should not add new ivars to Stylesheet (would cause shape transition)'
     assert_equal ivars1_after, ivars2,
-      "All Stylesheet instances should have identical ivars (shape stability)"
+                 'All Stylesheet instances should have identical ivars (shape stability)'
     assert_equal ivars2, ivars3,
-      "All Stylesheet instances should have identical ivars (shape stability)"
+                 'All Stylesheet instances should have identical ivars (shape stability)'
   end
 
   def test_stylesheet_no_conditional_ivars
@@ -68,12 +68,12 @@ class TestPureParserShapeStability < Minitest::Test
     ivars_no_exc = sheet_no_exceptions.instance_variables.sort
 
     # Sanity check: should have some ivars
-    assert ivars_default.length > 0,
-      "Stylesheet should have at least one instance variable"
+    assert_predicate ivars_default.length, :positive?,
+                     'Stylesheet should have at least one instance variable'
 
     assert_equal ivars_default, ivars_import,
-      "Different initialization options should not affect ivar set"
+                 'Different initialization options should not affect ivar set'
     assert_equal ivars_import, ivars_no_exc,
-      "Different initialization options should not affect ivar set"
+                 'Different initialization options should not affect ivar set'
   end
 end

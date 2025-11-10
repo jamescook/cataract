@@ -127,19 +127,12 @@ module Cataract
 
       merged_rules = []
 
-      if has_nesting
-        # Preserve selectors, group by selector and merge
-        grouped = stylesheet.rules.group_by(&:selector)
-        grouped.each do |selector, rules|
-          merged_rule = merge_rules_for_selector(selector, rules)
-          merged_rules << merged_rule if merged_rule
-        end
-      else
-        # No nesting - merge all into single 'merged' rule
-        if !stylesheet.rules.empty?
-          merged_rule = merge_all_rules(stylesheet.rules)
-          merged_rules << merged_rule
-        end
+      # Always group by selector and preserve original selectors
+      # (Nesting is flattened during parsing, so we just merge by resolved selector)
+      grouped = stylesheet.rules.group_by(&:selector)
+      grouped.each do |selector, rules|
+        merged_rule = merge_rules_for_selector(selector, rules)
+        merged_rules << merged_rule if merged_rule
       end
 
       # Recreate shorthands where possible
@@ -163,81 +156,6 @@ module Cataract
         merged_rules.each_with_index { |rule, i| rule.id = i }
         result
       end
-    end
-
-    # Merge all top-level rules into a single 'merged' rule
-    #
-    # @param rules [Array<Rule>] Top-level rules to merge
-    # @return [Rule] Single merged rule with selector='merged'
-    def self.merge_all_rules(rules)
-      # Build declaration map: property => [source_order, specificity, important, value]
-      decl_map = {}
-
-      rules.each do |rule|
-        spec = rule.specificity || calculate_specificity(rule.selector)
-
-        rule.declarations.each_with_index do |decl, idx|
-          # Property is already US-ASCII and lowercase from parser
-          prop = decl.property
-
-          # Calculate source order (higher = later)
-          source_order = rule.id * 1000 + idx
-
-          existing = decl_map[prop]
-
-          # Apply cascade rules:
-          # 1. !important always wins over non-important
-          # 2. Higher specificity wins
-          # 3. Later source order wins (if specificity and importance are equal)
-
-          if existing.nil?
-            decl_map[prop] = [source_order, spec, decl.important, decl.value]
-          else
-            existing_order, existing_spec, existing_important, _existing_val = existing
-
-            # Determine winner
-            should_replace = false
-
-            if decl.important && !existing_important
-              # New is important, existing is not -> new wins
-              should_replace = true
-            elsif !decl.important && existing_important
-              # Existing is important, new is not -> existing wins
-              should_replace = false
-            elsif spec > existing_spec
-              # Higher specificity wins
-              should_replace = true
-            elsif spec < existing_spec
-              # Lower specificity loses
-              should_replace = false
-            else
-              # Same specificity and importance -> later source order wins
-              should_replace = source_order > existing_order
-            end
-
-            if should_replace
-              decl_map[prop] = [source_order, spec, decl.important, decl.value]
-            end
-          end
-        end
-      end
-
-      # Build final declarations array
-      declarations = []
-      decl_map.each do |prop, (_order, _spec, important, value)|
-        declarations << Declaration.new(prop, value, important)
-      end
-
-      # For non-nesting merge, always create rule (even if empty declarations)
-      # This handles cases like `.test { }` which should have 0 declarations
-      Rule.new(
-        0,  # ID will be updated later
-        'merged',
-        declarations,
-        1,  # Specificity = 1 for merged rule
-        nil,  # No parent
-        nil   # No nesting style
-      )
     end
 
     # Flatten nested rules to flat rules with resolved selectors
@@ -681,15 +599,20 @@ module Cataract
 
       family = family_parts.join(' ')
 
-      # Create declarations
-      result << Declaration.new(PROP_FONT_STYLE, style, decl.important) if style
-      result << Declaration.new(PROP_FONT_VARIANT, variant, decl.important) if variant
-      result << Declaration.new(PROP_FONT_WEIGHT, weight, decl.important) if weight
-      result << Declaration.new(PROP_FONT_SIZE, size, decl.important) if size
-      result << Declaration.new(PROP_LINE_HEIGHT, line_height, decl.important) if line_height
-      result << Declaration.new(PROP_FONT_FAMILY, family, decl.important) if !family.empty?
+      # Font shorthand sets ALL longhand properties
+      # Unspecified values get CSS initial values
+      # Size and family are required; if missing, return unexpanded
+      return [decl] if !size || family.empty?
 
-      result.empty? ? [decl] : result
+      result = []
+      result << Declaration.new(PROP_FONT_STYLE, style || 'normal', decl.important)
+      result << Declaration.new(PROP_FONT_VARIANT, variant || 'normal', decl.important)
+      result << Declaration.new(PROP_FONT_WEIGHT, weight || 'normal', decl.important)
+      result << Declaration.new(PROP_FONT_SIZE, size, decl.important)
+      result << Declaration.new(PROP_LINE_HEIGHT, line_height || 'normal', decl.important)
+      result << Declaration.new(PROP_FONT_FAMILY, family, decl.important)
+
+      result
     end
 
     # Check if value is a font size
@@ -736,9 +659,9 @@ module Cataract
 
       return [decl] if parts.empty?
 
-      result = []
-
       # Parse background components (simple heuristic)
+      # According to CSS spec, background shorthand sets ALL properties
+      # Any unspecified values get their initial values
       color = nil
       image = nil
       repeat = nil
@@ -762,14 +685,16 @@ module Cataract
         end
       end
 
-      # Create declarations
-      result << Declaration.new(PROP_BACKGROUND_COLOR, color, decl.important) if color
-      result << Declaration.new(PROP_BACKGROUND_IMAGE, image, decl.important) if image
-      result << Declaration.new(PROP_BACKGROUND_REPEAT, repeat, decl.important) if repeat
-      result << Declaration.new(PROP_BACKGROUND_ATTACHMENT, attachment, decl.important) if attachment
-      result << Declaration.new(PROP_BACKGROUND_POSITION, position, decl.important) if position
+      # Background shorthand sets ALL longhand properties
+      # Unspecified values get CSS initial values
+      result = []
+      result << Declaration.new(PROP_BACKGROUND_COLOR, color || 'transparent', decl.important)
+      result << Declaration.new(PROP_BACKGROUND_IMAGE, image || 'none', decl.important)
+      result << Declaration.new(PROP_BACKGROUND_REPEAT, repeat || 'repeat', decl.important)
+      result << Declaration.new(PROP_BACKGROUND_ATTACHMENT, attachment || 'scroll', decl.important)
+      result << Declaration.new(PROP_BACKGROUND_POSITION, position || '0% 0%', decl.important)
 
-      result.empty? ? [decl] : result
+      result
     end
 
     # Check if value starts with 'url('
@@ -1044,18 +969,43 @@ module Cataract
       important = font_decls.first.important
 
       # Build font shorthand value
+      # Strategy: Only omit defaults if we have ALL 6 properties (from shorthand expansion)
+      # If we have a partial set, include all non-nil values
+      style = prop_map[PROP_FONT_STYLE]&.value
+      variant = prop_map[PROP_FONT_VARIANT]&.value
+      weight = prop_map[PROP_FONT_WEIGHT]&.value
+      line_height = prop_map[PROP_LINE_HEIGHT]&.value
+
+      all_present = style && variant && weight && line_height
       parts = []
 
-      # Optional: style variant weight (in that order)
-      parts << prop_map[PROP_FONT_STYLE].value if prop_map[PROP_FONT_STYLE]
-      parts << prop_map[PROP_FONT_VARIANT].value if prop_map[PROP_FONT_VARIANT]
-      parts << prop_map[PROP_FONT_WEIGHT].value if prop_map[PROP_FONT_WEIGHT]
+      if all_present
+        # All properties present (likely from shorthand expansion) - omit defaults
+        parts << style if style != 'normal'
+        parts << variant if variant != 'normal'
+        parts << weight if weight != 'normal'
+      else
+        # Partial set - include all non-nil values
+        parts << style if style
+        parts << variant if variant
+        parts << weight if weight
+      end
 
       # Required: size[/line-height]
-      if prop_map[PROP_LINE_HEIGHT]
-        parts << "#{size.value}/#{prop_map[PROP_LINE_HEIGHT].value}"
+      if all_present
+        # Omit line-height if default
+        if line_height != 'normal'
+          parts << "#{size.value}/#{line_height}"
+        else
+          parts << size.value
+        end
       else
-        parts << size.value
+        # Include line-height if present
+        if line_height
+          parts << "#{size.value}/#{line_height}"
+        else
+          parts << size.value
+        end
       end
 
       # Required: family
@@ -1077,6 +1027,8 @@ module Cataract
       bg_decls = bg_props.filter_map { |p| prop_map[p] }
 
       # Need at least 2 properties to create shorthand
+      # Single properties should stay as longhands (e.g., background-color: blue)
+      # because shorthand resets all other properties to initial values
       return if bg_decls.length < 2
 
       # Check if all have same importance
@@ -1085,13 +1037,33 @@ module Cataract
 
       important = bg_decls.first.important
 
-      # Build background shorthand value (simple concatenation)
+      # Build background shorthand value
+      # Strategy: Only omit defaults if we have ALL 5 properties (from shorthand expansion)
+      # If we have a partial set (explicit longhands), include all values
+      color = prop_map[PROP_BACKGROUND_COLOR]&.value
+      image = prop_map[PROP_BACKGROUND_IMAGE]&.value
+      repeat = prop_map[PROP_BACKGROUND_REPEAT]&.value
+      position = prop_map[PROP_BACKGROUND_POSITION]&.value
+      attachment = prop_map[PROP_BACKGROUND_ATTACHMENT]&.value
+
+      all_present = color && image && repeat && position && attachment
       parts = []
-      parts << prop_map[PROP_BACKGROUND_COLOR].value if prop_map[PROP_BACKGROUND_COLOR]
-      parts << prop_map[PROP_BACKGROUND_IMAGE].value if prop_map[PROP_BACKGROUND_IMAGE]
-      parts << prop_map[PROP_BACKGROUND_REPEAT].value if prop_map[PROP_BACKGROUND_REPEAT]
-      parts << prop_map[PROP_BACKGROUND_POSITION].value if prop_map[PROP_BACKGROUND_POSITION]
-      parts << prop_map[PROP_BACKGROUND_ATTACHMENT].value if prop_map[PROP_BACKGROUND_ATTACHMENT]
+
+      if all_present
+        # All 5 properties present (likely from shorthand expansion) - omit defaults
+        parts << color if color != 'transparent'
+        parts << image if image != 'none'
+        parts << repeat if repeat != 'repeat'
+        parts << position if position != '0% 0%'
+        parts << attachment if attachment != 'scroll'
+      else
+        # Partial set (explicit longhands) - include all non-nil values
+        parts << color if color
+        parts << image if image
+        parts << repeat if repeat
+        parts << position if position
+        parts << attachment if attachment
+      end
 
       shorthand_value = parts.join(' ')
 
