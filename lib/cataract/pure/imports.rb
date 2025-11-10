@@ -34,8 +34,8 @@ module Cataract
 
       break if i >= len
 
-      # Check for @import (case-insensitive)
-      if i + 7 <= len && css_string[i...i+7].downcase == '@import'
+      # Check for @import (case-insensitive, use byteslice)
+      if i + 7 <= len && css_string.byteslice(i...i+7).downcase == '@import'
         import_start = i
         i += 7
 
@@ -44,9 +44,9 @@ module Cataract
           i += 1
         end
 
-        # Check for optional url(
+        # Check for optional url(, use byteslice
         has_url_function = false
-        if i + 4 <= len && css_string[i...i+4].downcase == 'url('
+        if i + 4 <= len && css_string.byteslice(i...i+4).downcase == 'url('
           has_url_function = true
           i += 4
           while i < len && is_whitespace?(css_string.getbyte(i))

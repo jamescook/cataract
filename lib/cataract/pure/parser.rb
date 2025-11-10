@@ -71,7 +71,8 @@ module Cataract
 
         # Split comma-separated selectors into individual rules
         # "html, body, p" => ["html", "body", "p"]
-        selectors = selector.split(',').map(&:strip)
+        selectors = selector.split(',')
+        selectors.each { |s| s.strip! }
 
         selectors.each do |individual_selector|
           next if individual_selector.empty?
@@ -237,8 +238,8 @@ module Cataract
         puts "DEBUG: parse_selector after skip, pos=#{@pos}"
       end
 
-      # Trim whitespace from selector
-      selector_text.strip
+      # Trim whitespace from selector (in-place to avoid allocation)
+      selector_text.strip!
     end
 
     # Parse declaration block (inside { ... })
@@ -272,7 +273,9 @@ module Cataract
           next
         end
 
-        property = @css.byteslice(property_start...@pos).strip.downcase
+        property = @css.byteslice(property_start...@pos)
+        property.strip!
+        property.downcase!
         @pos += 1 # skip ':'
 
         skip_ws_and_comments
@@ -287,7 +290,8 @@ module Cataract
           @pos += 1
         end
 
-        value = @css.byteslice(value_start...@pos).strip
+        value = @css.byteslice(value_start...@pos)
+        value.strip!
 
         # Check for !important (byte-by-byte, no regexp)
         if value.bytesize > 10
@@ -312,8 +316,9 @@ module Cataract
             # Check for '!'
             if i >= 0 && value.getbyte(i) == BYTE_BANG
               important = true
-              # Remove everything from '!' onwards
-              value = value[0...i].strip
+              # Remove everything from '!' onwards (use byteslice and strip in-place)
+              value = value.byteslice(0...i)
+              value.strip!
             end
           end
         end
@@ -353,7 +358,8 @@ module Cataract
           @pos += 1
         end
 
-        charset_value = @css.byteslice(value_start...@pos).strip
+        charset_value = @css.byteslice(value_start...@pos)
+        charset_value.strip!
         # Remove quotes (byte-by-byte)
         result = String.new
         i = 0
@@ -778,7 +784,8 @@ module Cataract
           prop_end -= 1
         end
 
-        property = @css.byteslice(prop_start...prop_end).downcase
+        property = @css.byteslice(prop_start...prop_end)
+        property.downcase!
 
         pos += 1  # Skip ':'
 
