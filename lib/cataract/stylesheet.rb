@@ -48,6 +48,9 @@ module Cataract
       @rules = [] # Flat array of Rule structs
       @_media_index = {} # Hash: Symbol => Array of rule IDs
       @charset = nil
+      @_has_nesting = nil # Set by parser (nil or boolean)
+      @_last_rule_id = nil # Tracks next rule ID for add_block
+      @selectors = nil # Memoized cache of selectors
     end
 
     # Parse CSS and return a new Stylesheet

@@ -98,11 +98,11 @@ module Cataract
 
       # Parser state
       @rules = []                    # Flat array of Rule structs
-      @media_index = {}              # Symbol => Array of rule IDs
+      @_media_index = {}             # Symbol => Array of rule IDs
       @rule_id_counter = 0           # Next rule ID (0-indexed)
       @media_query_count = 0         # Safety limit
       @media_cache = {}              # Parse-time cache: string => parsed media types
-      @has_nesting = false           # Set to true if any nested rules found
+      @_has_nesting = false          # Set to true if any nested rules found
       @depth = depth                 # Current recursion depth (passed from parent parser)
       @charset = nil                 # @charset declaration
     end
@@ -179,8 +179,8 @@ module Cataract
             )
 
             @rules[parent_position] = rule
-            @media_index[@parent_media_sym] ||= [] if @parent_media_sym
-            @media_index[@parent_media_sym] << current_rule_id if @parent_media_sym
+            @_media_index[@parent_media_sym] ||= [] if @parent_media_sym
+            @_media_index[@parent_media_sym] << current_rule_id if @parent_media_sym
           end
 
           # Move position past the closing brace
@@ -216,9 +216,9 @@ module Cataract
 
       {
         rules: @rules,
-        _media_index: @media_index,
+        _media_index: @_media_index,
         charset: @charset,
-        _has_nesting: @has_nesting
+        _has_nesting: @_has_nesting
       }
     end
 
@@ -456,11 +456,11 @@ module Cataract
           )
 
           # Mark that we have nesting
-          @has_nesting = true if !parent_rule_id.nil?
+          @_has_nesting = true if !parent_rule_id.nil?
 
           @rules << rule
-          @media_index[combined_media_sym] ||= []
-          @media_index[combined_media_sym] << media_rule_id
+          @_media_index[combined_media_sym] ||= []
+          @_media_index[combined_media_sym] << media_rule_id
 
           next
         end
@@ -523,11 +523,11 @@ module Cataract
             )
 
             # Mark that we have nesting
-            @has_nesting = true if !parent_rule_id.nil?
+            @_has_nesting = true if !parent_rule_id.nil?
 
             @rules << rule
-            @media_index[parent_media_sym] ||= [] if parent_media_sym
-            @media_index[parent_media_sym] << rule_id if parent_media_sym
+            @_media_index[parent_media_sym] ||= [] if parent_media_sym
+            @_media_index[parent_media_sym] << rule_id if parent_media_sym
           end
 
           next
@@ -757,8 +757,8 @@ module Cataract
 
         # Merge nested media_index into ours
         nested_result[:_media_index].each do |media, rule_ids|
-          @media_index[media] ||= []
-          @media_index[media].concat(rule_ids.map { |rid| @rule_id_counter + rid })
+          @_media_index[media] ||= []
+          @_media_index[media].concat(rule_ids.map { |rid| @rule_id_counter + rid })
         end
 
         # Add nested rules to main rules array
@@ -802,7 +802,7 @@ module Cataract
         combined_media_sym = combine_media_queries(@parent_media_sym, child_media_sym)
 
         # Check media query limit
-        if !@media_index.key?(combined_media_sym)
+        if !@_media_index.key?(combined_media_sym)
           @media_query_count += 1
           if @media_query_count > MAX_MEDIA_QUERIES
             raise SizeError, "Too many media queries: exceeded maximum of #{MAX_MEDIA_QUERIES}"
@@ -826,8 +826,8 @@ module Cataract
 
         # Merge nested media_index into ours (for nested @media)
         nested_result[:_media_index].each do |media, rule_ids|
-          @media_index[media] ||= []
-          @media_index[media].concat(rule_ids.map { |rid| @rule_id_counter + rid })
+          @_media_index[media] ||= []
+          @_media_index[media].concat(rule_ids.map { |rid| @rule_id_counter + rid })
         end
 
         # Add nested rules to main rules array and update media_index
@@ -835,16 +835,16 @@ module Cataract
           rule.id = @rule_id_counter
 
           # Add to full query symbol
-          @media_index[combined_media_sym] ||= []
-          @media_index[combined_media_sym] << @rule_id_counter
+          @_media_index[combined_media_sym] ||= []
+          @_media_index[combined_media_sym] << @rule_id_counter
 
           # Extract media types and add to each (if different from full query)
           media_types = Cataract.parse_media_types(combined_media_sym)
           media_types.each do |media_type|
             # Only add if different from combined_media_sym to avoid duplication
             if media_type != combined_media_sym
-              @media_index[media_type] ||= []
-              @media_index[media_type] << @rule_id_counter
+              @_media_index[media_type] ||= []
+              @_media_index[media_type] << @rule_id_counter
             end
           end
 

@@ -142,8 +142,7 @@ module Cataract
   # Helper: serialize a rule with its nested children
   def self.serialize_rule_with_nesting(result, rule, rule_children, rule_to_media)
     # Start selector
-    result << rule.selector
-    result << " { "
+    result << "#{rule.selector} { "
 
     # Serialize declarations
     has_declarations = !rule.declarations.empty?
@@ -242,8 +241,7 @@ module Cataract
     end
 
     # Regular Rule serialization
-    result << rule.selector
-    result << " { "
+    result << "#{rule.selector} { "
     serialize_declarations(result, rule.declarations)
     result << " }\n"
   end
@@ -251,20 +249,9 @@ module Cataract
   # Helper: serialize declarations (compact, single line)
   def self.serialize_declarations(result, declarations)
     declarations.each_with_index do |decl, i|
-      result << decl.property
-      result << ": "
-      result << decl.value
-
-      if decl.important
-        result << " !important"
-      end
-
-      result << ";"
-
-      # Add space after semicolon except for last declaration
-      if i < declarations.length - 1
-        result << " "
-      end
+      important_suffix = decl.important ? " !important;" : ";"
+      separator = i < declarations.length - 1 ? " " : ""
+      result << "#{decl.property}: #{decl.value}#{important_suffix}#{separator}"
     end
   end
 
@@ -286,8 +273,7 @@ module Cataract
 
   # Helper: serialize an at-rule (@keyframes, @font-face, etc)
   def self.serialize_at_rule(result, at_rule)
-    result << at_rule.selector
-    result << " {\n"
+    result << "#{at_rule.selector} {\n"
 
     # Check if content is rules or declarations
     if at_rule.content.length > 0
@@ -296,9 +282,7 @@ module Cataract
       if first.is_a?(Rule)
         # Serialize as nested rules (e.g., @keyframes)
         at_rule.content.each do |nested_rule|
-          result << "  "
-          result << nested_rule.selector
-          result << " { "
+          result << "  #{nested_rule.selector} { "
           serialize_declarations(result, nested_rule.declarations)
           result << " }\n"
         end
