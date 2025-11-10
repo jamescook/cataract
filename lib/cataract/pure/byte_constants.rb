@@ -44,6 +44,13 @@ module Cataract
   BYTE_UNDERSCORE = 95 # '_'
   BYTE_BACKSLASH  = 92 # '\\'
   BYTE_BANG       = 33 # '!'
+  BYTE_PERCENT    = 37 # '%'
+  BYTE_SLASH_FWD  = 47 # '/' (also defined as BYTE_SLASH above)
+
+  # Specific lowercase letters (for keyword matching)
+  BYTE_LOWER_U    = 117 # 'u'
+  BYTE_LOWER_R    = 114 # 'r'
+  BYTE_LOWER_L    = 108 # 'l'
 
   # Letter ranges (a-z, A-Z)
   BYTE_LOWER_A   = 97  # 'a'

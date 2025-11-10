@@ -82,7 +82,7 @@ module Cataract
           i += 1
         end
         # These are outer parens, strip them
-        result = str.byteslice(1...len - 1)
+        result = str.byteslice(1, len - 2)
         result.strip!
         return result
       end
@@ -302,14 +302,15 @@ module Cataract
         puts "DEBUG: find_matching_brace start_pos=#{start_pos}, char at pos: #{@css[start_pos].inspect}"
       end
 
-      while pos < @len && depth > 0
+      while pos < @len
         byte = @css.getbyte(pos)
         if byte == BYTE_LBRACE
           depth += 1
         elsif byte == BYTE_RBRACE
           depth -= 1
+          break if depth == 0  # Found matching brace, exit immediately
         end
-        pos += 1 if depth > 0
+        pos += 1
       end
 
       if ENV['DEBUG_PARSER']
@@ -347,7 +348,7 @@ module Cataract
       end
 
       # Extract selector text
-      selector_text = byteslice_encoded(start_pos...@pos)
+      selector_text = byteslice_encoded(start_pos, @pos - start_pos)
 
       if ENV['DEBUG_PARSER']
         puts "DEBUG: parse_selector extracted: #{selector_text.inspect}"
@@ -418,7 +419,7 @@ module Cataract
           while media_query_end_trimmed > media_start && whitespace?(@css.getbyte(media_query_end_trimmed - 1))
             media_query_end_trimmed -= 1
           end
-          media_query_str = byteslice_encoded(media_start...media_query_end_trimmed)
+          media_query_str = byteslice_encoded(media_start, media_query_end_trimmed - media_start)
           # Strip outer parentheses if present
           media_query_str = strip_outer_parens(media_query_str)
           media_sym = media_query_str.to_sym
@@ -491,7 +492,7 @@ module Cataract
           pos += 1 if pos < end_pos  # Skip }
 
           # Extract nested selector and split on commas
-          nested_selector_text = byteslice_encoded(nested_sel_start...nested_sel_end)
+          nested_selector_text = byteslice_encoded(nested_sel_start, nested_sel_end - nested_sel_start)
           nested_selectors = nested_selector_text.split(',')
           nested_selectors.each { |s| s.strip! }
 
@@ -554,7 +555,7 @@ module Cataract
           prop_end -= 1
         end
 
-        property = byteslice_encoded(prop_start...prop_end, encoding: 'US-ASCII')
+        property = byteslice_encoded(prop_start, prop_end - prop_start, encoding: 'US-ASCII')
         property.downcase!
 
         pos += 1  # Skip :
@@ -576,12 +577,19 @@ module Cataract
           val_end -= 1
         end
 
-        value = byteslice_encoded(val_start...val_end)
+        value = byteslice_encoded(val_start, val_end - val_start)
+
+        # Check for !important flag
+        important = false
+        if value.end_with?('!important')
+          important = true
+          value = value[0, value.length - 10].rstrip  # Remove '!important' and trailing whitespace
+        end
 
         pos += 1 if pos < end_pos && @css.getbyte(pos) == BYTE_SEMICOLON
 
         # Create declaration
-        declarations << Declaration.new(property, value, false) if prop_end > prop_start && val_end > val_start
+        declarations << Declaration.new(property, value, important) if prop_end > prop_start && val_end > val_start
       end
 
       declarations
@@ -618,7 +626,7 @@ module Cataract
           next
         end
 
-        property = byteslice_encoded(property_start...@pos, encoding: 'US-ASCII')
+        property = byteslice_encoded(property_start, @pos - property_start, encoding: 'US-ASCII')
         property.strip!
         property.downcase!
         @pos += 1 # skip ':'
@@ -635,7 +643,7 @@ module Cataract
           @pos += 1
         end
 
-        value = byteslice_encoded(value_start...@pos)
+        value = byteslice_encoded(value_start, @pos - value_start)
         value.strip!
 
         # Check for !important (byte-by-byte, no regexp)
@@ -662,7 +670,7 @@ module Cataract
             if i >= 0 && value.getbyte(i) == BYTE_BANG
               important = true
               # Remove everything from '!' onwards (use byteslice and strip in-place)
-              value = value.byteslice(0...i)
+              value = value.byteslice(0, i)
               value.strip!
             end
           end
@@ -692,7 +700,7 @@ module Cataract
         @pos += 1
       end
 
-      at_rule_name = byteslice_encoded(name_start...@pos)
+      at_rule_name = byteslice_encoded(name_start, @pos - name_start)
 
       # Handle @charset specially - it's just @charset "value";
       if at_rule_name == 'charset'
@@ -703,7 +711,7 @@ module Cataract
           @pos += 1
         end
 
-        charset_value = byteslice_encoded(value_start...@pos)
+        charset_value = byteslice_encoded(value_start, @pos - value_start)
         charset_value.strip!
         # Remove quotes (byte-by-byte)
         result = String.new
@@ -744,7 +752,7 @@ module Cataract
         end
 
         # Recursively parse block content (preserve parent media context)
-        nested_parser = Parser.new(byteslice_encoded(block_start...block_end), parent_media_sym: @parent_media_sym, depth: @depth + 1)
+        nested_parser = Parser.new(byteslice_encoded(block_start, block_end - block_start), parent_media_sym: @parent_media_sym, depth: @depth + 1)
         nested_result = nested_parser.parse
 
         # Merge nested media_index into ours
@@ -785,7 +793,7 @@ module Cataract
           mq_end -= 1
         end
 
-        child_media_string = byteslice_encoded(mq_start...mq_end)
+        child_media_string = byteslice_encoded(mq_start, mq_end - mq_start)
         # Strip outer parentheses if present: "(orientation: landscape)" => "orientation: landscape"
         child_media_string = strip_outer_parens(child_media_string)
         child_media_sym = child_media_string.to_sym
@@ -813,7 +821,7 @@ module Cataract
         end
 
         # Parse the content with the combined media context
-        nested_parser = Parser.new(byteslice_encoded(block_start...block_end), parent_media_sym: combined_media_sym, depth: @depth + 1)
+        nested_parser = Parser.new(byteslice_encoded(block_start, block_end - block_start), parent_media_sym: combined_media_sym, depth: @depth + 1)
         nested_result = nested_parser.parse
 
         # Merge nested media_index into ours (for nested @media)
@@ -876,7 +884,7 @@ module Cataract
         while selector_end > selector_start && whitespace?(@css.getbyte(selector_end - 1))
           selector_end -= 1
         end
-        selector = byteslice_encoded(selector_start...selector_end)
+        selector = byteslice_encoded(selector_start, selector_end - selector_start)
 
         @pos += 1 # skip '{'
 
@@ -891,7 +899,7 @@ module Cataract
 
         # Parse keyframe blocks as rules (0%/from/to etc)
         # Create a nested parser context
-        nested_parser = Parser.new(byteslice_encoded(block_start...block_end), depth: @depth + 1)
+        nested_parser = Parser.new(byteslice_encoded(block_start, block_end - block_start), depth: @depth + 1)
         nested_result = nested_parser.parse
         content = nested_result[:rules]
 
@@ -928,7 +936,7 @@ module Cataract
         while selector_end > selector_start && whitespace?(@css.getbyte(selector_end - 1))
           selector_end -= 1
         end
-        selector = byteslice_encoded(selector_start...selector_end)
+        selector = byteslice_encoded(selector_start, selector_end - selector_start)
 
         @pos += 1 # skip '{'
 
@@ -971,7 +979,7 @@ module Cataract
       while selector_end > selector_start && whitespace?(@css.getbyte(selector_end - 1))
         selector_end -= 1
       end
-      selector = byteslice_encoded(selector_start...selector_end)
+      selector = byteslice_encoded(selector_start, selector_end - selector_start)
 
       @pos += 1 # skip '{'
 
@@ -1247,7 +1255,7 @@ module Cataract
           prop_end -= 1
         end
 
-        property = byteslice_encoded(prop_start...prop_end, encoding: 'US-ASCII')
+        property = byteslice_encoded(prop_start, prop_end - prop_start, encoding: 'US-ASCII')
         property.downcase!
 
         pos += 1  # Skip ':'
@@ -1269,7 +1277,7 @@ module Cataract
           val_end -= 1
         end
 
-        value = byteslice_encoded(val_start...val_end)
+        value = byteslice_encoded(val_start, val_end - val_start)
 
         pos += 1 if pos < end_pos && @css.getbyte(pos) == BYTE_SEMICOLON
 

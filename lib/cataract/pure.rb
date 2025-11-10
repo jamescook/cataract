@@ -95,6 +95,7 @@ require_relative 'pure/specificity'
 require_relative 'pure/imports'
 require_relative 'pure/serializer'
 require_relative 'pure/parser'
+require_relative 'pure/merge'
 
 module Cataract
   # Flag to indicate pure Ruby version is loaded
@@ -136,7 +137,7 @@ module Cataract
   end
 
   # ============================================================================
-  # MERGING (Skip for now - focus on parsing/serialization first)
+  # MERGING
   # ============================================================================
 
   # Merge stylesheet rules according to CSS cascade rules
@@ -144,10 +145,14 @@ module Cataract
   # @param stylesheet [Stylesheet] Stylesheet to merge
   # @return [Stylesheet] New stylesheet with merged rules
   def self.merge(stylesheet)
-    # TODO: Implement merge logic
-    # - Apply cascade rules (specificity, !important, source order)
-    # - Expand shorthand properties
-    # - Recreate shorthands where possible
-    raise NotImplementedError, "merge() not yet implemented in pure Ruby version"
+    Merge.merge(stylesheet, mutate: false)
+  end
+
+  # Merge stylesheet rules in-place (mutates receiver)
+  #
+  # @param stylesheet [Stylesheet] Stylesheet to merge
+  # @return [Stylesheet] Same stylesheet (mutated)
+  def self.merge!(stylesheet)
+    Merge.merge(stylesheet, mutate: true)
   end
 end

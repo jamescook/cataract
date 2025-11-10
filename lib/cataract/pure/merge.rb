@@ -1,0 +1,1135 @@
+# frozen_string_literal: true
+
+# Pure Ruby CSS merge implementation
+# NO REGEXP ALLOWED - use string manipulation only
+
+require 'set'
+
+module Cataract
+  module Merge
+    # Property name constants (US-ASCII for merge output)
+    PROP_MARGIN = 'margin'.encode(Encoding::US_ASCII).freeze
+    PROP_MARGIN_TOP = 'margin-top'.encode(Encoding::US_ASCII).freeze
+    PROP_MARGIN_RIGHT = 'margin-right'.encode(Encoding::US_ASCII).freeze
+    PROP_MARGIN_BOTTOM = 'margin-bottom'.encode(Encoding::US_ASCII).freeze
+    PROP_MARGIN_LEFT = 'margin-left'.encode(Encoding::US_ASCII).freeze
+
+    PROP_PADDING = 'padding'.encode(Encoding::US_ASCII).freeze
+    PROP_PADDING_TOP = 'padding-top'.encode(Encoding::US_ASCII).freeze
+    PROP_PADDING_RIGHT = 'padding-right'.encode(Encoding::US_ASCII).freeze
+    PROP_PADDING_BOTTOM = 'padding-bottom'.encode(Encoding::US_ASCII).freeze
+    PROP_PADDING_LEFT = 'padding-left'.encode(Encoding::US_ASCII).freeze
+
+    PROP_BORDER = 'border'.encode(Encoding::US_ASCII).freeze
+    PROP_BORDER_WIDTH = 'border-width'.encode(Encoding::US_ASCII).freeze
+    PROP_BORDER_STYLE = 'border-style'.encode(Encoding::US_ASCII).freeze
+    PROP_BORDER_COLOR = 'border-color'.encode(Encoding::US_ASCII).freeze
+
+    PROP_BORDER_TOP = 'border-top'.encode(Encoding::US_ASCII).freeze
+    PROP_BORDER_RIGHT = 'border-right'.encode(Encoding::US_ASCII).freeze
+    PROP_BORDER_BOTTOM = 'border-bottom'.encode(Encoding::US_ASCII).freeze
+    PROP_BORDER_LEFT = 'border-left'.encode(Encoding::US_ASCII).freeze
+
+    PROP_BORDER_TOP_WIDTH = 'border-top-width'.encode(Encoding::US_ASCII).freeze
+    PROP_BORDER_RIGHT_WIDTH = 'border-right-width'.encode(Encoding::US_ASCII).freeze
+    PROP_BORDER_BOTTOM_WIDTH = 'border-bottom-width'.encode(Encoding::US_ASCII).freeze
+    PROP_BORDER_LEFT_WIDTH = 'border-left-width'.encode(Encoding::US_ASCII).freeze
+
+    PROP_BORDER_TOP_STYLE = 'border-top-style'.encode(Encoding::US_ASCII).freeze
+    PROP_BORDER_RIGHT_STYLE = 'border-right-style'.encode(Encoding::US_ASCII).freeze
+    PROP_BORDER_BOTTOM_STYLE = 'border-bottom-style'.encode(Encoding::US_ASCII).freeze
+    PROP_BORDER_LEFT_STYLE = 'border-left-style'.encode(Encoding::US_ASCII).freeze
+
+    PROP_BORDER_TOP_COLOR = 'border-top-color'.encode(Encoding::US_ASCII).freeze
+    PROP_BORDER_RIGHT_COLOR = 'border-right-color'.encode(Encoding::US_ASCII).freeze
+    PROP_BORDER_BOTTOM_COLOR = 'border-bottom-color'.encode(Encoding::US_ASCII).freeze
+    PROP_BORDER_LEFT_COLOR = 'border-left-color'.encode(Encoding::US_ASCII).freeze
+
+    PROP_FONT = 'font'.encode(Encoding::US_ASCII).freeze
+    PROP_FONT_STYLE = 'font-style'.encode(Encoding::US_ASCII).freeze
+    PROP_FONT_VARIANT = 'font-variant'.encode(Encoding::US_ASCII).freeze
+    PROP_FONT_WEIGHT = 'font-weight'.encode(Encoding::US_ASCII).freeze
+    PROP_FONT_SIZE = 'font-size'.encode(Encoding::US_ASCII).freeze
+    PROP_LINE_HEIGHT = 'line-height'.encode(Encoding::US_ASCII).freeze
+    PROP_FONT_FAMILY = 'font-family'.encode(Encoding::US_ASCII).freeze
+
+    PROP_BACKGROUND = 'background'.encode(Encoding::US_ASCII).freeze
+    PROP_BACKGROUND_COLOR = 'background-color'.encode(Encoding::US_ASCII).freeze
+    PROP_BACKGROUND_IMAGE = 'background-image'.encode(Encoding::US_ASCII).freeze
+    PROP_BACKGROUND_REPEAT = 'background-repeat'.encode(Encoding::US_ASCII).freeze
+    PROP_BACKGROUND_ATTACHMENT = 'background-attachment'.encode(Encoding::US_ASCII).freeze
+    PROP_BACKGROUND_POSITION = 'background-position'.encode(Encoding::US_ASCII).freeze
+
+    PROP_LIST_STYLE = 'list-style'.encode(Encoding::US_ASCII).freeze
+    PROP_LIST_STYLE_TYPE = 'list-style-type'.encode(Encoding::US_ASCII).freeze
+    PROP_LIST_STYLE_POSITION = 'list-style-position'.encode(Encoding::US_ASCII).freeze
+    PROP_LIST_STYLE_IMAGE = 'list-style-image'.encode(Encoding::US_ASCII).freeze
+
+    # Shorthand property families
+    MARGIN_SIDES = [PROP_MARGIN_TOP, PROP_MARGIN_RIGHT, PROP_MARGIN_BOTTOM, PROP_MARGIN_LEFT].freeze
+    PADDING_SIDES = [PROP_PADDING_TOP, PROP_PADDING_RIGHT, PROP_PADDING_BOTTOM, PROP_PADDING_LEFT].freeze
+
+    BORDER_WIDTHS = [PROP_BORDER_TOP_WIDTH, PROP_BORDER_RIGHT_WIDTH, PROP_BORDER_BOTTOM_WIDTH, PROP_BORDER_LEFT_WIDTH].freeze
+    BORDER_STYLES = [PROP_BORDER_TOP_STYLE, PROP_BORDER_RIGHT_STYLE, PROP_BORDER_BOTTOM_STYLE, PROP_BORDER_LEFT_STYLE].freeze
+    BORDER_COLORS = [PROP_BORDER_TOP_COLOR, PROP_BORDER_RIGHT_COLOR, PROP_BORDER_BOTTOM_COLOR, PROP_BORDER_LEFT_COLOR].freeze
+
+    # Side name constants (for string operations, not CSS properties)
+    SIDE_TOP = 'top'.freeze
+    SIDE_RIGHT = 'right'.freeze
+    SIDE_BOTTOM = 'bottom'.freeze
+    SIDE_LEFT = 'left'.freeze
+    BORDER_SIDES = [SIDE_TOP, SIDE_RIGHT, SIDE_BOTTOM, SIDE_LEFT].freeze
+
+    FONT_PROPERTIES = [PROP_FONT_STYLE, PROP_FONT_VARIANT, PROP_FONT_WEIGHT, PROP_FONT_SIZE, PROP_LINE_HEIGHT, PROP_FONT_FAMILY].freeze
+    BACKGROUND_PROPERTIES = [PROP_BACKGROUND_COLOR, PROP_BACKGROUND_IMAGE, PROP_BACKGROUND_REPEAT, PROP_BACKGROUND_POSITION, PROP_BACKGROUND_ATTACHMENT].freeze
+    LIST_STYLE_PROPERTIES = [PROP_LIST_STYLE_TYPE, PROP_LIST_STYLE_POSITION, PROP_LIST_STYLE_IMAGE].freeze
+
+    # Property sets for fast deletion (avoid repeated Array#delete calls)
+    MARGIN_SIDES_SET = Set.new(MARGIN_SIDES).freeze
+    PADDING_SIDES_SET = Set.new(PADDING_SIDES).freeze
+    BORDER_WIDTHS_SET = Set.new(BORDER_WIDTHS).freeze
+    BORDER_STYLES_SET = Set.new(BORDER_STYLES).freeze
+    BORDER_COLORS_SET = Set.new(BORDER_COLORS).freeze
+    BORDER_ALL_SET = Set.new(BORDER_WIDTHS + BORDER_STYLES + BORDER_COLORS).freeze
+    FONT_PROPERTIES_SET = Set.new(FONT_PROPERTIES).freeze
+    BACKGROUND_PROPERTIES_SET = Set.new(BACKGROUND_PROPERTIES).freeze
+    LIST_STYLE_PROPERTIES_SET = Set.new(LIST_STYLE_PROPERTIES).freeze
+
+    # List style keywords
+    LIST_STYLE_POSITION_KEYWORDS = %w[inside outside].freeze
+
+    # Border property keywords
+    BORDER_WIDTH_KEYWORDS = %w[thin medium thick].freeze
+    BORDER_STYLE_KEYWORDS = %w[none hidden dotted dashed solid double groove ridge inset outset].freeze
+
+    # Font property keywords
+    FONT_SIZE_KEYWORDS = %w[xx-small x-small small medium large x-large xx-large smaller larger].freeze
+    FONT_STYLE_KEYWORDS = %w[normal italic oblique].freeze
+    FONT_VARIANT_KEYWORDS = %w[normal small-caps].freeze
+    FONT_WEIGHT_KEYWORDS = %w[normal bold bolder lighter 100 200 300 400 500 600 700 800 900].freeze
+
+    # Background property keywords
+    BACKGROUND_REPEAT_KEYWORDS = %w[repeat repeat-x repeat-y no-repeat space round].freeze
+    BACKGROUND_ATTACHMENT_KEYWORDS = %w[scroll fixed local].freeze
+    BACKGROUND_POSITION_KEYWORDS = %w[left right center top bottom].freeze
+
+    # Merge stylesheet according to CSS cascade rules
+    #
+    # @param stylesheet [Stylesheet] Stylesheet to merge
+    # @param mutate [Boolean] If true, mutate the stylesheet; otherwise create new one
+    # @return [Stylesheet] Merged stylesheet
+    def self.merge(stylesheet, mutate: false)
+      # Check if any rules have nesting
+      has_nesting = stylesheet.rules.any? { |r| r.parent_rule_id || r.nesting_style }
+
+      # Expand shorthands in all rules
+      stylesheet.rules.each { |rule| expand_shorthands!(rule) }
+
+      merged_rules = []
+
+      if has_nesting
+        # Preserve selectors, group by selector and merge
+        grouped = stylesheet.rules.group_by(&:selector)
+        grouped.each do |selector, rules|
+          merged_rule = merge_rules_for_selector(selector, rules)
+          merged_rules << merged_rule if merged_rule
+        end
+      else
+        # No nesting - merge all into single 'merged' rule
+        if !stylesheet.rules.empty?
+          merged_rule = merge_all_rules(stylesheet.rules)
+          merged_rules << merged_rule
+        end
+      end
+
+      # Recreate shorthands where possible
+      merged_rules.each { |rule| recreate_shorthands!(rule) }
+
+      # Create result stylesheet
+      if mutate
+        stylesheet.instance_variable_set(:@rules, merged_rules)
+        # Update rule IDs
+        merged_rules.each_with_index { |rule, i| rule.id = i }
+        # Clear media index (no media rules after merge flattens everything)
+        stylesheet.instance_variable_set(:@media_index, {})
+        stylesheet
+      else
+        # Create new Stylesheet with merged rules
+        result = Stylesheet.new
+        result.instance_variable_set(:@rules, merged_rules)
+        result.instance_variable_set(:@media_index, {})
+        result.instance_variable_set(:@charset, stylesheet.charset)
+        # Update rule IDs
+        merged_rules.each_with_index { |rule, i| rule.id = i }
+        result
+      end
+    end
+
+    # Merge all top-level rules into a single 'merged' rule
+    #
+    # @param rules [Array<Rule>] Top-level rules to merge
+    # @return [Rule] Single merged rule with selector='merged'
+    def self.merge_all_rules(rules)
+      # Build declaration map: property => [source_order, specificity, important, value]
+      decl_map = {}
+
+      rules.each do |rule|
+        spec = rule.specificity || calculate_specificity(rule.selector)
+
+        rule.declarations.each_with_index do |decl, idx|
+          # Property is already US-ASCII and lowercase from parser
+          prop = decl.property
+
+          # Calculate source order (higher = later)
+          source_order = rule.id * 1000 + idx
+
+          existing = decl_map[prop]
+
+          # Apply cascade rules:
+          # 1. !important always wins over non-important
+          # 2. Higher specificity wins
+          # 3. Later source order wins (if specificity and importance are equal)
+
+          if existing.nil?
+            decl_map[prop] = [source_order, spec, decl.important, decl.value]
+          else
+            existing_order, existing_spec, existing_important, _existing_val = existing
+
+            # Determine winner
+            should_replace = false
+
+            if decl.important && !existing_important
+              # New is important, existing is not -> new wins
+              should_replace = true
+            elsif !decl.important && existing_important
+              # Existing is important, new is not -> existing wins
+              should_replace = false
+            elsif spec > existing_spec
+              # Higher specificity wins
+              should_replace = true
+            elsif spec < existing_spec
+              # Lower specificity loses
+              should_replace = false
+            else
+              # Same specificity and importance -> later source order wins
+              should_replace = source_order > existing_order
+            end
+
+            if should_replace
+              decl_map[prop] = [source_order, spec, decl.important, decl.value]
+            end
+          end
+        end
+      end
+
+      # Build final declarations array
+      declarations = []
+      decl_map.each do |prop, (_order, _spec, important, value)|
+        declarations << Declaration.new(prop, value, important)
+      end
+
+      # For non-nesting merge, always create rule (even if empty declarations)
+      # This handles cases like `.test { }` which should have 0 declarations
+      Rule.new(
+        0,  # ID will be updated later
+        'merged',
+        declarations,
+        1,  # Specificity = 1 for merged rule
+        nil,  # No parent
+        nil   # No nesting style
+      )
+    end
+
+    # Flatten nested rules to flat rules with resolved selectors
+    #
+    # @param rules [Array<Rule>] Rules (may include nested rules)
+    # @return [Array<Rule>] Flat rules with resolved selectors
+    def self.flatten_rules(rules)
+      flat = []
+
+      rules.each do |rule|
+        # Add this rule if it has declarations
+        if rule.declarations && !rule.declarations.empty?
+          flat << rule
+        end
+
+        # Recursively flatten nested rules
+        if rule.respond_to?(:parent_rule_id) && rule.parent_rule_id
+          # This rule is already flattened (has resolved selector)
+          # Just add it if not already added
+          flat << rule unless rule.declarations && rule.declarations.empty?
+        end
+      end
+
+      flat
+    end
+
+    # Merge multiple rules with same selector
+    #
+    # @param selector [String] The selector
+    # @param rules [Array<Rule>] Rules with this selector
+    # @return [Rule] Merged rule with cascaded declarations
+    def self.merge_rules_for_selector(selector, rules)
+      # Build declaration map: property => [source_order, specificity, important, value]
+      decl_map = {}
+
+      rules.each do |rule|
+        spec = rule.specificity || calculate_specificity(rule.selector)
+
+        rule.declarations.each_with_index do |decl, idx|
+          # Property is already US-ASCII and lowercase from parser
+          prop = decl.property
+
+          # Calculate source order (higher = later)
+          source_order = rule.id * 1000 + idx
+
+          existing = decl_map[prop]
+
+          # Apply cascade rules:
+          # 1. !important always wins over non-important
+          # 2. Higher specificity wins
+          # 3. Later source order wins (if specificity and importance are equal)
+
+          if existing.nil?
+            decl_map[prop] = [source_order, spec, decl.important, decl.value]
+          else
+            existing_order, existing_spec, existing_important, _existing_val = existing
+
+            # Determine winner
+            should_replace = false
+
+            if decl.important && !existing_important
+              # New is important, existing is not -> new wins
+              should_replace = true
+            elsif !decl.important && existing_important
+              # Existing is important, new is not -> existing wins
+              should_replace = false
+            elsif spec > existing_spec
+              # Higher specificity wins
+              should_replace = true
+            elsif spec < existing_spec
+              # Lower specificity loses
+              should_replace = false
+            else
+              # Same specificity and importance -> later source order wins
+              should_replace = source_order > existing_order
+            end
+
+            if should_replace
+              decl_map[prop] = [source_order, spec, decl.important, decl.value]
+            end
+          end
+        end
+      end
+
+      # Build final declarations array
+      declarations = []
+      decl_map.each do |prop, (_order, _spec, important, value)|
+        declarations << Declaration.new(prop, value, important)
+      end
+
+      return nil if declarations.empty?
+
+      # Create merged rule
+      Rule.new(
+        0,  # ID will be updated later
+        selector,
+        declarations,
+        rules.first.specificity,  # Use first rule's specificity
+        nil,  # No parent after flattening
+        nil   # No nesting style after flattening
+      )
+    end
+
+    # Calculate specificity for a selector
+    #
+    # @param selector [String] CSS selector
+    # @return [Integer] Specificity value
+    def self.calculate_specificity(selector)
+      Cataract.calculate_specificity(selector)
+    end
+
+    # Expand shorthand properties in a rule (mutates declarations)
+    #
+    # @param rule [Rule] Rule to expand
+    def self.expand_shorthands!(rule)
+      expanded = []
+
+      rule.declarations.each do |decl|
+        prop = decl.property
+
+        case prop
+        when 'margin'
+          expanded.concat(expand_margin(decl))
+        when 'padding'
+          expanded.concat(expand_padding(decl))
+        when 'border'
+          expanded.concat(expand_border(decl))
+        when 'border-top', 'border-right', 'border-bottom', 'border-left'
+          expanded.concat(expand_border_side(decl))
+        when 'border-width'
+          expanded.concat(expand_border_width(decl))
+        when 'border-style'
+          expanded.concat(expand_border_style(decl))
+        when 'border-color'
+          expanded.concat(expand_border_color(decl))
+        when 'font'
+          expanded.concat(expand_font(decl))
+        when 'background'
+          expanded.concat(expand_background(decl))
+        when 'list-style'
+          expanded.concat(expand_list_style(decl))
+        else
+          expanded << decl
+        end
+      end
+
+      rule.declarations.replace(expanded)
+    end
+
+    # Expand margin shorthand
+    def self.expand_margin(decl)
+      sides = parse_four_sides(decl.value)
+      [
+        Declaration.new(PROP_MARGIN_TOP, sides[0], decl.important),
+        Declaration.new(PROP_MARGIN_RIGHT, sides[1], decl.important),
+        Declaration.new(PROP_MARGIN_BOTTOM, sides[2], decl.important),
+        Declaration.new(PROP_MARGIN_LEFT, sides[3], decl.important)
+      ]
+    end
+
+    # Expand padding shorthand
+    def self.expand_padding(decl)
+      sides = parse_four_sides(decl.value)
+      [
+        Declaration.new(PROP_PADDING_TOP, sides[0], decl.important),
+        Declaration.new(PROP_PADDING_RIGHT, sides[1], decl.important),
+        Declaration.new(PROP_PADDING_BOTTOM, sides[2], decl.important),
+        Declaration.new(PROP_PADDING_LEFT, sides[3], decl.important)
+      ]
+    end
+
+    # Parse four-sided value (margin/padding)
+    # "10px" -> ["10px", "10px", "10px", "10px"]
+    # "10px 20px" -> ["10px", "20px", "10px", "20px"]
+    # "10px 20px 30px" -> ["10px", "20px", "30px", "20px"]
+    # "10px 20px 30px 40px" -> ["10px", "20px", "30px", "40px"]
+    def self.parse_four_sides(value)
+      parts = split_on_whitespace(value)
+
+      case parts.length
+      when 1
+        [parts[0], parts[0], parts[0], parts[0]]
+      when 2
+        [parts[0], parts[1], parts[0], parts[1]]
+      when 3
+        [parts[0], parts[1], parts[2], parts[1]]
+      else
+        [parts[0], parts[1], parts[2], parts[3]]
+      end
+    end
+
+    # Split value on whitespace (handling calc() and other functions)
+    def self.split_on_whitespace(value)
+      parts = []
+      current = String.new
+      paren_depth = 0
+
+      i = 0
+      len = value.bytesize
+      while i < len
+        byte = value.getbyte(i)
+
+        if byte == BYTE_LPAREN
+          paren_depth += 1
+          current << byte
+        elsif byte == BYTE_RPAREN
+          paren_depth -= 1
+          current << byte
+        elsif byte == BYTE_SPACE && paren_depth == 0
+          parts << current unless current.empty?
+          current = String.new
+        else
+          current << byte
+        end
+
+        i += 1
+      end
+
+      parts << current unless current.empty?
+      parts
+    end
+
+    # Expand border shorthand (e.g., "1px solid red")
+    def self.expand_border(decl)
+      # Parse border value
+      width, style, color = parse_border_value(decl.value)
+
+      result = []
+
+      # Expand to all sides using property constants
+      if width
+        result << Declaration.new(PROP_BORDER_TOP_WIDTH, width, decl.important)
+        result << Declaration.new(PROP_BORDER_RIGHT_WIDTH, width, decl.important)
+        result << Declaration.new(PROP_BORDER_BOTTOM_WIDTH, width, decl.important)
+        result << Declaration.new(PROP_BORDER_LEFT_WIDTH, width, decl.important)
+      end
+
+      if style
+        result << Declaration.new(PROP_BORDER_TOP_STYLE, style, decl.important)
+        result << Declaration.new(PROP_BORDER_RIGHT_STYLE, style, decl.important)
+        result << Declaration.new(PROP_BORDER_BOTTOM_STYLE, style, decl.important)
+        result << Declaration.new(PROP_BORDER_LEFT_STYLE, style, decl.important)
+      end
+
+      if color
+        result << Declaration.new(PROP_BORDER_TOP_COLOR, color, decl.important)
+        result << Declaration.new(PROP_BORDER_RIGHT_COLOR, color, decl.important)
+        result << Declaration.new(PROP_BORDER_BOTTOM_COLOR, color, decl.important)
+        result << Declaration.new(PROP_BORDER_LEFT_COLOR, color, decl.important)
+      end
+
+      result
+    end
+
+    # Expand border-side shorthand (e.g., "border-top: 1px solid red")
+    def self.expand_border_side(decl)
+      # Extract side from property name (e.g., "border-top" -> "top")
+      side = decl.property.byteslice(7..-1)  # Skip "border-" prefix
+      width, style, color = parse_border_value(decl.value)
+
+      result = []
+
+      # Map side to property constants
+      if width
+        width_prop = case side
+          when SIDE_TOP then PROP_BORDER_TOP_WIDTH
+          when SIDE_RIGHT then PROP_BORDER_RIGHT_WIDTH
+          when SIDE_BOTTOM then PROP_BORDER_BOTTOM_WIDTH
+          when SIDE_LEFT then PROP_BORDER_LEFT_WIDTH
+        end
+        result << Declaration.new(width_prop, width, decl.important)
+      end
+
+      if style
+        style_prop = case side
+          when SIDE_TOP then PROP_BORDER_TOP_STYLE
+          when SIDE_RIGHT then PROP_BORDER_RIGHT_STYLE
+          when SIDE_BOTTOM then PROP_BORDER_BOTTOM_STYLE
+          when SIDE_LEFT then PROP_BORDER_LEFT_STYLE
+        end
+        result << Declaration.new(style_prop, style, decl.important)
+      end
+
+      if color
+        color_prop = case side
+          when SIDE_TOP then PROP_BORDER_TOP_COLOR
+          when SIDE_RIGHT then PROP_BORDER_RIGHT_COLOR
+          when SIDE_BOTTOM then PROP_BORDER_BOTTOM_COLOR
+          when SIDE_LEFT then PROP_BORDER_LEFT_COLOR
+        end
+        result << Declaration.new(color_prop, color, decl.important)
+      end
+
+      result
+    end
+
+    # Expand border-width shorthand
+    def self.expand_border_width(decl)
+      sides = parse_four_sides(decl.value)
+      [
+        Declaration.new(PROP_BORDER_TOP_WIDTH, sides[0], decl.important),
+        Declaration.new(PROP_BORDER_RIGHT_WIDTH, sides[1], decl.important),
+        Declaration.new(PROP_BORDER_BOTTOM_WIDTH, sides[2], decl.important),
+        Declaration.new(PROP_BORDER_LEFT_WIDTH, sides[3], decl.important)
+      ]
+    end
+
+    # Expand border-style shorthand
+    def self.expand_border_style(decl)
+      sides = parse_four_sides(decl.value)
+      [
+        Declaration.new(PROP_BORDER_TOP_STYLE, sides[0], decl.important),
+        Declaration.new(PROP_BORDER_RIGHT_STYLE, sides[1], decl.important),
+        Declaration.new(PROP_BORDER_BOTTOM_STYLE, sides[2], decl.important),
+        Declaration.new(PROP_BORDER_LEFT_STYLE, sides[3], decl.important)
+      ]
+    end
+
+    # Expand border-color shorthand
+    def self.expand_border_color(decl)
+      sides = parse_four_sides(decl.value)
+      [
+        Declaration.new(PROP_BORDER_TOP_COLOR, sides[0], decl.important),
+        Declaration.new(PROP_BORDER_RIGHT_COLOR, sides[1], decl.important),
+        Declaration.new(PROP_BORDER_BOTTOM_COLOR, sides[2], decl.important),
+        Declaration.new(PROP_BORDER_LEFT_COLOR, sides[3], decl.important)
+      ]
+    end
+
+    # Parse border value (e.g., "1px solid red" -> ["1px", "solid", "red"])
+    def self.parse_border_value(value)
+      parts = split_on_whitespace(value)
+      width = nil
+      style = nil
+      color = nil
+
+      # Identify each part by type
+      parts.each do |part|
+        if is_border_width?(part)
+          width = part
+        elsif is_border_style?(part)
+          style = part
+        else
+          color = part  # Assume color if not width or style
+        end
+      end
+
+      [width, style, color]
+    end
+
+    # Check if value looks like a border width
+    def self.is_border_width?(value)
+      # Check for numeric values or width keywords
+      return true if BORDER_WIDTH_KEYWORDS.include?(value)
+
+      # Check if value contains a digit (byte-by-byte)
+      i = 0
+      len = value.bytesize
+      while i < len
+        byte = value.getbyte(i)
+        return true if byte >= BYTE_DIGIT_0 && byte <= BYTE_DIGIT_9
+        i += 1
+      end
+
+      false
+    end
+
+    # Check if value is a border style
+    def self.is_border_style?(value)
+      BORDER_STYLE_KEYWORDS.include?(value)
+    end
+
+    # Expand font shorthand
+    # Format: [style] [variant] [weight] size[/line-height] family
+    def self.expand_font(decl)
+      value = decl.value
+      parts = split_on_whitespace(value)
+
+      # Need at least 2 parts (size and family)
+      return [decl] if parts.length < 2
+
+      result = []
+
+      # Parse from left to right
+      # Optional: style, variant, weight (can appear in any order)
+      # Required: size (with optional /line-height), family
+
+      i = 0
+      style = nil
+      variant = nil
+      weight = nil
+      size = nil
+      line_height = nil
+      family_parts = []
+
+      # Process optional style/variant/weight
+      while i < parts.length - 1  # Leave at least 1 for family
+        part = parts[i]
+
+        # Check if this could be size (has digit or is a size keyword)
+        if is_font_size?(part)
+          # This is the size, rest is family
+          size_part = part
+
+          # Check for line-height (find '/' byte)
+          slash_idx = nil
+          j = 0
+          len = size_part.bytesize
+          while j < len
+            if size_part.getbyte(j) == BYTE_SLASH_FWD
+              slash_idx = j
+              break
+            end
+            j += 1
+          end
+
+          if slash_idx
+            size = size_part.byteslice(0, slash_idx)
+            line_height = size_part.byteslice(slash_idx + 1)
+          else
+            size = size_part
+          end
+
+          # Rest is family
+          family_parts = parts[(i + 1)..-1]
+          break
+        elsif is_font_style?(part)
+          style = part
+        elsif is_font_variant?(part)
+          variant = part
+        elsif is_font_weight?(part)
+          weight = part
+        else
+          # Unknown, might be start of family - treat everything from here as family
+          family_parts = parts[i..-1]
+          break
+        end
+
+        i += 1
+      end
+
+      family = family_parts.join(' ')
+
+      # Create declarations
+      result << Declaration.new(PROP_FONT_STYLE, style, decl.important) if style
+      result << Declaration.new(PROP_FONT_VARIANT, variant, decl.important) if variant
+      result << Declaration.new(PROP_FONT_WEIGHT, weight, decl.important) if weight
+      result << Declaration.new(PROP_FONT_SIZE, size, decl.important) if size
+      result << Declaration.new(PROP_LINE_HEIGHT, line_height, decl.important) if line_height
+      result << Declaration.new(PROP_FONT_FAMILY, family, decl.important) if !family.empty?
+
+      result.empty? ? [decl] : result
+    end
+
+    # Check if value is a font size
+    def self.is_font_size?(value)
+      # Has digit or is a keyword
+      i = 0
+      len = value.bytesize
+      while i < len
+        byte = value.getbyte(i)
+        return true if byte >= BYTE_DIGIT_0 && byte <= BYTE_DIGIT_9
+        i += 1
+      end
+      FONT_SIZE_KEYWORDS.include?(value)
+    end
+
+    # Check if value is a font style
+    def self.is_font_style?(value)
+      FONT_STYLE_KEYWORDS.include?(value)
+    end
+
+    # Check if value is a font variant
+    def self.is_font_variant?(value)
+      FONT_VARIANT_KEYWORDS.include?(value)
+    end
+
+    # Check if value is a font weight
+    def self.is_font_weight?(value)
+      # Check for numeric weights like 400, 700
+      i = 0
+      len = value.bytesize
+      while i < len
+        byte = value.getbyte(i)
+        return true if byte >= BYTE_DIGIT_0 && byte <= BYTE_DIGIT_9
+        i += 1
+      end
+      FONT_WEIGHT_KEYWORDS.include?(value)
+    end
+
+    # Expand background shorthand
+    # Format: [color] [image] [repeat] [attachment] [position]
+    def self.expand_background(decl)
+      value = decl.value
+      parts = split_on_whitespace(value)
+
+      return [decl] if parts.empty?
+
+      result = []
+
+      # Parse background components (simple heuristic)
+      color = nil
+      image = nil
+      repeat = nil
+      attachment = nil
+      position = nil
+
+      parts.each do |part|
+        if starts_with_url?(part) || part == 'none'
+          image = part
+        elsif BACKGROUND_REPEAT_KEYWORDS.include?(part)
+          repeat = part
+        elsif BACKGROUND_ATTACHMENT_KEYWORDS.include?(part)
+          attachment = part
+        elsif is_position_value?(part)
+          position ||= String.new
+          position << ' ' unless position.empty?
+          position << part
+        else
+          # Assume it's a color
+          color = part
+        end
+      end
+
+      # Create declarations
+      result << Declaration.new(PROP_BACKGROUND_COLOR, color, decl.important) if color
+      result << Declaration.new(PROP_BACKGROUND_IMAGE, image, decl.important) if image
+      result << Declaration.new(PROP_BACKGROUND_REPEAT, repeat, decl.important) if repeat
+      result << Declaration.new(PROP_BACKGROUND_ATTACHMENT, attachment, decl.important) if attachment
+      result << Declaration.new(PROP_BACKGROUND_POSITION, position, decl.important) if position
+
+      result.empty? ? [decl] : result
+    end
+
+    # Check if value starts with 'url('
+    def self.starts_with_url?(value)
+      return false if value.bytesize < 4
+      value.getbyte(0) == BYTE_LOWER_U &&
+        value.getbyte(1) == BYTE_LOWER_R &&
+        value.getbyte(2) == BYTE_LOWER_L &&
+        value.getbyte(3) == BYTE_LPAREN
+    end
+
+    # Check if value is a position value (for background-position)
+    def self.is_position_value?(value)
+      return true if BACKGROUND_POSITION_KEYWORDS.include?(value)
+
+      # Check for '%' or digits
+      i = 0
+      len = value.bytesize
+      while i < len
+        byte = value.getbyte(i)
+        return true if byte == BYTE_PERCENT
+        return true if byte >= BYTE_DIGIT_0 && byte <= BYTE_DIGIT_9
+        i += 1
+      end
+      false
+    end
+
+    # Expand list-style shorthand
+    # Format: [type] [position] [image]
+    def self.expand_list_style(decl)
+      value = decl.value
+      parts = split_on_whitespace(value)
+
+      return [decl] if parts.empty?
+
+      result = []
+      type = nil
+      position = nil
+      image = nil
+
+      parts.each do |part|
+        if starts_with_url?(part) || part == 'none'
+          image = part
+        elsif LIST_STYLE_POSITION_KEYWORDS.include?(part)
+          position = part
+        else
+          # Assume it's a type (disc, circle, square, etc.)
+          type = part
+        end
+      end
+
+      result << Declaration.new(PROP_LIST_STYLE_TYPE, type, decl.important) if type
+      result << Declaration.new(PROP_LIST_STYLE_POSITION, position, decl.important) if position
+      result << Declaration.new(PROP_LIST_STYLE_IMAGE, image, decl.important) if image
+
+      result.empty? ? [decl] : result
+    end
+
+    # Recreate shorthand properties where possible (mutates declarations)
+    #
+    # @param rule [Rule] Rule to recreate shorthands in
+    def self.recreate_shorthands!(rule)
+      # Build property map
+      prop_map = {}
+      rule.declarations.each { |d| prop_map[d.property] = d }
+
+      # Try to recreate margin
+      recreate_margin!(rule, prop_map)
+
+      # Try to recreate padding
+      recreate_padding!(rule, prop_map)
+
+      # Try to recreate border
+      recreate_border!(rule, prop_map)
+
+      # Try to recreate font
+      recreate_font!(rule, prop_map)
+
+      # Try to recreate background
+      recreate_background!(rule, prop_map)
+
+      # Try to recreate list-style
+      recreate_list_style!(rule, prop_map)
+    end
+
+    # Try to recreate margin shorthand
+    def self.recreate_margin!(rule, prop_map)
+      sides = MARGIN_SIDES.map { |s| prop_map[s] }
+      return unless sides.all?  # Need all four sides
+
+      # Check if all have same importance
+      importances = sides.map(&:important).uniq
+      return if importances.length > 1  # Mixed importance, can't create shorthand
+
+      values = sides.map(&:value)
+      important = sides.first.important
+
+      # Create optimized shorthand
+      shorthand_value = optimize_four_sides(values)
+
+      # Remove individual sides and add shorthand
+      rule.declarations.reject! { |d| MARGIN_SIDES_SET.include?(d.property) }
+      rule.declarations.unshift(Declaration.new(PROP_MARGIN, shorthand_value, important))
+    end
+
+    # Try to recreate padding shorthand
+    def self.recreate_padding!(rule, prop_map)
+      sides = PADDING_SIDES.map { |s| prop_map[s] }
+      return unless sides.all?
+
+      importances = sides.map(&:important).uniq
+      return if importances.length > 1
+
+      values = sides.map(&:value)
+      important = sides.first.important
+
+      shorthand_value = optimize_four_sides(values)
+
+      rule.declarations.reject! { |d| PADDING_SIDES_SET.include?(d.property) }
+      rule.declarations.unshift(Declaration.new(PROP_PADDING, shorthand_value, important))
+    end
+
+    # Helper: Check if all declarations have same value and importance
+    # Does single pass instead of multiple .map calls
+    def self.check_all_same?(decls)
+      return false if decls.empty?
+
+      first_val = decls[0].value
+      first_imp = decls[0].important
+
+      i = 1
+      while i < decls.length
+        return false if decls[i].value != first_val
+        return false if decls[i].important != first_imp
+        i += 1
+      end
+
+      true
+    end
+
+    # Try to recreate border shorthand
+    def self.recreate_border!(rule, prop_map)
+      # Check if we have all width/style/color properties with same values for all sides
+      widths = BORDER_WIDTHS.map { |p| prop_map[p] }
+      styles = BORDER_STYLES.map { |p| prop_map[p] }
+      colors = BORDER_COLORS.map { |p| prop_map[p] }
+
+      # Check if all sides have same values and can create full border shorthand
+      # Check cheapest condition first (.all?), then do single pass for values/importance
+      widths_all_same = widths.all? && check_all_same?(widths)
+      styles_all_same = styles.all? && check_all_same?(styles)
+      colors_all_same = colors.all? && check_all_same?(colors)
+
+      # Can create FULL border shorthand ONLY if style is present (style is required for border shorthand)
+      # AND all properties that are present have same values and importance
+      if styles_all_same
+        # Check if we have width and/or color with same importance as style
+        can_create_border = true
+        important = styles.first.important
+
+        # If width is present, must be all-same and same importance
+        if widths.all?
+          can_create_border = false unless widths_all_same && widths.first.important == important
+        end
+
+        # If color is present, must be all-same and same importance
+        if colors.all?
+          can_create_border = false unless colors_all_same && colors.first.important == important
+        end
+
+        if can_create_border
+          # Create full border shorthand
+          parts = []
+          parts << widths.first.value if widths_all_same
+          parts << styles.first.value
+          parts << colors.first.value if colors_all_same
+
+          border_value = parts.join(' ')
+
+          # Remove individual properties
+          rule.declarations.reject! { |d| BORDER_ALL_SET.include?(d.property) }
+
+          rule.declarations.unshift(Declaration.new(PROP_BORDER, border_value, important))
+          return
+        end
+      end
+
+      # Try to create border-width/style/color shorthands
+      recreate_border_width!(rule, prop_map, widths) if widths.all?
+      recreate_border_style!(rule, prop_map, styles) if styles.all?
+      recreate_border_color!(rule, prop_map, colors) if colors.all?
+    end
+
+    # Recreate border-width shorthand
+    def self.recreate_border_width!(rule, prop_map, widths)
+      importances = widths.map(&:important).uniq
+      return if importances.length > 1
+
+      values = widths.map(&:value)
+      important = widths.first.important
+
+      shorthand_value = optimize_four_sides(values)
+
+      rule.declarations.reject! { |d| BORDER_WIDTHS_SET.include?(d.property) }
+      rule.declarations << Declaration.new(PROP_BORDER_WIDTH, shorthand_value, important)
+    end
+
+    # Recreate border-style shorthand
+    def self.recreate_border_style!(rule, prop_map, styles)
+      importances = styles.map(&:important).uniq
+      return if importances.length > 1
+
+      values = styles.map(&:value)
+      important = styles.first.important
+
+      shorthand_value = optimize_four_sides(values)
+
+      rule.declarations.reject! { |d| BORDER_STYLES_SET.include?(d.property) }
+      rule.declarations << Declaration.new(PROP_BORDER_STYLE, shorthand_value, important)
+    end
+
+    # Recreate border-color shorthand
+    def self.recreate_border_color!(rule, prop_map, colors)
+      importances = colors.map(&:important).uniq
+      return if importances.length > 1
+
+      values = colors.map(&:value)
+      important = colors.first.important
+
+      shorthand_value = optimize_four_sides(values)
+
+      rule.declarations.reject! { |d| BORDER_COLORS_SET.include?(d.property) }
+      rule.declarations << Declaration.new(PROP_BORDER_COLOR, shorthand_value, important)
+    end
+
+    # Optimize four-sided value representation
+    # ["10px", "10px", "10px", "10px"] -> "10px"
+    # ["10px", "20px", "10px", "20px"] -> "10px 20px"
+    # ["10px", "20px", "30px", "20px"] -> "10px 20px 30px"
+    # ["10px", "20px", "30px", "40px"] -> "10px 20px 30px 40px"
+    def self.optimize_four_sides(values)
+      top, right, bottom, left = values
+
+      if top == right && right == bottom && bottom == left
+        top
+      elsif top == bottom && right == left
+        "#{top} #{right}"
+      elsif right == left
+        "#{top} #{right} #{bottom}"
+      else
+        "#{top} #{right} #{bottom} #{left}"
+      end
+    end
+
+    # Try to recreate font shorthand
+    # Requires: font-size and font-family (minimum)
+    # Optional: font-style, font-variant, font-weight, line-height
+    def self.recreate_font!(rule, prop_map)
+      size = prop_map[PROP_FONT_SIZE]
+      family = prop_map[PROP_FONT_FAMILY]
+
+      # Need at least size and family
+      return unless size && family
+
+      # Check if all font properties have same importance
+      font_decls = FONT_PROPERTIES.filter_map { |p| prop_map[p] }
+      return if font_decls.empty?
+
+      importances = font_decls.map(&:important).uniq
+      return if importances.length > 1
+
+      important = font_decls.first.important
+
+      # Build font shorthand value
+      parts = []
+
+      # Optional: style variant weight (in that order)
+      parts << prop_map[PROP_FONT_STYLE].value if prop_map[PROP_FONT_STYLE]
+      parts << prop_map[PROP_FONT_VARIANT].value if prop_map[PROP_FONT_VARIANT]
+      parts << prop_map[PROP_FONT_WEIGHT].value if prop_map[PROP_FONT_WEIGHT]
+
+      # Required: size[/line-height]
+      if prop_map[PROP_LINE_HEIGHT]
+        parts << "#{size.value}/#{prop_map[PROP_LINE_HEIGHT].value}"
+      else
+        parts << size.value
+      end
+
+      # Required: family
+      parts << family.value
+
+      shorthand_value = parts.join(' ')
+
+      # Remove individual properties
+      rule.declarations.reject! { |d| FONT_PROPERTIES_SET.include?(d.property) }
+
+      # Add shorthand
+      rule.declarations.unshift(Declaration.new(PROP_FONT, shorthand_value, important))
+    end
+
+    # Try to recreate background shorthand
+    # Can combine: background-color, background-image, background-repeat, etc.
+    def self.recreate_background!(rule, prop_map)
+      bg_props = BACKGROUND_PROPERTIES
+      bg_decls = bg_props.filter_map { |p| prop_map[p] }
+
+      # Need at least 2 properties to create shorthand
+      return if bg_decls.length < 2
+
+      # Check if all have same importance
+      importances = bg_decls.map(&:important).uniq
+      return if importances.length > 1
+
+      important = bg_decls.first.important
+
+      # Build background shorthand value (simple concatenation)
+      parts = []
+      parts << prop_map[PROP_BACKGROUND_COLOR].value if prop_map[PROP_BACKGROUND_COLOR]
+      parts << prop_map[PROP_BACKGROUND_IMAGE].value if prop_map[PROP_BACKGROUND_IMAGE]
+      parts << prop_map[PROP_BACKGROUND_REPEAT].value if prop_map[PROP_BACKGROUND_REPEAT]
+      parts << prop_map[PROP_BACKGROUND_POSITION].value if prop_map[PROP_BACKGROUND_POSITION]
+      parts << prop_map[PROP_BACKGROUND_ATTACHMENT].value if prop_map[PROP_BACKGROUND_ATTACHMENT]
+
+      shorthand_value = parts.join(' ')
+
+      # Remove individual properties
+      rule.declarations.reject! { |d| BACKGROUND_PROPERTIES_SET.include?(d.property) }
+
+      # Add shorthand
+      rule.declarations.unshift(Declaration.new(PROP_BACKGROUND, shorthand_value, important))
+    end
+
+    # Try to recreate list-style shorthand
+    # Can combine: list-style-type, list-style-position, list-style-image
+    def self.recreate_list_style!(rule, prop_map)
+      ls_props = LIST_STYLE_PROPERTIES
+      ls_decls = ls_props.filter_map { |p| prop_map[p] }
+
+      # Need at least 2 properties to create shorthand
+      return if ls_decls.length < 2
+
+      # Check if all have same importance
+      importances = ls_decls.map(&:important).uniq
+      return if importances.length > 1
+
+      important = ls_decls.first.important
+
+      # Build list-style shorthand value
+      parts = []
+      parts << prop_map[PROP_LIST_STYLE_TYPE].value if prop_map[PROP_LIST_STYLE_TYPE]
+      parts << prop_map[PROP_LIST_STYLE_POSITION].value if prop_map[PROP_LIST_STYLE_POSITION]
+      parts << prop_map[PROP_LIST_STYLE_IMAGE].value if prop_map[PROP_LIST_STYLE_IMAGE]
+
+      shorthand_value = parts.join(' ')
+
+      # Remove individual properties
+      rule.declarations.reject! { |d| LIST_STYLE_PROPERTIES_SET.include?(d.property) }
+
+      # Add shorthand
+      rule.declarations.unshift(Declaration.new(PROP_LIST_STYLE, shorthand_value, important))
+    end
+  end
+end
