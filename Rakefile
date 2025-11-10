@@ -181,6 +181,8 @@ begin
   desc 'Generate example CSS analysis for documentation'
   task :generate_example do
     puts 'Generating GitHub CSS analysis example...'
+    require 'fileutils'
+    FileUtils.mkdir_p('docs')
     # Generate with file. prefix for YARD compatibility
     system('ruby examples/css_analyzer.rb https://github.com -o docs/file.github_analysis.html')
   end
