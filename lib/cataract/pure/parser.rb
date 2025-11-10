@@ -18,7 +18,45 @@ module Cataract
 
     attr_reader :css, :pos, :len
 
-    def initialize(css_string, parent_media_sym: nil)
+    # Strip outer parentheses from a string if present (byte-by-byte)
+    # "(orientation: landscape)" => "orientation: landscape"
+    # "screen" => "screen"
+    def strip_outer_parens(str)
+      return str if str.nil? || str.empty?
+
+      # Trim whitespace in-place
+      str.strip!
+      return str if str.empty?
+
+      len = str.bytesize
+      return str if len < 2
+
+      # Check if starts and ends with parens
+      if str.getbyte(0) == BYTE_LPAREN && str.getbyte(len - 1) == BYTE_RPAREN
+        # Verify these are matching outer parens by checking depth
+        depth = 0
+        i = 0
+        while i < len
+          byte = str.getbyte(i)
+          if byte == BYTE_LPAREN
+            depth += 1
+          elsif byte == BYTE_RPAREN
+            depth -= 1
+            # If we close to 0 before the last char, these aren't outer parens
+            return str if depth == 0 && i < len - 1
+          end
+          i += 1
+        end
+        # These are outer parens, strip them
+        result = str.byteslice(1...len - 1)
+        result.strip!
+        return result
+      end
+
+      str
+    end
+
+    def initialize(css_string, parent_media_sym: nil, depth: 0)
       @css = css_string.dup.freeze
       @pos = 0
       @len = @css.bytesize
@@ -31,7 +69,7 @@ module Cataract
       @media_query_count = 0         # Safety limit
       @media_cache = {}              # Parse-time cache: string => parsed media types
       @has_nesting = false           # Set to true if any nested rules found
-      @depth = 0                     # Current recursion depth
+      @depth = depth                 # Current recursion depth (passed from parent parser)
       @charset = nil                 # @charset declaration
     end
 
@@ -59,6 +97,7 @@ module Cataract
         end
 
         # Must be a selector-based rule
+        selector_start_pos = @pos
         selector = parse_selector
 
         if ENV['DEBUG_PARSER']
@@ -67,28 +106,77 @@ module Cataract
 
         next if selector.nil? || selector.empty?
 
-        declarations = parse_declarations
+        # Find the block boundaries
+        decl_start = @pos  # Should be right after the {
+        decl_end = find_matching_brace(decl_start)
 
-        # Split comma-separated selectors into individual rules
-        # "html, body, p" => ["html", "body", "p"]
-        selectors = selector.split(',')
-        selectors.each { |s| s.strip! }
+        # Check if block has nested selectors
+        if has_nested_selectors?(decl_start, decl_end)
+          # NESTED PATH: Parse mixed declarations + nested rules
+          # Split comma-separated selectors and parse each one
+          selectors = selector.split(',')
+          selectors.each { |s| s.strip! }
 
-        selectors.each do |individual_selector|
-          next if individual_selector.empty?
+          selectors.each do |individual_selector|
+            next if individual_selector.empty?
 
-          # Create Rule struct
-          rule = Rule.new(
-            @rule_id_counter,    # id
-            individual_selector, # selector
-            declarations,        # declarations
-            nil,                 # specificity (calculated lazily)
-            nil,                 # parent_rule_id
-            nil                  # nesting_style
-          )
+            # Get rule ID for this selector
+            current_rule_id = @rule_id_counter
+            @rule_id_counter += 1
 
-          @rules << rule
-          @rule_id_counter += 1
+            # Reserve parent's position in rules array (ensures parent comes before nested)
+            parent_position = @rules.length
+            @rules << nil  # Placeholder
+
+            # Parse mixed block (declarations + nested selectors)
+            @depth += 1
+            parent_declarations = parse_mixed_block(decl_start, decl_end,
+                                                   individual_selector, current_rule_id, @parent_media_sym)
+            @depth -= 1
+
+            # Create parent rule and replace placeholder
+            rule = Rule.new(
+              current_rule_id,
+              individual_selector,
+              parent_declarations,
+              nil,  # specificity
+              nil,  # parent_rule_id (top-level)
+              nil   # nesting_style
+            )
+
+            @rules[parent_position] = rule
+            @media_index[@parent_media_sym] ||= [] if @parent_media_sym
+            @media_index[@parent_media_sym] << current_rule_id if @parent_media_sym
+          end
+
+          # Move position past the closing brace
+          @pos = decl_end
+          @pos += 1 if @pos < @len && @css.getbyte(@pos) == BYTE_RBRACE
+        else
+          # NON-NESTED PATH: Parse declarations only
+          @pos = decl_start  # Reset to start of block
+          declarations = parse_declarations
+
+          # Split comma-separated selectors into individual rules
+          selectors = selector.split(',')
+          selectors.each { |s| s.strip! }
+
+          selectors.each do |individual_selector|
+            next if individual_selector.empty?
+
+            # Create Rule struct
+            rule = Rule.new(
+              @rule_id_counter,    # id
+              individual_selector, # selector
+              declarations,        # declarations
+              nil,                 # specificity (calculated lazily)
+              nil,                 # parent_rule_id
+              nil                  # nesting_style
+            )
+
+            @rules << rule
+            @rule_id_counter += 1
+          end
         end
       end
 
@@ -242,6 +330,229 @@ module Cataract
       selector_text.strip!
     end
 
+    # Parse mixed block containing declarations AND nested selectors/at-rules
+    # Translated from C: see ext/cataract/css_parser.c parse_mixed_block
+    # Returns: Array of declarations (only the declarations, not nested rules)
+    def parse_mixed_block(start_pos, end_pos, parent_selector, parent_rule_id, parent_media_sym)
+      # Check recursion depth to prevent stack overflow
+      if @depth > MAX_PARSE_DEPTH
+        raise DepthError, "CSS nesting too deep: exceeded maximum depth of #{MAX_PARSE_DEPTH}"
+      end
+
+      declarations = []
+      pos = start_pos
+
+      while pos < end_pos
+        # Skip whitespace and comments
+        while pos < end_pos && whitespace?(@css.getbyte(pos))
+          pos += 1
+        end
+        break if pos >= end_pos
+
+        # Skip comments
+        if pos + 1 < end_pos && @css.getbyte(pos) == BYTE_SLASH && @css.getbyte(pos + 1) == BYTE_STAR
+          pos += 2
+          while pos + 1 < end_pos
+            if @css.getbyte(pos) == BYTE_STAR && @css.getbyte(pos + 1) == BYTE_SLASH
+              pos += 2
+              break
+            end
+            pos += 1
+          end
+          next
+        end
+
+        # Check if this is a nested @media query
+        if @css.getbyte(pos) == BYTE_AT && pos + 6 < end_pos &&
+           @css.byteslice(pos, 6) == '@media' &&
+           (pos + 6 >= end_pos || whitespace?(@css.getbyte(pos + 6)))
+          # Nested @media - parse with parent selector as context
+          media_start = pos + 6
+          while media_start < end_pos && whitespace?(@css.getbyte(media_start))
+            media_start += 1
+          end
+
+          # Find opening brace
+          media_query_end = media_start
+          while media_query_end < end_pos && @css.getbyte(media_query_end) != BYTE_LBRACE
+            media_query_end += 1
+          end
+          break if media_query_end >= end_pos
+
+          # Extract media query (trim trailing whitespace)
+          media_query_end_trimmed = media_query_end
+          while media_query_end_trimmed > media_start && whitespace?(@css.getbyte(media_query_end_trimmed - 1))
+            media_query_end_trimmed -= 1
+          end
+          media_query_str = @css.byteslice(media_start...media_query_end_trimmed)
+          # Strip outer parentheses if present
+          media_query_str = strip_outer_parens(media_query_str)
+          media_sym = media_query_str.to_sym
+
+          pos = media_query_end + 1  # Skip {
+
+          # Find matching closing brace
+          media_block_start = pos
+          media_block_end = find_matching_brace(pos)
+          pos = media_block_end
+          pos += 1 if pos < end_pos  # Skip }
+
+          # Combine media queries: parent + child
+          combined_media_sym = combine_media_queries(parent_media_sym, media_sym)
+
+          # Create rule ID for this media rule
+          media_rule_id = @rule_id_counter
+          @rule_id_counter += 1
+
+          # Parse mixed block recursively
+          @depth += 1
+          media_declarations = parse_mixed_block(media_block_start, media_block_end,
+                                                 parent_selector, media_rule_id, combined_media_sym)
+          @depth -= 1
+
+          # Create rule with parent selector and declarations, associated with combined media query
+          rule = Rule.new(
+            media_rule_id,
+            parent_selector,
+            media_declarations,
+            nil,  # specificity
+            parent_rule_id,
+            nil   # nesting_style (nil for @media nesting)
+          )
+
+          # Mark that we have nesting
+          @has_nesting = true if !parent_rule_id.nil?
+
+          @rules << rule
+          @media_index[combined_media_sym] ||= []
+          @media_index[combined_media_sym] << media_rule_id
+
+          next
+        end
+
+        # Check if this is a nested selector
+        byte = @css.getbyte(pos)
+        if byte == BYTE_AMPERSAND || byte == BYTE_DOT || byte == BYTE_HASH ||
+           byte == BYTE_LBRACKET || byte == BYTE_COLON || byte == BYTE_ASTERISK ||
+           byte == BYTE_GT || byte == BYTE_PLUS || byte == BYTE_TILDE || byte == BYTE_AT
+          # Find the opening brace
+          nested_sel_start = pos
+          while pos < end_pos && @css.getbyte(pos) != BYTE_LBRACE
+            pos += 1
+          end
+          break if pos >= end_pos
+
+          nested_sel_end = pos
+          # Trim trailing whitespace
+          while nested_sel_end > nested_sel_start && whitespace?(@css.getbyte(nested_sel_end - 1))
+            nested_sel_end -= 1
+          end
+
+          pos += 1  # Skip {
+
+          # Find matching closing brace
+          nested_block_start = pos
+          nested_block_end = find_matching_brace(pos)
+          pos = nested_block_end
+          pos += 1 if pos < end_pos  # Skip }
+
+          # Extract nested selector and split on commas
+          nested_selector_text = @css.byteslice(nested_sel_start...nested_sel_end)
+          nested_selectors = nested_selector_text.split(',')
+          nested_selectors.each { |s| s.strip! }
+
+          nested_selectors.each do |seg|
+            next if seg.empty?
+
+            # Resolve nested selector
+            resolved_selector, nesting_style = resolve_nested_selector(parent_selector, seg)
+
+            # Get rule ID
+            rule_id = @rule_id_counter
+            @rule_id_counter += 1
+
+            # Recursively parse nested block
+            @depth += 1
+            nested_declarations = parse_mixed_block(nested_block_start, nested_block_end,
+                                                   resolved_selector, rule_id, parent_media_sym)
+            @depth -= 1
+
+            # Create rule for nested selector
+            rule = Rule.new(
+              rule_id,
+              resolved_selector,
+              nested_declarations,
+              nil,  # specificity
+              parent_rule_id,
+              nesting_style
+            )
+
+            # Mark that we have nesting
+            @has_nesting = true if !parent_rule_id.nil?
+
+            @rules << rule
+            @media_index[parent_media_sym] ||= [] if parent_media_sym
+            @media_index[parent_media_sym] << rule_id if parent_media_sym
+          end
+
+          next
+        end
+
+        # This is a declaration - parse it
+        prop_start = pos
+        while pos < end_pos && @css.getbyte(pos) != BYTE_COLON &&
+              @css.getbyte(pos) != BYTE_SEMICOLON && @css.getbyte(pos) != BYTE_LBRACE
+          pos += 1
+        end
+
+        if pos >= end_pos || @css.getbyte(pos) != BYTE_COLON
+          # Malformed - skip to semicolon
+          while pos < end_pos && @css.getbyte(pos) != BYTE_SEMICOLON
+            pos += 1
+          end
+          pos += 1 if pos < end_pos
+          next
+        end
+
+        prop_end = pos
+        # Trim trailing whitespace
+        while prop_end > prop_start && whitespace?(@css.getbyte(prop_end - 1))
+          prop_end -= 1
+        end
+
+        property = @css.byteslice(prop_start...prop_end)
+        property.downcase!
+
+        pos += 1  # Skip :
+
+        # Skip leading whitespace in value
+        while pos < end_pos && whitespace?(@css.getbyte(pos))
+          pos += 1
+        end
+
+        # Parse value (read until ';' or '}')
+        val_start = pos
+        while pos < end_pos && @css.getbyte(pos) != BYTE_SEMICOLON && @css.getbyte(pos) != BYTE_RBRACE
+          pos += 1
+        end
+        val_end = pos
+
+        # Trim trailing whitespace from value
+        while val_end > val_start && whitespace?(@css.getbyte(val_end - 1))
+          val_end -= 1
+        end
+
+        value = @css.byteslice(val_start...val_end)
+
+        pos += 1 if pos < end_pos && @css.getbyte(pos) == BYTE_SEMICOLON
+
+        # Create declaration
+        declarations << Declaration.new(property, value, false) if prop_end > prop_start && val_end > val_start
+      end
+
+      declarations
+    end
+
     # Parse declaration block (inside { ... })
     # Assumes we're already past the opening '{'
     def parse_declarations
@@ -393,8 +704,13 @@ module Cataract
         block_start = @pos
         block_end = find_matching_brace(@pos)
 
+        # Check depth before recursing
+        if @depth + 1 > MAX_PARSE_DEPTH
+          raise DepthError, "CSS nesting too deep: exceeded maximum depth of #{MAX_PARSE_DEPTH}"
+        end
+
         # Recursively parse block content (preserve parent media context)
-        nested_parser = Parser.new(@css.byteslice(block_start...block_end), parent_media_sym: @parent_media_sym)
+        nested_parser = Parser.new(@css.byteslice(block_start...block_end), parent_media_sym: @parent_media_sym, depth: @depth + 1)
         nested_result = nested_parser.parse
 
         # Merge nested media_index into ours
@@ -436,6 +752,8 @@ module Cataract
         end
 
         child_media_string = @css.byteslice(mq_start...mq_end)
+        # Strip outer parentheses if present: "(orientation: landscape)" => "orientation: landscape"
+        child_media_string = strip_outer_parens(child_media_string)
         child_media_sym = child_media_string.to_sym
 
         # Combine with parent media context
@@ -455,8 +773,13 @@ module Cataract
         block_start = @pos
         block_end = find_matching_brace(@pos)
 
+        # Check depth before recursing
+        if @depth + 1 > MAX_PARSE_DEPTH
+          raise DepthError, "CSS nesting too deep: exceeded maximum depth of #{MAX_PARSE_DEPTH}"
+        end
+
         # Parse the content with the combined media context
-        nested_parser = Parser.new(@css.byteslice(block_start...block_end), parent_media_sym: combined_media_sym)
+        nested_parser = Parser.new(@css.byteslice(block_start...block_end), parent_media_sym: combined_media_sym, depth: @depth + 1)
         nested_result = nested_parser.parse
 
         # Merge nested media_index into ours (for nested @media)
@@ -527,9 +850,14 @@ module Cataract
         block_start = @pos
         block_end = find_matching_brace(@pos)
 
+        # Check depth before recursing
+        if @depth + 1 > MAX_PARSE_DEPTH
+          raise DepthError, "CSS nesting too deep: exceeded maximum depth of #{MAX_PARSE_DEPTH}"
+        end
+
         # Parse keyframe blocks as rules (0%/from/to etc)
         # Create a nested parser context
-        nested_parser = Parser.new(@css.byteslice(block_start...block_end))
+        nested_parser = Parser.new(@css.byteslice(block_start...block_end), depth: @depth + 1)
         nested_result = nested_parser.parse
         content = nested_result[:rules]
 
@@ -631,18 +959,119 @@ module Cataract
     end
 
     # Check if block contains nested selectors vs just declarations
+    # Translated from C: see ext/cataract/css_parser.c has_nested_selectors
     def has_nested_selectors?(start_pos, end_pos)
-      # TODO: Look for &, ., #, [, :, *, >, +, ~, @ followed by {
-      # Return true if nested selectors found
+      pos = start_pos
+
+      while pos < end_pos
+        # Skip whitespace
+        while pos < end_pos && whitespace?(@css.getbyte(pos))
+          pos += 1
+        end
+        break if pos >= end_pos
+
+        # Skip comments
+        if pos + 1 < end_pos && @css.getbyte(pos) == BYTE_SLASH && @css.getbyte(pos + 1) == BYTE_STAR
+          pos += 2
+          while pos + 1 < end_pos
+            if @css.getbyte(pos) == BYTE_STAR && @css.getbyte(pos + 1) == BYTE_SLASH
+              pos += 2
+              break
+            end
+            pos += 1
+          end
+          next
+        end
+
+        # Check for nested selector indicators
+        byte = @css.getbyte(pos)
+        if byte == BYTE_AMPERSAND || byte == BYTE_DOT || byte == BYTE_HASH ||
+           byte == BYTE_LBRACKET || byte == BYTE_COLON || byte == BYTE_ASTERISK ||
+           byte == BYTE_GT || byte == BYTE_PLUS || byte == BYTE_TILDE
+          # Look ahead - if followed by {, it's likely a nested selector
+          lookahead = pos + 1
+          while lookahead < end_pos && @css.getbyte(lookahead) != BYTE_LBRACE &&
+                @css.getbyte(lookahead) != BYTE_SEMICOLON && @css.getbyte(lookahead) != BYTE_NEWLINE
+            lookahead += 1
+          end
+          return true if lookahead < end_pos && @css.getbyte(lookahead) == BYTE_LBRACE
+        end
+
+        # Check for @media, @supports, etc nested inside
+        return true if byte == BYTE_AT
+
+        # Skip to next line or semicolon
+        while pos < end_pos && @css.getbyte(pos) != BYTE_SEMICOLON && @css.getbyte(pos) != BYTE_NEWLINE
+          pos += 1
+        end
+        pos += 1 if pos < end_pos
+      end
+
       false
     end
 
     # Resolve nested selector against parent
+    # Translated from C: see ext/cataract/css_parser.c resolve_nested_selector
+    # Examples:
+    #   resolve_nested_selector(".parent", "& .child")  => [".parent .child", 1]  (explicit)
+    #   resolve_nested_selector(".parent", "&:hover")   => [".parent:hover", 1]   (explicit)
+    #   resolve_nested_selector(".parent", "&.active")  => [".parent.active", 1]  (explicit)
+    #   resolve_nested_selector(".parent", ".child")    => [".parent .child", 0]  (implicit)
+    #   resolve_nested_selector(".parent", "> .child")  => [".parent > .child", 0] (implicit combinator)
+    #
+    # Returns: [resolved_selector, nesting_style]
+    #   nesting_style: 0 = NESTING_STYLE_IMPLICIT, 1 = NESTING_STYLE_EXPLICIT
     def resolve_nested_selector(parent_selector, nested_selector)
-      # TODO: Handle & replacement (explicit nesting)
-      # Handle implicit nesting (prepend parent)
-      # Return [resolved_selector, nesting_style]
-      [nested_selector, 0]
+      # Check if nested selector contains &
+      has_ampersand = nested_selector.include?('&')
+
+      if has_ampersand
+        # Explicit nesting - replace & with parent
+        nesting_style = NESTING_STYLE_EXPLICIT
+
+        # Trim leading whitespace to check for combinator
+        nested_trimmed = nested_selector.lstrip
+
+        # Check if selector starts with a combinator (relative selector)
+        starts_with_combinator = false
+        if !nested_trimmed.empty?
+          first_char = nested_trimmed[0]
+          starts_with_combinator = (first_char == '+' || first_char == '>' || first_char == '~')
+        end
+
+        # Build result by replacing & with parent
+        result = String.new
+        if starts_with_combinator
+          # Prepend parent first with space for relative selectors
+          # Example: "+ .bar + &" => ".foo + .bar + .foo"
+          result << parent_selector
+          result << ' '
+        end
+
+        # Replace all & with parent selector
+        nested_selector.each_char do |char|
+          if char == '&'
+            result << parent_selector
+          else
+            result << char
+          end
+        end
+
+        [result, nesting_style]
+      else
+        # Implicit nesting - prepend parent with appropriate spacing
+        nesting_style = NESTING_STYLE_IMPLICIT
+
+        # Trim leading whitespace from nested selector
+        nested_trimmed = nested_selector.lstrip
+
+        result = String.new
+        result << parent_selector
+        result << ' '
+        result << nested_trimmed
+
+        [result, nesting_style]
+      end
     end
 
     # Lowercase property name (CSS properties are ASCII)

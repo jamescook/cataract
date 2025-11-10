@@ -40,10 +40,10 @@ module Cataract
   BYTE_AMPERSAND = 38  # '&'
 
   # Other
-  BYTE_HYPHEN    = 45  # '-'
+  BYTE_HYPHEN     = 45 # '-'
   BYTE_UNDERSCORE = 95 # '_'
-  BYTE_BACKSLASH = 92  # '\\'
-  BYTE_BANG      = 33  # '!'
+  BYTE_BACKSLASH  = 92 # '\\'
+  BYTE_BANG       = 33 # '!'
 
   # Letter ranges (a-z, A-Z)
   BYTE_LOWER_A   = 97  # 'a'
@@ -54,4 +54,8 @@ module Cataract
   # Digit range (0-9)
   BYTE_DIGIT_0   = 48  # '0'
   BYTE_DIGIT_9   = 57  # '9'
+
+  # Nesting styles (for CSS nesting support)
+  NESTING_STYLE_IMPLICIT = 0  # Implicit nesting: .parent { .child { ... } } => .parent .child
+  NESTING_STYLE_EXPLICIT = 1  # Explicit nesting: .parent { &:hover { ... } } => .parent:hover
 end
