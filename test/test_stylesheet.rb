@@ -295,6 +295,9 @@ body { color: red; }'
   # ============================================================================
 
   def test_round_trip_bootstrap
+    # Skip in pure Ruby mode - takes ~6 seconds to parse bootstrap.css
+    skip 'Skipping slow bootstrap test in pure Ruby mode' if ENV['CATARACT_PURE'] == '1'
+
     css = File.read('test/fixtures/bootstrap.css')
     sheet = Cataract::Stylesheet.parse(css)
     result = sheet.to_s

@@ -1086,4 +1086,7 @@ void Init_native_extension(void) {
     #endif
 
     rb_define_const(mCataract, "COMPILE_FLAGS", compile_flags);
+
+    // Flag to indicate native extension is loaded (for pure Ruby fallback detection)
+    rb_define_const(mCataract, "NATIVE_EXTENSION_LOADED", Qtrue);
 }

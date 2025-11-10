@@ -33,8 +33,33 @@ Rake::TestTask.new(:test) do |t|
   t.libs << 'lib'
   # Load test_helper before running tests (handles SimpleCov setup)
   t.ruby_opts << '-rtest_helper'
-  # Exclude css_parser_compat directory (reference tests only, not run)
-  t.test_files = FileList['test/**/test_*.rb'].exclude('test/css_parser_compat/**/*')
+  # Exclude color tests (run separately)
+  t.test_files = FileList['test/**/test_*.rb'].exclude('test/color/**/*')
+end
+
+namespace :test do
+  desc 'Run tests with pure Ruby implementation (no C extension)'
+  task :pure do
+    puts '=' * 80
+    puts 'Running tests with PURE RUBY implementation (CATARACT_PURE=1)'
+    puts '=' * 80
+    ENV['CATARACT_PURE'] = '1'
+    Rake::Task[:test].invoke
+  end
+
+  desc 'Run color conversion tests only'
+  Rake::TestTask.new(:color_conversion) do |t|
+    t.libs << 'test'
+    t.libs << 'lib'
+    t.ruby_opts << '-rtest_helper'
+    t.test_files = FileList['test/color/**/test_*.rb']
+  end
+
+  desc 'Run all tests including color conversion'
+  task :all do
+    Rake::Task[:test].invoke
+    Rake::Task['test:color_conversion'].invoke
+  end
 end
 
 desc 'Run all benchmarks'

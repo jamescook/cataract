@@ -23,7 +23,9 @@ end
 
 require 'minitest/autorun'
 require 'cataract'
-require 'cataract/color_conversion' # Load color conversion extension for tests
+if ENV['CATARACT_PURE'].nil?
+  require 'cataract/color_conversion' # Load color conversion extension for tests
+end
 
 # Load test helpers
 require_relative 'support/stylesheet_test_helper'
