@@ -10,6 +10,9 @@ class TestShorthandExpansion < Minitest::Test
     merged = sheet.merge
 
     # The merged stylesheet should have exactly one rule with all declarations
+    # (or no rules for empty input)
+    return Cataract::Declarations.new([]) if merged.rules_count.zero?
+
     Cataract::Declarations.new(merged.rules.first.declarations)
   end
 
@@ -175,14 +178,28 @@ class TestShorthandExpansion < Minitest::Test
   end
 
   # ===========================================================================
-  # Specificity - Higher Specificity Wins
+  # Specificity - Different Selectors Stay Separate
   # ===========================================================================
 
-  def test_specificity_override
-    decls = parse_and_merge('.test { margin: 10px } #id { margin-top: 20px }')
+  def test_different_selectors_separate
+    # Different selectors should not merge - this tests correct CSS semantics
+    sheet = Cataract.parse_css('.test { margin: 10px } #id { margin-top: 20px }')
+    merged = sheet.merge
 
-    # Higher specificity for margin-top should win
-    assert_equal '20px 10px 10px', decls['margin']
+    # Should have 2 separate rules
+    assert_equal 2, merged.rules_count
+
+    # .test rule should have margin shorthand
+    test_rule = merged.rules.find { |r| r.selector == '.test' }
+    test_decls = Cataract::Declarations.new(test_rule.declarations)
+
+    assert_equal '10px', test_decls['margin']
+
+    # #id rule should have margin-top
+    id_rule = merged.rules.find { |r| r.selector == '#id' }
+    id_decls = Cataract::Declarations.new(id_rule.declarations)
+
+    assert_equal '20px', id_decls['margin-top']
   end
 
   # ===========================================================================

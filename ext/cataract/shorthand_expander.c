@@ -590,12 +590,21 @@ VALUE cataract_expand_background(VALUE self, VALUE value) {
         position = rb_ary_join(position_parts, STR_NEW_CSTR(" "));
     }
 
-    if (color != Qnil) rb_hash_aset(result, STR_NEW_CSTR("background-color"), color);
-    if (image != Qnil) rb_hash_aset(result, STR_NEW_CSTR("background-image"), image);
-    if (repeat != Qnil) rb_hash_aset(result, STR_NEW_CSTR("background-repeat"), repeat);
-    if (attachment != Qnil) rb_hash_aset(result, STR_NEW_CSTR("background-attachment"), attachment);
-    if (position != Qnil) rb_hash_aset(result, STR_NEW_CSTR("background-position"), position);
-    if (size != Qnil) rb_hash_aset(result, STR_NEW_CSTR("background-size"), size);
+    // Background shorthand sets ALL longhand properties
+    // Unspecified values get CSS initial values (defaults)
+    rb_hash_aset(result, STR_NEW_CSTR("background-color"),
+                 color != Qnil ? color : STR_NEW_CSTR("transparent"));
+    rb_hash_aset(result, STR_NEW_CSTR("background-image"),
+                 image != Qnil ? image : STR_NEW_CSTR("none"));
+    rb_hash_aset(result, STR_NEW_CSTR("background-repeat"),
+                 repeat != Qnil ? repeat : STR_NEW_CSTR("repeat"));
+    rb_hash_aset(result, STR_NEW_CSTR("background-attachment"),
+                 attachment != Qnil ? attachment : STR_NEW_CSTR("scroll"));
+    rb_hash_aset(result, STR_NEW_CSTR("background-position"),
+                 position != Qnil ? position : STR_NEW_CSTR("0% 0%"));
+    if (size != Qnil) {
+        rb_hash_aset(result, STR_NEW_CSTR("background-size"), size);
+    }
 
     return result;
 }
@@ -783,48 +792,100 @@ VALUE cataract_create_background_shorthand(VALUE self, VALUE properties) {
     VALUE image = rb_hash_aref(properties, STR_NEW_CSTR("background-image"));
     VALUE repeat = rb_hash_aref(properties, STR_NEW_CSTR("background-repeat"));
     VALUE position = rb_hash_aref(properties, STR_NEW_CSTR("background-position"));
+    VALUE attachment = rb_hash_aref(properties, STR_NEW_CSTR("background-attachment"));
     VALUE size = rb_hash_aref(properties, STR_NEW_CSTR("background-size"));
 
     // Need at least one property
-    if (NIL_P(color) && NIL_P(image) && NIL_P(repeat) && NIL_P(position) && NIL_P(size)) {
+    if (NIL_P(color) && NIL_P(image) && NIL_P(repeat) && NIL_P(position) && NIL_P(attachment) && NIL_P(size)) {
         return Qnil;
     }
+
+    // Check if all 5 core properties are present (from shorthand expansion)
+    // If so, omit defaults to optimize output
+    int all_present = !NIL_P(color) && !NIL_P(image) && !NIL_P(repeat) &&
+                      !NIL_P(position) && !NIL_P(attachment);
+
+    DEBUG_PRINTF("[create_background_shorthand] all_present=%d (color=%d image=%d repeat=%d pos=%d attach=%d)\n",
+                 all_present, !NIL_P(color), !NIL_P(image), !NIL_P(repeat),
+                 !NIL_P(position), !NIL_P(attachment));
+    if (!NIL_P(color)) DEBUG_PRINTF("  color='%s'\n", RSTRING_PTR(color));
+    if (!NIL_P(image)) DEBUG_PRINTF("  image='%s'\n", RSTRING_PTR(image));
+    if (!NIL_P(repeat)) DEBUG_PRINTF("  repeat='%s'\n", RSTRING_PTR(repeat));
+    if (!NIL_P(position)) DEBUG_PRINTF("  position='%s'\n", RSTRING_PTR(position));
+    if (!NIL_P(attachment)) DEBUG_PRINTF("  attachment='%s'\n", RSTRING_PTR(attachment));
 
     VALUE result = STR_NEW_WITH_CAPACITY(128);
     int first = 1;
 
     if (!NIL_P(color)) {
-        rb_str_append(result, color);
-        first = 0;
+        // Omit default 'transparent' if all properties present
+        if (!all_present || !STR_EQ(color, "transparent")) {
+            DEBUG_PRINTF("  -> Adding color: '%s'\n", RSTRING_PTR(color));
+            rb_str_append(result, color);
+            first = 0;
+        } else {
+            DEBUG_PRINTF("  -> Omitting default color 'transparent'\n");
+        }
     }
     if (!NIL_P(image)) {
-        if (!first) rb_str_cat2(result, " ");
-        rb_str_append(result, image);
-        first = 0;
+        // Omit default 'none' if all properties present
+        if (!all_present || !STR_EQ(image, "none")) {
+            DEBUG_PRINTF("  -> Adding image: '%s'\n", RSTRING_PTR(image));
+            if (!first) rb_str_cat2(result, " ");
+            rb_str_append(result, image);
+            first = 0;
+        } else {
+            DEBUG_PRINTF("  -> Omitting default image 'none'\n");
+        }
     }
     if (!NIL_P(repeat)) {
-        if (!first) rb_str_cat2(result, " ");
-        rb_str_append(result, repeat);
-        first = 0;
+        // Omit default 'repeat' if all properties present
+        if (!all_present || !STR_EQ(repeat, "repeat")) {
+            DEBUG_PRINTF("  -> Adding repeat: '%s'\n", RSTRING_PTR(repeat));
+            if (!first) rb_str_cat2(result, " ");
+            rb_str_append(result, repeat);
+            first = 0;
+        } else {
+            DEBUG_PRINTF("  -> Omitting default repeat 'repeat'\n");
+        }
     }
     if (!NIL_P(position)) {
-        if (!first) rb_str_cat2(result, " ");
-        rb_str_append(result, position);
-        first = 0;
+        // Omit default '0% 0%' if all properties present
+        if (!all_present || !STR_EQ(position, "0% 0%")) {
+            DEBUG_PRINTF("  -> Adding position: '%s'\n", RSTRING_PTR(position));
+            if (!first) rb_str_cat2(result, " ");
+            rb_str_append(result, position);
+            first = 0;
+        } else {
+            DEBUG_PRINTF("  -> Omitting default position '0%% 0%%'\n");
+        }
+    }
+    if (!NIL_P(attachment)) {
+        // Omit default 'scroll' if all properties present
+        if (!all_present || !STR_EQ(attachment, "scroll")) {
+            DEBUG_PRINTF("  -> Adding attachment: '%s'\n", RSTRING_PTR(attachment));
+            if (!first) rb_str_cat2(result, " ");
+            rb_str_append(result, attachment);
+            first = 0;
+        } else {
+            DEBUG_PRINTF("  -> Omitting default attachment 'scroll'\n");
+        }
     }
     if (!NIL_P(size)) {
         // size needs to be prefixed with /
+        DEBUG_PRINTF("  -> Adding size: '/%s'\n", RSTRING_PTR(size));
         if (!first) rb_str_cat2(result, " ");
-        rb_str_cat2(result, "/ ");
+        rb_str_cat2(result, "/");
         rb_str_append(result, size);
     }
 
+    DEBUG_PRINTF("[create_background_shorthand] result='%s'\n", RSTRING_PTR(result));
     return result;
 }
 
 // Create font shorthand from longhand properties
 // Requires: font-size and font-family
-// Optional: font-style, font-weight, line-height
+// Optional: font-style, font-variant, font-weight, line-height
 VALUE cataract_create_font_shorthand(VALUE self, VALUE properties) {
     VALUE size = rb_hash_aref(properties, STR_NEW_CSTR("font-size"));
     VALUE family = rb_hash_aref(properties, STR_NEW_CSTR("font-family"));
@@ -835,32 +896,60 @@ VALUE cataract_create_font_shorthand(VALUE self, VALUE properties) {
     }
 
     VALUE style = rb_hash_aref(properties, STR_NEW_CSTR("font-style"));
+    VALUE variant = rb_hash_aref(properties, STR_NEW_CSTR("font-variant"));
     VALUE weight = rb_hash_aref(properties, STR_NEW_CSTR("font-weight"));
     VALUE line_height = rb_hash_aref(properties, STR_NEW_CSTR("line-height"));
+
+    // Check if all optional properties are present (from shorthand expansion)
+    // If so, omit defaults to optimize output
+    int all_present = !NIL_P(style) && !NIL_P(variant) && !NIL_P(weight) && !NIL_P(line_height);
 
     VALUE result = STR_NEW_WITH_CAPACITY(128);
     int has_content = 0;
 
-    // Order: style weight size/line-height family
-    // Skip "normal" for style (it's the default)
-    if (!NIL_P(style) && strcmp(RSTRING_PTR(style), "normal") != 0) {
-        rb_str_append(result, style);
-        has_content = 1;
+    // Order: style variant weight size/line-height family
+    if (!NIL_P(style)) {
+        // Omit default 'normal' only if all properties present
+        if (!all_present || !STR_EQ(style, "normal")) {
+            rb_str_append(result, style);
+            has_content = 1;
+        }
     }
-    if (!NIL_P(weight) && strcmp(RSTRING_PTR(weight), "normal") != 0) {
-        if (has_content) rb_str_cat2(result, " ");
-        rb_str_append(result, weight);
-        has_content = 1;
+    if (!NIL_P(variant)) {
+        // Omit default 'normal' only if all properties present
+        if (!all_present || !STR_EQ(variant, "normal")) {
+            if (has_content) rb_str_cat2(result, " ");
+            rb_str_append(result, variant);
+            has_content = 1;
+        }
+    }
+    if (!NIL_P(weight)) {
+        // Omit default 'normal' only if all properties present
+        if (!all_present || !STR_EQ(weight, "normal")) {
+            if (has_content) rb_str_cat2(result, " ");
+            rb_str_append(result, weight);
+            has_content = 1;
+        }
     }
 
     // size is required
     if (has_content) rb_str_cat2(result, " ");
-    rb_str_append(result, size);
-
-    // line-height goes with size using / (skip "normal")
-    if (!NIL_P(line_height) && strcmp(RSTRING_PTR(line_height), "normal") != 0) {
-        rb_str_cat2(result, "/");
-        rb_str_append(result, line_height);
+    if (all_present && !NIL_P(line_height)) {
+        // Omit line-height if default 'normal' and all properties present
+        if (!STR_EQ(line_height, "normal")) {
+            rb_str_append(result, size);
+            rb_str_cat2(result, "/");
+            rb_str_append(result, line_height);
+        } else {
+            rb_str_append(result, size);
+        }
+    } else {
+        rb_str_append(result, size);
+        // Include line-height if present (partial set)
+        if (!NIL_P(line_height)) {
+            rb_str_cat2(result, "/");
+            rb_str_append(result, line_height);
+        }
     }
 
     // family is required
