@@ -218,7 +218,8 @@ body { color: red; }'
 
     expected = <<~CSS
       body {
-        color: red; margin: 10px;
+        color: red;
+        margin: 10px;
       }
     CSS
 
@@ -274,10 +275,12 @@ body { color: red; }'
     expected = <<~CSS
       @keyframes slideIn {
         0% {
-          transform: translateX(-100%); opacity: 0;
+          transform: translateX(-100%);
+          opacity: 0;
         }
         100% {
-          transform: translateX(0); opacity: 1;
+          transform: translateX(0);
+          opacity: 1;
         }
       }
       .animated {
