@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require_relative 'test_helper'
-
 # Media types handling tests
 # Based on css_parser gem's test_css_parser_media_types.rb
 class TestParserMediaTypes < Minitest::Test

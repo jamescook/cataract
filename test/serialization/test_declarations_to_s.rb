@@ -1,8 +1,4 @@
-#!/usr/bin/env ruby
 # frozen_string_literal: true
-
-require 'minitest/autorun'
-require_relative '../lib/cataract'
 
 # Test serializing declarations back to CSS string
 class TestDeclarationsToS < Minitest::Test

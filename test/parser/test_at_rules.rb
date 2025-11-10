@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require_relative 'test_helper'
-
 # Test CSS at-rules support
 # Based on W3C specifications:
 # - @font-face: https://www.w3.org/TR/css-fonts-3/#font-face-rule

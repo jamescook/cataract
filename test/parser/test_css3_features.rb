@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require_relative 'test_helper'
-
 # Tests for CSS3 features
 class TestCSS3Features < Minitest::Test
   def setup

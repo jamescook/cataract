@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require_relative 'test_helper'
-
 class TestColorConversionHwb < Minitest::Test
   # Tests targeting hwb/hwba output
 

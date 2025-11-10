@@ -1,10 +1,6 @@
 # frozen_string_literal: true
 
-require_relative 'test_helper'
-
 class TestColorConversionHex < Minitest::Test
-  # Tests targeting hex output
-
   def test_rgb_to_hex_white
     decls = convert_and_get_declarations(
       '.test { color: rgb(255 255 255) }',

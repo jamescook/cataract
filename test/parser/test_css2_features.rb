@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require_relative 'test_helper'
-
 # Tests for CSS2 features that are not yet implemented
 # These tests are expected to fail until the features are added
 class TestCSS2Features < Minitest::Test

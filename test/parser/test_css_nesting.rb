@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require_relative 'test_helper'
-
 # CSS Nesting support tests
 # Reference: https://www.w3.org/TR/css-nesting-1/
 class TestCssNesting < Minitest::Test

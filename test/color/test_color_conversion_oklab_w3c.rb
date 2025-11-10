@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require_relative 'test_helper'
-
 # W3C Web Platform Tests for Oklab color space
 # These tests verify our implementation matches the official W3C test suite
 # Reference: https://github.com/web-platform-tests/wpt/tree/master/css/css-color

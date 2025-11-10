@@ -1,9 +1,6 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-require 'minitest/autorun'
-require_relative '../lib/cataract'
-
 # Test creating shorthand properties from longhand through merge operations
 # When all longhand properties for a shorthand are present, merge should
 # automatically create the shorthand property.
