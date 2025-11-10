@@ -50,6 +50,7 @@ module Cataract
   BYTE_LOWER_Z   = 122 # 'z'
   BYTE_UPPER_A   = 65  # 'A'
   BYTE_UPPER_Z   = 90  # 'Z'
+  BYTE_CASE_DIFF = 32  # Difference between lowercase and uppercase ('a' - 'A')
 
   # Digit range (0-9)
   BYTE_DIGIT_0   = 48  # '0'

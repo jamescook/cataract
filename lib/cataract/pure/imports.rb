@@ -4,6 +4,29 @@
 # NO REGEXP ALLOWED - char-by-char parsing only
 
 module Cataract
+  # Helper: Case-insensitive ASCII byte comparison
+  # Compares bytes at given position with ASCII pattern (case-insensitive)
+  # Safe to use even if position is in middle of multi-byte UTF-8 characters
+  # Returns true if match, false otherwise
+  def self.match_ascii_ci?(str, pos, pattern)
+    pattern_len = pattern.bytesize
+    return false if pos + pattern_len > str.bytesize
+
+    i = 0
+    while i < pattern_len
+      str_byte = str.getbyte(pos + i)
+      pat_byte = pattern.getbyte(i)
+
+      # Convert both to lowercase for comparison (ASCII only: A-Z -> a-z)
+      str_byte += BYTE_CASE_DIFF if str_byte >= BYTE_UPPER_A && str_byte <= BYTE_UPPER_Z
+      pat_byte += BYTE_CASE_DIFF if pat_byte >= BYTE_UPPER_A && pat_byte <= BYTE_UPPER_Z
+
+      return false if str_byte != pat_byte
+      i += 1
+    end
+
+    true
+  end
   # Extract @import statements from CSS
   #
   # @param css_string [String] CSS to scan for @imports
@@ -34,8 +57,8 @@ module Cataract
 
       break if i >= len
 
-      # Check for @import (case-insensitive, use byteslice)
-      if i + 7 <= len && css_string.byteslice(i...i+7).downcase == '@import'
+      # Check for @import (case-insensitive byte comparison)
+      if match_ascii_ci?(css_string, i, '@import')
         import_start = i
         i += 7
 
@@ -44,9 +67,9 @@ module Cataract
           i += 1
         end
 
-        # Check for optional url(, use byteslice
+        # Check for optional url( (case-insensitive byte comparison)
         has_url_function = false
-        if i + 4 <= len && css_string.byteslice(i...i+4).downcase == 'url('
+        if match_ascii_ci?(css_string, i, 'url(')
           has_url_function = true
           i += 4
           while i < len && is_whitespace?(css_string.getbyte(i))
