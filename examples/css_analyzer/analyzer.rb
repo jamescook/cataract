@@ -69,10 +69,9 @@ module CSSAnalyzer
 
     # Save parsed CSS to a file for debugging/comparison
     def save_parsed_css
-      # Generate a unique filename based on source and shim usage
+      # Generate a unique filename based on source
       source_slug = @source.gsub(%r{[:/]}, '_').gsub(/[^a-zA-Z0-9_.-]/, '')
-      shim_suffix = @options[:use_shim] ? '-shim' : '-direct'
-      filename = "parsed-css-#{source_slug}#{shim_suffix}.css"
+      filename = "parsed-css-#{source_slug}.css"
 
       # Serialize stylesheet to CSS
       css_output = @stylesheet.to_s
@@ -113,27 +112,18 @@ module CSSAnalyzer
       premailer = Premailer.new(url, with_html_string: false)
       @timings[:fetch] = Process.clock_gettime(Process::CLOCK_MONOTONIC) - fetch_start
 
-      # Get CSS parser from Premailer
+      # Get CSS parser from Premailer and convert to string
       parser = premailer.instance_variable_get(:@css_parser)
+      parse_start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      css_string = parser.to_s
+      @timings[:premailer_parse] = Process.clock_gettime(Process::CLOCK_MONOTONIC) - parse_start
 
-      # If using Cataract shim, parser is already a Cataract::Stylesheet - use it directly
-      if defined?(CssParser::CATARACT_SHIM) && CssParser::CATARACT_SHIM
-        @timings[:premailer_parse] = 0  # Already parsed by Premailer/Cataract
-        @timings[:cataract_parse] = 0   # No reparsing needed
-        parser # Return the Cataract::Stylesheet directly
-      else
-        # Not using shim - parser is real css_parser, get CSS string and reparse
-        parse_start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-        css_string = parser.to_s
-        @timings[:premailer_parse] = Process.clock_gettime(Process::CLOCK_MONOTONIC) - parse_start
+      # Parse it with Cataract
+      cataract_start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      stylesheet = Cataract.parse_css(css_string)
+      @timings[:cataract_parse] = Process.clock_gettime(Process::CLOCK_MONOTONIC) - cataract_start
 
-        # Parse it with Cataract
-        cataract_start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-        stylesheet = Cataract.parse_css(css_string)
-        @timings[:cataract_parse] = Process.clock_gettime(Process::CLOCK_MONOTONIC) - cataract_start
-
-        stylesheet
-      end
+      stylesheet
     end
 
     def source_name
