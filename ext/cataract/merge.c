@@ -479,6 +479,15 @@ static VALUE merge_rules_for_selector(VALUE rules_array, VALUE rule_indices, VAL
     for (long g = 0; g < num_rules_in_group; g++) {
         long rule_idx = FIX2LONG(rb_ary_entry(rule_indices, g));
         VALUE rule = RARRAY_AREF(rules_array, rule_idx);
+
+        // Skip AtRule objects (@keyframes, @font-face, etc.) - they don't have declarations to merge
+        // AtRule has 'content' (string) instead of 'declarations' (array) at field index 2
+        if (rb_obj_is_kind_of(rule, cAtRule)) {
+            DEBUG_PRINTF("      [Rule %ld/%ld] Skipping AtRule (no declarations to merge)\n",
+                         g + 1, num_rules_in_group);
+            continue;
+        }
+
         VALUE rule_id_val = rb_struct_aref(rule, INT2FIX(RULE_ID));
         long rule_id = NUM2LONG(rule_id_val);
         VALUE declarations = rb_struct_aref(rule, INT2FIX(RULE_DECLARATIONS));
@@ -568,6 +577,11 @@ static VALUE merge_rules_for_selector(VALUE rules_array, VALUE rule_indices, VAL
                 };
                 process_expanded_property(property, value, (VALUE)&expand_data);
             }
+
+            // GC guard: protect property and value from being collected while their
+            // C string pointers (from RSTRING_PTR) are in use above
+            RB_GC_GUARD(property);
+            RB_GC_GUARD(value);
         }
     }
 
@@ -1082,9 +1096,19 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
     // selector => [rule indices]
     DEBUG_PRINTF("\n=== Building selector groups (has_nesting=%d) ===\n", has_nesting);
     VALUE selector_groups = rb_hash_new();
+    VALUE passthrough_rules = rb_ary_new(); // AtRules to pass through unchanged
 
     for (long i = 0; i < num_rules; i++) {
         VALUE rule = RARRAY_AREF(rules_array, i);
+
+        // Handle AtRule objects (@keyframes, @font-face, etc.) - pass through unchanged
+        // AtRule has 'content' (string) instead of 'declarations' (array)
+        if (rb_obj_is_kind_of(rule, cAtRule)) {
+            DEBUG_PRINTF("  [Rule %ld] PASSTHROUGH: AtRule (e.g., @keyframes, @font-face)\n", i);
+            rb_ary_push(passthrough_rules, rule);
+            continue;
+        }
+
         VALUE declarations = rb_struct_aref(rule, INT2FIX(RULE_DECLARATIONS));
         VALUE selector = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR));
 
@@ -1122,11 +1146,26 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
     DEBUG_PRINTF("=== DECISION POINT ===\n");
     DEBUG_PRINTF("  selector_groups size: %ld\n", RHASH_SIZE(selector_groups));
 
-    if (RHASH_SIZE(selector_groups) == 0) {
+    if (RHASH_SIZE(selector_groups) == 0 && RARRAY_LEN(passthrough_rules) == 0) {
         DEBUG_PRINTF("  -> No rules to merge (all were empty or skipped)\n");
         // Return empty stylesheet
         VALUE empty_sheet = rb_class_new_instance(0, NULL, cStylesheet);
         return empty_sheet;
+    }
+
+    // Handle case where we only have passthrough rules (no regular rules to merge)
+    if (RHASH_SIZE(selector_groups) == 0 && RARRAY_LEN(passthrough_rules) > 0) {
+        DEBUG_PRINTF("  -> Only passthrough rules (no regular rules to merge)\n");
+        VALUE passthrough_sheet = rb_class_new_instance(0, NULL, cStylesheet);
+        rb_ivar_set(passthrough_sheet, id_ivar_rules, passthrough_rules);
+
+        // Set empty @media_index
+        VALUE media_idx = rb_hash_new();
+        VALUE all_ids = rb_ary_new();
+        rb_hash_aset(media_idx, ID2SYM(id_all), all_ids);
+        rb_ivar_set(passthrough_sheet, id_ivar_media_index, media_idx);
+
+        return passthrough_sheet;
     }
 
     if (RHASH_SIZE(selector_groups) > 0) {
@@ -1163,7 +1202,18 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
             rb_ary_push(merged_rules, new_rule);
         }
 
-        DEBUG_PRINTF("\n=== Created %d output rules ===\n", rule_id_counter);
+        // Add passthrough AtRules to output (preserve @keyframes, @font-face, etc.)
+        long num_passthrough = RARRAY_LEN(passthrough_rules);
+        for (long i = 0; i < num_passthrough; i++) {
+            VALUE at_rule = RARRAY_AREF(passthrough_rules, i);
+            // Update AtRule's id to maintain sequential IDs
+            rb_struct_aset(at_rule, INT2FIX(AT_RULE_ID), INT2FIX(rule_id_counter++));
+            rb_ary_push(merged_rules, at_rule);
+            DEBUG_PRINTF("  -> Added passthrough AtRule (new id=%d)\n", rule_id_counter - 1);
+        }
+
+        DEBUG_PRINTF("\n=== Created %d output rules (%ld passthrough) ===\n",
+                     rule_id_counter, num_passthrough);
 
         rb_ivar_set(merged_sheet, id_ivar_rules, merged_rules);
 
