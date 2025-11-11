@@ -1363,6 +1363,14 @@ static color_parser_fn detect_color_format(VALUE value) {
         return parse_lab;
     }
 
+    // Skip function calls (url, gradient functions, etc.) - they can't be colors
+    // Check if there's a '(' in the string, indicating it's a function
+    const char *paren = strchr(p, '(');
+    if (paren != NULL && (paren - p) < remaining) {
+        // It's a function call like url(...) or linear-gradient(...), not a color
+        return NULL;
+    }
+
     // Check for named colors (fallback - alphabetic characters)
     // Named colors must start with a letter
     if ((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z')) {
@@ -1473,26 +1481,47 @@ struct expand_convert_context {
     VALUE important;
 };
 
+// Properties that can contain color values
+static int is_color_property(const char *prop_name) {
+    // Only these properties can contain actual color values
+    return (strcmp(prop_name, "color") == 0 ||
+            strcmp(prop_name, "background-color") == 0 ||
+            strcmp(prop_name, "border-color") == 0 ||
+            strcmp(prop_name, "border-top-color") == 0 ||
+            strcmp(prop_name, "border-right-color") == 0 ||
+            strcmp(prop_name, "border-bottom-color") == 0 ||
+            strcmp(prop_name, "border-left-color") == 0 ||
+            strcmp(prop_name, "outline-color") == 0 ||
+            strcmp(prop_name, "text-decoration-color") == 0 ||
+            strcmp(prop_name, "column-rule-color") == 0 ||
+            strcmp(prop_name, "caret-color") == 0);
+}
+
 // Callback for iterating expanded properties, converting colors, and creating declaration structs
 static int convert_expanded_property_callback(VALUE prop_name, VALUE prop_value, VALUE arg) {
     struct expand_convert_context *ctx = (struct expand_convert_context *)arg;
 
     if (!NIL_P(prop_value) && TYPE(prop_value) == T_STRING) {
-        color_parser_fn parser;
+        const char *prop_name_str = RSTRING_PTR(prop_name);
 
-        // Auto-detect or use specified format
-        if (ctx->parser == NULL) {
-            parser = detect_color_format(prop_value);
-        } else if (matches_color_format(prop_value, ctx->from_format)) {
-            parser = ctx->parser;
-        } else {
-            parser = NULL;
-        }
+        // Only try to convert colors in properties that can contain colors
+        if (is_color_property(prop_name_str)) {
+            color_parser_fn parser;
 
-        if (parser != NULL) {
-            // Parse → IR → Format
-            struct color_ir color = parser(prop_value);
-            prop_value = ctx->formatter(color, ctx->use_modern_syntax);
+            // Auto-detect or use specified format
+            if (ctx->parser == NULL) {
+                parser = detect_color_format(prop_value);
+            } else if (matches_color_format(prop_value, ctx->from_format)) {
+                parser = ctx->parser;
+            } else {
+                parser = NULL;
+            }
+
+            if (parser != NULL) {
+                // Parse → IR → Format
+                struct color_ir color = parser(prop_value);
+                prop_value = ctx->formatter(color, ctx->use_modern_syntax);
+            }
         }
 
         VALUE new_decl = rb_struct_new(cDeclaration, prop_name, prop_value, ctx->important, NULL);
@@ -1617,7 +1646,23 @@ VALUE rb_stylesheet_convert_colors(int argc, VALUE *argv, VALUE self) {
                 continue;
             }
 
-            // Check if this property needs expansion (e.g., background shorthand)
+            // First, try to convert as a value with potentially multiple colors WITHOUT expanding
+            // (e.g., "border-color: #fff #000 #ccc" or "box-shadow: 0 0 10px #ff0000")
+            // This preserves shorthands like "background: linear-gradient(...)" which have no colors
+            VALUE converted_multi = convert_value_with_colors(value, parser, formatter, use_modern_syntax);
+
+            if (!NIL_P(converted_multi)) {
+                DEBUG_PRINTF("Creating new decl with property='%s' value='%s'\n",
+                        StringValueCStr(property), StringValueCStr(converted_multi));
+                // Successfully converted multi-value property - keep as shorthand
+                VALUE new_decl = rb_struct_new(cDeclaration, property, converted_multi, important, NULL);
+                rb_ary_push(new_declarations, new_decl);
+                DEBUG_PRINTF("Pushed new_decl to new_declarations\n");
+                continue;
+            }
+
+            // No colors found in shorthand value - check if this property needs expansion
+            // (e.g., background shorthand that couldn't be converted as-is)
             VALUE expanded = expand_property_if_needed(property, value);
 
             if (!NIL_P(expanded) && TYPE(expanded) == T_HASH && RHASH_SIZE(expanded) > 0) {
@@ -1634,20 +1679,6 @@ VALUE rb_stylesheet_convert_colors(int argc, VALUE *argv, VALUE self) {
                 continue;
             }
             // If expansion returned empty hash, keep original declaration (e.g., gradients)
-
-            // Try to convert as a value with potentially multiple colors
-            // (e.g., "border-color: #fff #000 #ccc" or "box-shadow: 0 0 10px #ff0000")
-            VALUE converted_multi = convert_value_with_colors(value, parser, formatter, use_modern_syntax);
-
-            if (!NIL_P(converted_multi)) {
-                DEBUG_PRINTF("Creating new decl with property='%s' value='%s'\n",
-                        StringValueCStr(property), StringValueCStr(converted_multi));
-                // Successfully converted multi-value property
-                VALUE new_decl = rb_struct_new(cDeclaration, property, converted_multi, important, NULL);
-                rb_ary_push(new_declarations, new_decl);
-                DEBUG_PRINTF("Pushed new_decl to new_declarations\n");
-                continue;
-            }
 
             // Try single-value color conversion
             color_parser_fn single_parser;

@@ -178,6 +178,63 @@ class TestShorthandExpansion < Minitest::Test
   end
 
   # ===========================================================================
+  # Background - Gradient Functions (image, not color)
+  # ===========================================================================
+
+  def test_background_linear_gradient
+    # linear-gradient should be treated as background-image, not background-color
+    decls = parse_and_merge('.test { background: linear-gradient(180deg, #fff, #000) }')
+
+    assert_equal 'linear-gradient(180deg, #fff, #000)', decls['background']
+  end
+
+  def test_background_radial_gradient
+    # radial-gradient should be treated as background-image
+    decls = parse_and_merge('.test { background: radial-gradient(circle, red, blue) }')
+
+    assert_equal 'radial-gradient(circle, red, blue)', decls['background']
+  end
+
+  def test_background_repeating_linear_gradient
+    # repeating-linear-gradient should be treated as background-image
+    decls = parse_and_merge('.test { background: repeating-linear-gradient(45deg, red, blue 10px) }')
+
+    assert_equal 'repeating-linear-gradient(45deg, red, blue 10px)', decls['background']
+  end
+
+  def test_background_repeating_radial_gradient
+    # repeating-radial-gradient should be treated as background-image
+    decls = parse_and_merge('.test { background: repeating-radial-gradient(circle, red, blue 10px) }')
+
+    assert_equal 'repeating-radial-gradient(circle, red, blue 10px)', decls['background']
+  end
+
+  def test_background_conic_gradient
+    # conic-gradient should be treated as background-image
+    decls = parse_and_merge('.test { background: conic-gradient(red, yellow, green) }')
+
+    assert_equal 'conic-gradient(red, yellow, green)', decls['background']
+  end
+
+  def test_background_gradient_with_color
+    # Gradient with color should keep both (image takes precedence in shorthand)
+    decls = parse_and_merge('.test { background: red linear-gradient(to right, rgba(255,255,255,0.5), transparent) }')
+
+    # Should have both color and gradient
+    assert_match(/linear-gradient/, decls['background'])
+    assert_match(/red/, decls['background'])
+  end
+
+  def test_background_multiple_gradients
+    # Multiple gradients (layered backgrounds)
+    decls = parse_and_merge('.test { background: linear-gradient(#fff, #000), radial-gradient(circle, red, blue) }')
+
+    # Should preserve both gradients
+    assert_match(/linear-gradient/, decls['background'])
+    assert_match(/radial-gradient/, decls['background'])
+  end
+
+  # ===========================================================================
   # Specificity - Different Selectors Stay Separate
   # ===========================================================================
 

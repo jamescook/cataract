@@ -187,4 +187,50 @@ class TestColorConversionNamed < Minitest::Test
     # Invalid color names are not converted, remain as-is
     assert_equal 'notacolor', decls['color']
   end
+
+  # Test transparent keyword - special case rgba(0,0,0,0)
+  def test_transparent_to_hex
+    decls = convert_and_get_declarations(
+      '.test { color: transparent; }',
+      from: :named, to: :hex
+    )
+    # transparent is rgba(0,0,0,0) per CSS spec
+    assert_equal '#00000000', decls['color']
+  end
+
+  def test_transparent_case_insensitive
+    decls = convert_and_get_declarations(
+      '.test { color: TRANSPARENT; }',
+      from: :named, to: :hex
+    )
+
+    assert_equal '#00000000', decls['color']
+  end
+
+  def test_transparent_to_rgb
+    decls = convert_and_get_declarations(
+      '.test { color: transparent; }',
+      from: :named, to: :rgb, variant: :modern
+    )
+    # transparent is rgba(0,0,0,0) - fully transparent black
+    assert_equal 'rgb(0 0 0 / 0)', decls['color']
+  end
+
+  def test_transparent_to_hsl
+    decls = convert_and_get_declarations(
+      '.test { color: transparent; }',
+      from: :named, to: :hsl
+    )
+    # transparent is rgba(0,0,0,0) - black with 0% alpha
+    assert_equal 'hsl(0, 0%, 0%, 0)', decls['color']
+  end
+
+  def test_transparent_in_background
+    decls = convert_and_get_declarations(
+      '.test { background-color: transparent; }',
+      to: :hex
+    )
+
+    assert_equal '#00000000', decls['background-color']
+  end
 end

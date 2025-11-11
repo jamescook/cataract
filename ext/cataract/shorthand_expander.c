@@ -498,6 +498,8 @@ VALUE cataract_expand_list_style(VALUE self, VALUE value) {
  * This is complex - background has many sub-properties and / separator for size
  */
 VALUE cataract_expand_background(VALUE self, VALUE value) {
+    DEBUG_PRINTF("[cataract_expand_background] input value: '%s'\n", RSTRING_PTR(value));
+
     // First, check if there's a / separator for background-size
     const char *str = StringValueCStr(value);
     const char *slash = strchr(str, '/');
@@ -529,16 +531,25 @@ VALUE cataract_expand_background(VALUE self, VALUE value) {
     const char *attachment_keywords[] = {"scroll", "fixed", NULL};
     const char *position_keywords[] = {"left", "right", "top", "bottom", "center", NULL};
 
-    VALUE color = Qnil, image = Qnil, repeat = Qnil, attachment = Qnil, size = size_part;
+    VALUE color = Qnil, repeat = Qnil, attachment = Qnil, size = size_part;
     VALUE position_parts = rb_ary_new(); // Collect all position keywords
+    VALUE image_parts = rb_ary_new();    // Collect all image functions (for layered backgrounds)
 
     for (long i = 0; i < len; i++) {
         VALUE part = rb_ary_entry(parts, i);
         const char *str = StringValueCStr(part);
 
-        // Check for image
-        if (image == Qnil && (strncmp(str, "url(", 4) == 0 || strcmp(str, "none") == 0)) {
-            image = part;
+        // Check for image (url, gradient functions, or none) - collect ALL image tokens
+        if (strncmp(str, "url(", 4) == 0 ||
+            strncmp(str, "linear-gradient(", 16) == 0 ||
+            strncmp(str, "radial-gradient(", 16) == 0 ||
+            strncmp(str, "repeating-linear-gradient(", 26) == 0 ||
+            strncmp(str, "repeating-radial-gradient(", 26) == 0 ||
+            strncmp(str, "conic-gradient(", 15) == 0 ||
+            strcmp(str, "none") == 0) {
+            DEBUG_PRINTF("  -> Recognized as IMAGE: '%s'\n", str);
+            rb_ary_push(image_parts, part);
+            goto next_part;
         }
         // Check for repeat
         else if (repeat == Qnil) {
@@ -570,10 +581,12 @@ VALUE cataract_expand_background(VALUE self, VALUE value) {
         // Check for color (hex, rgb, or keyword)
         if (color == Qnil) {
             if (str[0] == '#' || strncmp(str, "rgb", 3) == 0 || strncmp(str, "hsl", 3) == 0) {
+                DEBUG_PRINTF("  -> Recognized as COLOR (function/hex): '%s'\n", str);
                 color = part;
             } else {
                 for (int j = 0; color_keywords[j]; j++) {
                     if (strcmp(str, color_keywords[j]) == 0) {
+                        DEBUG_PRINTF("  -> Recognized as COLOR (keyword): '%s'\n", str);
                         color = part;
                         break;
                     }
@@ -589,6 +602,17 @@ VALUE cataract_expand_background(VALUE self, VALUE value) {
     if (RARRAY_LEN(position_parts) > 0) {
         position = rb_ary_join(position_parts, STR_NEW_CSTR(" "));
     }
+
+    // Join all image parts into a single string if any were found (for layered backgrounds)
+    VALUE image = Qnil;
+    if (RARRAY_LEN(image_parts) > 0) {
+        image = rb_ary_join(image_parts, STR_NEW_CSTR(" "));
+        DEBUG_PRINTF("  -> Joined %ld image parts into: '%s'\n", RARRAY_LEN(image_parts), RSTRING_PTR(image));
+    }
+
+    DEBUG_PRINTF("[cataract_expand_background] Final values:\n");
+    DEBUG_PRINTF("  color: %s\n", color != Qnil ? RSTRING_PTR(color) : "(nil -> transparent)");
+    DEBUG_PRINTF("  image: %s\n", image != Qnil ? RSTRING_PTR(image) : "(nil -> none)");
 
     // Background shorthand sets ALL longhand properties
     // Unspecified values get CSS initial values (defaults)
