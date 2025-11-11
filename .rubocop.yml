@@ -81,3 +81,24 @@ Naming/VariableNumber:
 Naming/PredicatePrefix:
   Exclude:
     - 'lib/**/*.rb'
+
+# Performance-critical hot path exclusions for lib/cataract/pure
+# These cosmetic style rules add overhead via method dispatch or allocation
+
+# Disable numeric predicates in hot path - method dispatch overhead
+# Benchmark shows `> 0` is faster than `.positive?` due to avoiding method call
+Style/NumericPredicate:
+  Exclude:
+    - 'lib/cataract/pure/**/*.rb'
+
+# Disable multiple comparison style - avoid array allocation
+# `||` chain is faster than `Array#include?` which allocates an array
+Style/MultipleComparison:
+  Exclude:
+    - 'lib/cataract/pure/**/*.rb'
+
+# Disable zero-length predicate in hot path - method dispatch overhead
+# Direct comparison `.length > 0` is faster than `.empty?` method call
+Style/ZeroLengthPredicate:
+  Exclude:
+    - 'lib/cataract/pure/**/*.rb'
