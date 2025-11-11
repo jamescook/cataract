@@ -1,16 +1,13 @@
 # frozen_string_literal: true
 
 module Cataract
-  # Represents a CSS rule with a selector and declarations.
-  #
-  # Rule is a C struct defined as: `Struct.new(:id, :selector, :declarations, :specificity)`
-  #
-  # Rules are created by the parser and stored in Stylesheet objects. Each rule
-  # contains:
+  # Rules are created by the parser and stored in Stylesheet objects. Each rule contains:
   # - An ID (position in the stylesheet)
   # - A CSS selector string
   # - An array of Declaration structs
   # - A specificity value (calculated lazily)
+  # - Parent rule ID for nested rules (nil if top-level)
+  # - Nesting style (0=implicit, 1=explicit, nil=not nested)
   #
   # Media query information is stored separately in Stylesheet's media_index.
   #
@@ -25,6 +22,10 @@ module Cataract
   # @attr [String] selector The CSS selector (e.g., "body", ".class", "#id")
   # @attr [Array<Declaration>] declarations Array of CSS property declarations
   # @attr [Integer, nil] specificity CSS specificity value (calculated lazily)
+  # @attr [Integer, nil] parent_rule_id Parent rule ID for nested rules
+  # @attr [Integer, nil] nesting_style 0=implicit, 1=explicit, nil=not nested
+  Rule = Struct.new(:id, :selector, :declarations, :specificity, :parent_rule_id, :nesting_style) unless const_defined?(:Rule)
+
   class Rule
     # Silence warning about method redefinition. We redefine below to lazily calculate
     # specificity

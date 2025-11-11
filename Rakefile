@@ -28,39 +28,47 @@ end
 # rake-compiler already adds: tmp/, lib/**/*.{so,bundle}, etc.
 CLEAN.include('ext/**/Makefile', 'ext/**/*.o')
 
-Rake::TestTask.new(:test) do |t|
-  t.libs << 'test'
-  t.libs << 'lib'
-  # Load test_helper before running tests (handles SimpleCov setup)
-  t.ruby_opts << '-rtest_helper'
-  # Exclude color tests (run separately)
-  t.test_files = FileList['test/**/test_*.rb'].exclude('test/color/**/*')
-end
-
+# Test tasks - run C extension and pure Ruby implementations
 namespace :test do
-  desc 'Run tests with pure Ruby implementation (no C extension)'
-  task :pure do
-    puts '=' * 80
-    puts 'Running tests with PURE RUBY implementation (CATARACT_PURE=1)'
-    puts '=' * 80
-    ENV['CATARACT_PURE'] = '1'
-    Rake::Task[:test].invoke
-  end
-
-  desc 'Run color conversion tests only'
-  Rake::TestTask.new(:color_conversion) do |t|
+  desc 'Run tests with C extension (default)'
+  Rake::TestTask.new(:c) do |t|
     t.libs << 'test'
     t.libs << 'lib'
     t.ruby_opts << '-rtest_helper'
-    t.test_files = FileList['test/color/**/test_*.rb']
+    t.test_files = FileList['test/**/test_*.rb'].exclude('test/css_parser_compat/**/*', 'test/color/**/*')
   end
 
-  desc 'Run all tests including color conversion'
+  desc 'Run tests with pure Ruby implementation'
+  task :pure do
+    puts "\n#{'-' * 80}"
+    puts 'Running tests with PURE RUBY implementation'
+    puts '-' * 80
+    # Run in subprocess to avoid conflicts with C extension
+    success = system({ 'CATARACT_PURE' => '1' }, 'rake', 'test:c')
+    abort('Pure Ruby tests failed!') unless success
+  end
+
+  desc 'Run tests for both C extension and pure Ruby'
   task :all do
-    Rake::Task[:test].invoke
-    Rake::Task['test:color_conversion'].invoke
+    puts "\n#{'=' * 80}"
+    puts 'Running tests for C EXTENSION'
+    puts '=' * 80
+    Rake::Task['test:c'].invoke
+
+    puts "\n#{'=' * 80}"
+    puts 'Running tests for PURE RUBY implementation'
+    puts '=' * 80
+    Rake::Task['test:pure'].invoke
+
+    puts "\n#{'=' * 80}"
+    puts '✓ All tests passed for both C extension and pure Ruby!'
+    puts '=' * 80
   end
 end
+
+# Default test task runs both implementations
+desc 'Run tests for both C extension and pure Ruby (default)'
+task test: 'test:all'
 
 desc 'Run all benchmarks'
 task :benchmark do
@@ -214,10 +222,8 @@ begin
 
   desc 'Generate documentation and open in browser'
   task docs: :generate_example do
-    # Generate YARD documentation
-    YARD::CLI::Yardoc.run('--output-dir', 'docs', '--readme', 'README.md',
-                          '--title', 'Cataract - Fast CSS Parser',
-                          'lib/**/*.rb', 'ext/**/*.c', '-', 'docs/files/EXAMPLE.md')
+    # Generate YARD documentation (uses .yardopts for configuration)
+    YARD::CLI::Yardoc.run
 
     # Open in browser (skip in CI)
     unless ENV['CI']

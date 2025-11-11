@@ -27,48 +27,6 @@ end
 
 require_relative 'version'
 
-# Define structs that are normally defined in C land
-# These must be defined BEFORE loading the Ruby decorator files
-module Cataract
-  # Rule struct: (id, selector, declarations, specificity, parent_rule_id, nesting_style)
-  # - id: Integer (0-indexed position in @rules array)
-  # - selector: String (fully resolved/flattened selector)
-  # - declarations: Array of Declaration
-  # - specificity: Integer | nil (calculated lazily)
-  # - parent_rule_id: Integer | nil (parent rule ID for nested rules)
-  # - nesting_style: Integer | nil (0=implicit, 1=explicit, nil=not nested)
-  Rule = Struct.new(:id, :selector, :declarations, :specificity, :parent_rule_id, :nesting_style)
-
-  # Declaration struct: (property, value, important)
-  # - property: String (CSS property name, lowercased)
-  # - value: String (CSS property value)
-  # - important: Boolean (true if !important)
-  Declaration = Struct.new(:property, :value, :important)
-
-  # AtRule struct: (id, selector, content, specificity)
-  # Matches Rule interface for duck-typing
-  # - id: Integer (0-indexed position in @rules array)
-  # - selector: String (e.g., "@keyframes fade", "@font-face")
-  # - content: Array of Rule or Declaration
-  # - specificity: Always nil for at-rules
-  AtRule = Struct.new(:id, :selector, :content, :specificity)
-
-  # Declarations class for to_s method (used in merge operations)
-  class Declarations < Array
-    def to_s
-      map { |d| "#{d.property}: #{d.value}#{d.important ? ' !important' : ''}" }.join('; ')
-    end
-  end
-end
-
-# Now load the Ruby decorator files that add methods to these structs
-require_relative 'rule'
-require_relative 'at_rule'
-require_relative 'stylesheet_scope'
-require_relative 'stylesheet'
-require_relative 'declarations'
-require_relative 'import_resolver'
-
 # Add to_s method to Declarations class for pure Ruby mode
 module Cataract
   class Declarations
@@ -101,6 +59,9 @@ module Cataract
   # Flag to indicate pure Ruby version is loaded
   PURE_RUBY_LOADED = true
 
+  # Implementation type constant
+  IMPLEMENTATION = :ruby
+
   # Compile flags (mimic C version)
   COMPILE_FLAGS = {
     debug: false,
@@ -110,6 +71,7 @@ module Cataract
 
   # Parse CSS string and return hash with rules, media_index, charset, etc.
   #
+  # @api private
   # @param css_string [String] CSS to parse
   # @return [Hash] {
   #   rules: Array<Rule>,           # Flat array of Rule/AtRule structs
@@ -136,5 +98,15 @@ module Cataract
   # @return [Stylesheet] Same stylesheet (mutated)
   def self.merge!(stylesheet)
     Merge.merge(stylesheet, mutate: true)
+  end
+
+  # Add stub method to Stylesheet for pure Ruby implementation
+  class Stylesheet
+    # Color conversion is only available in the native C extension
+    #
+    # @raise [NotImplementedError] Always raises - color conversion requires C extension
+    def convert_colors!(*_args)
+      raise NotImplementedError, 'convert_colors! is only available in the native C extension'
+    end
   end
 end

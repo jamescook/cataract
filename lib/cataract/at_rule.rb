@@ -1,10 +1,6 @@
 # frozen_string_literal: true
 
 module Cataract
-  # Represents a CSS at-rule like @keyframes, @font-face, @supports, etc.
-  #
-  # AtRule is a C struct defined as: `Struct.new(:id, :selector, :content, :specificity)`
-  #
   # At-rules define CSS resources or control structures rather than selecting elements.
   # Unlike regular rules, they don't have CSS specificity and are filtered out when
   # using `select(&:selector?)`.
@@ -32,6 +28,8 @@ module Cataract
   # @attr [String] selector The at-rule identifier (e.g., "@keyframes fade", "@font-face")
   # @attr [Array<Rule>, Array<Declaration>] content Nested rules or declarations
   # @attr [nil] specificity Always nil for at-rules (they don't have CSS specificity)
+  AtRule = Struct.new(:id, :selector, :content, :specificity) unless const_defined?(:AtRule)
+
   class AtRule
     # Check if this is a selector-based rule (vs an at-rule like @keyframes).
     #

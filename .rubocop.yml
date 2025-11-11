@@ -69,6 +69,8 @@ Style/Documentation:
    Exclude:
     - 'test/**/*'
     - 'benchmarks/**/*'
+    - 'lib/cataract/pure/**/*.rb'
+    - 'lib/cataract/pure.rb'
 
 # Disable modifier if/unless enforcement - use it when it's clearer, not because a cop says so
 Style/IfUnlessModifier:

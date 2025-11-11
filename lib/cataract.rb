@@ -2,18 +2,23 @@
 
 require_relative 'cataract/version'
 
+# Load struct definitions first (before C extension or pure Ruby)
+require_relative 'cataract/declaration'
+require_relative 'cataract/rule'
+require_relative 'cataract/at_rule'
+
 # Load pure Ruby or C extension based on ENV var
 if %w[1 true].include?(ENV['CATARACT_PURE'])
   require_relative 'cataract/pure'
 else
   require_relative 'cataract/native_extension'
-  require_relative 'cataract/rule'
-  require_relative 'cataract/at_rule'
-  require_relative 'cataract/stylesheet_scope'
-  require_relative 'cataract/stylesheet'
-  require_relative 'cataract/declarations'
-  require_relative 'cataract/import_resolver'
 end
+
+# Load supporting Ruby files (used by both implementations)
+require_relative 'cataract/stylesheet_scope'
+require_relative 'cataract/stylesheet'
+require_relative 'cataract/declarations'
+require_relative 'cataract/import_resolver'
 
 # Cataract is a high-performance CSS parser written in C with a Ruby interface.
 #
