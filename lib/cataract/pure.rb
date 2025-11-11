@@ -108,10 +108,6 @@ module Cataract
     pure_ruby: true
   }.freeze
 
-  # ============================================================================
-  # CORE PARSING
-  # ============================================================================
-
   # Parse CSS string and return hash with rules, media_index, charset, etc.
   #
   # @param css_string [String] CSS to parse
@@ -125,20 +121,6 @@ module Cataract
     parser = Parser.new(css_string)
     parser.parse
   end
-
-  # Parse CSS declarations from string (stub - not yet implemented)
-  #
-  # @param declarations_string [String] CSS declarations (e.g., "color: red; font-size: 14px")
-  # @return [Array<Declaration>] Array of Declaration structs
-  def self.parse_declarations(declarations_string)
-    # TODO: Implement declaration parsing
-    # Char-by-char, no regexp
-    []
-  end
-
-  # ============================================================================
-  # MERGING
-  # ============================================================================
 
   # Merge stylesheet rules according to CSS cascade rules
   #
