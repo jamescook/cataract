@@ -74,7 +74,6 @@ task :benchmark do
   Rake::Task['benchmark:serialization'].invoke
   Rake::Task['benchmark:specificity'].invoke
   Rake::Task['benchmark:merging'].invoke
-  Rake::Task['benchmark:yjit'].invoke
   puts "\n#{'-' * 80}"
   puts 'All benchmarks complete!'
   puts 'Generate documentation with: rake benchmark:generate_docs'
@@ -83,33 +82,27 @@ end
 
 namespace :benchmark do
   desc 'Benchmark CSS parsing performance'
-  task :parsing do
+  task :parsing => :compile do
     puts 'Running parsing benchmark...'
     ruby 'benchmarks/benchmark_parsing.rb'
   end
 
   desc 'Benchmark CSS serialization (to_s) performance'
-  task :serialization do
+  task :serialization => :compile do
     puts 'Running serialization benchmark...'
     ruby 'benchmarks/benchmark_serialization.rb'
   end
 
   desc 'Benchmark specificity calculation performance'
-  task :specificity do
+  task :specificity => :compile do
     puts 'Running specificity benchmark...'
     ruby 'benchmarks/benchmark_specificity.rb'
   end
 
   desc 'Benchmark CSS merging performance'
-  task :merging do
+  task :merging => :compile do
     puts 'Running merging benchmark...'
     ruby 'benchmarks/benchmark_merging.rb'
-  end
-
-  desc 'Benchmark Ruby-side operations with YJIT on vs off'
-  task :yjit do
-    puts 'Running YJIT benchmark...'
-    ruby 'benchmarks/benchmark_yjit.rb'
   end
 
   desc 'Benchmark string allocation optimization (buffer vs dynamic)'

@@ -112,7 +112,6 @@ module Cataract
       @_media_index = {}             # Symbol => Array of rule IDs
       @rule_id_counter = 0           # Next rule ID (0-indexed)
       @media_query_count = 0         # Safety limit
-      @media_cache = {}              # Parse-time cache: string => parsed media types
       @_has_nesting = false          # Set to true if any nested rules found
       @depth = depth                 # Current recursion depth (passed from parent parser)
       @charset = nil                 # @charset declaration

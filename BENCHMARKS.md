@@ -4,176 +4,97 @@
 
 # Performance Benchmarks
 
-Comprehensive performance comparison between Cataract and css_parser gem.
+Performance comparison between Cataract's C extension and pure Ruby implementations, with css_parser as a reference.
 
 ## Test Environment
 
-- **Ruby**: ruby 3.4.5 (2025-07-16 revision 20cda200d3) +YJIT +PRISM [arm64-darwin23]
+- **Ruby**: ruby 3.4.7 (2025-10-08 revision 7a5688e2a2) +YJIT +PRISM [arm64-darwin23]
 - **CPU**: Apple M1 Pro
 - **Memory**: 32GB
 - **OS**: macOS 14.5
-- **Generated**: 2025-10-30T16:01:15-05:00
+- **Generated**: 2025-11-11T16:02:08-06:00
 
-<details>
-<summary><h2>CSS Parsing</h2></summary>
-
-Performance of parsing CSS into internal data structures.
+## CSS Parsing
 
 Time to parse CSS into internal data structures
 
-### Small CSS (64 lines, 1.0KB)
+| Test Case | Native | Pure (no YJIT) | Pure (YJIT) | css_parser (no YJIT) | css_parser (YJIT) |
+|-----------|--------|----------------|-------------|----------------------|-------------------|
+| Small CSS (64 lines, 1.0KB) | 63.05K i/s | 3.46K i/s | 14.21K i/s | 4.57K i/s | 6.28K i/s |
+| Medium CSS with @media (139 lines, 1.6KB) | 40.32K i/s | 1.97K i/s | 7.57K i/s | 2.72K i/s | 3.53K i/s |
 
+### Speedups
 
-| Parser | Speed | Time per operation |
-|--------|-------|-------------------|
-| css_parser | 6.16K i/s | 162.34 μs |
-| **Cataract** | **63.79K i/s** | **15.68 μs** |
-| **Speedup** | **10.36x faster** | |
-
-### Medium CSS with @media (139 lines, 1.6KB)
-
-
-| Parser | Speed | Time per operation |
-|--------|-------|-------------------|
-| css_parser | 3.44K i/s | 290.64 μs |
-| **Cataract** | **41.45K i/s** | **24.13 μs** |
-| **Speedup** | **12.05x faster** | |
-
-
-</details>
+| Comparison | Speedup |
+|------------|---------|
+| Native vs Pure (no YJIT) | 19.36x faster (avg) |
+| Native vs Pure (YJIT) | 4.75x faster (avg) |
+| YJIT impact on Pure Ruby | 4.01x faster (avg) |
 
 ---
 
-<details>
-<summary><h2>CSS Serialization (to_s)</h2></summary>
-
-Performance of converting parsed CSS back to string format.
+## CSS Serialization
 
 Time to convert parsed CSS back to string format
 
-### Full Serialization (Bootstrap CSS - 191KB)
+| Test Case | Native | Pure (no YJIT) | Pure (YJIT) | css_parser (no YJIT) | css_parser (YJIT) |
+|-----------|--------|----------------|-------------|----------------------|-------------------|
+| Full Serialization (Bootstrap CSS - 191KB) | 1.79K i/s | 442.2 i/s | 716.9 i/s | 38.5 i/s | 39.7 i/s |
+| Media Type Filtering (print only) | 282.98K i/s | 114.55K i/s | 167.51K i/s | 2.74K i/s | 4.32K i/s |
 
+### Speedups
 
-| Parser | Speed | Time per operation |
-|--------|-------|-------------------|
-| css_parser | 34.0 i/s | 29.41 ms |
-| **Cataract** | **714.8 i/s** | **1.4 ms** |
-| **Speedup** | **21.02x faster** | |
-
-### Media Type Filtering (print only)
-
-
-| Parser | Speed | Time per operation |
-|--------|-------|-------------------|
-| css_parser | 4.06K i/s | 246.56 μs |
-| **Cataract** | **232.22K i/s** | **4.31 μs** |
-| **Speedup** | **57.26x faster** | |
-
-
-</details>
+| Comparison | Speedup |
+|------------|---------|
+| Native vs Pure (no YJIT) | 3.26x faster (avg) |
+| Native vs Pure (YJIT) | 1.69x faster (avg) |
+| YJIT impact on Pure Ruby | 1.46x faster (avg) |
 
 ---
 
-<details>
-<summary><h2>Specificity Calculation</h2></summary>
-
-Performance of calculating CSS selector specificity values.
+## Specificity Calculation
 
 Time to calculate CSS selector specificity values
 
-| Test Case | Speedup |
-|-----------|---------|
-| Simple Selectors | **22.03x faster** |
-| Compound Selectors | **30.55x faster** |
-| Combinators | **28.34x faster** |
-| Pseudo-classes & Pseudo-elements | **46.06x faster** |
-| :not() Pseudo-class (CSS3) | **23.64x faster** |
-| Complex Real-world Selectors | **49.17x faster** |
+| Test Case | Native | Pure (no YJIT) | Pure (YJIT) | css_parser (no YJIT) | css_parser (YJIT) |
+|-----------|--------|----------------|-------------|----------------------|-------------------|
+| Simple Selectors | 8.31M i/s | 499.15K i/s | 2.59M i/s | 370.14K i/s | 344.42K i/s |
+| Compound Selectors | 6.57M i/s | 184.61K i/s | 403.41K i/s | 223.76K i/s | 204.19K i/s |
+| Combinators | 5.24M i/s | 144.7K i/s | 253.9K i/s | 188.05K i/s | 177.88K i/s |
+| Pseudo-classes & Pseudo-elements | 5.39M i/s | 115.46K i/s | 194.13K i/s | 116.96K i/s | 109.64K i/s |
+| :not() Pseudo-class (CSS3) | 3.31M i/s | 101.48K i/s | 160.62K i/s | 144.35K i/s | 141.24K i/s |
+| Complex Real-world Selectors | 4.09M i/s | 51.63K i/s | 77.37K i/s | 82.16K i/s | 80.6K i/s |
 
-**Summary:** 22.03x faster to 49.17x faster (avg 33.3x faster)
+### Speedups
 
-</details>
+| Comparison | Speedup |
+|------------|---------|
+| Native vs Pure (no YJIT) | 41.16x faster (avg) |
+| Native vs Pure (YJIT) | 8.94x faster (avg) |
+| YJIT impact on Pure Ruby | 3.36x faster (avg) |
 
 ---
 
-<details>
-<summary><h2>CSS Merging</h2></summary>
-
-Performance of merging multiple CSS rule sets with the same selector.
+## CSS Merging
 
 Time to merge multiple CSS rule sets with same selector
 
-| Test Case | Speedup |
-|-----------|---------|
-| No shorthand properties (large) | **4.14x faster** |
-| Simple properties | **3.86x faster** |
-| Cascade with specificity | **5.75x faster** |
-| Important declarations | **6.1x faster** |
-| Shorthand expansion | **4.16x faster** |
-| Complex merging | **3.07x faster** |
+| Test Case | Native | Pure (no YJIT) | Pure (YJIT) | css_parser (no YJIT) | css_parser (YJIT) |
+|-----------|--------|----------------|-------------|----------------------|-------------------|
+| No shorthand properties (large) | 10.5K i/s | 3.46K i/s | 6.73K i/s | 1.51K i/s | 2.27K i/s |
+| Simple properties | 125.51K i/s | 77.36K i/s | 110.86K i/s | 27.92K i/s | 40.42K i/s |
+| Cascade with specificity | 140.46K i/s | 80.08K i/s | 116.35K i/s | 31.48K i/s | 45.99K i/s |
+| Important declarations | 139.59K i/s | 80.29K i/s | 116.39K i/s | 30.84K i/s | 44.87K i/s |
+| Shorthand expansion | 10.5K i/s | 3.46K i/s | 6.73K i/s | 1.51K i/s | 2.27K i/s |
+| Complex merging | 24.74K i/s | 16.62K i/s | 23.57K i/s | 11.59K i/s | 16.48K i/s |
 
-**Summary:** 3.07x faster to 6.1x faster (avg 4.51x faster)
+### Speedups
 
-### What's Being Tested
-- Specificity-based CSS cascade (ID > class > element)
-- `!important` declaration handling
-- Shorthand property expansion (e.g., `margin` → `margin-top`, `margin-right`, etc.)
-- Shorthand property creation from longhand properties
-
-</details>
-
----
-
-<details>
-<summary><h2>YJIT Impact</h2></summary>
-
-Impact of Ruby's YJIT JIT compiler on Ruby-side operations. The C extension performance is the same regardless of YJIT.
-
-Ruby-side operations with and without YJIT
-
-### Operations Per Second
-
-| Operation | Without YJIT | With YJIT | YJIT Improvement |
-|-----------|--------------|-----------|------------------|
-| property access | 227.18K i/s | 322.32K i/s | **1.42x faster** (42% faster) |
-| declaration merging | 204.26K i/s | 337.81K i/s | **1.65x faster** (65% faster) |
-| to_s generation | 242.66K i/s | 391.16K i/s | **1.61x faster** (61% faster) |
-| parse + iterate | 121.52K i/s | 142.77K i/s | **1.17x faster** (17% faster) |
-
-### Key Takeaways
-- YJIT provides significant performance boost for Ruby-side operations
-- Greatest impact on declaration merging
-- Parse + iterate benefits least since most work is in C
-- Recommended: Enable YJIT in production (`--yjit` flag or `RUBY_YJIT_ENABLE=1`)
-
-</details>
-
----
-
-## Summary
-
-### Performance Highlights
-
-| Category | Min Speedup | Max Speedup | Avg Speedup |
-|----------|-------------|-------------|-------------|
-| **Parsing** | 10.36x faster | 12.05x faster | 11.2x faster |
-| **Serialization** | 21.02x faster | 57.26x faster | 39.14x faster |
-| **Specificity** | 22.03x faster | 49.17x faster | 33.3x faster |
-| **Merging** | 3.07x faster | 6.1x faster | 4.51x faster |
-
-### Implementation Notes
-
-1. **C Extension**: Critical paths (parsing, specificity, merging, serialization) implemented in C
-2. **Efficient Data Structures**: Rules grouped by media query for O(1) lookups
-3. **Memory Efficient**: Pre-allocated string buffers, minimal Ruby object allocations
-4. **Optimized Algorithms**: Purpose-built CSS specificity calculator
-
-### Use Cases
-
-- **Large CSS files**: Handles complex stylesheets efficiently
-- **Specificity calculations**: Optimized for selector analysis
-- **High-volume processing**: Reduced allocations minimize GC pressure
-- **Production applications**: Tested with Bootstrap CSS and real-world stylesheets
+| Comparison | Speedup |
+|------------|---------|
+| Native vs Pure (no YJIT) | 1.87x faster (avg) |
+| Native vs Pure (YJIT) | 1.16x faster (avg) |
+| YJIT impact on Pure Ruby | 1.45x faster (avg) |
 
 ---
 
@@ -181,14 +102,13 @@ Ruby-side operations with and without YJIT
 
 ```bash
 # All benchmarks
-rake benchmark 2>&1 | tee benchmark_output.txt
+rake benchmark
 
 # Individual benchmarks
 rake benchmark:parsing
 rake benchmark:serialization
 rake benchmark:specificity
 rake benchmark:merging
-rake benchmark:yjit
 
 # Generate documentation
 rake benchmark:generate_docs
@@ -196,6 +116,7 @@ rake benchmark:generate_docs
 
 ## Notes
 
-- All benchmarks use benchmark-ips with 3s warmup and 5-10s measurement periods
-- Measurements are median i/s (iterations per second) with standard deviation
-- css_parser gem must be installed for comparison benchmarks
+- Benchmarks use benchmark-ips with 1-2s warmup and 2-5s measurement periods
+- Measurements show median iterations per second (i/s)
+- css_parser gem is included for reference comparison
+- YJIT is enabled/disabled per subprocess for accurate comparison
