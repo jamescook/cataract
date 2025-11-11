@@ -27,6 +27,16 @@ end
 
 require_relative 'version'
 
+# Load struct definitions and supporting files
+# (These are also loaded by lib/cataract.rb, but we need them here for direct require)
+require_relative 'declaration'
+require_relative 'rule'
+require_relative 'at_rule'
+require_relative 'stylesheet_scope'
+require_relative 'stylesheet'
+require_relative 'declarations'
+require_relative 'import_resolver'
+
 # Add to_s method to Declarations class for pure Ruby mode
 module Cataract
   class Declarations

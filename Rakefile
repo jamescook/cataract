@@ -40,9 +40,6 @@ namespace :test do
 
   desc 'Run tests with pure Ruby implementation'
   task :pure do
-    puts "\n#{'-' * 80}"
-    puts 'Running tests with PURE RUBY implementation'
-    puts '-' * 80
     # Run in subprocess to avoid conflicts with C extension
     success = system({ 'CATARACT_PURE' => '1' }, 'rake', 'test:c')
     abort('Pure Ruby tests failed!') unless success

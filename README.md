@@ -34,6 +34,32 @@ gem install cataract
 
 - Ruby >= 3.1.0
 
+### Pure Ruby Implementation
+
+Cataract includes a pure Ruby implementation alongside the C extension. This is useful for:
+- Platforms where C extensions cannot be compiled
+- Development/debugging without needing to recompile C code
+- Environments with restricted native code execution
+
+**In your Gemfile:**
+```ruby
+gem 'cataract', require: 'cataract/pure'
+```
+
+**Or set environment variable:**
+```ruby
+# For CI, testing, or one-off usage
+ENV['CATARACT_PURE'] = '1'
+require 'cataract'
+```
+
+**Check which implementation is loaded:**
+```ruby
+Cataract::IMPLEMENTATION  # => :native or :ruby
+```
+
+**Note:** The pure Ruby implementation does not include color conversion functionality (`convert_colors!`), which is only available in the C extension.
+
 ## Usage
 
 ### Basic Parsing
