@@ -8,7 +8,7 @@ PreCommit:
   RuboCop:
     enabled: true
     on_warn: fail # Treat warnings as failures
-    command: ['bundle', 'exec', 'rubocop']
+    # Remove explicit command to allow Overcommit to pass staged files only
     flags: ['--force-exclusion']
     include:
       - '**/*.rb'

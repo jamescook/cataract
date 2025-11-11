@@ -64,9 +64,17 @@ class TestAtRule < Minitest::Test
     refute_equal at_rule1, at_rule2
   end
 
-  def test_equality_different_id
+  def test_equality_different_id_same_content
+    # Two at-rules with different IDs but same selector/content are logically equal
     at_rule1 = Cataract::AtRule.new(0, '@keyframes fade', [], nil)
     at_rule2 = Cataract::AtRule.new(1, '@keyframes fade', [], nil)
+
+    assert_equal at_rule1, at_rule2, 'ID is an implementation detail, not part of logical equality'
+  end
+
+  def test_equality_different_content
+    at_rule1 = Cataract::AtRule.new(0, '@keyframes fade', 'from { opacity: 0; }', nil)
+    at_rule2 = Cataract::AtRule.new(0, '@keyframes fade', 'to { opacity: 1; }', nil)
 
     refute_equal at_rule1, at_rule2
   end
