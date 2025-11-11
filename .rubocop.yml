@@ -44,6 +44,12 @@ Metrics/BlockLength:
 Metrics/ParameterLists:
   Enabled: false
 
+# Block nesting in byte-level parsers reflects CSS structure, not complexity
+# Extracting helper methods would add method dispatch overhead in hot path
+Metrics/BlockNesting:
+  Exclude:
+    - 'lib/cataract/pure/**/*.rb'
+
 # Keep line length for tests disabled - long test strings are fine
 Layout/LineLength:
   Exclude:
