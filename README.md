@@ -142,9 +142,11 @@ See [BENCHMARKS.md](BENCHMARKS.md) for detailed performance comparisons.
 
 ## CSS Support
 
-Cataract aims to support all CSS specifications including:
+Cataract parses and preserves all standard CSS including:
 - **Selectors**: All CSS2/CSS3 selectors (type, class, ID, attribute, pseudo-classes, pseudo-elements, combinators)
-- **At-rules**: `@media`, `@font-face`, `@keyframes`, `@supports`, `@page`, `@layer`, `@container`, `@property`, `@scope`, `@counter-style`
+- **At-rules**:
+  - **`@media`**: Special handling with indexing and filtering API (`with_media(:print)`, `with_media(:all)`)
+  - **Others** (`@font-face`, `@keyframes`, `@supports`, `@page`, `@layer`, `@container`, `@property`, `@scope`, `@counter-style`): Parsed and preserved as-is (pass-through)
 - **Media Queries**: Full support including nested queries and media features
 - **Special syntax**: Data URIs, `calc()`, `url()`, CSS functions with parentheses
 - **!important**: Full support with correct cascade behavior
