@@ -149,9 +149,9 @@ module Cataract
           # NESTED PATH: Parse mixed declarations + nested rules
           # Split comma-separated selectors and parse each one
           selectors = selector.split(',')
-          selectors.each { |s| s.strip! }
 
           selectors.each do |individual_selector|
+            individual_selector.strip!
             next if individual_selector.empty?
 
             # Get rule ID for this selector
@@ -193,9 +193,9 @@ module Cataract
 
           # Split comma-separated selectors into individual rules
           selectors = selector.split(',')
-          selectors.each { |s| s.strip! }
 
           selectors.each do |individual_selector|
+            individual_selector.strip!
             next if individual_selector.empty?
 
             # Create Rule struct
@@ -496,9 +496,9 @@ module Cataract
           # Extract nested selector and split on commas
           nested_selector_text = byteslice_encoded(nested_sel_start, nested_sel_end - nested_sel_start)
           nested_selectors = nested_selector_text.split(',')
-          nested_selectors.each { |s| s.strip! }
 
           nested_selectors.each do |seg|
+            seg.strip!
             next if seg.empty?
 
             # Resolve nested selector
