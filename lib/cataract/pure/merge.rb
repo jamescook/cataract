@@ -119,14 +119,26 @@ module Cataract
     # @param mutate [Boolean] If true, mutate the stylesheet; otherwise create new one
     # @return [Stylesheet] Merged stylesheet
     def self.merge(stylesheet, mutate: false)
-      # Expand shorthands in all rules
-      stylesheet.rules.each { |rule| expand_shorthands!(rule) }
+      # Separate AtRules (pass-through) from regular Rules (to merge)
+      at_rules = []
+      regular_rules = []
+
+      stylesheet.rules.each do |rule|
+        if rule.at_rule?
+          at_rules << rule
+        else
+          regular_rules << rule
+        end
+      end
+
+      # Expand shorthands in regular rules only (AtRules don't have declarations)
+      regular_rules.each { |rule| expand_shorthands!(rule) }
 
       merged_rules = []
 
       # Always group by selector and preserve original selectors
       # (Nesting is flattened during parsing, so we just merge by resolved selector)
-      grouped = stylesheet.rules.group_by(&:selector)
+      grouped = regular_rules.group_by(&:selector)
       grouped.each do |selector, rules|
         merged_rule = merge_rules_for_selector(selector, rules)
         merged_rules << merged_rule if merged_rule
@@ -134,6 +146,9 @@ module Cataract
 
       # Recreate shorthands where possible
       merged_rules.each { |rule| recreate_shorthands!(rule) }
+
+      # Add passthrough AtRules to output
+      merged_rules.concat(at_rules)
 
       # Create result stylesheet
       if mutate
