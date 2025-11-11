@@ -535,8 +535,6 @@ module Cataract
       # Need at least 2 parts (size and family)
       return [decl] if parts.length < 2
 
-      result = []
-
       # Parse from left to right
       # Optional: style, variant, weight (can appear in any order)
       # Required: size (with optional /line-height), family
