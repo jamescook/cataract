@@ -1,7 +1,18 @@
 # frozen_string_literal: true
 
 # Pure Ruby CSS parser - Parser class
-# NO REGEXP ALLOWED - char-by-char parsing only
+#
+# IMPORTANT: This code is intentionally written in a non-idiomatic style.
+# - Performance comes first - mirrors the C implementation
+# - Character-by-character parsing (NO REGEXP)
+# - Minimal abstraction, lots of state mutation
+# - Optimized for speed, not readability
+#
+# Do NOT refactor to "clean Ruby" without benchmarking - you will make it slower.
+#
+# Example: RuboCop suggests using `.positive?` instead of `> 0`, but benchmarking
+# shows `> 0` is 1.26x faster (see benchmark_positive.rb). These micro-optimizations
+# matter in a hot parsing loop.
 
 module Cataract
   # Pure Ruby CSS parser - char-by-char, NO REGEXP
@@ -14,7 +25,7 @@ module Cataract
 
     # Maximum property name/value lengths
     MAX_PROPERTY_NAME_LENGTH = 256
-    MAX_PROPERTY_VALUE_LENGTH = 32768
+    MAX_PROPERTY_VALUE_LENGTH = 32_768
 
     attr_reader :css, :pos, :len
 
@@ -22,10 +33,9 @@ module Cataract
     # Per CSS spec, charset detection happens at byte-stream level before parsing.
     # All parsing operations treat content as UTF-8 (spec requires fallback to UTF-8).
     # This prevents ArgumentError on broken/invalid encodings when calling string methods.
-    # Accepts same arguments as String#byteslice: (start, length) or (range)
     # Optional encoding parameter (default: 'UTF-8', use 'US-ASCII' for property names)
-    def byteslice_encoded(*args, encoding: 'UTF-8')
-      @css.byteslice(*args).force_encoding(encoding)
+    def byteslice_encoded(start, length, encoding: 'UTF-8')
+      @css.byteslice(start, length).force_encoding(encoding)
     end
 
     # Helper: Case-insensitive ASCII byte comparison

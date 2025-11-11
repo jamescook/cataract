@@ -59,9 +59,6 @@ module Cataract
           in_media_block = false
           current_media = nil
         end
-
-        # Serialize rule with nesting
-        serialize_rule_with_nesting(result, rule, rule_children, rule_to_media)
       else
         # Media query
         if current_media.nil? || current_media != rule_media
@@ -72,9 +69,9 @@ module Cataract
           result << "@media #{current_media} {\n"
           in_media_block = true
         end
-
-        serialize_rule_with_nesting(result, rule, rule_children, rule_to_media)
       end
+
+      serialize_rule_with_nesting(result, rule, rule_children, rule_to_media)
     end
 
     if in_media_block
@@ -108,9 +105,6 @@ module Cataract
           in_media_block = false
           current_media = nil
         end
-
-        # Output rule directly
-        serialize_rule(result, rule)
       else
         # This rule is in a media query
         # Check if media query changed from previous rule
@@ -125,10 +119,9 @@ module Cataract
           result << "@media #{current_media} {\n"
           in_media_block = true
         end
-
-        # Serialize rule inside media block
-        serialize_rule(result, rule)
       end
+
+      serialize_rule(result, rule)
     end
 
     # Close final media block if still open
