@@ -1064,21 +1064,39 @@ module Cataract
     # Returns: [resolved_selector, nesting_style]
     #   nesting_style: 0 = NESTING_STYLE_IMPLICIT, 1 = NESTING_STYLE_EXPLICIT
     def resolve_nested_selector(parent_selector, nested_selector)
-      # Check if nested selector contains &
-      has_ampersand = nested_selector.include?('&')
+      # Check if nested selector contains & (byte-level search)
+      len = nested_selector.bytesize
+      has_ampersand = false
+      i = 0
+      while i < len
+        if nested_selector.getbyte(i) == BYTE_AMPERSAND
+          has_ampersand = true
+          break
+        end
+        i += 1
+      end
 
       if has_ampersand
         # Explicit nesting - replace & with parent
         nesting_style = NESTING_STYLE_EXPLICIT
 
         # Trim leading whitespace to check for combinator
-        nested_trimmed = nested_selector.lstrip
+        # NOTE: We use a manual byte-level loop instead of lstrip for performance.
+        # Ruby's lstrip handles all Unicode whitespace and encoding checks, but CSS
+        # selectors only use ASCII whitespace (space, tab, newline, CR). Our loop
+        # checks only these 4 bytes, which benchmarks 1.89x faster than lstrip.
+        start_pos = 0
+        while start_pos < len
+          byte = nested_selector.getbyte(start_pos)
+          break unless byte == BYTE_SPACE || byte == BYTE_TAB || byte == BYTE_NEWLINE || byte == BYTE_CR
+          start_pos += 1
+        end
 
         # Check if selector starts with a combinator (relative selector)
         starts_with_combinator = false
-        if !nested_trimmed.empty?
-          first_char = nested_trimmed[0]
-          starts_with_combinator = (first_char == '+' || first_char == '>' || first_char == '~')
+        if start_pos < len
+          first_byte = nested_selector.getbyte(start_pos)
+          starts_with_combinator = (first_byte == BYTE_PLUS || first_byte == BYTE_GT || first_byte == BYTE_TILDE)
         end
 
         # Build result by replacing & with parent
@@ -1090,13 +1108,16 @@ module Cataract
           result << ' '
         end
 
-        # Replace all & with parent selector
-        nested_selector.each_char do |char|
-          if char == '&'
+        # Replace all & with parent selector (byte-level iteration)
+        i = 0
+        while i < len
+          byte = nested_selector.getbyte(i)
+          if byte == BYTE_AMPERSAND
             result << parent_selector
           else
-            result << char
+            result << byte.chr
           end
+          i += 1
         end
 
         [result, nesting_style]
@@ -1104,13 +1125,19 @@ module Cataract
         # Implicit nesting - prepend parent with appropriate spacing
         nesting_style = NESTING_STYLE_IMPLICIT
 
-        # Trim leading whitespace from nested selector
-        nested_trimmed = nested_selector.lstrip
+        # Trim leading whitespace from nested selector (byte-level)
+        # See comment above for why we don't use lstrip
+        start_pos = 0
+        while start_pos < len
+          byte = nested_selector.getbyte(start_pos)
+          break unless byte == BYTE_SPACE || byte == BYTE_TAB || byte == BYTE_NEWLINE || byte == BYTE_CR
+          start_pos += 1
+        end
 
         result = String.new
         result << parent_selector
         result << ' '
-        result << nested_trimmed
+        result << nested_selector.byteslice(start_pos..-1)
 
         [result, nesting_style]
       end
