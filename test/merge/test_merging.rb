@@ -645,4 +645,51 @@ class TestMerging < Minitest::Test
              "Should never use 'merged' placeholder selector. Input: #{css.inspect}, Got selectors: #{selectors.inspect}"
     end
   end
+
+  # Test that AtRules (@keyframes, @font-face, etc.) are passed through unchanged
+  def test_atrule_passthrough
+    sheet = Cataract::Stylesheet.parse(<<~CSS)
+      @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+      .test { color: red; }
+      .test { margin: 10px; }
+    CSS
+
+    merged = sheet.merge
+
+    # Should have 2 rules: the merged .test rule and the @keyframes AtRule
+    assert_equal 2, merged.rules_count,
+                 'Should have 1 merged rule + 1 passthrough AtRule'
+
+    # Find the AtRule
+    at_rule = merged.rules.find { |r| r.is_a?(Cataract::AtRule) }
+
+    assert at_rule, 'Should have @keyframes AtRule in output'
+    assert_equal '@keyframes fade', at_rule.selector
+
+    # Find the regular rule
+    regular_rule = merged.rules.find { |r| r.is_a?(Cataract::Rule) }
+
+    assert regular_rule, 'Should have .test Rule in output'
+    assert_equal '.test', regular_rule.selector
+    assert_has_property({ color: 'red' }, regular_rule)
+    assert_has_property({ margin: '10px' }, regular_rule)
+  end
+
+  # Test that a stylesheet with ONLY AtRules (no regular rules) is handled correctly
+  def test_atrule_only
+    sheet = Cataract::Stylesheet.parse(<<~CSS)
+      @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+    CSS
+
+    merged = sheet.merge
+
+    # Should have 1 AtRule passthrough
+    assert_equal 1, merged.rules_count,
+                 'Should have 1 passthrough AtRule'
+
+    at_rule = merged.rules.first
+
+    assert_kind_of Cataract::AtRule, at_rule, 'Rule should be an AtRule'
+    assert_equal '@keyframes fade', at_rule.selector
+  end
 end
