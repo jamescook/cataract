@@ -10,6 +10,9 @@ class TestShorthandExpansion < Minitest::Test
     merged = sheet.merge
 
     # The merged stylesheet should have exactly one rule with all declarations
+    # (or no rules for empty input)
+    return Cataract::Declarations.new([]) if merged.rules_count.zero?
+
     Cataract::Declarations.new(merged.rules.first.declarations)
   end
 
@@ -175,14 +178,85 @@ class TestShorthandExpansion < Minitest::Test
   end
 
   # ===========================================================================
-  # Specificity - Higher Specificity Wins
+  # Background - Gradient Functions (image, not color)
   # ===========================================================================
 
-  def test_specificity_override
-    decls = parse_and_merge('.test { margin: 10px } #id { margin-top: 20px }')
+  def test_background_linear_gradient
+    # linear-gradient should be treated as background-image, not background-color
+    decls = parse_and_merge('.test { background: linear-gradient(180deg, #fff, #000) }')
 
-    # Higher specificity for margin-top should win
-    assert_equal '20px 10px 10px', decls['margin']
+    assert_equal 'linear-gradient(180deg, #fff, #000)', decls['background']
+  end
+
+  def test_background_radial_gradient
+    # radial-gradient should be treated as background-image
+    decls = parse_and_merge('.test { background: radial-gradient(circle, red, blue) }')
+
+    assert_equal 'radial-gradient(circle, red, blue)', decls['background']
+  end
+
+  def test_background_repeating_linear_gradient
+    # repeating-linear-gradient should be treated as background-image
+    decls = parse_and_merge('.test { background: repeating-linear-gradient(45deg, red, blue 10px) }')
+
+    assert_equal 'repeating-linear-gradient(45deg, red, blue 10px)', decls['background']
+  end
+
+  def test_background_repeating_radial_gradient
+    # repeating-radial-gradient should be treated as background-image
+    decls = parse_and_merge('.test { background: repeating-radial-gradient(circle, red, blue 10px) }')
+
+    assert_equal 'repeating-radial-gradient(circle, red, blue 10px)', decls['background']
+  end
+
+  def test_background_conic_gradient
+    # conic-gradient should be treated as background-image
+    decls = parse_and_merge('.test { background: conic-gradient(red, yellow, green) }')
+
+    assert_equal 'conic-gradient(red, yellow, green)', decls['background']
+  end
+
+  def test_background_gradient_with_color
+    # Gradient with color should keep both (image takes precedence in shorthand)
+    decls = parse_and_merge('.test { background: red linear-gradient(to right, rgba(255,255,255,0.5), transparent) }')
+
+    # Should have both color and gradient
+    assert_match(/linear-gradient/, decls['background'])
+    assert_match(/red/, decls['background'])
+  end
+
+  def test_background_multiple_gradients
+    # Multiple gradients (layered backgrounds)
+    decls = parse_and_merge('.test { background: linear-gradient(#fff, #000), radial-gradient(circle, red, blue) }')
+
+    # Should preserve both gradients
+    assert_match(/linear-gradient/, decls['background'])
+    assert_match(/radial-gradient/, decls['background'])
+  end
+
+  # ===========================================================================
+  # Specificity - Different Selectors Stay Separate
+  # ===========================================================================
+
+  def test_different_selectors_separate
+    # Different selectors should not merge - this tests correct CSS semantics
+    sheet = Cataract.parse_css('.test { margin: 10px } #id { margin-top: 20px }')
+    merged = sheet.merge
+
+    # Should have 2 separate rules
+    assert_equal 2, merged.rules_count
+
+    # .test rule should have margin shorthand
+    test_rule = merged.rules.find { |r| r.selector == '.test' }
+    test_decls = Cataract::Declarations.new(test_rule.declarations)
+
+    assert_equal '10px', test_decls['margin']
+
+    # #id rule should have margin-top
+    id_rule = merged.rules.find { |r| r.selector == '#id' }
+    id_decls = Cataract::Declarations.new(id_rule.declarations)
+
+    assert_equal '20px', id_decls['margin-top']
   end
 
   # ===========================================================================

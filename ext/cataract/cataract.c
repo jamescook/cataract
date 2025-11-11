@@ -228,22 +228,24 @@ static void serialize_at_rule_formatted(VALUE result, VALUE at_rule, const char 
                 rb_str_append(result, nested_selector);
                 rb_str_cat2(result, " {\n");
 
-                // Declarations on their own line (4-space indent)
-                rb_str_cat2(result, indent);
-                rb_str_cat2(result, "    ");
-                serialize_declarations(result, nested_declarations);
-                rb_str_cat2(result, "\n");
+                // Declarations (one per line) with 4-space indent
+                VALUE nested_indent = rb_str_new_cstr(indent);
+                rb_str_cat2(nested_indent, "    ");
+                const char *nested_indent_ptr = RSTRING_PTR(nested_indent);
+                serialize_declarations_formatted(result, nested_declarations, nested_indent_ptr);
+                RB_GC_GUARD(nested_indent);
 
                 // Closing brace (2-space indent)
                 rb_str_cat2(result, indent);
                 rb_str_cat2(result, "  }\n");
             }
         } else {
-            // Serialize as declarations (e.g., @font-face)
-            rb_str_cat2(result, indent);
-            rb_str_cat2(result, "  ");
-            serialize_declarations(result, content);
-            rb_str_cat2(result, "\n");
+            // Serialize as declarations (e.g., @font-face, one per line)
+            VALUE content_indent = rb_str_new_cstr(indent);
+            rb_str_cat2(content_indent, "  ");
+            const char *content_indent_ptr = RSTRING_PTR(content_indent);
+            serialize_declarations_formatted(result, content, content_indent_ptr);
+            RB_GC_GUARD(content_indent);
         }
     }
 
@@ -268,11 +270,12 @@ static void serialize_rule_formatted(VALUE result, VALUE rule, const char *inden
     rb_str_append(result, selector);
     rb_str_cat2(result, " {\n");
 
-    // Declarations on their own line with extra indentation
-    rb_str_cat2(result, indent);
-    rb_str_cat2(result, "  ");
-    serialize_declarations(result, declarations);
-    rb_str_cat2(result, "\n");
+    // Declarations (one per line) with extra indentation
+    VALUE decl_indent = rb_str_new_cstr(indent);
+    rb_str_cat2(decl_indent, "  ");
+    const char *decl_indent_ptr = RSTRING_PTR(decl_indent);
+    serialize_declarations_formatted(result, declarations, decl_indent_ptr);
+    RB_GC_GUARD(decl_indent);
 
     // Closing brace
     rb_str_cat2(result, indent);

@@ -100,8 +100,8 @@ class TestColorConversion < Minitest::Test
     CSS
     # Should not convert non-hex colors
     assert_equal 'blue', decls['color']
-    # background shorthand expands to background-color
-    assert_equal 'rgb(255 0 0)', decls['background-color']
+    # background shorthand is recreated by merge with converted color
+    assert_equal 'rgb(255 0 0)', decls['background']
     assert_equal 'hsl(120, 100%, 50%)', decls['border-color']
   end
 

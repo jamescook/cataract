@@ -110,6 +110,10 @@ static inline VALUE strip_string(const char *str, long len) {
   #define STR_NEW_CSTR(str) rb_str_new_cstr(str)
 #endif
 
+// String comparison macro - check if Ruby string equals C string literal
+#define STR_EQ(val, lit) (RSTRING_LEN(val) == strlen(lit) && \
+                          memcmp(RSTRING_PTR(val), lit, strlen(lit)) == 0)
+
 // Safety limits
 #ifndef MAX_PARSE_DEPTH
   #define MAX_PARSE_DEPTH 10  // Max recursion depth for nested @media/@supports blocks and CSS nesting

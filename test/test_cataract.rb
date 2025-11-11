@@ -59,10 +59,20 @@ class TestCataract < Minitest::Test
       #test { color: blue; }
     CSS
 
-    merged = rules.merge.rules.first.declarations
+    merged = rules.merge
 
-    # ID selector (#test) has higher specificity, should win
-    assert_equal 'blue', find_property(merged, 'color')
+    # Different selectors should remain as separate rules (not merged)
+    assert_equal 2, merged.rules_count
+
+    # .test rule should have color: red
+    test_rule = merged.rules.find { |r| r.selector == '.test' }
+
+    assert_equal 'red', find_property(test_rule.declarations, 'color')
+
+    # #test rule should have color: blue
+    id_rule = merged.rules.find { |r| r.selector == '#test' }
+
+    assert_equal 'blue', find_property(id_rule.declarations, 'color')
   end
 
   def test_merge_important_wins
@@ -71,10 +81,20 @@ class TestCataract < Minitest::Test
       #test { color: blue; }
     CSS
 
-    merged = rules.merge.rules.first.declarations
+    merged = rules.merge
 
-    # !important wins even with lower specificity
-    assert_equal 'red !important', find_property(merged, 'color')
+    # Different selectors should remain as separate rules (not merged)
+    assert_equal 2, merged.rules_count
+
+    # .test rule should have color: red !important
+    test_rule = merged.rules.find { |r| r.selector == '.test' }
+
+    assert_equal 'red !important', find_property(test_rule.declarations, 'color')
+
+    # #test rule should have color: blue (no !important)
+    id_rule = merged.rules.find { |r| r.selector == '#test' }
+
+    assert_equal 'blue', find_property(id_rule.declarations, 'color')
   end
 
   def test_merge_accepts_stylesheet
