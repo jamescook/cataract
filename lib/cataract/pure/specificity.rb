@@ -142,7 +142,7 @@ module Cataract
               element_count += additional_c
             end
 
-            i += 1  # Skip closing paren
+            i += 1 # Skip closing paren
           else
             # Skip other function arguments
             while i < len && paren_depth > 0

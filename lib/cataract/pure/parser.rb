@@ -140,7 +140,7 @@ module Cataract
         next if selector.nil? || selector.empty?
 
         # Find the block boundaries
-        decl_start = @pos  # Should be right after the {
+        decl_start = @pos # Should be right after the {
         decl_end = find_matching_brace(decl_start)
 
         # Check if block has nested selectors
@@ -159,7 +159,7 @@ module Cataract
 
             # Reserve parent's position in rules array (ensures parent comes before nested)
             parent_position = @rules.length
-            @rules << nil  # Placeholder
+            @rules << nil # Placeholder
 
             # Parse mixed block (declarations + nested selectors)
             @depth += 1
@@ -187,7 +187,7 @@ module Cataract
           @pos += 1 if @pos < @len && @css.getbyte(@pos) == BYTE_RBRACE
         else
           # NON-NESTED PATH: Parse declarations only
-          @pos = decl_start  # Reset to start of block
+          @pos = decl_start # Reset to start of block
           declarations = parse_declarations
 
           # Split comma-separated selectors into individual rules
@@ -307,7 +307,7 @@ module Cataract
           depth += 1
         elsif byte == BYTE_RBRACE
           depth -= 1
-          break if depth == 0  # Found matching brace, exit immediately
+          break if depth == 0 # Found matching brace, exit immediately
         end
         pos += 1
       end
@@ -423,13 +423,13 @@ module Cataract
           media_query_str = strip_outer_parens(media_query_str)
           media_sym = media_query_str.to_sym
 
-          pos = media_query_end + 1  # Skip {
+          pos = media_query_end + 1 # Skip {
 
           # Find matching closing brace
           media_block_start = pos
           media_block_end = find_matching_brace(pos)
           pos = media_block_end
-          pos += 1 if pos < end_pos  # Skip }
+          pos += 1 if pos < end_pos # Skip }
 
           # Combine media queries: parent + child
           combined_media_sym = combine_media_queries(parent_media_sym, media_sym)
@@ -482,13 +482,13 @@ module Cataract
             nested_sel_end -= 1
           end
 
-          pos += 1  # Skip {
+          pos += 1 # Skip {
 
           # Find matching closing brace
           nested_block_start = pos
           nested_block_end = find_matching_brace(pos)
           pos = nested_block_end
-          pos += 1 if pos < end_pos  # Skip }
+          pos += 1 if pos < end_pos # Skip }
 
           # Extract nested selector and split on commas
           nested_selector_text = byteslice_encoded(nested_sel_start, nested_sel_end - nested_sel_start)
@@ -516,7 +516,7 @@ module Cataract
               rule_id,
               resolved_selector,
               nested_declarations,
-              nil,  # specificity
+              nil, # specificity
               parent_rule_id,
               nesting_style
             )
@@ -557,7 +557,7 @@ module Cataract
         property = byteslice_encoded(prop_start, prop_end - prop_start, encoding: 'US-ASCII')
         property.downcase!
 
-        pos += 1  # Skip :
+        pos += 1 # Skip :
 
         # Skip leading whitespace in value
         while pos < end_pos && whitespace?(@css.getbyte(pos))
@@ -582,7 +582,7 @@ module Cataract
         important = false
         if value.end_with?('!important')
           important = true
-          value = value[0, value.length - 10].rstrip  # Remove '!important' and trailing whitespace
+          value = value[0, value.length - 10].rstrip # Remove '!important' and trailing whitespace
         end
 
         pos += 1 if pos < end_pos && @css.getbyte(pos) == BYTE_SEMICOLON
@@ -688,7 +688,7 @@ module Cataract
     # Parse at-rule (@media, @supports, @charset, @keyframes, @font-face, etc)
     # Translated from C: see ext/cataract/css_parser.c lines 962-1128
     def parse_at_rule
-      at_rule_start = @pos  # Points to '@'
+      at_rule_start = @pos # Points to '@'
       @pos += 1 # skip '@'
 
       # Find end of at-rule name (stop at whitespace or opening brace)
@@ -869,7 +869,7 @@ module Cataract
 
       if is_keyframes
         # Build full selector string: "@keyframes fade"
-        selector_start = at_rule_start  # Points to '@'
+        selector_start = at_rule_start # Points to '@'
 
         # Skip to opening brace
         while !eof? && peek_byte != BYTE_LBRACE
@@ -921,7 +921,7 @@ module Cataract
       # Check for @font-face (contains <declaration-list>)
       if at_rule_name == 'font-face'
         # Build selector string: "@font-face"
-        selector_start = at_rule_start  # Points to '@'
+        selector_start = at_rule_start # Points to '@'
 
         # Skip to opening brace
         while !eof? && peek_byte != BYTE_LBRACE
@@ -964,7 +964,7 @@ module Cataract
 
       # Unknown at-rule (@property, @page, @counter-style, etc.)
       # Treat as a regular selector-based rule with declarations
-      selector_start = at_rule_start  # Points to '@'
+      selector_start = at_rule_start # Points to '@'
 
       # Skip to opening brace
       while !eof? && peek_byte != BYTE_LBRACE
@@ -1161,7 +1161,7 @@ module Cataract
       parent_str = parent.to_s
       child_str = child.to_s
 
-      combined = parent_str + " and "
+      combined = "#{parent_str} and "
 
       # If child is a condition (contains ':'), wrap it in parentheses
       if child_str.include?(':')
@@ -1169,7 +1169,7 @@ module Cataract
         if child_str.start_with?('(') && child_str.end_with?(')')
           combined += child_str
         else
-          combined += '(' + child_str + ')'
+          combined += "(#{child_str})"
         end
       else
         combined += child_str
@@ -1235,7 +1235,7 @@ module Cataract
             while !eof? && peek_byte != BYTE_SEMICOLON
               @pos += 1
             end
-            @pos += 1 if !eof?  # Skip semicolon
+            @pos += 1 if !eof? # Skip semicolon
             next
           end
         end
@@ -1284,7 +1284,7 @@ module Cataract
         property = byteslice_encoded(prop_start, prop_end - prop_start, encoding: 'US-ASCII')
         property.downcase!
 
-        pos += 1  # Skip ':'
+        pos += 1 # Skip ':'
 
         # Skip leading whitespace in value
         while pos < end_pos && whitespace?(@css.getbyte(pos))

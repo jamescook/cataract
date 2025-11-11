@@ -81,7 +81,7 @@ module Cataract
         result << decl.value
         result << " !important" if decl.important
         result << ";"
-        result << " " if i < @values.length - 1  # Add space after semicolon except for last
+        result << " " if i < @values.length - 1 # Add space after semicolon except for last
       end
       result
     end

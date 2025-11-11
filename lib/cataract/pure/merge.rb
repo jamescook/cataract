@@ -247,10 +247,10 @@ module Cataract
 
       # Create merged rule
       Rule.new(
-        0,  # ID will be updated later
+        0, # ID will be updated later
         selector,
         declarations,
-        rules.first.specificity,  # Use first rule's specificity
+        rules.first.specificity, # Use first rule's specificity
         nil,  # No parent after flattening
         nil   # No nesting style after flattening
       )
@@ -410,7 +410,7 @@ module Cataract
     # Expand border-side shorthand (e.g., "border-top: 1px solid red")
     def self.expand_border_side(decl)
       # Extract side from property name (e.g., "border-top" -> "top")
-      side = decl.property.byteslice(7..-1)  # Skip "border-" prefix
+      side = decl.property.byteslice(7..-1) # Skip "border-" prefix
       width, style, color = parse_border_value(decl.value)
 
       result = []
@@ -496,7 +496,7 @@ module Cataract
         elsif is_border_style?(part)
           style = part
         else
-          color = part  # Assume color if not width or style
+          color = part # Assume color if not width or style
         end
       end
 
@@ -549,7 +549,7 @@ module Cataract
       family_parts = []
 
       # Process optional style/variant/weight
-      while i < parts.length - 1  # Leave at least 1 for family
+      while i < parts.length - 1 # Leave at least 1 for family
         part = parts[i]
 
         # Check if this could be size (has digit or is a size keyword)
@@ -780,11 +780,11 @@ module Cataract
     # Try to recreate margin shorthand
     def self.recreate_margin!(rule, prop_map)
       sides = MARGIN_SIDES.map { |s| prop_map[s] }
-      return unless sides.all?  # Need all four sides
+      return unless sides.all? # Need all four sides
 
       # Check if all have same importance
       importances = sides.map(&:important).uniq
-      return if importances.length > 1  # Mixed importance, can't create shorthand
+      return if importances.length > 1 # Mixed importance, can't create shorthand
 
       values = sides.map(&:value)
       important = sides.first.important

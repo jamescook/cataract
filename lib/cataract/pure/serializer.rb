@@ -211,7 +211,7 @@ module Cataract
   def self.reconstruct_nested_selector(parent_selector, child_selector, nesting_style)
     return child_selector if nesting_style.nil?
 
-    if nesting_style == 1  # NESTING_STYLE_EXPLICIT
+    if nesting_style == 1 # NESTING_STYLE_EXPLICIT
       # Try to reconstruct & notation
       # ".parent .child" with parent ".parent" => "& .child"
       # ".parent:hover" with parent ".parent" => "&:hover"
@@ -221,7 +221,7 @@ module Cataract
       end
       # More complex cases like ".parent .foo .child"
       return child_selector.gsub(parent_selector, '&')
-    else  # NESTING_STYLE_IMPLICIT
+    else # NESTING_STYLE_IMPLICIT
       # Remove parent prefix for implicit nesting
       # ".parent .child" with parent ".parent" => ".child"
       if child_selector.start_with?(parent_selector)
@@ -443,7 +443,7 @@ module Cataract
 
     # Serialize declarations (one per line)
     unless rule.declarations.empty?
-      serialize_declarations_formatted(result, rule.declarations, indent + "  ")
+      serialize_declarations_formatted(result, rule.declarations, "#{indent}  ")
     end
 
     # Get nested children
@@ -460,7 +460,7 @@ module Cataract
         result << "  @media #{media_sym} {\n"
 
         unless child.declarations.empty?
-          serialize_declarations_formatted(result, child.declarations, indent + "    ")
+          serialize_declarations_formatted(result, child.declarations, "#{indent}    ")
         end
 
         # Recursively handle media children
@@ -470,7 +470,7 @@ module Cataract
           result << indent
           result << "    #{nested_media_selector} {\n"
           unless media_child.declarations.empty?
-            serialize_declarations_formatted(result, media_child.declarations, indent + "      ")
+            serialize_declarations_formatted(result, media_child.declarations, "#{indent}      ")
           end
           result << indent
           result << "    }\n"
@@ -484,7 +484,7 @@ module Cataract
         result << "  #{nested_selector} {\n"
 
         unless child.declarations.empty?
-          serialize_declarations_formatted(result, child.declarations, indent + "    ")
+          serialize_declarations_formatted(result, child.declarations, "#{indent}    ")
         end
 
         # Recursively handle grandchildren
@@ -494,7 +494,7 @@ module Cataract
           result << indent
           result << "    #{nested_grandchild_selector} {\n"
           unless grandchild.declarations.empty?
-            serialize_declarations_formatted(result, grandchild.declarations, indent + "      ")
+            serialize_declarations_formatted(result, grandchild.declarations, "#{indent}      ")
           end
           result << indent
           result << "    }\n"
@@ -525,7 +525,7 @@ module Cataract
     result << " {\n"
 
     # Declarations (one per line)
-    serialize_declarations_formatted(result, rule.declarations, indent + "  ")
+    serialize_declarations_formatted(result, rule.declarations, "#{indent}  ")
 
     # Closing brace
     result << indent
@@ -552,7 +552,7 @@ module Cataract
           result << " {\n"
 
           # Declarations (one per line, 4-space indent)
-          serialize_declarations_formatted(result, nested_rule.declarations, indent + "    ")
+          serialize_declarations_formatted(result, nested_rule.declarations, "#{indent}    ")
 
           # Closing brace (2-space indent)
           result << indent
@@ -560,7 +560,7 @@ module Cataract
         end
       else
         # Serialize as declarations (e.g., @font-face, one per line)
-        serialize_declarations_formatted(result, at_rule.content, indent + "  ")
+        serialize_declarations_formatted(result, at_rule.content, "#{indent}  ")
       end
     end
 

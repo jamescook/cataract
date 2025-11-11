@@ -49,7 +49,7 @@ module Cataract
           while i + 1 < len && !(css_string.getbyte(i) == BYTE_STAR && css_string.getbyte(i + 1) == BYTE_SLASH)
             i += 1
           end
-          i += 2 if i + 1 < len  # Skip */
+          i += 2 if i + 1 < len # Skip */
         else
           break
         end
@@ -84,28 +84,28 @@ module Cataract
           while i < len && css_string.getbyte(i) != BYTE_SEMICOLON
             i += 1
           end
-          i += 1 if i < len  # Skip semicolon
+          i += 1 if i < len # Skip semicolon
           next
         end
 
         quote_char = byte
-        i += 1  # Skip opening quote
+        i += 1 # Skip opening quote
 
         url_start = i
 
         # Find closing quote (handle escaped quotes)
         while i < len && css_string.getbyte(i) != quote_char
           if css_string.getbyte(i) == BYTE_BACKSLASH && i + 1 < len
-            i += 2  # Skip escaped character
+            i += 2 # Skip escaped character
           else
             i += 1
           end
         end
 
-        break if i >= len  # Unterminated string
+        break if i >= len # Unterminated string
 
         url_end = i
-        i += 1  # Skip closing quote
+        i += 1 # Skip closing quote
 
         # Skip closing paren if we had url(
         if has_url_function
@@ -245,7 +245,7 @@ module Cataract
         end
       end
 
-      i += 1 if i < len && query.getbyte(i) == BYTE_COMMA  # Skip comma
+      i += 1 if i < len && query.getbyte(i) == BYTE_COMMA # Skip comma
     end
 
     types
