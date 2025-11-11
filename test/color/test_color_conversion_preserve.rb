@@ -49,13 +49,15 @@ class TestColorConversionPreserve < Minitest::Test
     assert_equal 'currentcolor', decls['color']
   end
 
-  def test_preserve_transparent
+  def test_transparent_converts_to_hex
+    # transparent is rgba(0,0,0,0) per CSS spec, so it CAN be converted
+    # Unlike currentcolor which is dynamic and must be preserved
     decls = convert_and_get_declarations(
       '.test { color: transparent; }',
       to: :hex
     )
 
-    assert_equal 'transparent', decls['color']
+    assert_equal '#00000000', decls['color']
   end
 
   def test_color_mix_converts_nested_colors
@@ -87,12 +89,12 @@ class TestColorConversionPreserve < Minitest::Test
     assert_equal 'future-color-function(1 2 3)', decls['color']
   end
 
-  def test_preserve_multiple_calc_in_value
+  def test_preserve_calc_convert_colors
     decls = convert_and_get_declarations(
       '.test { border-color: calc(100% - 10%) transparent #ff0000 calc(50px + 2em); }',
       to: :hex
     )
-    # Should convert #ff0000 and transparent, preserve calc()
-    assert_equal 'calc(100% - 10%) transparent #ff0000 calc(50px + 2em)', decls['border-color']
+    # Should preserve calc() but convert colors (transparent and #ff0000)
+    assert_equal 'calc(100% - 10%) #00000000 #ff0000 calc(50px + 2em)', decls['border-color']
   end
 end

@@ -26,8 +26,8 @@ class TestMerging < Minitest::Test
     assert_has_property({ color: 'red' }, merged.rules.first)
   end
 
-  # Test that higher specificity wins
-  def test_specificity_wins
+  # Test that different selectors stay separate (not merged based on specificity)
+  def test_different_selectors_stay_separate
     sheet = Cataract::Stylesheet.parse(<<~CSS)
       .test { color: black; }
       #test { color: red; }
@@ -35,47 +35,65 @@ class TestMerging < Minitest::Test
 
     merged = sheet.merge
 
-    assert_has_property({ color: 'red' }, merged.rules.first, 'ID selector (#test) should win over class (.test)')
+    # Different selectors should stay as separate rules
+    assert_equal 2, merged.rules_count, 'Different selectors should not merge'
+
+    class_rule = merged.rules.find { |r| r.selector == '.test' }
+    id_rule = merged.rules.find { |r| r.selector == '#test' }
+
+    assert class_rule, 'Should have .test rule'
+    assert id_rule, 'Should have #test rule'
+    assert_has_property({ color: 'black' }, class_rule)
+    assert_has_property({ color: 'red' }, id_rule)
   end
 
-  # Test that lower specificity doesn't override higher
-  def test_lower_specificity_loses
+  # Test that same selector with higher specificity later still merges (source order matters)
+  def test_same_selector_later_wins
     sheet = Cataract::Stylesheet.parse(<<~CSS)
       #test { color: red; }
-      .test { color: black; }
+      #test { color: blue; }
     CSS
 
     merged = sheet.merge
 
-    assert_has_property({ color: 'red' }, merged.rules.first, 'ID selector should not be overridden by class')
+    # Same selector, so should merge into one rule (later wins)
+    assert_equal 1, merged.rules_count
+    assert_equal '#test', merged.rules.first.selector
+    assert_has_property({ color: 'blue' }, merged.rules.first, 'Later declaration with same selector should win')
   end
 
-  # Test !important wins over non-important regardless of specificity
-  def test_important_wins
+  # Test !important within same selector
+  def test_important_wins_same_selector
     sheet = Cataract::Stylesheet.parse(<<~CSS)
       .test { color: black !important; }
-      #test { color: red; }
+      .test { color: red; }
     CSS
 
     merged = sheet.merge
 
-    assert_has_property({ color: 'black !important' }, merged.rules.first, '!important should win over higher specificity')
+    # Same selector, !important should win
+    assert_equal 1, merged.rules_count
+    assert_equal '.test', merged.rules.first.selector
+    assert_has_property({ color: 'black !important' }, merged.rules.first, '!important should win within same selector')
   end
 
-  # Test !important doesn't override higher specificity !important
-  def test_important_with_specificity
+  # Test !important with same selector (later !important wins)
+  def test_important_later_wins_same_selector
     sheet = Cataract::Stylesheet.parse(<<~CSS)
-      #test { color: red !important; }
+      .test { color: red !important; }
       .test { color: black !important; }
     CSS
 
     merged = sheet.merge
 
-    assert_has_property({ color: 'red !important' }, merged.rules.first, 'Higher specificity !important should win')
+    # Same selector, later !important wins
+    assert_equal 1, merged.rules_count
+    assert_equal '.test', merged.rules.first.selector
+    assert_has_property({ color: 'black !important' }, merged.rules.first, 'Later !important should win with same selector')
   end
 
-  # Test merging with multiple selectors (uses max specificity)
-  def test_multiple_selectors_max_specificity
+  # Test merging with multiple selectors (comma-separated)
+  def test_multiple_selectors_preserved
     sheet = Cataract::Stylesheet.parse(<<~CSS)
       p, a[rel="external"] { color: black; }
       a { color: blue; }
@@ -83,9 +101,15 @@ class TestMerging < Minitest::Test
 
     merged = sheet.merge
 
-    # p=1, a[rel="external"]=11, so max=11 should beat a=1
-    # The merged sheet should have one rule with black color
-    assert_has_property({ color: 'black' }, merged.rules.first)
+    # Different selectors should stay separate
+    # Note: Parser might split "p, a[rel='external']" into separate rules
+    assert_operator merged.rules_count, :>=, 2, 'Should have multiple rules for different selectors'
+
+    # Find the 'a' rule (should have blue)
+    a_rule = merged.rules.find { |r| r.selector == 'a' }
+
+    assert a_rule, 'Should have rule for "a" selector'
+    assert_has_property({ color: 'blue' }, a_rule)
   end
 
   # Test property names are case-insensitive
@@ -182,7 +206,9 @@ class TestMerging < Minitest::Test
 
     # After expansion and re-creation, background shorthand should be marked !important
     # Normal background-color cannot override !important
-    assert_has_property({ background: 'black none !important' }, merged.rules.first)
+    # Note: "black !important" is semantically equivalent to "black none !important"
+    # (our optimizer omits default values)
+    assert_has_property({ background: 'black !important' }, merged.rules.first)
     # The !important background wins, normal background-color is ignored
     refute(merged.rules.first.declarations.any? { |d| d.property == 'background-color' })
   end
@@ -526,5 +552,97 @@ class TestMerging < Minitest::Test
     # Check merged content
     assert_has_property({ color: 'black' }, sheet.rules.first)
     assert_has_property({ margin: '10px' }, sheet.rules.first)
+  end
+
+  # ============================================================================
+  # Selector preservation tests
+  # ============================================================================
+
+  def test_merge_preserves_single_selector
+    sheet = Cataract::Stylesheet.parse(<<~CSS)
+      body { font-family: Arial; color: #333; }
+      body { font-size: 14px; }
+      body { line-height: 1.5; color: #000; }
+    CSS
+
+    merged = sheet.merge
+
+    assert_equal 1, merged.rules_count, 'Should merge into single rule'
+    assert_equal 'body', merged.rules.first.selector, 'Should preserve original selector, not use "merged"'
+  end
+
+  def test_merge_preserves_multiple_different_selectors
+    sheet = Cataract::Stylesheet.parse(<<~CSS)
+      .header { color: red; font-size: 20px; }
+      .footer { color: blue; font-size: 12px; }
+      .sidebar { color: green; }
+    CSS
+
+    merged = sheet.merge
+
+    assert_equal 3, merged.rules_count, 'Should have 3 separate rules'
+
+    selectors = merged.rules.map(&:selector).sort
+
+    assert_equal ['.footer', '.header', '.sidebar'], selectors,
+                 'Should preserve all original selectors'
+
+    header_rule = merged.rules.find { |r| r.selector == '.header' }
+    footer_rule = merged.rules.find { |r| r.selector == '.footer' }
+    sidebar_rule = merged.rules.find { |r| r.selector == '.sidebar' }
+
+    assert_has_property({ color: 'red' }, header_rule)
+    assert_has_property({ color: 'blue' }, footer_rule)
+    assert_has_property({ color: 'green' }, sidebar_rule)
+  end
+
+  def test_merge_groups_by_selector
+    sheet = Cataract::Stylesheet.parse(<<~CSS)
+      .container { margin-top: 10px; }
+      .sidebar { padding: 5px; }
+      .container { margin-bottom: 20px; }
+      .sidebar { background: blue; }
+      .container { color: red; }
+    CSS
+
+    merged = sheet.merge
+
+    assert_equal 2, merged.rules_count, 'Should group by selector'
+
+    selectors = merged.rules.map(&:selector).sort
+
+    assert_equal ['.container', '.sidebar'], selectors
+
+    container_rule = merged.rules.find { |r| r.selector == '.container' }
+    sidebar_rule = merged.rules.find { |r| r.selector == '.sidebar' }
+
+    # Container should have all its properties merged
+    assert_has_property({ 'margin-top': '10px' }, container_rule)
+    assert_has_property({ 'margin-bottom': '20px' }, container_rule)
+    assert_has_property({ color: 'red' }, container_rule)
+
+    # Sidebar should have its properties merged
+    assert_has_property({ padding: '5px' }, sidebar_rule)
+    assert_has_property({ background: 'blue' }, sidebar_rule)
+  end
+
+  def test_merge_never_uses_merged_placeholder_selector
+    # Various CSS inputs that previously might have resulted in 'merged' selector
+    test_cases = [
+      '.test { color: red; }',
+      'body { color: blue; } body { margin: 0; }',
+      'div { padding: 10px; } span { margin: 5px; }',
+      '#id { color: green; }'
+    ]
+
+    test_cases.each do |css|
+      sheet = Cataract::Stylesheet.parse(css)
+      merged = sheet.merge
+
+      selectors = merged.rules.map(&:selector)
+
+      assert selectors.none?('merged'),
+             "Should never use 'merged' placeholder selector. Input: #{css.inspect}, Got selectors: #{selectors.inspect}"
+    end
   end
 end

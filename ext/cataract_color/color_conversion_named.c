@@ -241,6 +241,15 @@ struct color_ir parse_named(VALUE named_value) {
         name_len--;
     }
 
+    // Special case: "transparent" is rgba(0,0,0,0) per CSS spec
+    if (name_len == 11 && strncasecmp(name, "transparent", 11) == 0) {
+        color.red = 0;
+        color.green = 0;
+        color.blue = 0;
+        color.alpha = 0.0;  // Fully transparent
+        return color;
+    }
+
     // Look up the color
     int hex = lookup_named_color(name, name_len);
 
@@ -254,6 +263,7 @@ struct color_ir parse_named(VALUE named_value) {
     color.red = (hex >> 16) & 0xFF;
     color.green = (hex >> 8) & 0xFF;
     color.blue = hex & 0xFF;
+    // alpha stays at -1.0 (no alpha / opaque)
 
     return color;
 }
