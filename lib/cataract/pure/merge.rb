@@ -514,6 +514,7 @@ module Cataract
       while i < len
         byte = value.getbyte(i)
         return true if byte >= BYTE_DIGIT_0 && byte <= BYTE_DIGIT_9
+
         i += 1
       end
 
@@ -620,6 +621,7 @@ module Cataract
       while i < len
         byte = value.getbyte(i)
         return true if byte >= BYTE_DIGIT_0 && byte <= BYTE_DIGIT_9
+
         i += 1
       end
       FONT_SIZE_KEYWORDS.include?(value)
@@ -643,6 +645,7 @@ module Cataract
       while i < len
         byte = value.getbyte(i)
         return true if byte >= BYTE_DIGIT_0 && byte <= BYTE_DIGIT_9
+
         i += 1
       end
       FONT_WEIGHT_KEYWORDS.include?(value)
@@ -697,6 +700,7 @@ module Cataract
     # Check if value starts with 'url('
     def self.starts_with_url?(value)
       return false if value.bytesize < 4
+
       value.getbyte(0) == BYTE_LOWER_U &&
         value.getbyte(1) == BYTE_LOWER_R &&
         value.getbyte(2) == BYTE_LOWER_L &&
@@ -714,6 +718,7 @@ module Cataract
         byte = value.getbyte(i)
         return true if byte == BYTE_PERCENT
         return true if byte >= BYTE_DIGIT_0 && byte <= BYTE_DIGIT_9
+
         i += 1
       end
       false
@@ -826,6 +831,7 @@ module Cataract
       while i < decls.length
         return false if decls[i].value != first_val
         return false if decls[i].important != first_imp
+
         i += 1
       end
 

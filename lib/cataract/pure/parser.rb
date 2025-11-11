@@ -46,6 +46,7 @@ module Cataract
         pat_byte += BYTE_CASE_DIFF if pat_byte >= BYTE_UPPER_A && pat_byte <= BYTE_UPPER_Z
 
         return false if str_byte != pat_byte
+
         i += 1
       end
 
@@ -232,6 +233,7 @@ module Cataract
     # @return [Integer, nil] Byte value or nil if EOF
     def peek_byte
       return nil if eof?
+
       @css.getbyte(@pos)
     end
 
@@ -239,6 +241,7 @@ module Cataract
     # @return [Integer, nil] Byte value or nil if EOF
     def read_byte
       return nil if eof?
+
       byte = @css.getbyte(@pos)
       @pos += 1
       byte
@@ -616,6 +619,7 @@ module Cataract
         while !eof?
           byte = peek_byte
           break if byte == BYTE_COLON || byte == BYTE_SEMICOLON || byte == BYTE_RBRACE
+
           @pos += 1
         end
 
@@ -640,6 +644,7 @@ module Cataract
         while !eof?
           byte = peek_byte
           break if byte == BYTE_SEMICOLON || byte == BYTE_RBRACE
+
           @pos += 1
         end
 
@@ -654,6 +659,7 @@ module Cataract
           while i >= 0
             b = value.getbyte(i)
             break unless b == BYTE_SPACE || b == BYTE_TAB
+
             i -= 1
           end
 
@@ -664,6 +670,7 @@ module Cataract
             while i >= 0
               b = value.getbyte(i)
               break unless b == BYTE_SPACE || b == BYTE_TAB
+
               i -= 1
             end
             # Check for '!'
@@ -697,6 +704,7 @@ module Cataract
       while !eof?
         byte = peek_byte
         break if whitespace?(byte) || byte == BYTE_LBRACE
+
         @pos += 1
       end
 
@@ -1089,6 +1097,7 @@ module Cataract
         while start_pos < len
           byte = nested_selector.getbyte(start_pos)
           break unless byte == BYTE_SPACE || byte == BYTE_TAB || byte == BYTE_NEWLINE || byte == BYTE_CR
+
           start_pos += 1
         end
 
@@ -1131,6 +1140,7 @@ module Cataract
         while start_pos < len
           byte = nested_selector.getbyte(start_pos)
           break unless byte == BYTE_SPACE || byte == BYTE_TAB || byte == BYTE_NEWLINE || byte == BYTE_CR
+
           start_pos += 1
         end
 

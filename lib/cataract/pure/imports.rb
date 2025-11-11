@@ -22,6 +22,7 @@ module Cataract
       pat_byte += BYTE_CASE_DIFF if pat_byte >= BYTE_UPPER_A && pat_byte <= BYTE_UPPER_Z
 
       return false if str_byte != pat_byte
+
       i += 1
     end
 
