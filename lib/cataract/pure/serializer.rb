@@ -159,7 +159,7 @@ module Cataract
       # - Always add space if we had declarations
       # - Add space between nested rules (not before first if no declarations)
       if has_declarations || index > 0
-        result << " "
+        result << ' '
       end
 
       # Determine if we need to reconstruct the nested selector with &
@@ -175,14 +175,14 @@ module Cataract
         # Recursively serialize any children of this @media rule
         media_children = rule_children[child.id] || []
         media_children.each_with_index do |media_child, media_idx|
-          result << " " if media_idx > 0 || !child.declarations.empty?
+          result << ' ' if media_idx > 0 || !child.declarations.empty?
           nested_media_selector = reconstruct_nested_selector(child.selector, media_child.selector, media_child.nesting_style)
           result << "#{nested_media_selector} { "
           serialize_declarations(result, media_child.declarations)
-          result << " }"
+          result << ' }'
         end
 
-        result << " }"
+        result << ' }'
       else
         # Regular nested selector
         result << "#{nested_selector} { "
@@ -191,14 +191,14 @@ module Cataract
         # Recursively serialize any children of this nested rule
         grandchildren = rule_children[child.id] || []
         grandchildren.each_with_index do |grandchild, grandchild_idx|
-          result << " " if grandchild_idx > 0 || !child.declarations.empty?
+          result << ' ' if grandchild_idx > 0 || !child.declarations.empty?
           nested_grandchild_selector = reconstruct_nested_selector(child.selector, grandchild.selector, grandchild.nesting_style)
           result << "#{nested_grandchild_selector} { "
           serialize_declarations(result, grandchild.declarations)
-          result << " }"
+          result << ' }'
         end
 
-        result << " }"
+        result << ' }'
       end
     end
 
@@ -249,8 +249,8 @@ module Cataract
   # Helper: serialize declarations (compact, single line)
   def self.serialize_declarations(result, declarations)
     declarations.each_with_index do |decl, i|
-      important_suffix = decl.important ? " !important;" : ";"
-      separator = i < declarations.length - 1 ? " " : ""
+      important_suffix = decl.important ? ' !important;' : ';'
+      separator = i < declarations.length - 1 ? ' ' : ''
       result << "#{decl.property}: #{decl.value}#{important_suffix}#{separator}"
     end
   end
@@ -260,11 +260,11 @@ module Cataract
     declarations.each do |decl|
       result << indent
       result << decl.property
-      result << ": "
+      result << ': '
       result << decl.value
 
       if decl.important
-        result << " !important"
+        result << ' !important'
       end
 
       result << ";\n"
@@ -288,7 +288,7 @@ module Cataract
         end
       else
         # Serialize as declarations (e.g., @font-face)
-        result << "  "
+        result << '  '
         serialize_declarations(result, at_rule.content)
         result << "\n"
       end
@@ -351,7 +351,7 @@ module Cataract
           current_media = nil
         end
 
-        serialize_rule_with_nesting_formatted(result, rule, rule_children, rule_to_media, "")
+        serialize_rule_with_nesting_formatted(result, rule, rule_children, rule_to_media, '')
       else
         if current_media.nil? || current_media != rule_media
           if in_media_block
@@ -364,7 +364,7 @@ module Cataract
           in_media_block = true
         end
 
-        serialize_rule_with_nesting_formatted(result, rule, rule_children, rule_to_media, "  ")
+        serialize_rule_with_nesting_formatted(result, rule, rule_children, rule_to_media, '  ')
       end
     end
 
@@ -401,7 +401,7 @@ module Cataract
         end
 
         # Output rule with no indentation
-        serialize_rule_formatted(result, rule, "")
+        serialize_rule_formatted(result, rule, '')
       else
         # This rule is in a media query
         if current_media.nil? || current_media != rule_media
@@ -422,7 +422,7 @@ module Cataract
         end
 
         # Serialize rule inside media block with 2-space indentation
-        serialize_rule_formatted(result, rule, "  ")
+        serialize_rule_formatted(result, rule, '  ')
       end
     end
 
@@ -547,7 +547,7 @@ module Cataract
         at_rule.content.each do |nested_rule|
           # Nested selector with opening brace (2-space indent)
           result << indent
-          result << "  "
+          result << '  '
           result << nested_rule.selector
           result << " {\n"
 

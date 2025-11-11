@@ -15,7 +15,7 @@
 
 # Check if C extension is already loaded
 if defined?(Cataract::NATIVE_EXTENSION_LOADED)
-  raise LoadError, "Cataract C extension is already loaded. Cannot load pure Ruby version."
+  raise LoadError, 'Cataract C extension is already loaded. Cannot load pure Ruby version.'
 end
 
 # Define base module and error classes first
@@ -77,11 +77,11 @@ module Cataract
       result = String.new
       @values.each_with_index do |decl, i|
         result << decl.property
-        result << ": "
+        result << ': '
         result << decl.value
-        result << " !important" if decl.important
-        result << ";"
-        result << " " if i < @values.length - 1 # Add space after semicolon except for last
+        result << ' !important' if decl.important
+        result << ';'
+        result << ' ' if i < @values.length - 1 # Add space after semicolon except for last
       end
       result
     end
