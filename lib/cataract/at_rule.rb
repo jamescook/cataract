@@ -79,17 +79,18 @@ module Cataract
       false
     end
 
-    # Compare at-rules by their attributes rather than object identity.
+    # Compare at-rules for logical equality based on CSS semantics.
     #
-    # Two at-rules are equal if they have the same id, selector, and content.
+    # Two at-rules are equal if they have the same selector and content.
+    # Internal implementation details (id) are not considered since they
+    # don't affect the CSS semantics.
     #
     # @param other [Object] Object to compare with
-    # @return [Boolean] true if at-rules have same attributes
+    # @return [Boolean] true if at-rules have same selector and content
     def ==(other)
       return false unless other.is_a?(AtRule)
 
-      id == other.id &&
-        selector == other.selector &&
+      selector == other.selector &&
         content == other.content
     end
     alias eql? ==
