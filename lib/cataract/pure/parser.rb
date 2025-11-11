@@ -467,7 +467,7 @@ module Cataract
           )
 
           # Mark that we have nesting
-          @_has_nesting = true if !parent_rule_id.nil?
+          @_has_nesting = true unless parent_rule_id.nil?
 
           @rules << rule
           @_media_index[combined_media_sym] ||= []
@@ -534,7 +534,7 @@ module Cataract
             )
 
             # Mark that we have nesting
-            @_has_nesting = true if !parent_rule_id.nil?
+            @_has_nesting = true unless parent_rule_id.nil?
 
             @rules << rule
             @_media_index[parent_media_sym] ||= [] if parent_media_sym
@@ -820,7 +820,7 @@ module Cataract
         combined_media_sym = combine_media_queries(@parent_media_sym, child_media_sym)
 
         # Check media query limit
-        if !@_media_index.key?(combined_media_sym)
+        unless @_media_index.key?(combined_media_sym)
           @media_query_count += 1
           if @media_query_count > MAX_MEDIA_QUERIES
             raise SizeError, "Too many media queries: exceeded maximum of #{MAX_MEDIA_QUERIES}"
@@ -1132,11 +1132,11 @@ module Cataract
         i = 0
         while i < len
           byte = nested_selector.getbyte(i)
-          if byte == BYTE_AMPERSAND
-            result << parent_selector
-          else
-            result << byte.chr
-          end
+          result << if byte == BYTE_AMPERSAND
+                      parent_selector
+                    else
+                      byte.chr
+                    end
           i += 1
         end
 
@@ -1257,7 +1257,7 @@ module Cataract
             while !eof? && peek_byte != BYTE_SEMICOLON
               @pos += 1
             end
-            @pos += 1 if !eof? # Skip semicolon
+            @pos += 1 unless eof? # Skip semicolon
             next
           end
         end

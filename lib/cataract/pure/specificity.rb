@@ -129,7 +129,7 @@ module Cataract
             not_content = selector[not_content_start...i]
 
             # Recursively calculate specificity of :not() content
-            if !not_content.empty?
+            unless not_content.empty?
               not_specificity = calculate_specificity(not_content)
 
               # Add :not() content's specificity to our counts
