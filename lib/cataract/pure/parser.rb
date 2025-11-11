@@ -123,7 +123,7 @@ module Cataract
       skip_imports
 
       # Main parsing loop - char-by-char, NO REGEXP
-      while !eof?
+      until eof?
         skip_ws_and_comments
         break if eof?
 
@@ -613,7 +613,7 @@ module Cataract
       declarations = []
 
       # Read until we find the closing '}'
-      while !eof?
+      until eof?
         skip_ws_and_comments
         break if eof?
 
@@ -625,7 +625,7 @@ module Cataract
 
         # Parse property name (read until ':')
         property_start = @pos
-        while !eof?
+        until eof?
           byte = peek_byte
           break if byte == BYTE_COLON || byte == BYTE_SEMICOLON || byte == BYTE_RBRACE
 
@@ -650,7 +650,7 @@ module Cataract
         value_start = @pos
         important = false
 
-        while !eof?
+        until eof?
           byte = peek_byte
           break if byte == BYTE_SEMICOLON || byte == BYTE_RBRACE
 
@@ -710,7 +710,7 @@ module Cataract
 
       # Find end of at-rule name (stop at whitespace or opening brace)
       name_start = @pos
-      while !eof?
+      until eof?
         byte = peek_byte
         break if whitespace?(byte) || byte == BYTE_LBRACE
 
@@ -1211,7 +1211,7 @@ module Cataract
     # Skip to next rule (error recovery for at-rules we don't handle yet)
     def skip_to_next_rule
       depth = 0
-      while !eof?
+      until eof?
         char = peek_byte
         if char == BYTE_LBRACE
           depth += 1
@@ -1229,7 +1229,7 @@ module Cataract
     # Skip @import statements at the beginning of CSS
     # Per CSS spec, @import must come before all rules (except @charset)
     def skip_imports
-      while !eof?
+      until eof?
         # Skip whitespace
         while !eof? && whitespace?(peek_byte)
           @pos += 1
