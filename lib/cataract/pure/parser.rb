@@ -664,7 +664,7 @@ module Cataract
           end
 
           # Check for 'important' (9 chars)
-          if i >= 8 && value[i-8..i] == 'important'
+          if i >= 8 && value[(i-8)..i] == 'important'
             i -= 9
             # Skip whitespace before 'important'
             while i >= 0
