@@ -12,7 +12,7 @@ module Cataract
   # @param has_nesting [Boolean] Whether any nested rules exist
   # @return [String] Compact CSS string
   def self._stylesheet_to_s(rules, media_index, charset, has_nesting)
-    result = String.new
+    result = +""
 
     # Add @charset if present
     unless charset.nil?

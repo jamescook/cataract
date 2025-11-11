@@ -582,6 +582,7 @@ module Cataract
         important = false
         if value.end_with?('!important')
           important = true
+          # NOTE: Using rstrip here instead of manual byte loop since !important is rare (not hot path)
           value = value[0, value.length - 10].rstrip # Remove '!important' and trailing whitespace
         end
 

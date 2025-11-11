@@ -108,3 +108,11 @@ Style/ZeroLengthPredicate:
 Style/SlicingWithRange:
   Exclude:
     - 'lib/cataract/pure/**/*.rb'
+
+# Disable modifier while/until style in parsing code - readability
+# Byte-level parsing loops are clearer with traditional while...end form
+# Example: `while i < len && ident_char?(selector.getbyte(i)); i += 1; end`
+# is more readable than `i += 1 while i < len && ident_char?(selector.getbyte(i))`
+Style/WhileUntilModifier:
+  Exclude:
+    - 'lib/cataract/pure/**/*.rb'
