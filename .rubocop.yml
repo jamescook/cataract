@@ -102,3 +102,9 @@ Style/MultipleComparison:
 Style/ZeroLengthPredicate:
   Exclude:
     - 'lib/cataract/pure/**/*.rb'
+
+# Benchmarked range vs offsets. Range has to allocated
+# so not ideal in the hot path
+Style/SlicingWithRange:
+  Exclude:
+    - 'lib/cataract/pure/**/*.rb'
