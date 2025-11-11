@@ -122,3 +122,9 @@ Style/SlicingWithRange:
 Style/WhileUntilModifier:
   Exclude:
     - 'lib/cataract/pure/**/*.rb'
+
+# Disable between? suggestion in hot path - method dispatch overhead
+# Benchmark shows `byte >= X && byte <= Y` is 2.60-4.82x faster than `.between?(X, Y)`
+Style/ComparableBetween:
+  Exclude:
+    - 'lib/cataract/pure/**/*.rb'
