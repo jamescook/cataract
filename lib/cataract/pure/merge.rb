@@ -119,9 +119,6 @@ module Cataract
     # @param mutate [Boolean] If true, mutate the stylesheet; otherwise create new one
     # @return [Stylesheet] Merged stylesheet
     def self.merge(stylesheet, mutate: false)
-      # Check if any rules have nesting
-      has_nesting = stylesheet.rules.any? { |r| r.parent_rule_id || r.nesting_style }
-
       # Expand shorthands in all rules
       stylesheet.rules.each { |rule| expand_shorthands!(rule) }
 

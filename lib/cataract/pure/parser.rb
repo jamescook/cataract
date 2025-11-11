@@ -131,7 +131,6 @@ module Cataract
         end
 
         # Must be a selector-based rule
-        selector_start_pos = @pos
         selector = parse_selector
 
         if ENV['DEBUG_PARSER']
