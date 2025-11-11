@@ -112,19 +112,20 @@ module Cataract
       end
     end
 
-    # Compare rules by their attributes rather than object identity.
+    # Compare rules for logical equality based on CSS semantics.
     #
-    # Two rules are equal if they have the same id, selector, declarations, and specificity.
+    # Two rules are equal if they have the same selector and declarations.
+    # Internal implementation details (id, specificity) are not considered
+    # since they don't affect the CSS semantics. Specificity is derived from
+    # the selector, so if selectors match, specificity must match too.
     #
     # @param other [Object] Object to compare with
-    # @return [Boolean] true if rules have same attributes
+    # @return [Boolean] true if rules have same selector and declarations
     def ==(other)
       return false unless other.is_a?(Rule)
 
-      id == other.id &&
-        selector == other.selector &&
-        declarations == other.declarations &&
-        specificity == other.specificity
+      selector == other.selector &&
+        declarations == other.declarations
     end
     alias eql? ==
   end
