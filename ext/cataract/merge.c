@@ -431,18 +431,19 @@ static int process_expanded_property(VALUE prop_name, VALUE prop_value, VALUE ar
         // 2. Higher specificity wins (same selector = same specificity, skip)
         // 3. Later source order wins
         if (is_important && !existing_is_important) {
+            // New declaration is !important, existing is not - replace
             should_replace = 1;
             DEBUG_PRINTF("             -> REPLACE (new is !important, existing is not)\n");
         } else if (!is_important && existing_is_important) {
+            // Existing declaration is !important, new is not - keep existing
             should_replace = 0;
             DEBUG_PRINTF("             -> KEEP (existing is !important, new is not)\n");
-        } else if (source_order > existing_source_order) {
-            // Same importance - later source order wins
-            should_replace = 1;
-            DEBUG_PRINTF("             -> REPLACE (same importance, later source order)\n");
         } else {
-            should_replace = 0;
-            DEBUG_PRINTF("             -> KEEP (same importance, earlier source order)\n");
+            // Same importance level - later source order wins
+            should_replace = source_order > existing_source_order;
+            DEBUG_PRINTF("             -> %s (same importance, %s source order)\n",
+                         should_replace ? "REPLACE" : "KEEP",
+                         should_replace ? "later" : "earlier");
         }
 
         if (should_replace) {
@@ -1085,7 +1086,6 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
     for (long i = 0; i < num_rules; i++) {
         VALUE rule = RARRAY_AREF(rules_array, i);
         VALUE declarations = rb_struct_aref(rule, INT2FIX(RULE_DECLARATIONS));
-        VALUE parent_rule_id = rb_struct_aref(rule, INT2FIX(RULE_PARENT_RULE_ID));
         VALUE selector = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR));
 
         // Skip empty rules (no declarations)
@@ -1144,10 +1144,9 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
         for (long s = 0; s < num_selectors; s++) {
             VALUE selector = rb_ary_entry(selectors, s);
             VALUE group_indices = rb_hash_aref(selector_groups, selector);
-            long group_size = RARRAY_LEN(group_indices);
 
             DEBUG_PRINTF("\n[Selector %ld/%ld] '%s' - %ld rules in group\n",
-                         s + 1, num_selectors, RSTRING_PTR(selector), group_size);
+                         s + 1, num_selectors, RSTRING_PTR(selector), RARRAY_LEN(group_indices));
 
             // Merge all rules in this selector group
             VALUE merged_decls = merge_rules_for_selector(rules_array, group_indices, selector);
