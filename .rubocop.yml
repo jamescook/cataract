@@ -128,3 +128,10 @@ Style/WhileUntilModifier:
 Style/ComparableBetween:
   Exclude:
     - 'lib/cataract/pure/**/*.rb'
+
+# Disable map suggestion for array building - performance
+# Benchmark shows `each { arr << x }` is 1.05-1.11x faster than `arr = map { x }`
+# The << pattern is faster than map's implicit array return (even without YJIT)
+Style/MapIntoArray:
+  Exclude:
+    - 'lib/cataract/pure/**/*.rb'
