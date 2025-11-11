@@ -2,7 +2,6 @@
 
 require 'uri'
 require 'open-uri'
-require 'set'
 
 module Cataract
   # Error raised during import resolution
@@ -26,9 +25,9 @@ module Cataract
     # @param css [String] CSS content with @import statements
     # @param options [Hash] Import resolution options
     # @param depth [Integer] Current recursion depth (internal)
-    # @param imported_urls [Set] Set of already imported URLs to prevent circular references
+    # @param imported_urls [Array] Array of already imported URLs to prevent circular references
     # @return [String] CSS with imports inlined
-    def self.resolve(css, options = {}, depth: 0, imported_urls: Set.new)
+    def self.resolve(css, options = {}, depth: 0, imported_urls: [])
       # Normalize options
       opts = normalize_options(options)
 
@@ -66,7 +65,7 @@ module Cataract
 
         # Recursively resolve imports in the imported CSS
         imported_urls_copy = imported_urls.dup
-        imported_urls_copy.add(url)
+        imported_urls_copy << url
         imported_css = resolve(imported_css, opts, depth: depth + 1, imported_urls: imported_urls_copy)
 
         # Wrap in @media if import had media query

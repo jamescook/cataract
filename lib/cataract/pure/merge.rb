@@ -3,8 +3,6 @@
 # Pure Ruby CSS merge implementation
 # NO REGEXP ALLOWED - use string manipulation only
 
-require 'set'
-
 module Cataract
   module Merge
     # Property name constants (US-ASCII for merge output)
@@ -83,17 +81,7 @@ module Cataract
     FONT_PROPERTIES = [PROP_FONT_STYLE, PROP_FONT_VARIANT, PROP_FONT_WEIGHT, PROP_FONT_SIZE, PROP_LINE_HEIGHT, PROP_FONT_FAMILY].freeze
     BACKGROUND_PROPERTIES = [PROP_BACKGROUND_COLOR, PROP_BACKGROUND_IMAGE, PROP_BACKGROUND_REPEAT, PROP_BACKGROUND_POSITION, PROP_BACKGROUND_ATTACHMENT].freeze
     LIST_STYLE_PROPERTIES = [PROP_LIST_STYLE_TYPE, PROP_LIST_STYLE_POSITION, PROP_LIST_STYLE_IMAGE].freeze
-
-    # Property sets for fast deletion (avoid repeated Array#delete calls)
-    MARGIN_SIDES_SET = Set.new(MARGIN_SIDES).freeze
-    PADDING_SIDES_SET = Set.new(PADDING_SIDES).freeze
-    BORDER_WIDTHS_SET = Set.new(BORDER_WIDTHS).freeze
-    BORDER_STYLES_SET = Set.new(BORDER_STYLES).freeze
-    BORDER_COLORS_SET = Set.new(BORDER_COLORS).freeze
-    BORDER_ALL_SET = Set.new(BORDER_WIDTHS + BORDER_STYLES + BORDER_COLORS).freeze
-    FONT_PROPERTIES_SET = Set.new(FONT_PROPERTIES).freeze
-    BACKGROUND_PROPERTIES_SET = Set.new(BACKGROUND_PROPERTIES).freeze
-    LIST_STYLE_PROPERTIES_SET = Set.new(LIST_STYLE_PROPERTIES).freeze
+    BORDER_ALL = (BORDER_WIDTHS + BORDER_STYLES + BORDER_COLORS).freeze
 
     # List style keywords
     LIST_STYLE_POSITION_KEYWORDS = %w[inside outside].freeze
@@ -820,7 +808,7 @@ module Cataract
       shorthand_value = optimize_four_sides(values)
 
       # Remove individual sides and add shorthand
-      rule.declarations.reject! { |d| MARGIN_SIDES_SET.include?(d.property) }
+      rule.declarations.reject! { |d| MARGIN_SIDES.include?(d.property) }
       rule.declarations.unshift(Declaration.new(PROP_MARGIN, shorthand_value, important))
     end
 
@@ -844,7 +832,7 @@ module Cataract
 
       shorthand_value = optimize_four_sides(values)
 
-      rule.declarations.reject! { |d| PADDING_SIDES_SET.include?(d.property) }
+      rule.declarations.reject! { |d| PADDING_SIDES.include?(d.property) }
       rule.declarations.unshift(Declaration.new(PROP_PADDING, shorthand_value, important))
     end
 
@@ -911,7 +899,7 @@ module Cataract
           border_value = parts.join(' ')
 
           # Remove individual properties
-          rule.declarations.reject! { |d| BORDER_ALL_SET.include?(d.property) }
+          rule.declarations.reject! { |d| BORDER_ALL.include?(d.property) }
 
           rule.declarations.unshift(Declaration.new(PROP_BORDER, border_value, important))
           return
@@ -934,7 +922,7 @@ module Cataract
 
       shorthand_value = optimize_four_sides(values)
 
-      rule.declarations.reject! { |d| BORDER_WIDTHS_SET.include?(d.property) }
+      rule.declarations.reject! { |d| BORDER_WIDTHS.include?(d.property) }
       rule.declarations << Declaration.new(PROP_BORDER_WIDTH, shorthand_value, important)
     end
 
@@ -948,7 +936,7 @@ module Cataract
 
       shorthand_value = optimize_four_sides(values)
 
-      rule.declarations.reject! { |d| BORDER_STYLES_SET.include?(d.property) }
+      rule.declarations.reject! { |d| BORDER_STYLES.include?(d.property) }
       rule.declarations << Declaration.new(PROP_BORDER_STYLE, shorthand_value, important)
     end
 
@@ -962,7 +950,7 @@ module Cataract
 
       shorthand_value = optimize_four_sides(values)
 
-      rule.declarations.reject! { |d| BORDER_COLORS_SET.include?(d.property) }
+      rule.declarations.reject! { |d| BORDER_COLORS.include?(d.property) }
       rule.declarations << Declaration.new(PROP_BORDER_COLOR, shorthand_value, important)
     end
 
@@ -1050,7 +1038,7 @@ module Cataract
       shorthand_value = parts.join(' ')
 
       # Remove individual properties
-      rule.declarations.reject! { |d| FONT_PROPERTIES_SET.include?(d.property) }
+      rule.declarations.reject! { |d| FONT_PROPERTIES.include?(d.property) }
 
       # Add shorthand
       rule.declarations.unshift(Declaration.new(PROP_FONT, shorthand_value, important))
@@ -1104,7 +1092,7 @@ module Cataract
       shorthand_value = parts.join(' ')
 
       # Remove individual properties
-      rule.declarations.reject! { |d| BACKGROUND_PROPERTIES_SET.include?(d.property) }
+      rule.declarations.reject! { |d| BACKGROUND_PROPERTIES.include?(d.property) }
 
       # Add shorthand
       rule.declarations.unshift(Declaration.new(PROP_BACKGROUND, shorthand_value, important))
@@ -1134,7 +1122,7 @@ module Cataract
       shorthand_value = parts.join(' ')
 
       # Remove individual properties
-      rule.declarations.reject! { |d| LIST_STYLE_PROPERTIES_SET.include?(d.property) }
+      rule.declarations.reject! { |d| LIST_STYLE_PROPERTIES.include?(d.property) }
 
       # Add shorthand
       rule.declarations.unshift(Declaration.new(PROP_LIST_STYLE, shorthand_value, important))
