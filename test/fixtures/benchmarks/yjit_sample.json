@@ -19,6 +19,7 @@
   "results": [
     {
       "name": "no YJIT: property access",
+      "implementation": "pure_without_yjit",
       "central_tendency": 221028.7628245108,
       "ips": 221028.7628245108,
       "error": 3316,
@@ -29,6 +30,7 @@
     },
     {
       "name": "no YJIT: declaration merging",
+      "implementation": "pure_without_yjit",
       "central_tendency": 197740.30877444957,
       "ips": 197740.30877444957,
       "error": 899,
@@ -39,6 +41,7 @@
     },
     {
       "name": "no YJIT: to_s generation",
+      "implementation": "pure_without_yjit",
       "central_tendency": 238198.91579009045,
       "ips": 238198.91579009045,
       "error": 876,
@@ -49,6 +52,7 @@
     },
     {
       "name": "no YJIT: parse + iterate",
+      "implementation": "pure_without_yjit",
       "central_tendency": 88790.95673136998,
       "ips": 88790.95673136998,
       "error": 934,
@@ -59,6 +63,7 @@
     },
     {
       "name": "YJIT: property access",
+      "implementation": "pure_with_yjit",
       "central_tendency": 308619.3738644762,
       "ips": 308619.3738644762,
       "error": 2906,
@@ -69,6 +74,7 @@
     },
     {
       "name": "YJIT: declaration merging",
+      "implementation": "pure_with_yjit",
       "central_tendency": 313642.9237746988,
       "ips": 313642.9237746988,
       "error": 3080,
@@ -79,6 +85,7 @@
     },
     {
       "name": "YJIT: to_s generation",
+      "implementation": "pure_with_yjit",
       "central_tendency": 368418.7840873258,
       "ips": 368418.7840873258,
       "error": 6040,
@@ -89,6 +96,7 @@
     },
     {
       "name": "YJIT: parse + iterate",
+      "implementation": "pure_with_yjit",
       "central_tendency": 103771.21841984437,
       "ips": 103771.21841984437,
       "error": 1091,
