@@ -1172,4 +1172,31 @@ class TestCssNesting < Minitest::Test
     assert child_idx, 'Should have .parent .child rule'
     assert_operator parent_idx, :<, child_idx, 'Parent rule must come before nested child in array order'
   end
+
+  def test_nested_important_declarations
+    css = <<~CSS
+      .parent {
+        .child {
+          color: blue !important;
+          margin: 10px;
+        }
+      }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css)
+    child_rule = sheet.with_selector('.parent .child').first
+
+    assert child_rule, 'Should have .parent .child rule'
+
+    color_decl = child_rule.declarations.find { |d| d.property == 'color' }
+    margin_decl = child_rule.declarations.find { |d| d.property == 'margin' }
+
+    assert color_decl, 'Should have color declaration'
+    assert_equal 'blue', color_decl.value, 'Color value should not include !important'
+    assert color_decl.important, 'Color declaration should be marked as important'
+
+    assert margin_decl, 'Should have margin declaration'
+    assert_equal '10px', margin_decl.value
+    refute margin_decl.important, 'Margin declaration should not be marked as important'
+  end
 end

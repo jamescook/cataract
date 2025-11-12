@@ -1013,42 +1013,25 @@ void Init_native_extension(void) {
         eSizeError = rb_define_class_under(mCataract, "SizeError", eCataractError);
     }
 
-    // Define Rule struct: (id, selector, declarations, specificity, parent_rule_id, nesting_style)
-    cRule = rb_struct_define_under(
-        mCataract,
-        "Rule",
-        "id",                 // Integer (0-indexed position in @rules array)
-        "selector",           // String (fully resolved/flattened selector)
-        "declarations",       // Array of Declaration
-        "specificity",        // Integer (nil = not calculated yet)
-        "parent_rule_id",     // Integer | nil (parent rule ID for nested rules)
-        "nesting_style",      // Integer | nil (0=implicit, 1=explicit, nil=not nested)
-        NULL
-    );
+    // Reuse Ruby-defined structs (they must be defined before loading this extension)
+    // If they don't exist, someone required the extension directly instead of via lib/cataract.rb
+    if (rb_const_defined(mCataract, rb_intern("Rule"))) {
+        cRule = rb_const_get(mCataract, rb_intern("Rule"));
+    } else {
+        rb_raise(rb_eLoadError, "Cataract::Rule not defined. Do not require 'cataract/native_extension' directly, use require 'cataract'");
+    }
 
-    // Define Declaration struct: (property, value, important)
-    cDeclaration = rb_struct_define_under(
-        mCataract,
-        "Declaration",
-        "property",    // String
-        "value",       // String
-        "important",   // Boolean
-        NULL
-    );
+    if (rb_const_defined(mCataract, rb_intern("Declaration"))) {
+        cDeclaration = rb_const_get(mCataract, rb_intern("Declaration"));
+    } else {
+        rb_raise(rb_eLoadError, "Cataract::Declaration not defined. Do not require 'cataract/native_extension' directly, use require 'cataract'");
+    }
 
-    // Define AtRule struct: (id, selector, content, specificity)
-    // Matches Rule interface for duck-typing
-    // - For @keyframes: content is Array of Rule (keyframe blocks)
-    // - For @font-face: content is Array of Declaration
-    cAtRule = rb_struct_define_under(
-        mCataract,
-        "AtRule",
-        "id",                 // Integer (0-indexed position in @rules array)
-        "selector",           // String (e.g., "@keyframes fade", "@font-face")
-        "content",            // Array of Rule or Declaration
-        "specificity",        // Always nil for at-rules
-        NULL
-    );
+    if (rb_const_defined(mCataract, rb_intern("AtRule"))) {
+        cAtRule = rb_const_get(mCataract, rb_intern("AtRule"));
+    } else {
+        rb_raise(rb_eLoadError, "Cataract::AtRule not defined. Do not require 'cataract/native_extension' directly, use require 'cataract'");
+    }
 
     // Define Declarations class and add to_s method
     VALUE cDeclarations = rb_define_class_under(mCataract, "Declarations", rb_cObject);
@@ -1086,4 +1069,10 @@ void Init_native_extension(void) {
     #endif
 
     rb_define_const(mCataract, "COMPILE_FLAGS", compile_flags);
+
+    // Flag to indicate native extension is loaded (for pure Ruby fallback detection)
+    rb_define_const(mCataract, "NATIVE_EXTENSION_LOADED", Qtrue);
+
+    // Implementation type constant
+    rb_define_const(mCataract, "IMPLEMENTATION", ID2SYM(rb_intern("native")));
 }

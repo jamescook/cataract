@@ -65,19 +65,51 @@ class SpeedupCalculator
   # Common matchers
   class Matchers
     def self.css_parser
-      ->(result) { result['name'].include?('css_parser') }
+      ->(result) { base_implementation(result) == 'css_parser' }
     end
 
     def self.cataract
-      ->(result) { result['name'].include?('cataract') }
+      # Matches native cataract (for backwards compatibility)
+      ->(result) { base_implementation(result) == 'native' }
+    end
+
+    def self.cataract_pure
+      ->(result) { base_implementation(result) == 'pure' }
+    end
+
+    def self.cataract_pure_without_yjit
+      ->(result) { result['implementation'] == 'pure_without_yjit' }
+    end
+
+    def self.cataract_pure_with_yjit
+      ->(result) { result['implementation'] == 'pure_with_yjit' }
+    end
+
+    def self.cataract_native
+      ->(result) { base_implementation(result) == 'native' }
     end
 
     def self.with_yjit
-      ->(result) { result['name'].include?('YJIT') && !result['name'].include?('no YJIT') }
+      ->(result) { result['implementation']&.include?('with_yjit') }
     end
 
     def self.without_yjit
-      ->(result) { result['name'].include?('no YJIT') }
+      ->(result) { result['implementation']&.include?('without_yjit') }
+    end
+
+    def self.pure_ruby
+      ->(result) { base_implementation(result) == 'pure' }
+    end
+
+    def self.native_extension
+      ->(result) { base_implementation(result) == 'native' }
+    end
+
+    private
+
+    # Extract base implementation from impl_type (strips YJIT suffixes)
+    def self.base_implementation(result)
+      result['implementation']&.to_s&.sub(/_with_yjit|_without_yjit/, '')
     end
   end
 end

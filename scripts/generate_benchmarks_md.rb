@@ -29,7 +29,7 @@ class BenchmarkDocGenerator
        !@specificity_data && !@merging_data && !@yjit_data
       # :nocov:
       if @verbose
-        puts '⚠ Warning: No benchmark data found. Run benchmarks first: rake benchmark'
+        puts 'Warning: No benchmark data found. Run benchmarks first: rake benchmark'
         puts 'Available data files:'
         Dir.glob(File.join(@results_dir, '*.json')).each do |file|
           puts "  - #{File.basename(file)}"
@@ -47,7 +47,7 @@ class BenchmarkDocGenerator
     return unless @verbose
 
     # :nocov:
-    puts '✓ Generated BENCHMARKS.md'
+    puts 'Generated BENCHMARKS.md'
     puts '  Included benchmarks:'
     puts '    - Parsing' if @parsing_data
     puts '    - Serialization' if @serialization_data
@@ -77,7 +77,7 @@ class BenchmarkDocGenerator
       JSON.parse(File.read(metadata_path))
     else
       # :nocov:
-      warn '⚠ Warning: metadata.json not found. Run benchmarks first.'
+      warn 'Warning: metadata.json not found. Run benchmarks first.'
       {}
       # :nocov:
     end
@@ -90,7 +90,7 @@ class BenchmarkDocGenerator
     JSON.parse(File.read(path))
   rescue JSON::ParserError => e
     # :nocov:
-    warn "⚠ Warning: Failed to parse #{name}.json: #{e.message}"
+    warn "Warning: Failed to parse #{name}.json: #{e.message}"
     nil
     # :nocov:
   end
@@ -128,6 +128,7 @@ class BenchmarkDocGenerator
   end
 
   def format_speedup(speedup)
+    return "N/A" if speedup.nil?
     "#{speedup.round(2)}x faster"
   end
 

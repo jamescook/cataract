@@ -1,12 +1,14 @@
 # frozen_string_literal: true
 
 require_relative 'benchmark_harness'
+require 'open3'
 
 # Load the local development version, not installed gem
 $LOAD_PATH.unshift File.expand_path('../lib', __dir__)
 require 'cataract'
 
 # CSS Specificity Calculation Benchmark
+# Compares css_parser gem vs Cataract pure Ruby vs Cataract C extension
 class SpecificityBenchmark < BenchmarkHarness
   def self.benchmark_name
     'specificity'
@@ -17,106 +19,149 @@ class SpecificityBenchmark < BenchmarkHarness
   end
 
   def self.metadata
-    {
-      'test_cases' => [
-        {
-          'name' => 'Simple Selectors',
-          'key' => 'simple',
-          'selectors' => { 'div' => 1, '.class' => 10, '#id' => 100 }
-        },
-        {
-          'name' => 'Compound Selectors',
-          'key' => 'compound',
-          'selectors' => { 'div.container' => 11, 'div#main' => 101, 'div.container#main' => 111 }
-        },
-        {
-          'name' => 'Combinators',
-          'key' => 'combinators',
-          'selectors' => { 'div p' => 2, 'div > p' => 2, 'h1 + p' => 2, 'div.container > p.intro' => 22 }
-        },
-        {
-          'name' => 'Pseudo-classes & Pseudo-elements',
-          'key' => 'pseudo',
-          'selectors' => { 'a:hover' => 11, 'p::before' => 2, 'li:first-child' => 11, 'p:first-child::before' => 12 }
-        },
-        {
-          'name' => ':not() Pseudo-class (CSS3)',
-          'key' => 'not',
-          'selectors' => { '#s12:not(foo)' => 101, 'div:not(.active)' => 11, '.button:not([disabled])' => 20 },
-          'note' => "css_parser has a bug - doesn't parse :not() content"
-        },
-        {
-          'name' => 'Complex Real-world Selectors',
-          'key' => 'complex',
-          'selectors' => {
-            'ul#nav li.active a:hover' => 122,
-            'div.wrapper > article#main > section.content > p:first-child' => 123,
-            "[data-theme='dark'] body.admin #dashboard .widget a[href^='http']::before" => 143
-          }
-        }
-      ]
-    }
+    require_relative 'specificity_tests'
+    SpecificityTests.metadata
   end
 
   def self.speedup_config
-    {
-      baseline_matcher: SpeedupCalculator::Matchers.css_parser,
-      comparison_matcher: SpeedupCalculator::Matchers.cataract,
-      test_case_key: :key
-    }
+    require_relative 'specificity_tests'
+    SpecificityTests.speedup_config
   end
 
   def sanity_checks
+    # Verify css_parser gem is available
     require 'css_parser'
 
-    # Verify Cataract calculations
-    raise 'Cataract simple selector failed' unless Cataract.calculate_specificity('div') == 1
-    raise 'Cataract class selector failed' unless Cataract.calculate_specificity('.class') == 10
-    raise 'Cataract id selector failed' unless Cataract.calculate_specificity('#id') == 100
+    # Verify both libraries work
+    raise 'css_parser sanity check failed' unless CssParser.calculate_specificity('div') == 1
+    raise 'Cataract sanity check failed' unless Cataract.calculate_specificity('div') == 1
   end
 
   def call
-    self.class.metadata['test_cases'].each do |test_case|
-      benchmark_category(test_case)
+    require_relative 'specificity_tests'
+
+    worker_script = File.expand_path('benchmark_specificity_workers.rb', __dir__)
+
+    # Clean up any leftover worker files from previous runs
+    Dir.glob(File.join(RESULTS_DIR, 'specificity_*.json')).each { |f| FileUtils.rm_f(f) }
+
+    puts 'Running specificity benchmarks via subprocesses...'
+    puts 'Testing implementations with YJIT variations where applicable'
+    puts
+
+    # Define implementations to test
+    implementations = [
+      { name: 'css_parser gem', base_impl: :css_parser, env: { 'SPECIFICITY_CSS_PARSER' => '1' } },
+      { name: 'Cataract pure Ruby', base_impl: :pure, env: { 'CATARACT_PURE' => '1' } },
+      { name: 'Cataract C extension', base_impl: :native, env: { 'CATARACT_PURE' => nil } }
+    ]
+
+    implementations.each do |config|
+      if SpecificityTests.yjit_applicable?(config[:base_impl])
+        # Run both YJIT variants
+        puts "→ Running #{config[:name]} without YJIT..."
+        puts
+        stdout, status = run_subprocess(['ruby', '--disable-yjit', worker_script], env: config[:env])
+        raise "#{config[:name]} (no YJIT) benchmark failed" unless status.success?
+        puts
+        puts
+
+        puts "→ Running #{config[:name]} with YJIT..."
+        puts
+        stdout, status = run_subprocess(['ruby', '--yjit', worker_script], env: config[:env])
+        raise "#{config[:name]} (YJIT) benchmark failed" unless status.success?
+        puts
+        puts
+      else
+        # Run without YJIT flags (YJIT not applicable)
+        puts "→ Running #{config[:name]}..."
+        puts
+        stdout, status = run_subprocess(['ruby', worker_script], env: config[:env])
+        raise "#{config[:name]} benchmark failed" unless status.success?
+        puts
+        puts
+      end
     end
+
+    # Combine results
+    combine_worker_results
   end
 
   private
 
-  def benchmark_category(test_case)
-    puts '=' * 80
-    puts "TEST: #{test_case['name']}"
-    puts test_case['note'] if test_case['note']
-    puts '=' * 80
+  def run_subprocess(command, env: {})
+    stdout_lines = []
 
-    key = test_case['key']
-    selectors = test_case['selectors']
+    Open3.popen3(env, *command) do |stdin, stdout, stderr, wait_thr|
+      stdin.close
 
-    # Show individual selector examples in terminal output
-    puts 'Selectors tested:'
-    selectors.each do |selector, expected_specificity|
-      puts "  #{selector} => #{expected_specificity}"
-    end
-    puts
+      # Stream output in real-time
+      threads = []
 
-    benchmark(key) do |x|
-      x.config(time: 2, warmup: 1)
-
-      # Report aggregated results per test case for speedup calculation
-      x.report("css_parser: #{key}") do
-        selectors.each_key do |selector|
-          CssParser.calculate_specificity(selector)
+      # Thread for stdout
+      threads << Thread.new do
+        stdout.each_line do |line|
+          puts line
+          stdout_lines << line
         end
       end
 
-      x.report("cataract: #{key}") do
-        selectors.each_key do |selector|
-          Cataract.calculate_specificity(selector)
+      # Thread for stderr
+      threads << Thread.new do
+        stderr.each_line do |line|
+          warn "⚠️  #{line}"
         end
       end
 
-      x.compare!
+      # Wait for all output to be read
+      threads.each(&:join)
+
+      # Get exit status
+      status = wait_thr.value
+
+      return [stdout_lines.join, status]
     end
+  end
+
+  def combine_worker_results
+    # Read all worker result files
+    all_results = read_worker_results('specificity_*.json')
+
+    # Combine into single result
+    combined = {
+      'name' => self.class.benchmark_name,
+      'description' => self.class.description,
+      'metadata' => self.class.metadata,
+      'results' => all_results
+    }
+
+    # Calculate speedups using configured strategy
+    require_relative 'speedup_calculator'
+    config = self.class.speedup_config
+    if config
+      calculator = SpeedupCalculator.new(
+        results: combined['results'],
+        test_cases: combined['metadata']['test_cases'],
+        baseline_matcher: config[:baseline_matcher],
+        comparison_matcher: config[:comparison_matcher],
+        test_case_key: config[:test_case_key]
+      )
+
+      speedup_stats = calculator.calculate
+      combined['metadata']['speedups'] = speedup_stats if speedup_stats
+    end
+
+    # Write combined results
+    combined_path = File.join(RESULTS_DIR, "#{self.class.benchmark_name}.json")
+    File.write(combined_path, JSON.pretty_generate(combined))
+
+    # Clean up worker files
+    cleanup_worker_results('specificity_*.json')
+
+    puts '=' * 80
+    puts '✓ All specificity benchmarks complete'
+    puts "Results saved to: #{combined_path}"
+    puts '=' * 80
   end
 end
 

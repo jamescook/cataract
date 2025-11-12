@@ -4,7 +4,7 @@
 
 # Performance Benchmarks
 
-Comprehensive performance comparison between Cataract and css_parser gem.
+Performance comparison between Cataract's C extension and pure Ruby implementations, with css_parser as a reference.
 
 ## Test Environment
 
@@ -15,200 +15,172 @@ Comprehensive performance comparison between Cataract and css_parser gem.
 - **Generated**: <%= metadata['timestamp'] %>
 
 <%- if parsing_data -%>
-<details>
-<summary><h2>CSS Parsing</h2></summary>
-
-Performance of parsing CSS into internal data structures.
+## CSS Parsing
 
 <%= parsing_data['description'] %>
 
+| Test Case | Native | Pure (no YJIT) | Pure (YJIT) | css_parser (no YJIT) | css_parser (YJIT) |
+|-----------|--------|----------------|-------------|----------------------|-------------------|
 <%- parsing_data['metadata']['test_cases'].each do |test_case| -%>
-### <%= test_case['name'] %>
-
 <%- results = parsing_data['results'].select { |r| r['name'].include?(test_case['fixture']) } -%>
-<%- css_parser_result = results.find { |r| r['name'].include?('css_parser') } -%>
-<%- cataract_result = results.find { |r| r['name'].include?('cataract') } -%>
-<%- if css_parser_result && cataract_result -%>
-<%- speedup = cataract_result['central_tendency'] / css_parser_result['central_tendency'] -%>
-
-| Parser | Speed | Time per operation |
-|--------|-------|-------------------|
-| css_parser | <%= format_ips(css_parser_result, short: true) %> | <%= format_time_per_op(css_parser_result) %> |
-| **Cataract** | **<%= format_ips(cataract_result, short: true) %>** | **<%= format_time_per_op(cataract_result) %>** |
-| **Speedup** | **<%= format_speedup(speedup) %>** | |
-
-<%- end -%>
+<%- pure_no_yjit = results.find { |r| r['implementation'] == 'pure_without_yjit' } -%>
+<%- pure_with_yjit = results.find { |r| r['implementation'] == 'pure_with_yjit' } -%>
+<%- native = results.find { |r| r['implementation'] == 'native' } -%>
+<%- css_no_yjit = results.find { |r| r['implementation'] == 'css_parser_without_yjit' } -%>
+<%- css_with_yjit = results.find { |r| r['implementation'] == 'css_parser_with_yjit' } -%>
+| <%= test_case['name'] %> | <%= native ? format_ips(native, short: true) : 'N/A' %> | <%= pure_no_yjit ? format_ips(pure_no_yjit, short: true) : 'N/A' %> | <%= pure_with_yjit ? format_ips(pure_with_yjit, short: true) : 'N/A' %> | <%= css_no_yjit ? format_ips(css_no_yjit, short: true) : 'N/A' %> | <%= css_with_yjit ? format_ips(css_with_yjit, short: true) : 'N/A' %> |
 <%- end -%>
 
-</details>
+### Speedups
+
+| Comparison | Speedup |
+|------------|---------|
+<%- if parsing_data['metadata']['speedups'] -%>
+| Native vs Pure (no YJIT) | <%= format_speedup(parsing_data['metadata']['speedups']['avg']) %> (avg) |
+<%- end -%>
+<%- # Calculate Native vs Pure with YJIT -%>
+<%- pure_with_yjit_avg = parsing_data['results'].select { |r| r['implementation'] == 'pure_with_yjit' }.map { |r| r['central_tendency'] }.sum / [parsing_data['results'].select { |r| r['implementation'] == 'pure_with_yjit' }.size, 1].max -%>
+<%- native_avg = parsing_data['results'].select { |r| r['implementation'] == 'native' }.map { |r| r['central_tendency'] }.sum / [parsing_data['results'].select { |r| r['implementation'] == 'native' }.size, 1].max -%>
+<%- if pure_with_yjit_avg > 0 && native_avg > 0 -%>
+| Native vs Pure (YJIT) | <%= format_speedup(native_avg / pure_with_yjit_avg) %> (avg) |
+<%- end -%>
+<%- # Calculate YJIT impact on pure Ruby -%>
+<%- pure_no_yjit_avg = parsing_data['results'].select { |r| r['implementation'] == 'pure_without_yjit' }.map { |r| r['central_tendency'] }.sum / [parsing_data['results'].select { |r| r['implementation'] == 'pure_without_yjit' }.size, 1].max -%>
+<%- if pure_no_yjit_avg > 0 && pure_with_yjit_avg > 0 -%>
+| YJIT impact on Pure Ruby | <%= format_speedup(pure_with_yjit_avg / pure_no_yjit_avg) %> (avg) |
+<%- end -%>
 
 ---
 <%- end -%>
 
 <%- if serialization_data -%>
-<details>
-<summary><h2>CSS Serialization (to_s)</h2></summary>
-
-Performance of converting parsed CSS back to string format.
+## CSS Serialization
 
 <%= serialization_data['description'] %>
 
+| Test Case | Native | Pure (no YJIT) | Pure (YJIT) | css_parser (no YJIT) | css_parser (YJIT) |
+|-----------|--------|----------------|-------------|----------------------|-------------------|
 <%- serialization_data['metadata']['test_cases'].each do |test_case| -%>
-### <%= test_case['name'] %>
-
 <%- results = serialization_data['results'].select { |r| r['name'].include?(test_case['key']) } -%>
-<%- css_parser_result = results.find { |r| r['name'].include?('css_parser') } -%>
-<%- cataract_result = results.find { |r| r['name'].include?('cataract') } -%>
-<%- if css_parser_result && cataract_result -%>
-<%- speedup = cataract_result['central_tendency'] / css_parser_result['central_tendency'] -%>
-
-| Parser | Speed | Time per operation |
-|--------|-------|-------------------|
-| css_parser | <%= format_ips(css_parser_result, short: true) %> | <%= format_time_per_op(css_parser_result) %> |
-| **Cataract** | **<%= format_ips(cataract_result, short: true) %>** | **<%= format_time_per_op(cataract_result) %>** |
-| **Speedup** | **<%= format_speedup(speedup) %>** | |
-
-<%- end -%>
+<%- pure_no_yjit = results.find { |r| r['implementation'] == 'pure_without_yjit' } -%>
+<%- pure_with_yjit = results.find { |r| r['implementation'] == 'pure_with_yjit' } -%>
+<%- native = results.find { |r| r['implementation'] == 'native' } -%>
+<%- css_no_yjit = results.find { |r| r['implementation'] == 'css_parser_without_yjit' } -%>
+<%- css_with_yjit = results.find { |r| r['implementation'] == 'css_parser_with_yjit' } -%>
+| <%= test_case['name'] %> | <%= native ? format_ips(native, short: true) : 'N/A' %> | <%= pure_no_yjit ? format_ips(pure_no_yjit, short: true) : 'N/A' %> | <%= pure_with_yjit ? format_ips(pure_with_yjit, short: true) : 'N/A' %> | <%= css_no_yjit ? format_ips(css_no_yjit, short: true) : 'N/A' %> | <%= css_with_yjit ? format_ips(css_with_yjit, short: true) : 'N/A' %> |
 <%- end -%>
 
-</details>
+### Speedups
+
+| Comparison | Speedup |
+|------------|---------|
+<%- if serialization_data['metadata']['speedups'] -%>
+| Native vs Pure (no YJIT) | <%= format_speedup(serialization_data['metadata']['speedups']['avg']) %> (avg) |
+<%- end -%>
+<%- # Calculate Native vs Pure with YJIT -%>
+<%- pure_with_yjit_avg = serialization_data['results'].select { |r| r['implementation'] == 'pure_with_yjit' }.map { |r| r['central_tendency'] }.sum / [serialization_data['results'].select { |r| r['implementation'] == 'pure_with_yjit' }.size, 1].max -%>
+<%- native_avg = serialization_data['results'].select { |r| r['implementation'] == 'native' }.map { |r| r['central_tendency'] }.sum / [serialization_data['results'].select { |r| r['implementation'] == 'native' }.size, 1].max -%>
+<%- if pure_with_yjit_avg > 0 && native_avg > 0 -%>
+| Native vs Pure (YJIT) | <%= format_speedup(native_avg / pure_with_yjit_avg) %> (avg) |
+<%- end -%>
+<%- # Calculate YJIT impact on pure Ruby -%>
+<%- pure_no_yjit_avg = serialization_data['results'].select { |r| r['implementation'] == 'pure_without_yjit' }.map { |r| r['central_tendency'] }.sum / [serialization_data['results'].select { |r| r['implementation'] == 'pure_without_yjit' }.size, 1].max -%>
+<%- if pure_no_yjit_avg > 0 && pure_with_yjit_avg > 0 -%>
+| YJIT impact on Pure Ruby | <%= format_speedup(pure_with_yjit_avg / pure_no_yjit_avg) %> (avg) |
+<%- end -%>
 
 ---
 <%- end -%>
 
 <%- if specificity_data -%>
-<details>
-<summary><h2>Specificity Calculation</h2></summary>
-
-Performance of calculating CSS selector specificity values.
+## Specificity Calculation
 
 <%= specificity_data['description'] %>
 
-| Test Case | Speedup |
-|-----------|---------|
+| Test Case | Native | Pure (no YJIT) | Pure (YJIT) | css_parser (no YJIT) | css_parser (YJIT) |
+|-----------|--------|----------------|-------------|----------------------|-------------------|
 <%- specificity_data['metadata']['test_cases'].each do |test_case| -%>
-| <%= test_case['name'] %> | **<%= format_speedup(test_case['speedup']) %>** |
+<%- results = specificity_data['results'].select { |r| r['name'].include?(test_case['key']) } -%>
+<%- pure_no_yjit = results.find { |r| r['implementation'] == 'pure_without_yjit' } -%>
+<%- pure_with_yjit = results.find { |r| r['implementation'] == 'pure_with_yjit' } -%>
+<%- native = results.find { |r| r['implementation'] == 'native' } -%>
+<%- css_no_yjit = results.find { |r| r['implementation'] == 'css_parser_without_yjit' } -%>
+<%- css_with_yjit = results.find { |r| r['implementation'] == 'css_parser_with_yjit' } -%>
+| <%= test_case['name'] %> | <%= native ? format_ips(native, short: true) : 'N/A' %> | <%= pure_no_yjit ? format_ips(pure_no_yjit, short: true) : 'N/A' %> | <%= pure_with_yjit ? format_ips(pure_with_yjit, short: true) : 'N/A' %> | <%= css_no_yjit ? format_ips(css_no_yjit, short: true) : 'N/A' %> | <%= css_with_yjit ? format_ips(css_with_yjit, short: true) : 'N/A' %> |
 <%- end -%>
 
-**Summary:** <%= format_speedup(specificity_data['metadata']['speedups']['min']) %> to <%= format_speedup(specificity_data['metadata']['speedups']['max']) %> (avg <%= format_speedup(specificity_data['metadata']['speedups']['avg']) %>)
+### Speedups
 
-</details>
+| Comparison | Speedup |
+|------------|---------|
+<%- if specificity_data['metadata']['speedups'] -%>
+| Native vs Pure (no YJIT) | <%= format_speedup(specificity_data['metadata']['speedups']['avg']) %> (avg) |
+<%- end -%>
+<%- # Calculate Native vs Pure with YJIT -%>
+<%- pure_with_yjit_avg = specificity_data['results'].select { |r| r['implementation'] == 'pure_with_yjit' }.map { |r| r['central_tendency'] }.sum / [specificity_data['results'].select { |r| r['implementation'] == 'pure_with_yjit' }.size, 1].max -%>
+<%- native_avg = specificity_data['results'].select { |r| r['implementation'] == 'native' }.map { |r| r['central_tendency'] }.sum / [specificity_data['results'].select { |r| r['implementation'] == 'native' }.size, 1].max -%>
+<%- if pure_with_yjit_avg > 0 && native_avg > 0 -%>
+| Native vs Pure (YJIT) | <%= format_speedup(native_avg / pure_with_yjit_avg) %> (avg) |
+<%- end -%>
+<%- # Calculate YJIT impact on pure Ruby -%>
+<%- pure_no_yjit_avg = specificity_data['results'].select { |r| r['implementation'] == 'pure_without_yjit' }.map { |r| r['central_tendency'] }.sum / [specificity_data['results'].select { |r| r['implementation'] == 'pure_without_yjit' }.size, 1].max -%>
+<%- if pure_no_yjit_avg > 0 && pure_with_yjit_avg > 0 -%>
+| YJIT impact on Pure Ruby | <%= format_speedup(pure_with_yjit_avg / pure_no_yjit_avg) %> (avg) |
+<%- end -%>
 
 ---
 <%- end -%>
 
 <%- if merging_data -%>
-<details>
-<summary><h2>CSS Merging</h2></summary>
-
-Performance of merging multiple CSS rule sets with the same selector.
+## CSS Merging
 
 <%= merging_data['description'] %>
 
-| Test Case | Speedup |
-|-----------|---------|
+| Test Case | Native | Pure (no YJIT) | Pure (YJIT) | css_parser (no YJIT) | css_parser (YJIT) |
+|-----------|--------|----------------|-------------|----------------------|-------------------|
 <%- merging_data['metadata']['test_cases'].each do |test_case| -%>
-| <%= test_case['name'] %> | **<%= format_speedup(test_case['speedup']) %>** |
+<%- results = merging_data['results'].select { |r| r['name'].include?(test_case['key']) } -%>
+<%- pure_no_yjit = results.find { |r| r['implementation'] == 'pure_without_yjit' } -%>
+<%- pure_with_yjit = results.find { |r| r['implementation'] == 'pure_with_yjit' } -%>
+<%- native = results.find { |r| r['implementation'] == 'native' } -%>
+<%- css_no_yjit = results.find { |r| r['implementation'] == 'css_parser_without_yjit' } -%>
+<%- css_with_yjit = results.find { |r| r['implementation'] == 'css_parser_with_yjit' } -%>
+| <%= test_case['name'] %> | <%= native ? format_ips(native, short: true) : 'N/A' %> | <%= pure_no_yjit ? format_ips(pure_no_yjit, short: true) : 'N/A' %> | <%= pure_with_yjit ? format_ips(pure_with_yjit, short: true) : 'N/A' %> | <%= css_no_yjit ? format_ips(css_no_yjit, short: true) : 'N/A' %> | <%= css_with_yjit ? format_ips(css_with_yjit, short: true) : 'N/A' %> |
 <%- end -%>
 
-**Summary:** <%= format_speedup(merging_data['metadata']['speedups']['min']) %> to <%= format_speedup(merging_data['metadata']['speedups']['max']) %> (avg <%= format_speedup(merging_data['metadata']['speedups']['avg']) %>)
+### Speedups
 
-### What's Being Tested
-- Specificity-based CSS cascade (ID > class > element)
-- `!important` declaration handling
-- Shorthand property expansion (e.g., `margin` → `margin-top`, `margin-right`, etc.)
-- Shorthand property creation from longhand properties
-
-</details>
+| Comparison | Speedup |
+|------------|---------|
+<%- if merging_data['metadata']['speedups'] -%>
+| Native vs Pure (no YJIT) | <%= format_speedup(merging_data['metadata']['speedups']['avg']) %> (avg) |
+<%- end -%>
+<%- # Calculate Native vs Pure with YJIT -%>
+<%- pure_with_yjit_avg = merging_data['results'].select { |r| r['implementation'] == 'pure_with_yjit' }.map { |r| r['central_tendency'] }.sum / [merging_data['results'].select { |r| r['implementation'] == 'pure_with_yjit' }.size, 1].max -%>
+<%- native_avg = merging_data['results'].select { |r| r['implementation'] == 'native' }.map { |r| r['central_tendency'] }.sum / [merging_data['results'].select { |r| r['implementation'] == 'native' }.size, 1].max -%>
+<%- if pure_with_yjit_avg > 0 && native_avg > 0 -%>
+| Native vs Pure (YJIT) | <%= format_speedup(native_avg / pure_with_yjit_avg) %> (avg) |
+<%- end -%>
+<%- # Calculate YJIT impact on pure Ruby -%>
+<%- pure_no_yjit_avg = merging_data['results'].select { |r| r['implementation'] == 'pure_without_yjit' }.map { |r| r['central_tendency'] }.sum / [merging_data['results'].select { |r| r['implementation'] == 'pure_without_yjit' }.size, 1].max -%>
+<%- if pure_no_yjit_avg > 0 && pure_with_yjit_avg > 0 -%>
+| YJIT impact on Pure Ruby | <%= format_speedup(pure_with_yjit_avg / pure_no_yjit_avg) %> (avg) |
+<%- end -%>
 
 ---
 <%- end -%>
-
-<%- if yjit_data -%>
-<details>
-<summary><h2>YJIT Impact</h2></summary>
-
-Impact of Ruby's YJIT JIT compiler on Ruby-side operations. The C extension performance is the same regardless of YJIT.
-
-<%= yjit_data['description'] %>
-
-### Operations Per Second
-
-| Operation | Without YJIT | With YJIT | YJIT Improvement |
-|-----------|--------------|-----------|------------------|
-<%- yjit_data['metadata']['operations'].each do |operation| -%>
-<%- results = yjit_data['results'].select { |r| r['name'].include?(operation) } -%>
-<%- no_yjit = results.find { |r| r['name'].include?('no YJIT') } -%>
-<%- with_yjit = results.find { |r| r['name'].include?('YJIT') && !r['name'].include?('no YJIT') } -%>
-<%- if no_yjit && with_yjit -%>
-<%- improvement = with_yjit['central_tendency'] / no_yjit['central_tendency'] -%>
-<%- pct = ((improvement - 1) * 100).round -%>
-| <%= operation %> | <%= format_ips(no_yjit, short: true) %> | <%= format_ips(with_yjit, short: true) %> | **<%= format_speedup(improvement) %>** (<%= pct %>% faster) |
-<%- end -%>
-<%- end -%>
-
-### Key Takeaways
-- YJIT provides significant performance boost for Ruby-side operations
-- Greatest impact on declaration merging
-- Parse + iterate benefits least since most work is in C
-- Recommended: Enable YJIT in production (`--yjit` flag or `RUBY_YJIT_ENABLE=1`)
-
-</details>
-
----
-<%- end -%>
-
-## Summary
-
-### Performance Highlights
-
-| Category | Min Speedup | Max Speedup | Avg Speedup |
-|----------|-------------|-------------|-------------|
-<%- if parsing_data && parsing_data['metadata']['speedups'] -%>
-<%- sp = parsing_data['metadata']['speedups'] -%>
-| **Parsing** | <%= format_speedup(sp['min']) %> | <%= format_speedup(sp['max']) %> | <%= format_speedup(sp['avg']) %> |
-<%- end -%>
-<%- if serialization_data && serialization_data['metadata']['speedups'] -%>
-<%- sp = serialization_data['metadata']['speedups'] -%>
-| **Serialization** | <%= format_speedup(sp['min']) %> | <%= format_speedup(sp['max']) %> | <%= format_speedup(sp['avg']) %> |
-<%- end -%>
-<%- if specificity_data && specificity_data['metadata']['speedups'] -%>
-<%- sp = specificity_data['metadata']['speedups'] -%>
-| **Specificity** | <%= format_speedup(sp['min']) %> | <%= format_speedup(sp['max']) %> | <%= format_speedup(sp['avg']) %> |
-<%- end -%>
-<%- if merging_data && merging_data['metadata']['speedups'] -%>
-<%- sp = merging_data['metadata']['speedups'] -%>
-| **Merging** | <%= format_speedup(sp['min']) %> | <%= format_speedup(sp['max']) %> | <%= format_speedup(sp['avg']) %> |
-<%- end -%>
-
-### Implementation Notes
-
-1. **C Extension**: Critical paths (parsing, specificity, merging, serialization) implemented in C
-2. **Efficient Data Structures**: Rules grouped by media query for O(1) lookups
-3. **Memory Efficient**: Pre-allocated string buffers, minimal Ruby object allocations
-4. **Optimized Algorithms**: Purpose-built CSS specificity calculator
-
-### Use Cases
-
-- **Large CSS files**: Handles complex stylesheets efficiently
-- **Specificity calculations**: Optimized for selector analysis
-- **High-volume processing**: Reduced allocations minimize GC pressure
-- **Production applications**: Tested with Bootstrap CSS and real-world stylesheets
-
----
 
 ## Running Benchmarks
 
 ```bash
 # All benchmarks
-rake benchmark 2>&1 | tee benchmark_output.txt
+rake benchmark
 
 # Individual benchmarks
 rake benchmark:parsing
 rake benchmark:serialization
 rake benchmark:specificity
 rake benchmark:merging
-rake benchmark:yjit
 
 # Generate documentation
 rake benchmark:generate_docs
@@ -216,6 +188,7 @@ rake benchmark:generate_docs
 
 ## Notes
 
-- All benchmarks use benchmark-ips with 3s warmup and 5-10s measurement periods
-- Measurements are median i/s (iterations per second) with standard deviation
-- css_parser gem must be installed for comparison benchmarks
+- Benchmarks use benchmark-ips with 1-2s warmup and 2-5s measurement periods
+- Measurements show median iterations per second (i/s)
+- css_parser gem is included for reference comparison
+- YJIT is enabled/disabled per subprocess for accurate comparison

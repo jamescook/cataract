@@ -89,12 +89,12 @@ class BenchmarkHarness
     end
 
     # Main entry point - handles setup, execution, and cleanup
-    def run
+    def run(skip_finalize: false)
       instance = new
       setup
       instance.sanity_checks if instance.respond_to?(:sanity_checks, true)
       instance.call
-      finalize(instance)
+      finalize(instance) unless skip_finalize
     rescue StandardError => e
       puts "❌ Benchmark failed: #{e.message}"
       puts e.backtrace.first(5).join("\n")
@@ -172,10 +172,17 @@ class BenchmarkHarness
   end
 
   # Instance methods
+
+  # Default instance method that falls back to class method
+  # Can be overridden by modules like WorkerHelpers
+  def benchmark_name
+    self.class.benchmark_name
+  end
+
   protected
 
   def benchmark(test_case_name)
-    json_filename = "#{self.class.benchmark_name}_#{test_case_name}.json"
+    json_filename = "#{benchmark_name}_#{test_case_name}.json"
     json_path = File.join(RESULTS_DIR, json_filename)
 
     Benchmark.ips do |x|
@@ -186,8 +193,34 @@ class BenchmarkHarness
       yield x
     end
 
+    # Add implementation metadata to each result in the JSON file
+    if File.exist?(json_path) && respond_to?(:impl_type) && impl_type
+      results = JSON.parse(File.read(json_path))
+      results.each { |result| result['implementation'] = impl_type.to_s }
+      File.write(json_path, JSON.pretty_generate(results))
+    end
+
     # Track that we created this file
     @json_files ||= []
     @json_files << json_filename
+  end
+
+  # Helper to read and combine worker result files
+  # Worker files are raw arrays from benchmark-ips, not hashes with 'results' key
+  def read_worker_results(pattern)
+    worker_paths = Dir.glob(File.join(RESULTS_DIR, pattern))
+    raise 'No worker results found' if worker_paths.empty?
+
+    all_results = []
+    worker_paths.each do |path|
+      data = JSON.parse(File.read(path))
+      all_results.concat(data.is_a?(Array) ? data : data['results'])
+    end
+    all_results
+  end
+
+  # Helper to clean up worker result files
+  def cleanup_worker_results(pattern)
+    Dir.glob(File.join(RESULTS_DIR, pattern)).each { |p| File.delete(p) }
   end
 end

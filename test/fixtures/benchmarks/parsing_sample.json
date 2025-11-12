@@ -28,6 +28,7 @@
   "results": [
     {
       "name": "css_parser gem: CSS1",
+      "implementation": "css_parser",
       "central_tendency": 6253.617340248006,
       "ips": 6253.617340248006,
       "error": 63,
@@ -38,6 +39,7 @@
     },
     {
       "name": "cataract: CSS1",
+      "implementation": "native",
       "central_tendency": 67860.26856079814,
       "ips": 67860.26856079814,
       "error": 536,
@@ -48,6 +50,7 @@
     },
     {
       "name": "css_parser gem: CSS2",
+      "implementation": "css_parser",
       "central_tendency": 3446.4007088523126,
       "ips": 3446.4007088523126,
       "error": 33,
@@ -58,6 +61,7 @@
     },
     {
       "name": "cataract: CSS2",
+      "implementation": "native",
       "central_tendency": 44357.90385806872,
       "ips": 44357.90385806872,
       "error": 404,

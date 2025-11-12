@@ -1,12 +1,14 @@
 # frozen_string_literal: true
 
 require_relative 'benchmark_harness'
+require 'open3'
 
 # Load the local development version, not installed gem
 $LOAD_PATH.unshift File.expand_path('../lib', __dir__)
 require 'cataract'
 
 # CSS Merging Benchmark
+# Compares css_parser gem vs Cataract pure Ruby vs Cataract C extension
 class MergingBenchmark < BenchmarkHarness
   def self.benchmark_name
     'merging'
@@ -17,103 +19,151 @@ class MergingBenchmark < BenchmarkHarness
   end
 
   def self.metadata
-    {
-      'test_cases' => [
-        {
-          'name' => 'No shorthand properties (large)',
-          'key' => 'no_shorthand',
-          'css' => (".test { color: red; background-color: blue; display: block; position: relative; width: 100px; height: 50px; }\n" * 100)
-        },
-        {
-          'name' => 'Simple properties',
-          'key' => 'simple',
-          'css' => ".test { color: black; margin: 10px; }\n.test { padding: 5px; }"
-        },
-        {
-          'name' => 'Cascade with specificity',
-          'key' => 'cascade',
-          'css' => ".test { color: black; }\n#test { color: red; }\n.test { margin: 10px; }"
-        },
-        {
-          'name' => 'Important declarations',
-          'key' => 'important',
-          'css' => ".test { color: black !important; }\n#test { color: red; }\n.test { margin: 10px; }"
-        },
-        {
-          'name' => 'Shorthand expansion',
-          'key' => 'shorthand',
-          'css' => ".test { margin: 10px 20px; }\n.test { margin-left: 5px; }\n.test { padding: 1em 2em 3em 4em; }"
-        },
-        {
-          'name' => 'Complex merging',
-          'key' => 'complex',
-          'css' => "body { margin: 0; padding: 0; }\n.container { width: 100%; margin: 0 auto; }\n#main { background: white; color: black; }\n.button { padding: 10px 20px; border: 1px solid #ccc; }\n.button:hover { background: #f0f0f0; }\n.button.primary { background: blue !important; color: white; }"
-        }
-      ]
-    }
+    require_relative 'merging_tests'
+    MergingTests.metadata
   end
 
   def self.speedup_config
-    {
-      baseline_matcher: SpeedupCalculator::Matchers.css_parser,
-      comparison_matcher: SpeedupCalculator::Matchers.cataract,
-      test_case_key: :key
-    }
+    require_relative 'merging_tests'
+    MergingTests.speedup_config
   end
 
   def sanity_checks
+    # Verify css_parser gem is available
     require 'css_parser'
 
-    # Verify merging works correctly
+    # Verify cataract works
     css = ".test { color: black; }\n.test { margin: 10px; }"
     cataract_rules = Cataract.parse_css(css)
     cataract_merged = Cataract.merge(cataract_rules)
-
-    raise 'Cataract merge failed' if cataract_merged.rules.empty?
-
-    merged_decls = cataract_merged.rules.first.declarations
-    raise 'Cataract merge incorrect' unless merged_decls.any? { |d| d.property == 'color' }
+    raise 'Cataract sanity check failed' if cataract_merged.rules.empty?
   end
 
   def call
-    self.class.metadata['test_cases'].each do |test_case|
-      benchmark_test_case(test_case)
+    require_relative 'merging_tests'
+
+    worker_script = File.expand_path('benchmark_merging_workers.rb', __dir__)
+
+    # Clean up any leftover worker files from previous runs
+    Dir.glob(File.join(RESULTS_DIR, 'merging_*.json')).each { |f| FileUtils.rm_f(f) }
+
+    puts 'Running merging benchmarks via subprocesses...'
+    puts 'Testing implementations with YJIT variations where applicable'
+    puts
+
+    # Define implementations to test
+    implementations = [
+      { name: 'css_parser gem', base_impl: :css_parser, env: { 'MERGING_CSS_PARSER' => '1' } },
+      { name: 'Cataract pure Ruby', base_impl: :pure, env: { 'CATARACT_PURE' => '1' } },
+      { name: 'Cataract C extension', base_impl: :native, env: { 'CATARACT_PURE' => nil } }
+    ]
+
+    implementations.each do |config|
+      if MergingTests.yjit_applicable?(config[:base_impl])
+        # Run both YJIT variants
+        puts "→ Running #{config[:name]} without YJIT..."
+        puts
+        stdout, status = run_subprocess(['ruby', '--disable-yjit', worker_script], env: config[:env])
+        raise "#{config[:name]} (no YJIT) benchmark failed" unless status.success?
+        puts
+        puts
+
+        puts "→ Running #{config[:name]} with YJIT..."
+        puts
+        stdout, status = run_subprocess(['ruby', '--yjit', worker_script], env: config[:env])
+        raise "#{config[:name]} (YJIT) benchmark failed" unless status.success?
+        puts
+        puts
+      else
+        # Run without YJIT flags (YJIT not applicable)
+        puts "→ Running #{config[:name]}..."
+        puts
+        stdout, status = run_subprocess(['ruby', worker_script], env: config[:env])
+        raise "#{config[:name]} benchmark failed" unless status.success?
+        puts
+        puts
+      end
     end
+
+    # Combine results
+    combine_worker_results
   end
 
   private
 
-  def benchmark_test_case(test_case)
-    puts '=' * 80
-    puts "TEST: #{test_case['name']}"
-    puts '=' * 80
+  def run_subprocess(command, env: {})
+    stdout_lines = []
 
-    key = test_case['key']
-    css = test_case['css']
+    Open3.popen3(env, *command) do |stdin, stdout, stderr, wait_thr|
+      stdin.close
 
-    # Pre-parse the CSS for both implementations
-    cataract_rules = Cataract.parse_css(css)
+      # Stream output in real-time
+      threads = []
 
-    parser = CssParser::Parser.new
-    parser.add_block!(css)
-    rule_sets = []
-    parser.each_selector do |selector, declarations, _specificity|
-      rule_sets << CssParser::RuleSet.new(selectors: selector, block: declarations)
-    end
-
-    benchmark(key) do |x|
-      x.config(time: 5, warmup: 2)
-
-      x.report("css_parser: #{key}") do
-        CssParser.merge(rule_sets)
+      # Thread for stdout
+      threads << Thread.new do
+        stdout.each_line do |line|
+          puts line
+          stdout_lines << line
+        end
       end
 
-      x.report("cataract: #{key}") do
-        Cataract.merge(cataract_rules)
+      # Thread for stderr
+      threads << Thread.new do
+        stderr.each_line do |line|
+          warn "⚠️  #{line}"
+        end
       end
 
-      x.compare!
+      # Wait for all output to be read
+      threads.each(&:join)
+
+      # Get exit status
+      status = wait_thr.value
+
+      return [stdout_lines.join, status]
     end
+  end
+
+  def combine_worker_results
+    # Read all worker result files
+    all_results = read_worker_results('merging_*.json')
+
+    # Combine into single result
+    combined = {
+      'name' => self.class.benchmark_name,
+      'description' => self.class.description,
+      'metadata' => self.class.metadata,
+      'results' => all_results
+    }
+
+    # Calculate speedups using configured strategy
+    require_relative 'speedup_calculator'
+    config = self.class.speedup_config
+    if config
+      calculator = SpeedupCalculator.new(
+        results: combined['results'],
+        test_cases: combined['metadata']['test_cases'],
+        baseline_matcher: config[:baseline_matcher],
+        comparison_matcher: config[:comparison_matcher],
+        test_case_key: config[:test_case_key]
+      )
+
+      speedup_stats = calculator.calculate
+      combined['metadata']['speedups'] = speedup_stats if speedup_stats
+    end
+
+    # Write combined results
+    combined_path = File.join(RESULTS_DIR, "#{self.class.benchmark_name}.json")
+    File.write(combined_path, JSON.pretty_generate(combined))
+
+    # Clean up worker files
+    cleanup_worker_results('merging_*.json')
+
+    puts '=' * 80
+    puts '✓ All merging benchmarks complete'
+    puts "Results saved to: #{combined_path}"
+    puts '=' * 80
   end
 end
 

@@ -1,9 +1,20 @@
 # frozen_string_literal: true
 
 require_relative 'cataract/version'
-require_relative 'cataract/native_extension'
+
+# Load struct definitions first (before C extension or pure Ruby)
+require_relative 'cataract/declaration'
 require_relative 'cataract/rule'
 require_relative 'cataract/at_rule'
+
+# Load pure Ruby or C extension based on ENV var
+if %w[1 true].include?(ENV['CATARACT_PURE'])
+  require_relative 'cataract/pure'
+else
+  require_relative 'cataract/native_extension'
+end
+
+# Load supporting Ruby files (used by both implementations)
 require_relative 'cataract/stylesheet_scope'
 require_relative 'cataract/stylesheet'
 require_relative 'cataract/declarations'

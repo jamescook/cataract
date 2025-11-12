@@ -1,12 +1,14 @@
 # frozen_string_literal: true
 
 require_relative 'benchmark_harness'
+require 'open3'
 
 # Load the local development version, not installed gem
 $LOAD_PATH.unshift File.expand_path('../lib', __dir__)
 require 'cataract'
 
 # CSS Parsing Performance Benchmark
+# Compares css_parser gem vs Cataract pure Ruby vs Cataract C extension
 class ParsingBenchmark < BenchmarkHarness
   def self.benchmark_name
     'parsing'
@@ -17,110 +19,170 @@ class ParsingBenchmark < BenchmarkHarness
   end
 
   def self.metadata
-    instance = new
-    {
-      'test_cases' => [
-        {
-          'name' => "Small CSS (#{instance.css1.lines.count} lines, #{(instance.css1.length / 1024.0).round(1)}KB)",
-          'fixture' => 'CSS1',
-          'lines' => instance.css1.lines.count,
-          'bytes' => instance.css1.length
-        },
-        {
-          'name' => "Medium CSS with @media (#{instance.css2.lines.count} lines, #{(instance.css2.length / 1024.0).round(1)}KB)",
-          'fixture' => 'CSS2',
-          'lines' => instance.css2.lines.count,
-          'bytes' => instance.css2.length
-        }
-      ]
-      # speedups will be calculated automatically by harness
-    }
+    require_relative 'parsing_tests'
+    ParsingTests.metadata
   end
 
-  # Uses default speedup_config from harness (css_parser vs cataract, test_case_key: :fixture)
+  def self.speedup_config
+    require_relative 'parsing_tests'
+    ParsingTests.speedup_config
+  end
 
   def sanity_checks
-    # Check css_parser gem is available
+    # Verify fixtures exist
+    fixtures_dir = File.expand_path('../test/fixtures', __dir__)
+    css1_path = File.join(fixtures_dir, 'css1_sample.css')
+    css2_path = File.join(fixtures_dir, 'css2_sample.css')
+
+    raise "CSS fixture not found: #{css1_path}" unless File.exist?(css1_path)
+    raise "CSS fixture not found: #{css2_path}" unless File.exist?(css2_path)
+
+    # Verify css_parser gem is available
     require 'css_parser'
 
-    # Verify fixtures parse correctly
+    # Verify cataract works
     parser = Cataract::Stylesheet.new
-    parser.add_block(css1)
-    raise 'CSS1 sanity check failed: expected rules' if parser.rules_count.zero?
-
-    parser = Cataract::Stylesheet.new
-    parser.add_block(css2)
-    raise 'CSS2 sanity check failed: expected rules' if parser.rules_count.zero?
+    parser.add_block('body { color: red; }')
+    raise 'Cataract sanity check failed' if parser.rules_count.zero?
   end
 
   def call
-    run_css1_benchmark
-    run_css2_benchmark
+    require_relative 'parsing_tests'
+
+    worker_script = File.expand_path('benchmark_parsing_workers.rb', __dir__)
+
+    # Clean up any leftover worker files from previous runs
+    Dir.glob(File.join(RESULTS_DIR, 'parsing_*.json')).each { |f| FileUtils.rm_f(f) }
+
+    puts 'Running parsing benchmarks via subprocesses...'
+    puts 'Testing implementations with YJIT variations where applicable'
+    puts
+
+    # Define implementations to test
+    implementations = [
+      { name: 'css_parser gem', base_impl: :css_parser, env: { 'PARSING_CSS_PARSER' => '1' } },
+      { name: 'Cataract pure Ruby', base_impl: :pure, env: { 'CATARACT_PURE' => '1' } },
+      { name: 'Cataract C extension', base_impl: :native, env: { 'CATARACT_PURE' => nil } }
+    ]
+
+    implementations.each do |config|
+      if ParsingTests.yjit_applicable?(config[:base_impl])
+        # Run both YJIT variants
+        puts "→ Running #{config[:name]} without YJIT..."
+        puts
+        stdout, status = run_subprocess(['ruby', '--disable-yjit', worker_script], env: config[:env])
+        raise "#{config[:name]} (no YJIT) benchmark failed" unless status.success?
+        puts
+        puts
+
+        puts "→ Running #{config[:name]} with YJIT..."
+        puts
+        stdout, status = run_subprocess(['ruby', '--yjit', worker_script], env: config[:env])
+        raise "#{config[:name]} (YJIT) benchmark failed" unless status.success?
+        puts
+        puts
+      else
+        # Run without YJIT flags (YJIT not applicable)
+        puts "→ Running #{config[:name]}..."
+        puts
+        stdout, status = run_subprocess(['ruby', worker_script], env: config[:env])
+        raise "#{config[:name]} benchmark failed" unless status.success?
+        puts
+        puts
+      end
+    end
+
+    # Combine results
+    combine_worker_results
+
+    # Show correctness comparison
     show_correctness_comparison
-  end
-
-  def css1
-    @css1 ||= File.read(File.join(fixtures_dir, 'css1_sample.css'))
-  end
-
-  def css2
-    @css2 ||= File.read(File.join(fixtures_dir, 'css2_sample.css'))
   end
 
   private
 
-  def fixtures_dir
-    @fixtures_dir ||= File.expand_path('../test/fixtures', __dir__)
-  end
+  def run_subprocess(command, env: {})
+    stdout_lines = []
 
-  def run_css1_benchmark
-    puts '=' * 80
-    puts "TEST: CSS1 (#{css1.lines.count} lines, #{css1.length} chars)"
-    puts '=' * 80
+    Open3.popen3(env, *command) do |stdin, stdout, stderr, wait_thr|
+      stdin.close
 
-    benchmark('css1') do |x|
-      x.config(time: 5, warmup: 2)
+      # Stream output in real-time
+      threads = []
 
-      x.report('css_parser gem: CSS1') do
-        parser = CssParser::Parser.new(import: false, io_exceptions: false)
-        parser.add_block!(css1)
+      # Thread for stdout
+      threads << Thread.new do
+        stdout.each_line do |line|
+          puts line
+          stdout_lines << line
+        end
       end
 
-      x.report('cataract: CSS1') do
-        parser = Cataract::Stylesheet.new
-        parser.add_block(css1)
+      # Thread for stderr
+      threads << Thread.new do
+        stderr.each_line do |line|
+          warn "⚠️  #{line}"
+        end
       end
 
-      x.compare!
+      # Wait for all output to be read
+      threads.each(&:join)
+
+      # Get exit status
+      status = wait_thr.value
+
+      return [stdout_lines.join, status]
     end
   end
 
-  def run_css2_benchmark
-    puts "\n#{'=' * 80}"
-    puts "TEST: CSS2 with @media (#{css2.lines.count} lines, #{css2.length} chars)"
-    puts '=' * 80
+  def combine_worker_results
+    # Read all worker result files
+    all_results = read_worker_results('parsing_*.json')
 
-    benchmark('css2') do |x|
-      x.config(time: 5, warmup: 2)
+    # Combine into single result
+    combined = {
+      'name' => self.class.benchmark_name,
+      'description' => self.class.description,
+      'metadata' => self.class.metadata,
+      'results' => all_results
+    }
 
-      x.report('css_parser gem: CSS2') do
-        parser = CssParser::Parser.new(import: false, io_exceptions: false)
-        parser.add_block!(css2)
-      end
+    # Calculate speedups using configured strategy
+    require_relative 'speedup_calculator'
+    config = self.class.speedup_config
+    if config
+      calculator = SpeedupCalculator.new(
+        results: combined['results'],
+        test_cases: combined['metadata']['test_cases'],
+        baseline_matcher: config[:baseline_matcher],
+        comparison_matcher: config[:comparison_matcher],
+        test_case_key: config[:test_case_key]
+      )
 
-      x.report('cataract: CSS2') do
-        parser = Cataract::Stylesheet.new
-        parser.add_block(css2)
-      end
-
-      x.compare!
+      speedup_stats = calculator.calculate
+      combined['metadata']['speedups'] = speedup_stats if speedup_stats
     end
+
+    # Write combined results
+    combined_path = File.join(RESULTS_DIR, "#{self.class.benchmark_name}.json")
+    File.write(combined_path, JSON.pretty_generate(combined))
+
+    # Clean up worker files
+    cleanup_worker_results('parsing_*.json')
+
+    puts '=' * 80
+    puts '✓ All parsing benchmarks complete'
+    puts "Results saved to: #{combined_path}"
+    puts '=' * 80
   end
 
   def show_correctness_comparison
     puts "\n#{'=' * 80}"
-    puts 'CORRECTNESS VALIDATION (CSS2)'
+    puts 'CORRECTNESS VALIDATION'
     puts '=' * 80
+
+    fixtures_dir = File.expand_path('../test/fixtures', __dir__)
+    css2 = File.read(File.join(fixtures_dir, 'css2_sample.css'))
 
     # Test Cataract
     parser = Cataract::Stylesheet.new
@@ -129,6 +191,7 @@ class ParsingBenchmark < BenchmarkHarness
     puts "Cataract found #{cataract_rules} rules"
 
     # Test css_parser
+    require 'css_parser'
     css_parser = CssParser::Parser.new(import: false, io_exceptions: false)
     css_parser.add_block!(css2)
     css_parser_rules = 0

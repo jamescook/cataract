@@ -67,10 +67,10 @@ class TestSpeedupCalculator < Minitest::Test
   def test_speedup_calculation_with_sample_data
     # Create minimal sample data for testing
     results = [
-      { 'name' => 'css_parser: test1', 'central_tendency' => 100.0 },
-      { 'name' => 'cataract: test1', 'central_tendency' => 500.0 },
-      { 'name' => 'css_parser: test2', 'central_tendency' => 200.0 },
-      { 'name' => 'cataract: test2', 'central_tendency' => 800.0 }
+      { 'name' => 'css_parser: test1', 'implementation' => 'css_parser', 'central_tendency' => 100.0 },
+      { 'name' => 'cataract: test1', 'implementation' => 'native', 'central_tendency' => 500.0 },
+      { 'name' => 'css_parser: test2', 'implementation' => 'css_parser', 'central_tendency' => 200.0 },
+      { 'name' => 'cataract: test2', 'implementation' => 'native', 'central_tendency' => 800.0 }
     ]
 
     test_cases = [
@@ -103,8 +103,8 @@ class TestSpeedupCalculator < Minitest::Test
   def test_speedup_calculation_with_no_matches
     # No matching baseline/comparison pairs
     results = [
-      { 'name' => 'css_parser: test1', 'central_tendency' => 100.0 },
-      { 'name' => 'other_tool: test2', 'central_tendency' => 200.0 }
+      { 'name' => 'css_parser: test1', 'implementation' => 'css_parser', 'central_tendency' => 100.0 },
+      { 'name' => 'other_tool: test2', 'implementation' => 'other', 'central_tendency' => 200.0 }
     ]
 
     calculator = SpeedupCalculator.new(
@@ -123,18 +123,18 @@ class TestSpeedupCalculator < Minitest::Test
 
   def test_matchers
     # Test css_parser matcher
-    assert SpeedupCalculator::Matchers.css_parser.call({ 'name' => 'css_parser: test' })
-    refute SpeedupCalculator::Matchers.css_parser.call({ 'name' => 'cataract: test' })
+    assert SpeedupCalculator::Matchers.css_parser.call({ 'implementation' => 'css_parser' })
+    refute SpeedupCalculator::Matchers.css_parser.call({ 'implementation' => 'native' })
 
-    # Test cataract matcher
-    assert SpeedupCalculator::Matchers.cataract.call({ 'name' => 'cataract: test' })
-    refute SpeedupCalculator::Matchers.cataract.call({ 'name' => 'css_parser: test' })
+    # Test cataract matcher (matches native)
+    assert SpeedupCalculator::Matchers.cataract.call({ 'implementation' => 'native' })
+    refute SpeedupCalculator::Matchers.cataract.call({ 'implementation' => 'css_parser' })
 
     # Test YJIT matchers
-    assert SpeedupCalculator::Matchers.with_yjit.call({ 'name' => 'YJIT: property access' })
-    refute SpeedupCalculator::Matchers.with_yjit.call({ 'name' => 'no YJIT: property access' })
+    assert SpeedupCalculator::Matchers.with_yjit.call({ 'implementation' => 'pure_with_yjit' })
+    refute SpeedupCalculator::Matchers.with_yjit.call({ 'implementation' => 'pure_without_yjit' })
 
-    assert SpeedupCalculator::Matchers.without_yjit.call({ 'name' => 'no YJIT: property access' })
-    refute SpeedupCalculator::Matchers.without_yjit.call({ 'name' => 'YJIT: property access' })
+    assert SpeedupCalculator::Matchers.without_yjit.call({ 'implementation' => 'pure_without_yjit' })
+    refute SpeedupCalculator::Matchers.without_yjit.call({ 'implementation' => 'pure_with_yjit' })
   end
 end
