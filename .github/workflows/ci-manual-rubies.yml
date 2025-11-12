@@ -1,0 +1,27 @@
+name: CI - Manual Rubies
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-alt-rubies:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ruby: [jruby, truffleruby]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: ${{ matrix.ruby }}
+        bundler-cache: true
+
+    - name: Display Ruby version
+      run: ruby --version
+
+    - name: Run tests
+      run: bundle exec rake test
