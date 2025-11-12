@@ -139,3 +139,7 @@ Style/ComparableBetween:
 Style/MapIntoArray:
   Exclude:
     - 'lib/cataract/pure/**/*.rb'
+
+Style/OptionalBooleanParameter:
+  Exclude:
+    - 'lib/cataract/pure/**/*.rb'

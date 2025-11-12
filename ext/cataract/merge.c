@@ -943,6 +943,12 @@ static VALUE merge_rules_for_selector(VALUE rules_array, VALUE rule_indices, VAL
     }
 
     // Build declarations array from properties_hash
+    // NOTE: We don't sort by source_order here because:
+    // 1. Hash iteration order reflects insertion order
+    // 2. Declaration order doesn't affect CSS behavior (cascade is already resolved)
+    // 3. Sorting would add overhead for purely aesthetic output
+    // The output order is roughly source order but may vary when properties are
+    // overridden by later rules with higher specificity or importance.
     VALUE merged_decls = rb_ary_new();
     rb_hash_foreach(properties_hash, merge_build_result_callback, merged_decls);
 

@@ -8,18 +8,19 @@ class TestStylesheetSerialization < Minitest::Test
     sheet = Cataract::Stylesheet.parse(css)
 
     assert_nil sheet.charset
-    refute_includes sheet.to_s, '@charset'
+
+    expected = "body { color: red; }\n"
+
+    assert_equal expected, sheet.to_s
   end
 
   def test_charset_serialization
-    css = '@charset "UTF-8";
-body { color: red; }'
+    css = '@charset "UTF-8"; body { color: red; }'
     sheet = Cataract::Stylesheet.parse(css)
-    result = sheet.to_s
 
-    # @charset should be first line
-    assert_match(/\A@charset "UTF-8";/, result)
-    assert_includes result, 'body'
+    expected = "@charset \"UTF-8\";\nbody { color: red; }\n"
+
+    assert_equal expected, sheet.to_s
   end
 
   # ============================================================================
@@ -128,13 +129,13 @@ body { color: red; }'
   end
 
   def test_to_s_separates_non_consecutive_media_rules
-    css = <<~CSS
+    css_input = <<~CSS
       @media screen { h1 { color: red; } }
       body { color: black; }
       @media screen { h2 { color: blue; } }
     CSS
 
-    sheet = Cataract::Stylesheet.parse(css)
+    sheet = Cataract::Stylesheet.parse(css_input)
 
     # Check parsed structure preserves order
     assert_equal 3, sheet.rules.length
@@ -147,29 +148,28 @@ body { color: red; }'
 
     # Verify serialization creates TWO separate @media blocks
     # (because body rule interrupts the screen rules)
-    output = sheet.to_s
-    media_count = output.scan(/@media screen/).length
+    expected = <<~CSS
+      @media screen {
+      h1 { color: red; }
+      }
+      body { color: black; }
+      @media screen {
+      h2 { color: blue; }
+      }
+    CSS
 
-    assert_equal 2, media_count, 'Should create separate @media blocks when interrupted'
-
-    # Verify order is preserved
-    body_pos = output.index('body')
-    first_media_pos = output.index('@media screen')
-    second_media_pos = output.rindex('@media screen')
-
-    assert_operator first_media_pos, :<, body_pos, 'First @media should come before body'
-    assert_operator body_pos, :<, second_media_pos, 'Body should come before second @media'
+    assert_equal expected, sheet.to_s
   end
 
   def test_to_s_mixed_media_queries
-    css = <<~CSS
+    css_input = <<~CSS
       body { margin: 0; }
       @media screen { h1 { color: red; } }
       @media print { h2 { color: blue; } }
       @media screen { p { color: green; } }
     CSS
 
-    sheet = Cataract::Stylesheet.parse(css)
+    sheet = Cataract::Stylesheet.parse(css_input)
 
     # Check parsed structure
     assert_equal 4, sheet.rules.length
@@ -182,12 +182,21 @@ body { color: red; }'
 
     assert_equal 'p', sheet.rules[3].selector
 
-    # Verify serialization preserves order
-    output = sheet.to_s
+    # Verify serialization preserves order and separates different media types
+    expected = <<~CSS
+      body { margin: 0; }
+      @media screen {
+      h1 { color: red; }
+      }
+      @media print {
+      h2 { color: blue; }
+      }
+      @media screen {
+      p { color: green; }
+      }
+    CSS
 
-    assert_operator output.index('body'), :<, output.index('@media screen')
-    assert_operator output.index('@media screen'), :<, output.index('@media print')
-    assert_operator output.index('@media print'), :<, output.rindex('@media screen')
+    assert_equal expected, sheet.to_s
   end
 
   def test_charset_round_trip
@@ -283,6 +292,7 @@ body { color: red; }'
           opacity: 1;
         }
       }
+
       .animated {
         animation: slideIn 0.5s ease-in;
       }
@@ -341,15 +351,129 @@ body { color: red; }'
     CSS
     sheet = Cataract::Stylesheet.parse(css)
 
-    # Filter to multiple media types
-    output = sheet.to_formatted_s(media: %i[screen print])
+    # Filter to multiple media types - should include screen and print, but not handheld
+    expected = <<~CSS
+      body {
+        margin: 0;
+      }
 
-    # Should include screen and print, but not handheld
-    assert_includes output, '@media screen'
-    assert_includes output, '.screen'
-    assert_includes output, '@media print'
-    assert_includes output, '.print'
-    refute_includes output, '@media handheld'
-    refute_includes output, '.handheld'
+      @media screen {
+        .screen {
+          color: blue;
+        }
+      }
+
+      @media print {
+        .print {
+          color: black;
+        }
+      }
+    CSS
+
+    assert_equal expected, sheet.to_formatted_s(media: %i[screen print])
+  end
+
+  def test_to_formatted_s_closes_media_block_before_regular_rule
+    # Test that media blocks are properly closed when transitioning to non-media rules
+    # This specifically tests the serializer's logic for closing media blocks
+    css_input = <<~CSS.chomp
+      @media screen { h1 { color: red; } }
+      @media screen { h2 { color: blue; } }
+      body { margin: 0; }
+      p { padding: 0; }
+    CSS
+
+    # Expected: media rules should be grouped, then closed before body (formatted style)
+    css_expected = <<~CSS
+      @media screen {
+        h1 {
+          color: red;
+        }
+        h2 {
+          color: blue;
+        }
+      }
+
+      body {
+        margin: 0;
+      }
+
+      p {
+        padding: 0;
+      }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css_input)
+    output = sheet.to_formatted_s
+
+    assert_equal css_expected, output
+  end
+
+  def test_merged_shorthand_properties_are_present
+    # Test that when rules are merged and shorthands are recreated,
+    # all declarations are present with correct values
+    css_input = <<~CSS
+      .test { color: black; margin: 0px; }
+      .test { padding: 5px; }
+      .test { border: 1px solid red; }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css_input)
+    merged = sheet.merge
+
+    # After merge, all declarations should be present
+    result = Cataract::Declarations.new(merged.rules.first.declarations).to_s
+
+    assert_equal 'color: black; margin: 0px; padding: 5px; border: 1px solid red;', result
+  end
+
+  def test_merged_multiple_shorthands_are_present
+    # Test with multiple types of shorthand properties (margin, padding, border, background, font, list-style)
+    # all mixed with regular properties
+    css_input = <<~CSS
+      .box { display: block; margin: 10px; }
+      .box { color: blue; padding: 5px; }
+      .box { list-style: circle inside; border: 2px solid black; }
+      .box { font: bold 14px/1.5 Arial; background: white; }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css_input)
+    merged = sheet.merge
+
+    # All declarations should be present with correct values
+    result = Cataract::Declarations.new(merged.rules.first.declarations).to_s
+
+    assert_equal 'display: block; color: blue; margin: 10px; padding: 5px; border: 2px solid black; list-style: circle inside; font: bold 14px/1.5 Arial; background: white;', result
+  end
+
+  def test_merged_border_subproperties_are_present
+    # Test that border-width, border-style, border-color get merged into border shorthand
+    css_input = <<~CSS
+      .element { color: red; border-width: 1px; border-style: solid; border-color: black; }
+      .element { margin: 5px; }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css_input)
+    merged = sheet.merge
+
+    # Border shorthand should be created with all subproperties
+    result = Cataract::Declarations.new(merged.rules.first.declarations).to_s
+
+    assert_equal 'color: red; margin: 5px; border: 1px solid black;', result
+  end
+
+  def test_merged_important_declarations_maintain_order
+    # Test that !important declarations maintain proper source order
+    css_input = <<~CSS
+      .test { color: black !important; margin: 10px; }
+      .test { padding: 5px !important; }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css_input)
+    merged = sheet.merge
+
+    result = Cataract::Declarations.new(merged.rules.first.declarations).to_s
+
+    assert_equal 'color: black !important; margin: 10px; padding: 5px !important;', result
   end
 end

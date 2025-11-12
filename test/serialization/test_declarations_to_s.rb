@@ -62,10 +62,8 @@ class TestDeclarationsToS < Minitest::Test
     merged = rules.merge.rules.first.declarations
     result = Cataract::Declarations.new(merged).to_s
 
-    # Should contain all three properties
-    assert_includes result, 'color: black'
-    assert_includes result, 'margin: 0px'
-    assert_includes result, 'padding: 5px'
+    # Should contain all three properties in order
+    assert_equal 'color: black; margin: 0px; padding: 5px;', result
   end
 
   def test_with_important_from_merge
@@ -76,8 +74,7 @@ class TestDeclarationsToS < Minitest::Test
     merged = rules.merge.rules.first.declarations
     result = Cataract::Declarations.new(merged).to_s
 
-    assert_includes result, 'color: black !important'
-    assert_includes result, 'margin: 10px;'
+    assert_equal 'color: black !important; margin: 10px;', result
   end
 
   def test_complex_values
@@ -87,7 +84,6 @@ class TestDeclarationsToS < Minitest::Test
     ]
     result = Cataract::Declarations.new(decls).to_s
 
-    assert_includes result, 'font: bold 14px/1.5 Arial, sans-serif'
-    assert_includes result, 'background: url(image.png) no-repeat center'
+    assert_equal 'font: bold 14px/1.5 Arial, sans-serif; background: url(image.png) no-repeat center;', result
   end
 end
