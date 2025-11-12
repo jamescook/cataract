@@ -212,7 +212,7 @@ class TestStylesheet < Minitest::Test
     # Count occurrences of .foo - should appear exactly once
     foo_count = output.scan(/\.foo/).count
     assert_equal 1, foo_count,
-      "Rule should appear once, not duplicated. Parser adds same rule ID to multiple media indexes."
+                 "Rule should appear once, not duplicated. Parser adds same rule ID to multiple media indexes."
 
     # Verify the output actually contains the rule
     assert_includes output, '.foo { color: red; }'

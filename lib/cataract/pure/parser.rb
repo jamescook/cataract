@@ -174,7 +174,7 @@ module Cataract
             # Parse mixed block (declarations + nested selectors)
             @depth += 1
             parent_declarations = parse_mixed_block(decl_start, decl_end,
-                                                   individual_selector, current_rule_id, @parent_media_sym)
+                                                    individual_selector, current_rule_id, @parent_media_sym)
             @depth -= 1
 
             # Create parent rule and replace placeholder
@@ -520,7 +520,7 @@ module Cataract
             # Recursively parse nested block
             @depth += 1
             nested_declarations = parse_mixed_block(nested_block_start, nested_block_end,
-                                                   resolved_selector, rule_id, parent_media_sym)
+                                                    resolved_selector, rule_id, parent_media_sym)
             @depth -= 1
 
             # Create rule for nested selector
