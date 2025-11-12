@@ -4,12 +4,29 @@ on:
   workflow_dispatch:
 
 jobs:
+  test-jruby:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: jruby
+        bundler-cache: true
+
+    - name: Display Ruby version
+      run: ruby --version
+
+    - name: Run tests
+      run: bundle exec rake test:pure
+
   test-alt-rubies:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        ruby: [jruby, truffleruby, ruby-head]
+        ruby: [truffleruby, ruby-head]
 
     steps:
     - uses: actions/checkout@v4
