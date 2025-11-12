@@ -181,7 +181,10 @@ Cataract parses and preserves all standard CSS including:
 
 Cataract supports converting colors between multiple CSS color formats with high precision.
 
-**Note:** Color conversion is an optional extension. Load it explicitly to reduce memory footprint:
+**Note:** Color conversion is an optional extension and _not_ loaded by default.
+
+<details>
+<summary>Color conversion examples and supported formats</summary>
 
 ```ruby
 require 'cataract'
@@ -240,6 +243,8 @@ sheet.convert_colors!(to: :hex)  # Converts all formats to hex
 - Math functions (`calc()`, `min()`, `max()`, `clamp()`) are not evaluated and will be preserved unchanged
 - CSS Color Level 5 features (`none`, `infinity`, relative color syntax with `from`) are preserved but not converted
 - Unknown or future color functions are passed through unchanged
+
+</details>
 
 ### `@import` Support
 
