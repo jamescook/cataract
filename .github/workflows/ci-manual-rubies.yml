@@ -24,4 +24,4 @@ jobs:
       run: ruby --version
 
     - name: Run tests
-      run: bundle exec rake test
+      run: bundle exec rake compile test
