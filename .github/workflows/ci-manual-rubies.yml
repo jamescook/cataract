@@ -9,7 +9,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ruby: [jruby, truffleruby]
+        ruby: [jruby, truffleruby, ruby-head]
 
     steps:
     - uses: actions/checkout@v4
