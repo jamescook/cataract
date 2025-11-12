@@ -16,6 +16,38 @@ static ID id_ivar_media_index = 0;
 // Cached "merged" selector string
 static VALUE str_merged_selector = Qnil;
 
+/*
+ * Shorthand recreation mapping: defines how to recreate shorthands from longhand properties
+ *
+ * We cache VALUE objects for property names to avoid repeated string allocations during
+ * hash lookups. These are initialized once in init_merge_constants().
+ */
+struct shorthand_mapping {
+    const char *shorthand_name;          // e.g., "border-width"
+    size_t shorthand_name_len;           // Pre-computed strlen(shorthand_name)
+    VALUE shorthand_name_val;            // Cached Ruby string (initialized at load time)
+    const char *prop_top;                // e.g., "border-top-width"
+    VALUE prop_top_val;                  // Cached Ruby string
+    const char *prop_right;              // e.g., "border-right-width"
+    VALUE prop_right_val;                // Cached Ruby string
+    const char *prop_bottom;             // e.g., "border-bottom-width"
+    VALUE prop_bottom_val;               // Cached Ruby string
+    const char *prop_left;               // e.g., "border-left-width"
+    VALUE prop_left_val;                 // Cached Ruby string
+    VALUE (*creator_func)(VALUE, VALUE); // Function pointer to shorthand creator
+};
+
+// Static mapping table for all 4-sided shorthand properties
+// The _val fields are initialized to Qnil here and populated in init_merge_constants()
+static struct shorthand_mapping SHORTHAND_MAPPINGS[] = {
+    {"margin", 6, Qnil, "margin-top", Qnil, "margin-right", Qnil, "margin-bottom", Qnil, "margin-left", Qnil, cataract_create_margin_shorthand},
+    {"padding", 7, Qnil, "padding-top", Qnil, "padding-right", Qnil, "padding-bottom", Qnil, "padding-left", Qnil, cataract_create_padding_shorthand},
+    {"border-width", 12, Qnil, "border-top-width", Qnil, "border-right-width", Qnil, "border-bottom-width", Qnil, "border-left-width", Qnil, cataract_create_border_width_shorthand},
+    {"border-style", 12, Qnil, "border-top-style", Qnil, "border-right-style", Qnil, "border-bottom-style", Qnil, "border-left-style", Qnil, cataract_create_border_style_shorthand},
+    {"border-color", 12, Qnil, "border-top-color", Qnil, "border-right-color", Qnil, "border-bottom-color", Qnil, "border-left-color", Qnil, cataract_create_border_color_shorthand},
+    {NULL, 0, Qnil, NULL, Qnil, NULL, Qnil, NULL, Qnil, NULL, Qnil, NULL} // Sentinel to mark end of array
+};
+
 // Cached property name strings (frozen, never GC'd)
 // Initialized in init_merge_constants() at module load time
 static VALUE str_margin = Qnil;
@@ -255,6 +287,38 @@ void init_merge_constants(void) {
     // Cached "merged" selector string
     str_merged_selector = rb_str_freeze(USASCII_STR("merged"));
     rb_gc_register_mark_object(str_merged_selector);
+
+    // Populate the shorthand mapping table with cached string VALUEs
+    // This avoids allocating new strings on every hash lookup
+    SHORTHAND_MAPPINGS[0].shorthand_name_val = str_margin;
+    SHORTHAND_MAPPINGS[0].prop_top_val = str_margin_top;
+    SHORTHAND_MAPPINGS[0].prop_right_val = str_margin_right;
+    SHORTHAND_MAPPINGS[0].prop_bottom_val = str_margin_bottom;
+    SHORTHAND_MAPPINGS[0].prop_left_val = str_margin_left;
+
+    SHORTHAND_MAPPINGS[1].shorthand_name_val = str_padding;
+    SHORTHAND_MAPPINGS[1].prop_top_val = str_padding_top;
+    SHORTHAND_MAPPINGS[1].prop_right_val = str_padding_right;
+    SHORTHAND_MAPPINGS[1].prop_bottom_val = str_padding_bottom;
+    SHORTHAND_MAPPINGS[1].prop_left_val = str_padding_left;
+
+    SHORTHAND_MAPPINGS[2].shorthand_name_val = str_border_width;
+    SHORTHAND_MAPPINGS[2].prop_top_val = str_border_top_width;
+    SHORTHAND_MAPPINGS[2].prop_right_val = str_border_right_width;
+    SHORTHAND_MAPPINGS[2].prop_bottom_val = str_border_bottom_width;
+    SHORTHAND_MAPPINGS[2].prop_left_val = str_border_left_width;
+
+    SHORTHAND_MAPPINGS[3].shorthand_name_val = str_border_style;
+    SHORTHAND_MAPPINGS[3].prop_top_val = str_border_top_style;
+    SHORTHAND_MAPPINGS[3].prop_right_val = str_border_right_style;
+    SHORTHAND_MAPPINGS[3].prop_bottom_val = str_border_bottom_style;
+    SHORTHAND_MAPPINGS[3].prop_left_val = str_border_left_style;
+
+    SHORTHAND_MAPPINGS[4].shorthand_name_val = str_border_color;
+    SHORTHAND_MAPPINGS[4].prop_top_val = str_border_top_color;
+    SHORTHAND_MAPPINGS[4].prop_right_val = str_border_right_color;
+    SHORTHAND_MAPPINGS[4].prop_bottom_val = str_border_bottom_color;
+    SHORTHAND_MAPPINGS[4].prop_left_val = str_border_left_color;
 }
 
 // Helper macros to extract property data from properties_hash
@@ -388,6 +452,61 @@ void init_merge_constants(void) {
             } \
         } \
     } while(0)
+
+// Helper function: Try to recreate a shorthand property from its longhand components
+// Uses cached VALUE objects for property names to avoid repeated string allocations
+static inline void try_recreate_shorthand(VALUE properties_hash, const struct shorthand_mapping *mapping) {
+    VALUE top_data = rb_hash_aref(properties_hash, mapping->prop_top_val);
+    VALUE right_data = rb_hash_aref(properties_hash, mapping->prop_right_val);
+    VALUE bottom_data = rb_hash_aref(properties_hash, mapping->prop_bottom_val);
+    VALUE left_data = rb_hash_aref(properties_hash, mapping->prop_left_val);
+
+    // All four sides must be present
+    if (NIL_P(top_data) || NIL_P(right_data) || NIL_P(bottom_data) || NIL_P(left_data)) {
+        return;
+    }
+
+    // All four sides must have the same !important flag
+    VALUE top_imp = RARRAY_AREF(top_data, PROP_IMPORTANT);
+    VALUE right_imp = RARRAY_AREF(right_data, PROP_IMPORTANT);
+    VALUE bottom_imp = RARRAY_AREF(bottom_data, PROP_IMPORTANT);
+    VALUE left_imp = RARRAY_AREF(left_data, PROP_IMPORTANT);
+
+    if (RTEST(top_imp) != RTEST(right_imp) ||
+        RTEST(top_imp) != RTEST(bottom_imp) ||
+        RTEST(top_imp) != RTEST(left_imp)) {
+        return;
+    }
+
+    // Build a hash of property values for the creator function
+    VALUE props = rb_hash_new();
+    rb_hash_aset(props, mapping->prop_top_val, RARRAY_AREF(top_data, PROP_VALUE));
+    rb_hash_aset(props, mapping->prop_right_val, RARRAY_AREF(right_data, PROP_VALUE));
+    rb_hash_aset(props, mapping->prop_bottom_val, RARRAY_AREF(bottom_data, PROP_VALUE));
+    rb_hash_aset(props, mapping->prop_left_val, RARRAY_AREF(left_data, PROP_VALUE));
+
+    // Call the creator function
+    VALUE shorthand_value = mapping->creator_func(Qnil, props);
+    if (NIL_P(shorthand_value)) {
+        return; // Creator decided not to create shorthand
+    }
+
+    // Create the shorthand property data array
+    VALUE shorthand_data = rb_ary_new_capa(4);
+    rb_ary_push(shorthand_data, RARRAY_AREF(top_data, PROP_SOURCE_ORDER));
+    rb_ary_push(shorthand_data, RARRAY_AREF(top_data, PROP_SPECIFICITY));
+    rb_ary_push(shorthand_data, top_imp);
+    rb_ary_push(shorthand_data, shorthand_value);
+
+    // Add shorthand and remove longhand properties
+    rb_hash_aset(properties_hash, mapping->shorthand_name_val, shorthand_data);
+    rb_hash_delete(properties_hash, mapping->prop_top_val);
+    rb_hash_delete(properties_hash, mapping->prop_right_val);
+    rb_hash_delete(properties_hash, mapping->prop_bottom_val);
+    rb_hash_delete(properties_hash, mapping->prop_left_val);
+
+    DEBUG_PRINTF("      -> Recreated %s shorthand\n", mapping->shorthand_name);
+}
 
 /*
  * Helper struct: For processing expanded properties during merge
@@ -655,166 +774,9 @@ static VALUE merge_rules_for_selector(VALUE rules_array, VALUE rule_indices, VAL
     // Recreate shorthands where possible (reduces output size)
     DEBUG_PRINTF("    [merge_rules_for_selector] Recreating shorthands...\n");
 
-    // Try to recreate margin shorthand (if all 4 sides present)
-    RECREATE_DIMENSION_SHORTHAND(properties_hash, "margin", cataract_create_margin_shorthand);
-
-    // Try to recreate padding shorthand (if all 4 sides present)
-    RECREATE_DIMENSION_SHORTHAND(properties_hash, "padding", cataract_create_padding_shorthand);
-
-    // Try to recreate border-width shorthand (if all 4 sides present)
-    {
-        VALUE top = rb_hash_aref(properties_hash, STR_NEW_CSTR("border-top-width"));
-        VALUE right = rb_hash_aref(properties_hash, STR_NEW_CSTR("border-right-width"));
-        VALUE bottom = rb_hash_aref(properties_hash, STR_NEW_CSTR("border-bottom-width"));
-        VALUE left = rb_hash_aref(properties_hash, STR_NEW_CSTR("border-left-width"));
-
-        if (!NIL_P(top) && !NIL_P(right) && !NIL_P(bottom) && !NIL_P(left)) {
-            VALUE top_imp = RARRAY_AREF(top, PROP_IMPORTANT);
-            VALUE right_imp = RARRAY_AREF(right, PROP_IMPORTANT);
-            VALUE bottom_imp = RARRAY_AREF(bottom, PROP_IMPORTANT);
-            VALUE left_imp = RARRAY_AREF(left, PROP_IMPORTANT);
-
-            if (RTEST(top_imp) == RTEST(right_imp) && RTEST(top_imp) == RTEST(bottom_imp) && RTEST(top_imp) == RTEST(left_imp)) {
-                VALUE props = rb_hash_new();
-                rb_hash_aset(props, STR_NEW_CSTR("border-top-width"), RARRAY_AREF(top, PROP_VALUE));
-                rb_hash_aset(props, STR_NEW_CSTR("border-right-width"), RARRAY_AREF(right, PROP_VALUE));
-                rb_hash_aset(props, STR_NEW_CSTR("border-bottom-width"), RARRAY_AREF(bottom, PROP_VALUE));
-                rb_hash_aset(props, STR_NEW_CSTR("border-left-width"), RARRAY_AREF(left, PROP_VALUE));
-
-                VALUE shorthand_value = cataract_create_border_width_shorthand(Qnil, props);
-                if (!NIL_P(shorthand_value)) {
-                    VALUE shorthand_data = rb_ary_new_capa(4);
-                    rb_ary_push(shorthand_data, RARRAY_AREF(top, PROP_SOURCE_ORDER));
-                    rb_ary_push(shorthand_data, RARRAY_AREF(top, PROP_SPECIFICITY));
-                    rb_ary_push(shorthand_data, top_imp);
-                    rb_ary_push(shorthand_data, shorthand_value);
-                    rb_hash_aset(properties_hash, USASCII_STR("border-width"), shorthand_data);
-
-                    rb_hash_delete(properties_hash, STR_NEW_CSTR("border-top-width"));
-                    rb_hash_delete(properties_hash, STR_NEW_CSTR("border-right-width"));
-                    rb_hash_delete(properties_hash, STR_NEW_CSTR("border-bottom-width"));
-                    rb_hash_delete(properties_hash, STR_NEW_CSTR("border-left-width"));
-                    DEBUG_PRINTF("      -> Recreated border-width shorthand\n");
-                }
-            }
-        }
-    }
-
-    // Try to recreate border-style shorthand (if all 4 sides present)
-    {
-        VALUE top = rb_hash_aref(properties_hash, STR_NEW_CSTR("border-top-style"));
-        VALUE right = rb_hash_aref(properties_hash, STR_NEW_CSTR("border-right-style"));
-        VALUE bottom = rb_hash_aref(properties_hash, STR_NEW_CSTR("border-bottom-style"));
-        VALUE left = rb_hash_aref(properties_hash, STR_NEW_CSTR("border-left-style"));
-
-        if (!NIL_P(top) && !NIL_P(right) && !NIL_P(bottom) && !NIL_P(left)) {
-            VALUE top_imp = RARRAY_AREF(top, PROP_IMPORTANT);
-            VALUE right_imp = RARRAY_AREF(right, PROP_IMPORTANT);
-            VALUE bottom_imp = RARRAY_AREF(bottom, PROP_IMPORTANT);
-            VALUE left_imp = RARRAY_AREF(left, PROP_IMPORTANT);
-
-            if (RTEST(top_imp) == RTEST(right_imp) && RTEST(top_imp) == RTEST(bottom_imp) && RTEST(top_imp) == RTEST(left_imp)) {
-                VALUE props = rb_hash_new();
-                rb_hash_aset(props, STR_NEW_CSTR("border-top-style"), RARRAY_AREF(top, PROP_VALUE));
-                rb_hash_aset(props, STR_NEW_CSTR("border-right-style"), RARRAY_AREF(right, PROP_VALUE));
-                rb_hash_aset(props, STR_NEW_CSTR("border-bottom-style"), RARRAY_AREF(bottom, PROP_VALUE));
-                rb_hash_aset(props, STR_NEW_CSTR("border-left-style"), RARRAY_AREF(left, PROP_VALUE));
-
-                VALUE shorthand_value = cataract_create_border_style_shorthand(Qnil, props);
-                if (!NIL_P(shorthand_value)) {
-                    VALUE shorthand_data = rb_ary_new_capa(4);
-                    rb_ary_push(shorthand_data, RARRAY_AREF(top, PROP_SOURCE_ORDER));
-                    rb_ary_push(shorthand_data, RARRAY_AREF(top, PROP_SPECIFICITY));
-                    rb_ary_push(shorthand_data, top_imp);
-                    rb_ary_push(shorthand_data, shorthand_value);
-                    rb_hash_aset(properties_hash, USASCII_STR("border-style"), shorthand_data);
-
-                    rb_hash_delete(properties_hash, STR_NEW_CSTR("border-top-style"));
-                    rb_hash_delete(properties_hash, STR_NEW_CSTR("border-right-style"));
-                    rb_hash_delete(properties_hash, STR_NEW_CSTR("border-bottom-style"));
-                    rb_hash_delete(properties_hash, STR_NEW_CSTR("border-left-style"));
-                    DEBUG_PRINTF("      -> Recreated border-style shorthand\n");
-                }
-            }
-        }
-    }
-
-    // Try to recreate border-color shorthand (if all 4 sides present)
-    {
-        VALUE top = rb_hash_aref(properties_hash, STR_NEW_CSTR("border-top-color"));
-        VALUE right = rb_hash_aref(properties_hash, STR_NEW_CSTR("border-right-color"));
-        VALUE bottom = rb_hash_aref(properties_hash, STR_NEW_CSTR("border-bottom-color"));
-        VALUE left = rb_hash_aref(properties_hash, STR_NEW_CSTR("border-left-color"));
-
-        if (!NIL_P(top) && !NIL_P(right) && !NIL_P(bottom) && !NIL_P(left)) {
-            VALUE top_imp = RARRAY_AREF(top, PROP_IMPORTANT);
-            VALUE right_imp = RARRAY_AREF(right, PROP_IMPORTANT);
-            VALUE bottom_imp = RARRAY_AREF(bottom, PROP_IMPORTANT);
-            VALUE left_imp = RARRAY_AREF(left, PROP_IMPORTANT);
-
-            if (RTEST(top_imp) == RTEST(right_imp) && RTEST(top_imp) == RTEST(bottom_imp) && RTEST(top_imp) == RTEST(left_imp)) {
-                VALUE props = rb_hash_new();
-                rb_hash_aset(props, STR_NEW_CSTR("border-top-color"), RARRAY_AREF(top, PROP_VALUE));
-                rb_hash_aset(props, STR_NEW_CSTR("border-right-color"), RARRAY_AREF(right, PROP_VALUE));
-                rb_hash_aset(props, STR_NEW_CSTR("border-bottom-color"), RARRAY_AREF(bottom, PROP_VALUE));
-                rb_hash_aset(props, STR_NEW_CSTR("border-left-color"), RARRAY_AREF(left, PROP_VALUE));
-
-                VALUE shorthand_value = cataract_create_border_color_shorthand(Qnil, props);
-                if (!NIL_P(shorthand_value)) {
-                    VALUE shorthand_data = rb_ary_new_capa(4);
-                    rb_ary_push(shorthand_data, RARRAY_AREF(top, PROP_SOURCE_ORDER));
-                    rb_ary_push(shorthand_data, RARRAY_AREF(top, PROP_SPECIFICITY));
-                    rb_ary_push(shorthand_data, top_imp);
-                    rb_ary_push(shorthand_data, shorthand_value);
-                    rb_hash_aset(properties_hash, USASCII_STR("border-color"), shorthand_data);
-
-                    rb_hash_delete(properties_hash, STR_NEW_CSTR("border-top-color"));
-                    rb_hash_delete(properties_hash, STR_NEW_CSTR("border-right-color"));
-                    rb_hash_delete(properties_hash, STR_NEW_CSTR("border-bottom-color"));
-                    rb_hash_delete(properties_hash, STR_NEW_CSTR("border-left-color"));
-                    DEBUG_PRINTF("      -> Recreated border-color shorthand\n");
-                }
-            }
-        }
-    }
-
-    // Try to recreate border-style shorthand (if all 4 sides present)
-    {
-        VALUE top = rb_hash_aref(properties_hash, STR_NEW_CSTR("border-top-style"));
-        VALUE right = rb_hash_aref(properties_hash, STR_NEW_CSTR("border-right-style"));
-        VALUE bottom = rb_hash_aref(properties_hash, STR_NEW_CSTR("border-bottom-style"));
-        VALUE left = rb_hash_aref(properties_hash, STR_NEW_CSTR("border-left-style"));
-
-        if (!NIL_P(top) && !NIL_P(right) && !NIL_P(bottom) && !NIL_P(left)) {
-            VALUE top_imp = RARRAY_AREF(top, PROP_IMPORTANT);
-            VALUE right_imp = RARRAY_AREF(right, PROP_IMPORTANT);
-            VALUE bottom_imp = RARRAY_AREF(bottom, PROP_IMPORTANT);
-            VALUE left_imp = RARRAY_AREF(left, PROP_IMPORTANT);
-
-            if (RTEST(top_imp) == RTEST(right_imp) && RTEST(top_imp) == RTEST(bottom_imp) && RTEST(top_imp) == RTEST(left_imp)) {
-                VALUE props = rb_hash_new();
-                rb_hash_aset(props, STR_NEW_CSTR("border-top-style"), RARRAY_AREF(top, PROP_VALUE));
-                rb_hash_aset(props, STR_NEW_CSTR("border-right-style"), RARRAY_AREF(right, PROP_VALUE));
-                rb_hash_aset(props, STR_NEW_CSTR("border-bottom-style"), RARRAY_AREF(bottom, PROP_VALUE));
-                rb_hash_aset(props, STR_NEW_CSTR("border-left-style"), RARRAY_AREF(left, PROP_VALUE));
-
-                VALUE shorthand_value = cataract_create_border_style_shorthand(Qnil, props);
-                if (!NIL_P(shorthand_value)) {
-                    VALUE shorthand_data = rb_ary_new_capa(4);
-                    rb_ary_push(shorthand_data, RARRAY_AREF(top, PROP_SOURCE_ORDER));
-                    rb_ary_push(shorthand_data, RARRAY_AREF(top, PROP_SPECIFICITY));
-                    rb_ary_push(shorthand_data, top_imp);
-                    rb_ary_push(shorthand_data, shorthand_value);
-                    rb_hash_aset(properties_hash, USASCII_STR("border-style"), shorthand_data);
-
-                    rb_hash_delete(properties_hash, STR_NEW_CSTR("border-top-style"));
-                    rb_hash_delete(properties_hash, STR_NEW_CSTR("border-right-style"));
-                    rb_hash_delete(properties_hash, STR_NEW_CSTR("border-bottom-style"));
-                    rb_hash_delete(properties_hash, STR_NEW_CSTR("border-left-style"));
-                    DEBUG_PRINTF("      -> Recreated border-style shorthand\n");
-                }
-            }
-        }
+    // Try to recreate all 4-sided shorthands using the mapping table
+    for (const struct shorthand_mapping *mapping = SHORTHAND_MAPPINGS; mapping->shorthand_name != NULL; mapping++) {
+        try_recreate_shorthand(properties_hash, mapping);
     }
 
     // Try to recreate full border shorthand (if border-width, border-style, border-color present)
