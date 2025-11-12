@@ -382,8 +382,8 @@ module Cataract
             media_query_end_trimmed -= 1
           end
           media_query_str = byteslice_encoded(media_start, media_query_end_trimmed - media_start)
-          # Strip outer parentheses if present
-          media_query_str = strip_outer_parens(media_query_str)
+          # Keep media query exactly as written - parentheses are required per CSS spec
+          media_query_str.strip!
           media_sym = media_query_str.to_sym
 
           pos = media_query_end + 1 # Skip {
@@ -767,8 +767,8 @@ module Cataract
         end
 
         child_media_string = byteslice_encoded(mq_start, mq_end - mq_start)
-        # Strip outer parentheses if present: "(orientation: landscape)" => "orientation: landscape"
-        child_media_string = strip_outer_parens(child_media_string)
+        # Keep media query exactly as written - parentheses are required per CSS spec
+        child_media_string.strip!
         child_media_sym = child_media_string.to_sym
 
         # Combine with parent media context
@@ -813,11 +813,9 @@ module Cataract
         nested_result[:rules].each do |rule|
           rule.id = @rule_id_counter
 
-          # Add to full query symbol
-          @_media_index[combined_media_sym] ||= []
-          @_media_index[combined_media_sym] << @rule_id_counter
-
-          # Extract media types and add to each (if different from full query)
+          # Extract media types and add to each first (if different from full query)
+          # We add these BEFORE the full query so that when iterating the media_index hash,
+          # the full query comes last and takes precedence during serialization
           media_types = Cataract.parse_media_types(combined_media_sym)
           media_types.each do |media_type|
             # Only add if different from combined_media_sym to avoid duplication
@@ -826,6 +824,10 @@ module Cataract
               @_media_index[media_type] << @rule_id_counter
             end
           end
+
+          # Add to full query symbol (after media types for insertion order)
+          @_media_index[combined_media_sym] ||= []
+          @_media_index[combined_media_sym] << @rule_id_counter
 
           @rule_id_counter += 1
           @rules << rule

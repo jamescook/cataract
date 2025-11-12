@@ -1068,7 +1068,7 @@ class TestCssNesting < Minitest::Test
     media_sym = sheet.instance_variable_get(:@_media_index).find { |_, ids| ids.include?(foo_media.id) }&.first
 
     assert media_sym, 'Should have media query for foo_media rule'
-    assert_equal :'orientation: landscape', media_sym
+    assert_equal :'(orientation: landscape)', media_sym
   end
 
   # W3C Spec Example: Nested @media queries
@@ -1112,7 +1112,7 @@ class TestCssNesting < Minitest::Test
     landscape_media = media_index.find { |_, ids| ids.include?(foo_landscape.id) }&.first
     nested_media = media_index.find { |_, ids| ids.include?(foo_nested.id) }&.first
 
-    assert_equal :'orientation: landscape', landscape_media
+    assert_equal :'(orientation: landscape)', landscape_media
     # Combined media query should be: (orientation: landscape) and (min-width > 1024px)
     assert_match(/orientation.*landscape.*min-width.*1024px/, nested_media.to_s)
   end

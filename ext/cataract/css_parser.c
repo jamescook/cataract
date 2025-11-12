@@ -361,10 +361,9 @@ static void update_media_index(ParserContext *ctx, VALUE media_sym, int rule_id)
         return;  // No media query - rule applies to all media
     }
 
-    // Add to full query symbol
-    add_to_media_index(ctx->media_index, media_sym, rule_id);
-
-    // Extract media types and add to each (if different from full query)
+    // Extract media types and add to each first (if different from full query)
+    // We add these BEFORE the full query so that when iterating the media_index hash,
+    // the full query comes last and takes precedence during serialization
     VALUE media_str = rb_sym2str(media_sym);
     const char *query = RSTRING_PTR(media_str);
     long query_len = RSTRING_LEN(media_str);
@@ -379,6 +378,9 @@ static void update_media_index(ParserContext *ctx, VALUE media_sym, int rule_id)
             add_to_media_index(ctx->media_index, type_sym, rule_id);
         }
     }
+
+    // Add to full query symbol (after media types for insertion order)
+    add_to_media_index(ctx->media_index, media_sym, rule_id);
 
     // Guard media_str since we extracted C pointer and called extract_media_types (which allocates)
     RB_GC_GUARD(media_str);
@@ -570,7 +572,7 @@ static VALUE combine_media_queries(VALUE parent, VALUE child) {
 
 /*
  * Intern media query string to symbol with safety check
- * Strips outer parentheses from standalone conditions like "(orientation: landscape)"
+ * Keeps media query exactly as written - parentheses are required per CSS spec
  */
 static VALUE intern_media_query_safe(ParserContext *ctx, const char *query_str, long query_len) {
     if (query_len == 0) {
@@ -584,37 +586,13 @@ static VALUE intern_media_query_safe(ParserContext *ctx, const char *query_str, 
                 MAX_MEDIA_QUERIES);
     }
 
-    // Strip outer parentheses from standalone conditions
-    // Example: "(orientation: landscape)" => "orientation: landscape"
-    // But keep: "screen and (min-width: 500px)" as-is
+    // Keep media query exactly as written - parentheses are required per CSS spec
     const char *start = query_str;
     const char *end = query_str + query_len;
 
-    // Trim whitespace
+    // Trim whitespace only
     while (start < end && IS_WHITESPACE(*start)) start++;
     while (end > start && IS_WHITESPACE(*(end - 1))) end--;
-
-    if (end > start && *start == '(' && *(end - 1) == ')') {
-        // Check if this is a simple wrapped condition (no other parens/operators)
-        int depth = 0;
-        int has_and_or = 0;
-        for (const char *p = start; p < end; p++) {
-            if (*p == '(') depth++;
-            else if (*p == ')') depth--;
-            // Check for "and" or "or" at depth 0 (outside our outer parens)
-            if (depth == 0 && p + 3 < end &&
-                (strncmp(p, " and ", 5) == 0 || strncmp(p, " or ", 4) == 0)) {
-                has_and_or = 1;
-                break;
-            }
-        }
-
-        // Strip outer parens if depth stays >= 1 (no operators outside) and no and/or
-        if (!has_and_or && depth == 0) {
-            start++;  // Skip opening (
-            end--;    // Skip closing )
-        }
-    }
 
     long final_len = end - start;
     VALUE query_string = rb_usascii_str_new(start, final_len);
