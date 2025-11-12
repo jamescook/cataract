@@ -195,13 +195,26 @@ task :lint do
 end
 
 # Fuzz testing
-desc 'Run fuzzer to test parser robustness (including color conversion)'
-task fuzz: :compile do
-  iterations = ENV['ITERATIONS'] || '10000'
-  puts "Running CSS parser fuzzer (#{iterations} iterations)..."
-  # Use system with ENV.to_h to preserve environment variables like FUZZ_GC_STRESS
-  system(ENV.to_h, RbConfig.ruby, '-Ilib', 'scripts/fuzzer/run.rb', iterations)
+namespace :fuzz do
+  desc 'Run fuzzer with C extension'
+  task c: :compile do
+    iterations = ENV['ITERATIONS'] || '10000'
+    puts "Running CSS parser fuzzer with C extension (#{iterations} iterations)..."
+    system(ENV.to_h, RbConfig.ruby, '-Ilib', 'scripts/fuzzer/run.rb', iterations)
+  end
+
+  desc 'Run fuzzer with pure Ruby implementation'
+  task :pure do
+    iterations = ENV['ITERATIONS'] || '10000'
+    debug_msg = ENV['FUZZ_DEBUG'] == '1' ? ' (debug mode)' : ''
+    puts "Running CSS parser fuzzer with pure Ruby (#{iterations} iterations#{debug_msg})..."
+    env = ENV.to_h.merge('CATARACT_PURE' => '1')
+    system(env, RbConfig.ruby, '-Ilib', 'scripts/fuzzer/run.rb', iterations)
+  end
 end
+
+desc 'Run fuzzer with both C extension and pure Ruby'
+task fuzz: ['fuzz:c', 'fuzz:pure']
 
 # Documentation generation with YARD
 begin

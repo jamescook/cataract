@@ -9,8 +9,17 @@
 require 'timeout'
 require 'open3'
 require 'rbconfig'
-require_relative '../../lib/cataract'
-require_relative '../../lib/cataract/color_conversion' # Load color extension for fuzzing
+
+# Load pure Ruby or C extension based on ENV var
+PURE_RUBY = ENV['CATARACT_PURE'] == '1'
+if PURE_RUBY
+  require_relative '../../lib/cataract/pure'
+  COLOR_AVAILABLE = false
+else
+  require_relative '../../lib/cataract'
+  require_relative '../../lib/cataract/color_conversion'
+  COLOR_AVAILABLE = true
+end
 
 # Check if Cataract is compiled in debug mode (would overwhelm pipe buffer)
 if Cataract::COMPILE_FLAGS[:debug]
@@ -585,6 +594,18 @@ def parse_in_worker(stdin, stdout, stderr, wait_thr, input, last_input)
     return [:error, nil, nil, nil, false, false, false] if response.nil?
 
     response = response.force_encoding('UTF-8').scrub.strip
+
+    if ENV['FUZZ_DEBUG'] == '1'
+      # Read and print any stderr output (for FUZZ_DEBUG logging)
+      begin
+        if stderr
+          stderr_data = stderr.read_nonblock(100_000)
+          $stderr.write(stderr_data) unless stderr_data.empty?
+        end
+      rescue IO::WaitReadable, EOFError
+        # No data available, that's fine
+      end
+    end
 
     case response
     when /^PARSE/
