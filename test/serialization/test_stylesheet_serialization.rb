@@ -476,4 +476,231 @@ class TestStylesheetSerialization < Minitest::Test
 
     assert_equal 'color: black !important; margin: 10px; padding: 5px !important;', result
   end
+
+  # ============================================================================
+  # Media query serialization tests
+  # ============================================================================
+
+  def test_to_s_media_type_only
+    # Simple media type without features
+    css = '@media print { .print-only { display: block; } }'
+    sheet = Cataract::Stylesheet.parse(css)
+
+    expected = <<~CSS.chomp
+      @media print {
+      .print-only { display: block; }
+      }
+    CSS
+
+    assert_equal expected, sheet.to_s.chomp
+  end
+
+  def test_to_s_single_media_feature
+    # Single media feature in parentheses - MUST preserve parentheses per CSS spec
+    css = '@media (min-width: 768px) { .wide { display: block; } }'
+    sheet = Cataract::Stylesheet.parse(css)
+
+    expected = <<~CSS.chomp
+      @media (min-width: 768px) {
+      .wide { display: block; }
+      }
+    CSS
+
+    assert_equal expected, sheet.to_s.chomp
+  end
+
+  def test_to_s_media_type_and_feature
+    # Media type combined with feature using 'and'
+    css = '@media screen and (min-width: 768px) { .desktop { display: block; } }'
+    sheet = Cataract::Stylesheet.parse(css)
+
+    expected = <<~CSS.chomp
+      @media screen and (min-width: 768px) {
+      .desktop { display: block; }
+      }
+    CSS
+
+    assert_equal expected, sheet.to_s.chomp
+  end
+
+  def test_to_s_multiple_features_with_and
+    # Multiple media features combined with 'and'
+    css = '@media (min-width: 768px) and (max-width: 1024px) { .tablet { display: block; } }'
+    sheet = Cataract::Stylesheet.parse(css)
+
+    expected = <<~CSS.chomp
+      @media (min-width: 768px) and (max-width: 1024px) {
+      .tablet { display: block; }
+      }
+    CSS
+
+    assert_equal expected, sheet.to_s.chomp
+  end
+
+  def test_to_s_media_type_and_multiple_features
+    # Media type with multiple features
+    css = '@media screen and (min-width: 768px) and (max-width: 1024px) { .tablet { display: block; } }'
+    sheet = Cataract::Stylesheet.parse(css)
+
+    expected = <<~CSS.chomp
+      @media screen and (min-width: 768px) and (max-width: 1024px) {
+      .tablet { display: block; }
+      }
+    CSS
+
+    assert_equal expected, sheet.to_s.chomp
+  end
+
+  def test_to_s_media_feature_max_width
+    # Test max-width feature
+    css = '@media (max-width: 767px) { .mobile { display: block; } }'
+    sheet = Cataract::Stylesheet.parse(css)
+
+    expected = <<~CSS.chomp
+      @media (max-width: 767px) {
+      .mobile { display: block; }
+      }
+    CSS
+
+    assert_equal expected, sheet.to_s.chomp
+  end
+
+  def test_to_s_media_feature_orientation
+    # Test orientation feature
+    css = '@media (orientation: landscape) { .landscape { width: 100%; } }'
+    sheet = Cataract::Stylesheet.parse(css)
+
+    expected = <<~CSS.chomp
+      @media (orientation: landscape) {
+      .landscape { width: 100%; }
+      }
+    CSS
+
+    assert_equal expected, sheet.to_s.chomp
+  end
+
+  def test_to_s_media_feature_aspect_ratio
+    # Test aspect-ratio feature
+    css = '@media (aspect-ratio: 16/9) { .widescreen { display: block; } }'
+    sheet = Cataract::Stylesheet.parse(css)
+
+    expected = <<~CSS.chomp
+      @media (aspect-ratio: 16/9) {
+      .widescreen { display: block; }
+      }
+    CSS
+
+    assert_equal expected, sheet.to_s.chomp
+  end
+
+  def test_to_s_media_feature_resolution
+    # Test resolution feature
+    css = '@media (min-resolution: 2dppx) { .retina { background-size: cover; } }'
+    sheet = Cataract::Stylesheet.parse(css)
+
+    expected = <<~CSS.chomp
+      @media (min-resolution: 2dppx) {
+      .retina { background-size: cover; }
+      }
+    CSS
+
+    assert_equal expected, sheet.to_s.chomp
+  end
+
+  def test_to_s_groups_consecutive_identical_media_queries
+    # Consecutive identical media queries should be grouped
+    css_input = <<~CSS
+      @media (min-width: 768px) { .nav { display: flex; } }
+      @media (min-width: 768px) { .header { padding: 20px; } }
+      p { margin: 0; }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css_input)
+
+    expected = <<~CSS.chomp
+      @media (min-width: 768px) {
+      .nav { display: flex; }
+      .header { padding: 20px; }
+      }
+      p { margin: 0; }
+    CSS
+
+    assert_equal expected, sheet.to_s.chomp
+  end
+
+  def test_to_s_separates_different_media_queries
+    # Different media queries should NOT be grouped
+    css_input = <<~CSS
+      @media (min-width: 768px) { .desktop { display: block; } }
+      @media (max-width: 767px) { .mobile { display: block; } }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css_input)
+
+    expected = <<~CSS.chomp
+      @media (min-width: 768px) {
+      .desktop { display: block; }
+      }
+      @media (max-width: 767px) {
+      .mobile { display: block; }
+      }
+    CSS
+
+    assert_equal expected, sheet.to_s.chomp
+  end
+
+  def test_to_s_mixed_media_types_and_queries
+    # Mix of simple media types and complex queries
+    css_input = <<~CSS
+      @media print { .print { color: black; } }
+      @media (min-width: 768px) { .wide { max-width: 1200px; } }
+      @media screen and (orientation: landscape) { .screen-landscape { display: flex; } }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css_input)
+
+    expected = <<~CSS.chomp
+      @media print {
+      .print { color: black; }
+      }
+      @media (min-width: 768px) {
+      .wide { max-width: 1200px; }
+      }
+      @media screen and (orientation: landscape) {
+      .screen-landscape { display: flex; }
+      }
+    CSS
+
+    assert_equal expected, sheet.to_s.chomp
+  end
+
+  def test_to_formatted_s_with_single_media_feature
+    css = '@media (orientation: landscape) { .wide { width: 100%; } }'
+    sheet = Cataract::Stylesheet.parse(css)
+
+    expected = <<~CSS
+      @media (orientation: landscape) {
+        .wide {
+          width: 100%;
+        }
+      }
+    CSS
+
+    assert_equal expected, sheet.to_formatted_s
+  end
+
+  def test_to_formatted_s_with_complex_media_query
+    css = '@media screen and (min-width: 768px) and (max-width: 1024px) { .tablet { padding: 10px; } }'
+    sheet = Cataract::Stylesheet.parse(css)
+
+    expected = <<~CSS
+      @media screen and (min-width: 768px) and (max-width: 1024px) {
+        .tablet {
+          padding: 10px;
+        }
+      }
+    CSS
+
+    assert_equal expected, sheet.to_formatted_s
+  end
 end
