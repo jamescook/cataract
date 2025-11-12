@@ -72,10 +72,10 @@ module Cataract
     BORDER_COLORS = [PROP_BORDER_TOP_COLOR, PROP_BORDER_RIGHT_COLOR, PROP_BORDER_BOTTOM_COLOR, PROP_BORDER_LEFT_COLOR].freeze
 
     # Side name constants (for string operations, not CSS properties)
-    SIDE_TOP = 'top'.freeze
-    SIDE_RIGHT = 'right'.freeze
-    SIDE_BOTTOM = 'bottom'.freeze
-    SIDE_LEFT = 'left'.freeze
+    SIDE_TOP = 'top'
+    SIDE_RIGHT = 'right'
+    SIDE_BOTTOM = 'bottom'
+    SIDE_LEFT = 'left'
     BORDER_SIDES = [SIDE_TOP, SIDE_RIGHT, SIDE_BOTTOM, SIDE_LEFT].freeze
 
     FONT_PROPERTIES = [PROP_FONT_STYLE, PROP_FONT_VARIANT, PROP_FONT_WEIGHT, PROP_FONT_SIZE, PROP_LINE_HEIGHT, PROP_FONT_FAMILY].freeze
