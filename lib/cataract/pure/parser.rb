@@ -65,44 +65,6 @@ module Cataract
       true
     end
 
-    # Strip outer parentheses from a string if present (byte-by-byte)
-    # "(orientation: landscape)" => "orientation: landscape"
-    # "screen" => "screen"
-    def strip_outer_parens(str)
-      return str if str.nil? || str.empty?
-
-      # Trim whitespace in-place
-      str.strip!
-      return str if str.empty?
-
-      len = str.bytesize
-      return str if len < 2
-
-      # Check if starts and ends with parens
-      if str.getbyte(0) == BYTE_LPAREN && str.getbyte(len - 1) == BYTE_RPAREN
-        # Verify these are matching outer parens by checking depth
-        depth = 0
-        i = 0
-        while i < len
-          byte = str.getbyte(i)
-          if byte == BYTE_LPAREN
-            depth += 1
-          elsif byte == BYTE_RPAREN
-            depth -= 1
-            # If we close to 0 before the last char, these aren't outer parens
-            return str if depth == 0 && i < len - 1
-          end
-          i += 1
-        end
-        # These are outer parens, strip them
-        result = str.byteslice(1, len - 2)
-        result.strip!
-        return result
-      end
-
-      str
-    end
-
     def initialize(css_string, parent_media_sym: nil, depth: 0)
       @css = css_string.dup.freeze
       @pos = 0
