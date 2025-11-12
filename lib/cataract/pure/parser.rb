@@ -27,6 +27,8 @@ module Cataract
     MAX_PROPERTY_NAME_LENGTH = 256
     MAX_PROPERTY_VALUE_LENGTH = 32_768
 
+    AT_RULE_TYPES = %w[supports layer container scope].freeze
+
     attr_reader :css, :pos, :len
 
     # Extract substring and force specified encoding
@@ -127,10 +129,6 @@ module Cataract
         skip_ws_and_comments
         break if eof?
 
-        if ENV['DEBUG_PARSER']
-          puts "DEBUG: Main loop, pos=#{@pos}, next 50 chars: #{@css[@pos, 50].inspect}"
-        end
-
         # Peek at next byte to determine what to parse
         byte = peek_byte
 
@@ -142,10 +140,6 @@ module Cataract
 
         # Must be a selector-based rule
         selector = parse_selector
-
-        if ENV['DEBUG_PARSER']
-          puts "DEBUG: Parsed selector: #{selector.inspect}, pos now=#{@pos}"
-        end
 
         next if selector.nil? || selector.empty?
 
@@ -273,13 +267,11 @@ module Cataract
       Cataract.ident_char?(byte)
     end
 
-    # Skip whitespace
     def skip_whitespace
       @pos += 1 while !eof? && whitespace?(peek_byte)
     end
 
-    # Skip CSS comments /* ... */
-    def skip_comment
+    def skip_comment # rubocop:disable Naming/PredicateMethod
       return false unless peek_byte == BYTE_SLASH && @css.getbyte(@pos + 1) == BYTE_STAR
 
       @pos += 2 # Skip /*
@@ -309,10 +301,6 @@ module Cataract
       depth = 1
       pos = start_pos
 
-      if ENV['DEBUG_PARSER']
-        puts "DEBUG: find_matching_brace start_pos=#{start_pos}, char at pos: #{@css[start_pos].inspect}"
-      end
-
       while pos < @len
         byte = @css.getbyte(pos)
         if byte == BYTE_LBRACE
@@ -322,10 +310,6 @@ module Cataract
           break if depth == 0 # Found matching brace, exit immediately
         end
         pos += 1
-      end
-
-      if ENV['DEBUG_PARSER']
-        puts "DEBUG: find_matching_brace end pos=#{pos}, depth=#{depth}, char at pos: #{@css[pos].inspect if pos < @len}"
       end
 
       pos
@@ -342,35 +326,19 @@ module Cataract
     def parse_selector
       start_pos = @pos
 
-      if ENV['DEBUG_PARSER']
-        puts "DEBUG: parse_selector start_pos=#{start_pos}, next 50: #{@css[start_pos, 50].inspect}"
-      end
-
       # Read until we find '{'
-      while !eof? && peek_byte != BYTE_LBRACE
+      until eof? || peek_byte == BYTE_LBRACE # Flip to save a 'opt_not' instruction: while !eof? && peek_byte != BYTE_LBRACE
         @pos += 1
       end
 
       # If we hit EOF without finding '{', return nil
       return nil if eof?
 
-      if ENV['DEBUG_PARSER']
-        puts "DEBUG: parse_selector found '{' at pos=#{@pos}, char: #{@css[@pos].inspect}"
-      end
-
       # Extract selector text
       selector_text = byteslice_encoded(start_pos, @pos - start_pos)
 
-      if ENV['DEBUG_PARSER']
-        puts "DEBUG: parse_selector extracted: #{selector_text.inspect}"
-      end
-
       # Skip the '{'
       @pos += 1 if peek_byte == BYTE_LBRACE
-
-      if ENV['DEBUG_PARSER']
-        puts "DEBUG: parse_selector after skip, pos=#{@pos}"
-      end
 
       # Trim whitespace from selector (in-place to avoid allocation)
       selector_text.strip!
@@ -747,7 +715,7 @@ module Cataract
 
       # Handle conditional group at-rules: @supports, @layer, @container, @scope
       # These behave like @media but don't affect media context
-      if %w[supports layer container scope].include?(at_rule_name)
+      if AT_RULE_TYPES.include?(at_rule_name)
         skip_ws_and_comments
 
         # Skip to opening brace
@@ -884,10 +852,6 @@ module Cataract
         @pos = block_end
         @pos += 1 if @pos < @len && @css.getbyte(@pos) == BYTE_RBRACE
 
-        if ENV['DEBUG_PARSER']
-          puts "DEBUG: After @media, pos=#{@pos}, next 50 chars: #{@css[@pos, 50].inspect}"
-        end
-
         return
       end
 
@@ -996,7 +960,7 @@ module Cataract
       selector_start = at_rule_start # Points to '@'
 
       # Skip to opening brace
-      while !eof? && peek_byte != BYTE_LBRACE
+      until eof? || peek_byte == BYTE_LBRACE # Save a not_opt instruction: while !eof? && peek_byte != BYTE_LBRACE
         @pos += 1
       end
 
@@ -1211,9 +1175,10 @@ module Cataract
 
     # Skip to next semicolon or closing brace (error recovery)
     def skip_to_semicolon_or_brace
-      while !eof? && peek_byte != BYTE_SEMICOLON && peek_byte != BYTE_RBRACE
+      until eof? || peek_byte == BYTE_SEMICOLON || peek_byte == BYTE_RBRACE # Flip to save a not_opt instruction: while !eof? && peek_byte != BYTE_SEMICOLON && peek_byte != BYTE_RBRACE
         @pos += 1
       end
+
       @pos += 1 if peek_byte == BYTE_SEMICOLON # consume semicolon
     end
 
