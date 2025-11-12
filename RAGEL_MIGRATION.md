@@ -2,7 +2,7 @@
 
 ## Why We Switched
 
-Started with Ragel as an experiment for the CSS parser, but quickly moved to hand-written pure C in October 2024.
+Started with Ragel as an experiment for the CSS parser, but quickly moved to hand-written pure C in October 2025.
 
 ### Performance
 
@@ -55,6 +55,6 @@ Pure C is more verbose than Ragel's DSL, but the performance gains and simpler b
 
 ## Details
 
-- Swapped in October 2024
+- Swapped in October 2025
 - Files: `css_parser.c`, `specificity.c`, `value_splitter.c`
 - API unchanged, all tests pass
