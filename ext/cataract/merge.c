@@ -1,9 +1,12 @@
 #include "cataract.h"
 
+// Array indices for property metadata: [source_order, specificity, important, value]
+#define PROP_SOURCE_ORDER 0
+#define PROP_SPECIFICITY 1
+#define PROP_IMPORTANT 2
+#define PROP_VALUE 3
+
 // Cache frequently used symbol IDs (initialized in init_merge_constants)
-static ID id_value = 0;
-static ID id_specificity = 0;
-static ID id_important = 0;
 static ID id_all = 0;
 
 // Cached ivar IDs for Stylesheet
@@ -62,6 +65,7 @@ static VALUE str_background_position = Qnil;
 // Context for expanded property iteration
 struct expand_context {
     VALUE properties_hash;
+    long source_order;
     int specificity;
     VALUE important;
 };
@@ -78,34 +82,40 @@ static int merge_expanded_callback(VALUE exp_prop, VALUE exp_value, VALUE ctx_va
     VALUE existing = rb_hash_aref(ctx->properties_hash, exp_prop);
 
     if (NIL_P(existing)) {
-        VALUE prop_data = rb_hash_new();
-        rb_hash_aset(prop_data, ID2SYM(id_value), exp_value);
-        rb_hash_aset(prop_data, ID2SYM(id_specificity), INT2NUM(ctx->specificity));
-        rb_hash_aset(prop_data, ID2SYM(id_important), ctx->important);
-        // Note: declaration_struct not stored - use global cDeclaration instead
+        // Create array: [source_order, specificity, important, value]
+        VALUE prop_data = rb_ary_new_capa(4);
+        rb_ary_push(prop_data, LONG2NUM(ctx->source_order));
+        rb_ary_push(prop_data, INT2NUM(ctx->specificity));
+        rb_ary_push(prop_data, ctx->important);
+        rb_ary_push(prop_data, exp_value);
         rb_hash_aset(ctx->properties_hash, exp_prop, prop_data);
     } else {
-        VALUE existing_spec = rb_hash_aref(existing, ID2SYM(id_specificity));
-        VALUE existing_important = rb_hash_aref(existing, ID2SYM(id_important));
-
-        int existing_spec_int = NUM2INT(existing_spec);
+        // Access array elements directly
+        long existing_order = NUM2LONG(RARRAY_AREF(existing, PROP_SOURCE_ORDER));
+        int existing_spec_int = NUM2INT(RARRAY_AREF(existing, PROP_SPECIFICITY));
+        VALUE existing_important = RARRAY_AREF(existing, PROP_IMPORTANT);
         int existing_is_important = RTEST(existing_important);
 
         int should_replace = 0;
         if (is_important) {
-            if (!existing_is_important || existing_spec_int <= ctx->specificity) {
+            if (!existing_is_important || existing_spec_int < ctx->specificity ||
+                (existing_spec_int == ctx->specificity && existing_order <= ctx->source_order)) {
                 should_replace = 1;
             }
         } else {
-            if (!existing_is_important && existing_spec_int <= ctx->specificity) {
+            if (!existing_is_important &&
+                (existing_spec_int < ctx->specificity ||
+                 (existing_spec_int == ctx->specificity && existing_order <= ctx->source_order))) {
                 should_replace = 1;
             }
         }
 
         if (should_replace) {
-            rb_hash_aset(existing, ID2SYM(id_value), exp_value);
-            rb_hash_aset(existing, ID2SYM(id_specificity), INT2NUM(ctx->specificity));
-            rb_hash_aset(existing, ID2SYM(id_important), ctx->important);
+            // Update array elements
+            RARRAY_ASET(existing, PROP_SOURCE_ORDER, LONG2NUM(ctx->source_order));
+            RARRAY_ASET(existing, PROP_SPECIFICITY, INT2NUM(ctx->specificity));
+            RARRAY_ASET(existing, PROP_IMPORTANT, ctx->important);
+            RARRAY_ASET(existing, PROP_VALUE, exp_value);
         }
     }
 
@@ -116,9 +126,9 @@ static int merge_expanded_callback(VALUE exp_prop, VALUE exp_value, VALUE ctx_va
 
 // Callback for rb_hash_foreach - builds result array from properties hash
 static int merge_build_result_callback(VALUE property, VALUE prop_data, VALUE result_ary) {
-    // Extract value and important flag from prop_data
-    VALUE value = rb_hash_aref(prop_data, ID2SYM(id_value));
-    VALUE important = rb_hash_aref(prop_data, ID2SYM(id_important));
+    // Extract value and important flag from array: [source_order, specificity, important, value]
+    VALUE value = RARRAY_AREF(prop_data, PROP_VALUE);
+    VALUE important = RARRAY_AREF(prop_data, PROP_IMPORTANT);
 
     // Create Declaration struct (use global cDeclaration)
     VALUE decl_struct = rb_struct_new(cDeclaration, property, value, important);
@@ -130,9 +140,6 @@ static int merge_build_result_callback(VALUE property, VALUE prop_data, VALUE re
 // Initialize cached property strings (called once at module init)
 void init_merge_constants(void) {
     // Initialize symbol IDs
-    id_value = rb_intern("value");
-    id_specificity = rb_intern("specificity");
-    id_important = rb_intern("important");
     id_all = rb_intern("all");
 
     // Initialize ivar IDs for Stylesheet
@@ -251,10 +258,10 @@ void init_merge_constants(void) {
 }
 
 // Helper macros to extract property data from properties_hash
-// Note: These use id_value, id_specificity, id_important which are initialized in cataract_merge
+// Properties are stored as arrays: [source_order, specificity, important, value]
 #define GET_PROP_VALUE(hash, prop_name) \
     ({ VALUE pd = rb_hash_aref(hash, USASCII_STR(prop_name)); \
-       NIL_P(pd) ? Qnil : rb_hash_aref(pd, ID2SYM(id_value)); })
+       NIL_P(pd) ? Qnil : RARRAY_AREF(pd, PROP_VALUE); })
 
 #define GET_PROP_DATA(hash, prop_name) \
     rb_hash_aref(hash, USASCII_STR(prop_name))
@@ -262,7 +269,7 @@ void init_merge_constants(void) {
 // Versions that accept cached VALUE strings instead of string literals
 #define GET_PROP_VALUE_STR(hash, str_prop) \
     ({ VALUE pd = rb_hash_aref(hash, str_prop); \
-       NIL_P(pd) ? Qnil : rb_hash_aref(pd, ID2SYM(id_value)); })
+       NIL_P(pd) ? Qnil : RARRAY_AREF(pd, PROP_VALUE); })
 
 #define GET_PROP_DATA_STR(hash, str_prop) \
     rb_hash_aref(hash, str_prop)
@@ -270,7 +277,7 @@ void init_merge_constants(void) {
 // Helper macro to check if a property's !important flag matches a reference
 #define CHECK_IMPORTANT_MATCH(hash, str_prop, ref_important) \
     ({ VALUE _pd = GET_PROP_DATA_STR(hash, str_prop); \
-       NIL_P(_pd) ? 1 : (RTEST(rb_hash_aref(_pd, ID2SYM(id_important))) == (ref_important)); })
+       NIL_P(_pd) ? 1 : (RTEST(RARRAY_AREF(_pd, PROP_IMPORTANT)) == (ref_important)); })
 
 // Macro to create shorthand from 4-sided properties (margin, padding, border-width/style/color)
 // Reduces repetitive code by encapsulating the common pattern:
@@ -293,10 +300,10 @@ void init_merge_constants(void) {
             VALUE _bottom_data = GET_PROP_DATA_STR(hash, str_bottom); \
             VALUE _left_data = GET_PROP_DATA_STR(hash, str_left); \
             \
-            VALUE _top_imp = rb_hash_aref(_top_data, ID2SYM(id_important)); \
-            VALUE _right_imp = rb_hash_aref(_right_data, ID2SYM(id_important)); \
-            VALUE _bottom_imp = rb_hash_aref(_bottom_data, ID2SYM(id_important)); \
-            VALUE _left_imp = rb_hash_aref(_left_data, ID2SYM(id_important)); \
+            VALUE _top_imp = RARRAY_AREF(_top_data, PROP_IMPORTANT); \
+            VALUE _right_imp = RARRAY_AREF(_right_data, PROP_IMPORTANT); \
+            VALUE _bottom_imp = RARRAY_AREF(_bottom_data, PROP_IMPORTANT); \
+            VALUE _left_imp = RARRAY_AREF(_left_data, PROP_IMPORTANT); \
             \
             int _top_is_imp = RTEST(_top_imp); \
             int _right_is_imp = RTEST(_right_imp); \
@@ -313,12 +320,14 @@ void init_merge_constants(void) {
                 \
                 VALUE _shorthand_value = creator_func(Qnil, _props); \
                 if (!NIL_P(_shorthand_value)) { \
-                    int _specificity = NUM2INT(rb_hash_aref(_top_data, ID2SYM(id_specificity))); \
+                    long _source_order = NUM2LONG(RARRAY_AREF(_top_data, PROP_SOURCE_ORDER)); \
+                    int _specificity = NUM2INT(RARRAY_AREF(_top_data, PROP_SPECIFICITY)); \
                     \
-                    VALUE _shorthand_data = rb_hash_new(); \
-                    rb_hash_aset(_shorthand_data, ID2SYM(id_value), _shorthand_value); \
-                    rb_hash_aset(_shorthand_data, ID2SYM(id_specificity), INT2NUM(_specificity)); \
-                    rb_hash_aset(_shorthand_data, ID2SYM(id_important), _top_imp); \
+                    VALUE _shorthand_data = rb_ary_new_capa(4); \
+                    rb_ary_push(_shorthand_data, LONG2NUM(_source_order)); \
+                    rb_ary_push(_shorthand_data, INT2NUM(_specificity)); \
+                    rb_ary_push(_shorthand_data, _top_imp); \
+                    rb_ary_push(_shorthand_data, _shorthand_value); \
                     rb_hash_aset(hash, str_shorthand, _shorthand_data); \
                     \
                     rb_hash_delete(hash, str_top); \
@@ -349,24 +358,25 @@ void init_merge_constants(void) {
         VALUE _left_data = rb_hash_aref(hash, STR_NEW_CSTR(_left_name)); \
         \
         if (!NIL_P(_top_data) && !NIL_P(_right_data) && !NIL_P(_bottom_data) && !NIL_P(_left_data)) { \
-            VALUE _top_imp = rb_hash_aref(_top_data, ID2SYM(id_important)); \
-            VALUE _right_imp = rb_hash_aref(_right_data, ID2SYM(id_important)); \
-            VALUE _bottom_imp = rb_hash_aref(_bottom_data, ID2SYM(id_important)); \
-            VALUE _left_imp = rb_hash_aref(_left_data, ID2SYM(id_important)); \
+            VALUE _top_imp = RARRAY_AREF(_top_data, PROP_IMPORTANT); \
+            VALUE _right_imp = RARRAY_AREF(_right_data, PROP_IMPORTANT); \
+            VALUE _bottom_imp = RARRAY_AREF(_bottom_data, PROP_IMPORTANT); \
+            VALUE _left_imp = RARRAY_AREF(_left_data, PROP_IMPORTANT); \
             \
             if (RTEST(_top_imp) == RTEST(_right_imp) && RTEST(_top_imp) == RTEST(_bottom_imp) && RTEST(_top_imp) == RTEST(_left_imp)) { \
                 VALUE _props = rb_hash_new(); \
-                rb_hash_aset(_props, STR_NEW_CSTR(_top_name), rb_hash_aref(_top_data, ID2SYM(id_value))); \
-                rb_hash_aset(_props, STR_NEW_CSTR(_right_name), rb_hash_aref(_right_data, ID2SYM(id_value))); \
-                rb_hash_aset(_props, STR_NEW_CSTR(_bottom_name), rb_hash_aref(_bottom_data, ID2SYM(id_value))); \
-                rb_hash_aset(_props, STR_NEW_CSTR(_left_name), rb_hash_aref(_left_data, ID2SYM(id_value))); \
+                rb_hash_aset(_props, STR_NEW_CSTR(_top_name), RARRAY_AREF(_top_data, PROP_VALUE)); \
+                rb_hash_aset(_props, STR_NEW_CSTR(_right_name), RARRAY_AREF(_right_data, PROP_VALUE)); \
+                rb_hash_aset(_props, STR_NEW_CSTR(_bottom_name), RARRAY_AREF(_bottom_data, PROP_VALUE)); \
+                rb_hash_aset(_props, STR_NEW_CSTR(_left_name), RARRAY_AREF(_left_data, PROP_VALUE)); \
                 \
                 VALUE _shorthand_value = creator_func(Qnil, _props); \
                 if (!NIL_P(_shorthand_value)) { \
-                    VALUE _shorthand_data = rb_hash_new(); \
-                    rb_hash_aset(_shorthand_data, ID2SYM(id_value), _shorthand_value); \
-                    rb_hash_aset(_shorthand_data, ID2SYM(id_specificity), rb_hash_aref(_top_data, ID2SYM(id_specificity))); \
-                    rb_hash_aset(_shorthand_data, ID2SYM(id_important), _top_imp); \
+                    VALUE _shorthand_data = rb_ary_new_capa(4); \
+                    rb_ary_push(_shorthand_data, RARRAY_AREF(_top_data, PROP_SOURCE_ORDER)); \
+                    rb_ary_push(_shorthand_data, RARRAY_AREF(_top_data, PROP_SPECIFICITY)); \
+                    rb_ary_push(_shorthand_data, _top_imp); \
+                    rb_ary_push(_shorthand_data, _shorthand_value); \
                     rb_hash_aset(hash, rb_usascii_str_new(prefix, strlen(prefix)), _shorthand_data); \
                     \
                     rb_hash_delete(hash, STR_NEW_CSTR(_top_name)); \
@@ -407,28 +417,29 @@ static int process_expanded_property(VALUE prop_name, VALUE prop_value, VALUE ar
     VALUE existing = rb_hash_aref(properties_hash, prop_name);
     if (NIL_P(existing)) {
         DEBUG_PRINTF("             -> NEW property\n");
-        VALUE prop_data = rb_hash_new();
-        rb_hash_aset(prop_data, ID2SYM(id_value), prop_value);
-        rb_hash_aset(prop_data, ID2SYM(id_specificity), INT2NUM(specificity));
-        rb_hash_aset(prop_data, ID2SYM(id_important), is_important ? Qtrue : Qfalse);
-        rb_hash_aset(prop_data, ID2SYM(rb_intern("source_order")), LONG2NUM(source_order));
+        // Create array: [source_order, specificity, important, value]
+        VALUE prop_data = rb_ary_new_capa(4);
+        rb_ary_push(prop_data, LONG2NUM(source_order));
+        rb_ary_push(prop_data, INT2NUM(specificity));
+        rb_ary_push(prop_data, is_important ? Qtrue : Qfalse);
+        rb_ary_push(prop_data, prop_value);
         rb_hash_aset(properties_hash, prop_name, prop_data);
     } else {
         // Property exists - apply CSS cascade rules
-        VALUE existing_important = rb_hash_aref(existing, ID2SYM(id_important));
-        VALUE existing_source_order_val = rb_hash_aref(existing, ID2SYM(rb_intern("source_order")));
-
+        long existing_source_order = NUM2LONG(RARRAY_AREF(existing, PROP_SOURCE_ORDER));
+        int existing_spec = NUM2INT(RARRAY_AREF(existing, PROP_SPECIFICITY));
+        VALUE existing_important = RARRAY_AREF(existing, PROP_IMPORTANT);
         int existing_is_important = RTEST(existing_important);
-        long existing_source_order = NUM2LONG(existing_source_order_val);
 
-        DEBUG_PRINTF("             -> COLLISION: existing important=%d source_order=%ld, new important=%d source_order=%ld\n",
-                     existing_is_important, existing_source_order, is_important, source_order);
+        DEBUG_PRINTF("             -> COLLISION: existing spec=%d important=%d source_order=%ld, new spec=%d important=%d source_order=%ld\n",
+                     existing_spec, existing_is_important, existing_source_order,
+                     specificity, is_important, source_order);
 
         int should_replace = 0;
 
         // Apply CSS cascade rules:
         // 1. !important always wins over non-!important
-        // 2. Higher specificity wins (same selector = same specificity, skip)
+        // 2. Higher specificity wins
         // 3. Later source order wins
         if (is_important && !existing_is_important) {
             // New declaration is !important, existing is not - replace
@@ -439,17 +450,22 @@ static int process_expanded_property(VALUE prop_name, VALUE prop_value, VALUE ar
             should_replace = 0;
             DEBUG_PRINTF("             -> KEEP (existing is !important, new is not)\n");
         } else {
-            // Same importance level - later source order wins
-            should_replace = source_order > existing_source_order;
-            DEBUG_PRINTF("             -> %s (same importance, %s source order)\n",
+            // Same importance level - check specificity then source order
+            if (specificity > existing_spec) {
+                should_replace = 1;
+            } else if (specificity == existing_spec) {
+                should_replace = source_order > existing_source_order;
+            }
+            DEBUG_PRINTF("             -> %s (same importance, spec=%d vs %d, order=%ld vs %ld)\n",
                          should_replace ? "REPLACE" : "KEEP",
-                         should_replace ? "later" : "earlier");
+                         specificity, existing_spec, source_order, existing_source_order);
         }
 
         if (should_replace) {
-            rb_hash_aset(existing, ID2SYM(id_value), prop_value);
-            rb_hash_aset(existing, ID2SYM(id_important), is_important ? Qtrue : Qfalse);
-            rb_hash_aset(existing, ID2SYM(rb_intern("source_order")), LONG2NUM(source_order));
+            RARRAY_ASET(existing, PROP_SOURCE_ORDER, LONG2NUM(source_order));
+            RARRAY_ASET(existing, PROP_SPECIFICITY, INT2NUM(specificity));
+            RARRAY_ASET(existing, PROP_IMPORTANT, is_important ? Qtrue : Qfalse);
+            RARRAY_ASET(existing, PROP_VALUE, prop_value);
         }
     }
 
@@ -653,24 +669,25 @@ static VALUE merge_rules_for_selector(VALUE rules_array, VALUE rule_indices, VAL
         VALUE left = rb_hash_aref(properties_hash, STR_NEW_CSTR("border-left-width"));
 
         if (!NIL_P(top) && !NIL_P(right) && !NIL_P(bottom) && !NIL_P(left)) {
-            VALUE top_imp = rb_hash_aref(top, ID2SYM(id_important));
-            VALUE right_imp = rb_hash_aref(right, ID2SYM(id_important));
-            VALUE bottom_imp = rb_hash_aref(bottom, ID2SYM(id_important));
-            VALUE left_imp = rb_hash_aref(left, ID2SYM(id_important));
+            VALUE top_imp = RARRAY_AREF(top, PROP_IMPORTANT);
+            VALUE right_imp = RARRAY_AREF(right, PROP_IMPORTANT);
+            VALUE bottom_imp = RARRAY_AREF(bottom, PROP_IMPORTANT);
+            VALUE left_imp = RARRAY_AREF(left, PROP_IMPORTANT);
 
             if (RTEST(top_imp) == RTEST(right_imp) && RTEST(top_imp) == RTEST(bottom_imp) && RTEST(top_imp) == RTEST(left_imp)) {
                 VALUE props = rb_hash_new();
-                rb_hash_aset(props, STR_NEW_CSTR("border-top-width"), rb_hash_aref(top, ID2SYM(id_value)));
-                rb_hash_aset(props, STR_NEW_CSTR("border-right-width"), rb_hash_aref(right, ID2SYM(id_value)));
-                rb_hash_aset(props, STR_NEW_CSTR("border-bottom-width"), rb_hash_aref(bottom, ID2SYM(id_value)));
-                rb_hash_aset(props, STR_NEW_CSTR("border-left-width"), rb_hash_aref(left, ID2SYM(id_value)));
+                rb_hash_aset(props, STR_NEW_CSTR("border-top-width"), RARRAY_AREF(top, PROP_VALUE));
+                rb_hash_aset(props, STR_NEW_CSTR("border-right-width"), RARRAY_AREF(right, PROP_VALUE));
+                rb_hash_aset(props, STR_NEW_CSTR("border-bottom-width"), RARRAY_AREF(bottom, PROP_VALUE));
+                rb_hash_aset(props, STR_NEW_CSTR("border-left-width"), RARRAY_AREF(left, PROP_VALUE));
 
                 VALUE shorthand_value = cataract_create_border_width_shorthand(Qnil, props);
                 if (!NIL_P(shorthand_value)) {
-                    VALUE shorthand_data = rb_hash_new();
-                    rb_hash_aset(shorthand_data, ID2SYM(id_value), shorthand_value);
-                    rb_hash_aset(shorthand_data, ID2SYM(id_specificity), rb_hash_aref(top, ID2SYM(id_specificity)));
-                    rb_hash_aset(shorthand_data, ID2SYM(id_important), top_imp);
+                    VALUE shorthand_data = rb_ary_new_capa(4);
+                    rb_ary_push(shorthand_data, RARRAY_AREF(top, PROP_SOURCE_ORDER));
+                    rb_ary_push(shorthand_data, RARRAY_AREF(top, PROP_SPECIFICITY));
+                    rb_ary_push(shorthand_data, top_imp);
+                    rb_ary_push(shorthand_data, shorthand_value);
                     rb_hash_aset(properties_hash, USASCII_STR("border-width"), shorthand_data);
 
                     rb_hash_delete(properties_hash, STR_NEW_CSTR("border-top-width"));
@@ -691,24 +708,25 @@ static VALUE merge_rules_for_selector(VALUE rules_array, VALUE rule_indices, VAL
         VALUE left = rb_hash_aref(properties_hash, STR_NEW_CSTR("border-left-style"));
 
         if (!NIL_P(top) && !NIL_P(right) && !NIL_P(bottom) && !NIL_P(left)) {
-            VALUE top_imp = rb_hash_aref(top, ID2SYM(id_important));
-            VALUE right_imp = rb_hash_aref(right, ID2SYM(id_important));
-            VALUE bottom_imp = rb_hash_aref(bottom, ID2SYM(id_important));
-            VALUE left_imp = rb_hash_aref(left, ID2SYM(id_important));
+            VALUE top_imp = RARRAY_AREF(top, PROP_IMPORTANT);
+            VALUE right_imp = RARRAY_AREF(right, PROP_IMPORTANT);
+            VALUE bottom_imp = RARRAY_AREF(bottom, PROP_IMPORTANT);
+            VALUE left_imp = RARRAY_AREF(left, PROP_IMPORTANT);
 
             if (RTEST(top_imp) == RTEST(right_imp) && RTEST(top_imp) == RTEST(bottom_imp) && RTEST(top_imp) == RTEST(left_imp)) {
                 VALUE props = rb_hash_new();
-                rb_hash_aset(props, STR_NEW_CSTR("border-top-style"), rb_hash_aref(top, ID2SYM(id_value)));
-                rb_hash_aset(props, STR_NEW_CSTR("border-right-style"), rb_hash_aref(right, ID2SYM(id_value)));
-                rb_hash_aset(props, STR_NEW_CSTR("border-bottom-style"), rb_hash_aref(bottom, ID2SYM(id_value)));
-                rb_hash_aset(props, STR_NEW_CSTR("border-left-style"), rb_hash_aref(left, ID2SYM(id_value)));
+                rb_hash_aset(props, STR_NEW_CSTR("border-top-style"), RARRAY_AREF(top, PROP_VALUE));
+                rb_hash_aset(props, STR_NEW_CSTR("border-right-style"), RARRAY_AREF(right, PROP_VALUE));
+                rb_hash_aset(props, STR_NEW_CSTR("border-bottom-style"), RARRAY_AREF(bottom, PROP_VALUE));
+                rb_hash_aset(props, STR_NEW_CSTR("border-left-style"), RARRAY_AREF(left, PROP_VALUE));
 
                 VALUE shorthand_value = cataract_create_border_style_shorthand(Qnil, props);
                 if (!NIL_P(shorthand_value)) {
-                    VALUE shorthand_data = rb_hash_new();
-                    rb_hash_aset(shorthand_data, ID2SYM(id_value), shorthand_value);
-                    rb_hash_aset(shorthand_data, ID2SYM(id_specificity), rb_hash_aref(top, ID2SYM(id_specificity)));
-                    rb_hash_aset(shorthand_data, ID2SYM(id_important), top_imp);
+                    VALUE shorthand_data = rb_ary_new_capa(4);
+                    rb_ary_push(shorthand_data, RARRAY_AREF(top, PROP_SOURCE_ORDER));
+                    rb_ary_push(shorthand_data, RARRAY_AREF(top, PROP_SPECIFICITY));
+                    rb_ary_push(shorthand_data, top_imp);
+                    rb_ary_push(shorthand_data, shorthand_value);
                     rb_hash_aset(properties_hash, USASCII_STR("border-style"), shorthand_data);
 
                     rb_hash_delete(properties_hash, STR_NEW_CSTR("border-top-style"));
@@ -729,24 +747,25 @@ static VALUE merge_rules_for_selector(VALUE rules_array, VALUE rule_indices, VAL
         VALUE left = rb_hash_aref(properties_hash, STR_NEW_CSTR("border-left-color"));
 
         if (!NIL_P(top) && !NIL_P(right) && !NIL_P(bottom) && !NIL_P(left)) {
-            VALUE top_imp = rb_hash_aref(top, ID2SYM(id_important));
-            VALUE right_imp = rb_hash_aref(right, ID2SYM(id_important));
-            VALUE bottom_imp = rb_hash_aref(bottom, ID2SYM(id_important));
-            VALUE left_imp = rb_hash_aref(left, ID2SYM(id_important));
+            VALUE top_imp = RARRAY_AREF(top, PROP_IMPORTANT);
+            VALUE right_imp = RARRAY_AREF(right, PROP_IMPORTANT);
+            VALUE bottom_imp = RARRAY_AREF(bottom, PROP_IMPORTANT);
+            VALUE left_imp = RARRAY_AREF(left, PROP_IMPORTANT);
 
             if (RTEST(top_imp) == RTEST(right_imp) && RTEST(top_imp) == RTEST(bottom_imp) && RTEST(top_imp) == RTEST(left_imp)) {
                 VALUE props = rb_hash_new();
-                rb_hash_aset(props, STR_NEW_CSTR("border-top-color"), rb_hash_aref(top, ID2SYM(id_value)));
-                rb_hash_aset(props, STR_NEW_CSTR("border-right-color"), rb_hash_aref(right, ID2SYM(id_value)));
-                rb_hash_aset(props, STR_NEW_CSTR("border-bottom-color"), rb_hash_aref(bottom, ID2SYM(id_value)));
-                rb_hash_aset(props, STR_NEW_CSTR("border-left-color"), rb_hash_aref(left, ID2SYM(id_value)));
+                rb_hash_aset(props, STR_NEW_CSTR("border-top-color"), RARRAY_AREF(top, PROP_VALUE));
+                rb_hash_aset(props, STR_NEW_CSTR("border-right-color"), RARRAY_AREF(right, PROP_VALUE));
+                rb_hash_aset(props, STR_NEW_CSTR("border-bottom-color"), RARRAY_AREF(bottom, PROP_VALUE));
+                rb_hash_aset(props, STR_NEW_CSTR("border-left-color"), RARRAY_AREF(left, PROP_VALUE));
 
                 VALUE shorthand_value = cataract_create_border_color_shorthand(Qnil, props);
                 if (!NIL_P(shorthand_value)) {
-                    VALUE shorthand_data = rb_hash_new();
-                    rb_hash_aset(shorthand_data, ID2SYM(id_value), shorthand_value);
-                    rb_hash_aset(shorthand_data, ID2SYM(id_specificity), rb_hash_aref(top, ID2SYM(id_specificity)));
-                    rb_hash_aset(shorthand_data, ID2SYM(id_important), top_imp);
+                    VALUE shorthand_data = rb_ary_new_capa(4);
+                    rb_ary_push(shorthand_data, RARRAY_AREF(top, PROP_SOURCE_ORDER));
+                    rb_ary_push(shorthand_data, RARRAY_AREF(top, PROP_SPECIFICITY));
+                    rb_ary_push(shorthand_data, top_imp);
+                    rb_ary_push(shorthand_data, shorthand_value);
                     rb_hash_aset(properties_hash, USASCII_STR("border-color"), shorthand_data);
 
                     rb_hash_delete(properties_hash, STR_NEW_CSTR("border-top-color"));
@@ -767,24 +786,25 @@ static VALUE merge_rules_for_selector(VALUE rules_array, VALUE rule_indices, VAL
         VALUE left = rb_hash_aref(properties_hash, STR_NEW_CSTR("border-left-style"));
 
         if (!NIL_P(top) && !NIL_P(right) && !NIL_P(bottom) && !NIL_P(left)) {
-            VALUE top_imp = rb_hash_aref(top, ID2SYM(id_important));
-            VALUE right_imp = rb_hash_aref(right, ID2SYM(id_important));
-            VALUE bottom_imp = rb_hash_aref(bottom, ID2SYM(id_important));
-            VALUE left_imp = rb_hash_aref(left, ID2SYM(id_important));
+            VALUE top_imp = RARRAY_AREF(top, PROP_IMPORTANT);
+            VALUE right_imp = RARRAY_AREF(right, PROP_IMPORTANT);
+            VALUE bottom_imp = RARRAY_AREF(bottom, PROP_IMPORTANT);
+            VALUE left_imp = RARRAY_AREF(left, PROP_IMPORTANT);
 
             if (RTEST(top_imp) == RTEST(right_imp) && RTEST(top_imp) == RTEST(bottom_imp) && RTEST(top_imp) == RTEST(left_imp)) {
                 VALUE props = rb_hash_new();
-                rb_hash_aset(props, STR_NEW_CSTR("border-top-style"), rb_hash_aref(top, ID2SYM(id_value)));
-                rb_hash_aset(props, STR_NEW_CSTR("border-right-style"), rb_hash_aref(right, ID2SYM(id_value)));
-                rb_hash_aset(props, STR_NEW_CSTR("border-bottom-style"), rb_hash_aref(bottom, ID2SYM(id_value)));
-                rb_hash_aset(props, STR_NEW_CSTR("border-left-style"), rb_hash_aref(left, ID2SYM(id_value)));
+                rb_hash_aset(props, STR_NEW_CSTR("border-top-style"), RARRAY_AREF(top, PROP_VALUE));
+                rb_hash_aset(props, STR_NEW_CSTR("border-right-style"), RARRAY_AREF(right, PROP_VALUE));
+                rb_hash_aset(props, STR_NEW_CSTR("border-bottom-style"), RARRAY_AREF(bottom, PROP_VALUE));
+                rb_hash_aset(props, STR_NEW_CSTR("border-left-style"), RARRAY_AREF(left, PROP_VALUE));
 
                 VALUE shorthand_value = cataract_create_border_style_shorthand(Qnil, props);
                 if (!NIL_P(shorthand_value)) {
-                    VALUE shorthand_data = rb_hash_new();
-                    rb_hash_aset(shorthand_data, ID2SYM(id_value), shorthand_value);
-                    rb_hash_aset(shorthand_data, ID2SYM(id_specificity), rb_hash_aref(top, ID2SYM(id_specificity)));
-                    rb_hash_aset(shorthand_data, ID2SYM(id_important), top_imp);
+                    VALUE shorthand_data = rb_ary_new_capa(4);
+                    rb_ary_push(shorthand_data, RARRAY_AREF(top, PROP_SOURCE_ORDER));
+                    rb_ary_push(shorthand_data, RARRAY_AREF(top, PROP_SPECIFICITY));
+                    rb_ary_push(shorthand_data, top_imp);
+                    rb_ary_push(shorthand_data, shorthand_value);
                     rb_hash_aset(properties_hash, USASCII_STR("border-style"), shorthand_data);
 
                     rb_hash_delete(properties_hash, STR_NEW_CSTR("border-top-style"));
@@ -806,23 +826,24 @@ static VALUE merge_rules_for_selector(VALUE rules_array, VALUE rule_indices, VAL
         // Need at least style (border shorthand requires style)
         if (!NIL_P(style)) {
             // Check all have same !important flag
-            VALUE style_imp = rb_hash_aref(style, ID2SYM(id_important));
+            VALUE style_imp = RARRAY_AREF(style, PROP_IMPORTANT);
             int same_importance = 1;
-            if (!NIL_P(width)) same_importance = same_importance && (RTEST(style_imp) == RTEST(rb_hash_aref(width, ID2SYM(id_important))));
-            if (!NIL_P(color)) same_importance = same_importance && (RTEST(style_imp) == RTEST(rb_hash_aref(color, ID2SYM(id_important))));
+            if (!NIL_P(width)) same_importance = same_importance && (RTEST(style_imp) == RTEST(RARRAY_AREF(width, PROP_IMPORTANT)));
+            if (!NIL_P(color)) same_importance = same_importance && (RTEST(style_imp) == RTEST(RARRAY_AREF(color, PROP_IMPORTANT)));
 
             if (same_importance) {
                 VALUE props = rb_hash_new();
-                if (!NIL_P(width)) rb_hash_aset(props, STR_NEW_CSTR("border-width"), rb_hash_aref(width, ID2SYM(id_value)));
-                rb_hash_aset(props, STR_NEW_CSTR("border-style"), rb_hash_aref(style, ID2SYM(id_value)));
-                if (!NIL_P(color)) rb_hash_aset(props, STR_NEW_CSTR("border-color"), rb_hash_aref(color, ID2SYM(id_value)));
+                if (!NIL_P(width)) rb_hash_aset(props, STR_NEW_CSTR("border-width"), RARRAY_AREF(width, PROP_VALUE));
+                rb_hash_aset(props, STR_NEW_CSTR("border-style"), RARRAY_AREF(style, PROP_VALUE));
+                if (!NIL_P(color)) rb_hash_aset(props, STR_NEW_CSTR("border-color"), RARRAY_AREF(color, PROP_VALUE));
 
                 VALUE shorthand_value = cataract_create_border_shorthand(Qnil, props);
                 if (!NIL_P(shorthand_value)) {
-                    VALUE shorthand_data = rb_hash_new();
-                    rb_hash_aset(shorthand_data, ID2SYM(id_value), shorthand_value);
-                    rb_hash_aset(shorthand_data, ID2SYM(id_specificity), rb_hash_aref(style, ID2SYM(id_specificity)));
-                    rb_hash_aset(shorthand_data, ID2SYM(id_important), style_imp);
+                    VALUE shorthand_data = rb_ary_new_capa(4);
+                    rb_ary_push(shorthand_data, RARRAY_AREF(style, PROP_SOURCE_ORDER));
+                    rb_ary_push(shorthand_data, RARRAY_AREF(style, PROP_SPECIFICITY));
+                    rb_ary_push(shorthand_data, style_imp);
+                    rb_ary_push(shorthand_data, shorthand_value);
                     rb_hash_aset(properties_hash, USASCII_STR("border"), shorthand_data);
 
                     rb_hash_delete(properties_hash, STR_NEW_CSTR("border-width"));
@@ -850,28 +871,29 @@ static VALUE merge_rules_for_selector(VALUE rules_array, VALUE rule_indices, VAL
         if (list_count >= 2) {
             // Check all have same !important flag
             VALUE first_imp = Qnil;
-            if (!NIL_P(type)) first_imp = rb_hash_aref(type, ID2SYM(id_important));
-            else if (!NIL_P(position)) first_imp = rb_hash_aref(position, ID2SYM(id_important));
-            else if (!NIL_P(image)) first_imp = rb_hash_aref(image, ID2SYM(id_important));
+            if (!NIL_P(type)) first_imp = RARRAY_AREF(type, PROP_IMPORTANT);
+            else if (!NIL_P(position)) first_imp = RARRAY_AREF(position, PROP_IMPORTANT);
+            else if (!NIL_P(image)) first_imp = RARRAY_AREF(image, PROP_IMPORTANT);
 
             int same_importance = 1;
-            if (!NIL_P(type)) same_importance = same_importance && (RTEST(first_imp) == RTEST(rb_hash_aref(type, ID2SYM(id_important))));
-            if (!NIL_P(position)) same_importance = same_importance && (RTEST(first_imp) == RTEST(rb_hash_aref(position, ID2SYM(id_important))));
-            if (!NIL_P(image)) same_importance = same_importance && (RTEST(first_imp) == RTEST(rb_hash_aref(image, ID2SYM(id_important))));
+            if (!NIL_P(type)) same_importance = same_importance && (RTEST(first_imp) == RTEST(RARRAY_AREF(type, PROP_IMPORTANT)));
+            if (!NIL_P(position)) same_importance = same_importance && (RTEST(first_imp) == RTEST(RARRAY_AREF(position, PROP_IMPORTANT)));
+            if (!NIL_P(image)) same_importance = same_importance && (RTEST(first_imp) == RTEST(RARRAY_AREF(image, PROP_IMPORTANT)));
 
             if (same_importance) {
                 VALUE props = rb_hash_new();
-                if (!NIL_P(type)) rb_hash_aset(props, STR_NEW_CSTR("list-style-type"), rb_hash_aref(type, ID2SYM(id_value)));
-                if (!NIL_P(position)) rb_hash_aset(props, STR_NEW_CSTR("list-style-position"), rb_hash_aref(position, ID2SYM(id_value)));
-                if (!NIL_P(image)) rb_hash_aset(props, STR_NEW_CSTR("list-style-image"), rb_hash_aref(image, ID2SYM(id_value)));
+                if (!NIL_P(type)) rb_hash_aset(props, STR_NEW_CSTR("list-style-type"), RARRAY_AREF(type, PROP_VALUE));
+                if (!NIL_P(position)) rb_hash_aset(props, STR_NEW_CSTR("list-style-position"), RARRAY_AREF(position, PROP_VALUE));
+                if (!NIL_P(image)) rb_hash_aset(props, STR_NEW_CSTR("list-style-image"), RARRAY_AREF(image, PROP_VALUE));
 
                 VALUE shorthand_value = cataract_create_list_style_shorthand(Qnil, props);
                 if (!NIL_P(shorthand_value)) {
-                    VALUE shorthand_data = rb_hash_new();
-                    rb_hash_aset(shorthand_data, ID2SYM(id_value), shorthand_value);
                     VALUE first_prop = !NIL_P(type) ? type : (!NIL_P(position) ? position : image);
-                    rb_hash_aset(shorthand_data, ID2SYM(id_specificity), rb_hash_aref(first_prop, ID2SYM(id_specificity)));
-                    rb_hash_aset(shorthand_data, ID2SYM(id_important), first_imp);
+                    VALUE shorthand_data = rb_ary_new_capa(4);
+                    rb_ary_push(shorthand_data, RARRAY_AREF(first_prop, PROP_SOURCE_ORDER));
+                    rb_ary_push(shorthand_data, RARRAY_AREF(first_prop, PROP_SPECIFICITY));
+                    rb_ary_push(shorthand_data, first_imp);
+                    rb_ary_push(shorthand_data, shorthand_value);
                     rb_hash_aset(properties_hash, USASCII_STR("list-style"), shorthand_data);
 
                     rb_hash_delete(properties_hash, STR_NEW_CSTR("list-style-type"));
@@ -895,30 +917,31 @@ static VALUE merge_rules_for_selector(VALUE rules_array, VALUE rule_indices, VAL
             VALUE line_height = rb_hash_aref(properties_hash, STR_NEW_CSTR("line-height"));
 
             // Check all font properties have same !important flag
-            VALUE size_imp = rb_hash_aref(size, ID2SYM(id_important));
-            VALUE family_imp = rb_hash_aref(family, ID2SYM(id_important));
+            VALUE size_imp = RARRAY_AREF(size, PROP_IMPORTANT);
+            VALUE family_imp = RARRAY_AREF(family, PROP_IMPORTANT);
 
             int same_importance = (RTEST(size_imp) == RTEST(family_imp));
-            if (!NIL_P(style)) same_importance = same_importance && (RTEST(size_imp) == RTEST(rb_hash_aref(style, ID2SYM(id_important))));
-            if (!NIL_P(variant)) same_importance = same_importance && (RTEST(size_imp) == RTEST(rb_hash_aref(variant, ID2SYM(id_important))));
-            if (!NIL_P(weight)) same_importance = same_importance && (RTEST(size_imp) == RTEST(rb_hash_aref(weight, ID2SYM(id_important))));
-            if (!NIL_P(line_height)) same_importance = same_importance && (RTEST(size_imp) == RTEST(rb_hash_aref(line_height, ID2SYM(id_important))));
+            if (!NIL_P(style)) same_importance = same_importance && (RTEST(size_imp) == RTEST(RARRAY_AREF(style, PROP_IMPORTANT)));
+            if (!NIL_P(variant)) same_importance = same_importance && (RTEST(size_imp) == RTEST(RARRAY_AREF(variant, PROP_IMPORTANT)));
+            if (!NIL_P(weight)) same_importance = same_importance && (RTEST(size_imp) == RTEST(RARRAY_AREF(weight, PROP_IMPORTANT)));
+            if (!NIL_P(line_height)) same_importance = same_importance && (RTEST(size_imp) == RTEST(RARRAY_AREF(line_height, PROP_IMPORTANT)));
 
             if (same_importance) {
                 VALUE props = rb_hash_new();
-                rb_hash_aset(props, STR_NEW_CSTR("font-size"), rb_hash_aref(size, ID2SYM(id_value)));
-                rb_hash_aset(props, STR_NEW_CSTR("font-family"), rb_hash_aref(family, ID2SYM(id_value)));
-                if (!NIL_P(style)) rb_hash_aset(props, STR_NEW_CSTR("font-style"), rb_hash_aref(style, ID2SYM(id_value)));
-                if (!NIL_P(variant)) rb_hash_aset(props, STR_NEW_CSTR("font-variant"), rb_hash_aref(variant, ID2SYM(id_value)));
-                if (!NIL_P(weight)) rb_hash_aset(props, STR_NEW_CSTR("font-weight"), rb_hash_aref(weight, ID2SYM(id_value)));
-                if (!NIL_P(line_height)) rb_hash_aset(props, STR_NEW_CSTR("line-height"), rb_hash_aref(line_height, ID2SYM(id_value)));
+                rb_hash_aset(props, STR_NEW_CSTR("font-size"), RARRAY_AREF(size, PROP_VALUE));
+                rb_hash_aset(props, STR_NEW_CSTR("font-family"), RARRAY_AREF(family, PROP_VALUE));
+                if (!NIL_P(style)) rb_hash_aset(props, STR_NEW_CSTR("font-style"), RARRAY_AREF(style, PROP_VALUE));
+                if (!NIL_P(variant)) rb_hash_aset(props, STR_NEW_CSTR("font-variant"), RARRAY_AREF(variant, PROP_VALUE));
+                if (!NIL_P(weight)) rb_hash_aset(props, STR_NEW_CSTR("font-weight"), RARRAY_AREF(weight, PROP_VALUE));
+                if (!NIL_P(line_height)) rb_hash_aset(props, STR_NEW_CSTR("line-height"), RARRAY_AREF(line_height, PROP_VALUE));
 
                 VALUE shorthand_value = cataract_create_font_shorthand(Qnil, props);
                 if (!NIL_P(shorthand_value)) {
-                    VALUE shorthand_data = rb_hash_new();
-                    rb_hash_aset(shorthand_data, ID2SYM(id_value), shorthand_value);
-                    rb_hash_aset(shorthand_data, ID2SYM(id_specificity), rb_hash_aref(size, ID2SYM(id_specificity)));
-                    rb_hash_aset(shorthand_data, ID2SYM(id_important), size_imp);
+                    VALUE shorthand_data = rb_ary_new_capa(4);
+                    rb_ary_push(shorthand_data, RARRAY_AREF(size, PROP_SOURCE_ORDER));
+                    rb_ary_push(shorthand_data, RARRAY_AREF(size, PROP_SPECIFICITY));
+                    rb_ary_push(shorthand_data, size_imp);
+                    rb_ary_push(shorthand_data, shorthand_value);
                     rb_hash_aset(properties_hash, USASCII_STR("font"), shorthand_data);
 
                     rb_hash_delete(properties_hash, STR_NEW_CSTR("font-size"));
@@ -952,34 +975,35 @@ static VALUE merge_rules_for_selector(VALUE rules_array, VALUE rule_indices, VAL
         if (bg_count >= 2) {
             // Check all have same !important flag
             VALUE first_imp = Qnil;
-            if (!NIL_P(color)) first_imp = rb_hash_aref(color, ID2SYM(id_important));
-            else if (!NIL_P(image)) first_imp = rb_hash_aref(image, ID2SYM(id_important));
-            else if (!NIL_P(repeat)) first_imp = rb_hash_aref(repeat, ID2SYM(id_important));
-            else if (!NIL_P(position)) first_imp = rb_hash_aref(position, ID2SYM(id_important));
-            else if (!NIL_P(attachment)) first_imp = rb_hash_aref(attachment, ID2SYM(id_important));
+            if (!NIL_P(color)) first_imp = RARRAY_AREF(color, PROP_IMPORTANT);
+            else if (!NIL_P(image)) first_imp = RARRAY_AREF(image, PROP_IMPORTANT);
+            else if (!NIL_P(repeat)) first_imp = RARRAY_AREF(repeat, PROP_IMPORTANT);
+            else if (!NIL_P(position)) first_imp = RARRAY_AREF(position, PROP_IMPORTANT);
+            else if (!NIL_P(attachment)) first_imp = RARRAY_AREF(attachment, PROP_IMPORTANT);
 
             int same_importance = 1;
-            if (!NIL_P(color)) same_importance = same_importance && (RTEST(first_imp) == RTEST(rb_hash_aref(color, ID2SYM(id_important))));
-            if (!NIL_P(image)) same_importance = same_importance && (RTEST(first_imp) == RTEST(rb_hash_aref(image, ID2SYM(id_important))));
-            if (!NIL_P(repeat)) same_importance = same_importance && (RTEST(first_imp) == RTEST(rb_hash_aref(repeat, ID2SYM(id_important))));
-            if (!NIL_P(position)) same_importance = same_importance && (RTEST(first_imp) == RTEST(rb_hash_aref(position, ID2SYM(id_important))));
-            if (!NIL_P(attachment)) same_importance = same_importance && (RTEST(first_imp) == RTEST(rb_hash_aref(attachment, ID2SYM(id_important))));
+            if (!NIL_P(color)) same_importance = same_importance && (RTEST(first_imp) == RTEST(RARRAY_AREF(color, PROP_IMPORTANT)));
+            if (!NIL_P(image)) same_importance = same_importance && (RTEST(first_imp) == RTEST(RARRAY_AREF(image, PROP_IMPORTANT)));
+            if (!NIL_P(repeat)) same_importance = same_importance && (RTEST(first_imp) == RTEST(RARRAY_AREF(repeat, PROP_IMPORTANT)));
+            if (!NIL_P(position)) same_importance = same_importance && (RTEST(first_imp) == RTEST(RARRAY_AREF(position, PROP_IMPORTANT)));
+            if (!NIL_P(attachment)) same_importance = same_importance && (RTEST(first_imp) == RTEST(RARRAY_AREF(attachment, PROP_IMPORTANT)));
 
             if (same_importance) {
                 VALUE props = rb_hash_new();
-                if (!NIL_P(color)) rb_hash_aset(props, STR_NEW_CSTR("background-color"), rb_hash_aref(color, ID2SYM(id_value)));
-                if (!NIL_P(image)) rb_hash_aset(props, STR_NEW_CSTR("background-image"), rb_hash_aref(image, ID2SYM(id_value)));
-                if (!NIL_P(repeat)) rb_hash_aset(props, STR_NEW_CSTR("background-repeat"), rb_hash_aref(repeat, ID2SYM(id_value)));
-                if (!NIL_P(position)) rb_hash_aset(props, STR_NEW_CSTR("background-position"), rb_hash_aref(position, ID2SYM(id_value)));
-                if (!NIL_P(attachment)) rb_hash_aset(props, STR_NEW_CSTR("background-attachment"), rb_hash_aref(attachment, ID2SYM(id_value)));
+                if (!NIL_P(color)) rb_hash_aset(props, STR_NEW_CSTR("background-color"), RARRAY_AREF(color, PROP_VALUE));
+                if (!NIL_P(image)) rb_hash_aset(props, STR_NEW_CSTR("background-image"), RARRAY_AREF(image, PROP_VALUE));
+                if (!NIL_P(repeat)) rb_hash_aset(props, STR_NEW_CSTR("background-repeat"), RARRAY_AREF(repeat, PROP_VALUE));
+                if (!NIL_P(position)) rb_hash_aset(props, STR_NEW_CSTR("background-position"), RARRAY_AREF(position, PROP_VALUE));
+                if (!NIL_P(attachment)) rb_hash_aset(props, STR_NEW_CSTR("background-attachment"), RARRAY_AREF(attachment, PROP_VALUE));
 
                 VALUE shorthand_value = cataract_create_background_shorthand(Qnil, props);
                 if (!NIL_P(shorthand_value)) {
-                    VALUE shorthand_data = rb_hash_new();
-                    rb_hash_aset(shorthand_data, ID2SYM(id_value), shorthand_value);
                     VALUE first_prop = !NIL_P(color) ? color : (!NIL_P(image) ? image : (!NIL_P(repeat) ? repeat : (!NIL_P(position) ? position : attachment)));
-                    rb_hash_aset(shorthand_data, ID2SYM(id_specificity), rb_hash_aref(first_prop, ID2SYM(id_specificity)));
-                    rb_hash_aset(shorthand_data, ID2SYM(id_important), first_imp);
+                    VALUE shorthand_data = rb_ary_new_capa(4);
+                    rb_ary_push(shorthand_data, RARRAY_AREF(first_prop, PROP_SOURCE_ORDER));
+                    rb_ary_push(shorthand_data, RARRAY_AREF(first_prop, PROP_SPECIFICITY));
+                    rb_ary_push(shorthand_data, first_imp);
+                    rb_ary_push(shorthand_data, shorthand_value);
                     rb_hash_aset(properties_hash, USASCII_STR("background"), shorthand_data);
 
                     rb_hash_delete(properties_hash, STR_NEW_CSTR("background-color"));
@@ -1036,14 +1060,6 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
     if (rb_obj_is_kind_of(input, cStylesheet)) {
         VALUE has_nesting_ivar = rb_ivar_get(input, rb_intern("@_has_nesting"));
         has_nesting = RTEST(has_nesting_ivar);
-    }
-
-    // Initialize cached symbol IDs on first call (thread-safe since GVL is held)
-    // This only happens once, so unlikely
-    if (id_value == 0) {
-        id_value = rb_intern("value");
-        id_specificity = rb_intern("specificity");
-        id_important = rb_intern("important");
     }
 
     long num_rules = RARRAY_LEN(rules_array);
@@ -1283,6 +1299,9 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
     VALUE first_selector_value = Qnil;
     int all_same_selector = 1;
 
+    // Track source order for cascade rules
+    long source_order = 0;
+
     // Iterate through each rule
     for (long i = 0; i < num_rules; i++) {
         VALUE rule = RARRAY_AREF(rules_array, i);
@@ -1396,6 +1415,7 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
 
                 struct expand_context ctx;
                 ctx.properties_hash = properties_hash;
+                ctx.source_order = source_order;
                 ctx.specificity = specificity;
                 ctx.important = important;
 
@@ -1417,47 +1437,51 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
             // In merge scenarios, properties often collide (same property in multiple rules)
             // so existing property is the common case
             if (NIL_P(existing)) {
-                // New property - add it
-                VALUE prop_data = rb_hash_new();
-                rb_hash_aset(prop_data, ID2SYM(id_value), value);
-                rb_hash_aset(prop_data, ID2SYM(id_specificity), INT2NUM(specificity));
-                rb_hash_aset(prop_data, ID2SYM(id_important), important);
-                // Note: declaration_struct not stored - use global cDeclaration instead
+                // New property - add it as array: [source_order, specificity, important, value]
+                VALUE prop_data = rb_ary_new_capa(4);
+                rb_ary_push(prop_data, LONG2NUM(source_order));
+                rb_ary_push(prop_data, INT2NUM(specificity));
+                rb_ary_push(prop_data, important);
+                rb_ary_push(prop_data, value);
                 rb_hash_aset(properties_hash, property, prop_data);
             } else {
                 // Property exists - check cascade rules
-                VALUE existing_spec = rb_hash_aref(existing, ID2SYM(id_specificity));
-                VALUE existing_important = rb_hash_aref(existing, ID2SYM(id_important));
-
-                int existing_spec_int = NUM2INT(existing_spec);
+                long existing_order = NUM2LONG(RARRAY_AREF(existing, PROP_SOURCE_ORDER));
+                int existing_spec_int = NUM2INT(RARRAY_AREF(existing, PROP_SPECIFICITY));
+                VALUE existing_important = RARRAY_AREF(existing, PROP_IMPORTANT);
                 int existing_is_important = RTEST(existing_important);
 
                 int should_replace = 0;
 
                 // Most declarations are NOT !important
                 if (is_important) {
-                    // New is !important - wins if existing is NOT important OR equal/higher specificity
-                    if (!existing_is_important || existing_spec_int <= specificity) {
+                    // New is !important - wins if existing is NOT important OR higher specificity OR (equal specificity AND later order)
+                    if (!existing_is_important || existing_spec_int < specificity ||
+                        (existing_spec_int == specificity && existing_order <= source_order)) {
                         should_replace = 1;
                     }
                 } else {
-                    // New is NOT important - only wins if existing is also NOT important AND equal/higher specificity
-                    if (!existing_is_important && existing_spec_int <= specificity) {
+                    // New is NOT important - only wins if existing is also NOT important AND (higher specificity OR equal specificity with later order)
+                    if (!existing_is_important &&
+                        (existing_spec_int < specificity ||
+                         (existing_spec_int == specificity && existing_order <= source_order))) {
                         should_replace = 1;
                     }
                 }
 
                 // Replacement is common in merge scenarios
                 if (should_replace) {
-                    rb_hash_aset(existing, ID2SYM(id_value), value);
-                    rb_hash_aset(existing, ID2SYM(id_specificity), INT2NUM(specificity));
-                    rb_hash_aset(existing, ID2SYM(id_important), important);
+                    RARRAY_ASET(existing, PROP_SOURCE_ORDER, LONG2NUM(source_order));
+                    RARRAY_ASET(existing, PROP_SPECIFICITY, INT2NUM(specificity));
+                    RARRAY_ASET(existing, PROP_IMPORTANT, important);
+                    RARRAY_ASET(existing, PROP_VALUE, value);
                 }
             }
 
             RB_GC_GUARD(property);
             RB_GC_GUARD(value);
             RB_GC_GUARD(decl);
+            source_order++;
         }
 
         RB_GC_GUARD(selector);
@@ -1503,7 +1527,7 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
         VALUE border_data_src = !NIL_P(border_width) ? GET_PROP_DATA_STR(properties_hash, str_border_width) :
                                 !NIL_P(border_style) ? GET_PROP_DATA_STR(properties_hash, str_border_style) :
                                 GET_PROP_DATA_STR(properties_hash, str_border_color);
-        VALUE border_important = rb_hash_aref(border_data_src, ID2SYM(id_important));
+        VALUE border_important = RARRAY_AREF(border_data_src, PROP_IMPORTANT);
         int border_is_important = RTEST(border_important);
 
         // Check that all present properties have the same !important flag
@@ -1519,12 +1543,11 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
 
             VALUE border_shorthand = cataract_create_border_shorthand(Qnil, border_props);
             if (!NIL_P(border_shorthand)) {
-                int border_spec = NUM2INT(rb_hash_aref(border_data_src, ID2SYM(id_specificity)));
-
-                VALUE border_data = rb_hash_new();
-                rb_hash_aset(border_data, ID2SYM(id_value), border_shorthand);
-                rb_hash_aset(border_data, ID2SYM(id_specificity), INT2NUM(border_spec));
-                rb_hash_aset(border_data, ID2SYM(id_important), border_important);
+                VALUE border_data = rb_ary_new_capa(4);
+                rb_ary_push(border_data, RARRAY_AREF(border_data_src, PROP_SOURCE_ORDER));
+                rb_ary_push(border_data, RARRAY_AREF(border_data_src, PROP_SPECIFICITY));
+                rb_ary_push(border_data, border_important);
+                rb_ary_push(border_data, border_shorthand);
                 rb_hash_aset(properties_hash, str_border, border_data);
 
                 if (!NIL_P(border_width)) rb_hash_delete(properties_hash, str_border_width);
@@ -1549,7 +1572,7 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
 
         // Get metadata from font-size as reference
         VALUE size_data = GET_PROP_DATA_STR(properties_hash, str_font_size);
-        VALUE font_important = rb_hash_aref(size_data, ID2SYM(id_important));
+        VALUE font_important = RARRAY_AREF(size_data, PROP_IMPORTANT);
         int font_is_important = RTEST(font_important);
 
         // Check that all present properties have the same !important flag
@@ -1570,12 +1593,11 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
 
             VALUE font_shorthand = cataract_create_font_shorthand(Qnil, font_props);
             if (!NIL_P(font_shorthand)) {
-                int font_spec = NUM2INT(rb_hash_aref(size_data, ID2SYM(id_specificity)));
-
-                VALUE font_data = rb_hash_new();
-                rb_hash_aset(font_data, ID2SYM(id_value), font_shorthand);
-                rb_hash_aset(font_data, ID2SYM(id_specificity), INT2NUM(font_spec));
-                rb_hash_aset(font_data, ID2SYM(id_important), font_important);
+                VALUE font_data = rb_ary_new_capa(4);
+                rb_ary_push(font_data, RARRAY_AREF(size_data, PROP_SOURCE_ORDER));
+                rb_ary_push(font_data, RARRAY_AREF(size_data, PROP_SPECIFICITY));
+                rb_ary_push(font_data, font_important);
+                rb_ary_push(font_data, font_shorthand);
                 rb_hash_aset(properties_hash, str_font, font_data);
 
                 // Remove longhand properties
@@ -1606,7 +1628,7 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
         VALUE list_style_data_src = !NIL_P(list_style_type) ? GET_PROP_DATA_STR(properties_hash, str_list_style_type) :
                                     !NIL_P(list_style_position) ? GET_PROP_DATA_STR(properties_hash, str_list_style_position) :
                                     GET_PROP_DATA_STR(properties_hash, str_list_style_image);
-        VALUE list_style_important = rb_hash_aref(list_style_data_src, ID2SYM(id_important));
+        VALUE list_style_important = RARRAY_AREF(list_style_data_src, PROP_IMPORTANT);
         int list_style_is_important = RTEST(list_style_important);
 
         // Check that all present properties have the same !important flag
@@ -1622,12 +1644,11 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
 
             VALUE list_style_shorthand = cataract_create_list_style_shorthand(Qnil, list_style_props);
             if (!NIL_P(list_style_shorthand)) {
-                int list_style_spec = NUM2INT(rb_hash_aref(list_style_data_src, ID2SYM(id_specificity)));
-
-                VALUE list_style_data = rb_hash_new();
-                rb_hash_aset(list_style_data, ID2SYM(id_value), list_style_shorthand);
-                rb_hash_aset(list_style_data, ID2SYM(id_specificity), INT2NUM(list_style_spec));
-                rb_hash_aset(list_style_data, ID2SYM(id_important), list_style_important);
+                VALUE list_style_data = rb_ary_new_capa(4);
+                rb_ary_push(list_style_data, RARRAY_AREF(list_style_data_src, PROP_SOURCE_ORDER));
+                rb_ary_push(list_style_data, RARRAY_AREF(list_style_data_src, PROP_SPECIFICITY));
+                rb_ary_push(list_style_data, list_style_important);
+                rb_ary_push(list_style_data, list_style_shorthand);
                 rb_hash_aset(properties_hash, str_list_style, list_style_data);
 
                 // Remove longhand properties
@@ -1661,7 +1682,7 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
                                    !NIL_P(background_repeat) ? GET_PROP_DATA_STR(properties_hash, str_background_repeat) :
                                    !NIL_P(background_attachment) ? GET_PROP_DATA_STR(properties_hash, str_background_attachment) :
                                    GET_PROP_DATA_STR(properties_hash, str_background_position);
-        VALUE background_important = rb_hash_aref(background_data_src, ID2SYM(id_important));
+        VALUE background_important = RARRAY_AREF(background_data_src, PROP_IMPORTANT);
         int background_is_important = RTEST(background_important);
 
         // Check that all present properties have the same !important flag
@@ -1681,12 +1702,11 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
 
             VALUE background_shorthand = cataract_create_background_shorthand(Qnil, background_props);
             if (!NIL_P(background_shorthand)) {
-                int background_spec = NUM2INT(rb_hash_aref(background_data_src, ID2SYM(id_specificity)));
-
-                VALUE background_data = rb_hash_new();
-                rb_hash_aset(background_data, ID2SYM(id_value), background_shorthand);
-                rb_hash_aset(background_data, ID2SYM(id_specificity), INT2NUM(background_spec));
-                rb_hash_aset(background_data, ID2SYM(id_important), background_important);
+                VALUE background_data = rb_ary_new_capa(4);
+                rb_ary_push(background_data, RARRAY_AREF(background_data_src, PROP_SOURCE_ORDER));
+                rb_ary_push(background_data, RARRAY_AREF(background_data_src, PROP_SPECIFICITY));
+                rb_ary_push(background_data, background_important);
+                rb_ary_push(background_data, background_shorthand);
                 rb_hash_aset(properties_hash, str_background, background_data);
 
                 // Remove longhand properties
