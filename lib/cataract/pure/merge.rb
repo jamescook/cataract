@@ -427,7 +427,7 @@ module Cataract
                      when SIDE_RIGHT then PROP_BORDER_RIGHT_WIDTH
                      when SIDE_BOTTOM then PROP_BORDER_BOTTOM_WIDTH
                      when SIDE_LEFT then PROP_BORDER_LEFT_WIDTH
-        end
+                     end
         result << Declaration.new(width_prop, width, decl.important)
       end
 
@@ -437,7 +437,7 @@ module Cataract
                      when SIDE_RIGHT then PROP_BORDER_RIGHT_STYLE
                      when SIDE_BOTTOM then PROP_BORDER_BOTTOM_STYLE
                      when SIDE_LEFT then PROP_BORDER_LEFT_STYLE
-        end
+                     end
         result << Declaration.new(style_prop, style, decl.important)
       end
 
@@ -447,7 +447,7 @@ module Cataract
                      when SIDE_RIGHT then PROP_BORDER_RIGHT_COLOR
                      when SIDE_BOTTOM then PROP_BORDER_BOTTOM_COLOR
                      when SIDE_LEFT then PROP_BORDER_LEFT_COLOR
-        end
+                     end
         result << Declaration.new(color_prop, color, decl.important)
       end
 
