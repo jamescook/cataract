@@ -158,30 +158,6 @@ module Cataract
       end
     end
 
-    # Flatten nested rules to flat rules with resolved selectors
-    #
-    # @param rules [Array<Rule>] Rules (may include nested rules)
-    # @return [Array<Rule>] Flat rules with resolved selectors
-    def self.flatten_rules(rules)
-      flat = []
-
-      rules.each do |rule|
-        # Add this rule if it has declarations
-        if rule.declarations && !rule.declarations.empty?
-          flat << rule
-        end
-
-        # Recursively flatten nested rules
-        if rule.respond_to?(:parent_rule_id) && rule.parent_rule_id
-          # This rule is already flattened (has resolved selector)
-          # Just add it if not already added
-          flat << rule unless rule.declarations && rule.declarations.empty?
-        end
-      end
-
-      flat
-    end
-
     # Merge multiple rules with same selector
     #
     # @param selector [String] The selector
