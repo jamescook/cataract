@@ -1186,16 +1186,16 @@ module Cataract
       combined = "#{parent_str} and "
 
       # If child is a condition (contains ':'), wrap it in parentheses
-      if child_str.include?(':')
-        # Add parens if not already present
-        if child_str.start_with?('(') && child_str.end_with?(')')
-          combined += child_str
-        else
-          combined += "(#{child_str})"
-        end
-      else
-        combined += child_str
-      end
+      combined += if child_str.include?(':')
+                    # Add parens if not already present
+                    if child_str.start_with?('(') && child_str.end_with?(')')
+                      child_str
+                    else
+                      "(#{child_str})"
+                    end
+                  else
+                    child_str
+                  end
 
       combined.to_sym
     end
