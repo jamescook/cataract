@@ -27,11 +27,11 @@ module Cataract
     # Build parent-child relationships
     rule_children = {}
     rules.each do |rule|
-      if rule.parent_rule_id
-        parent_id = rule.parent_rule_id.is_a?(Integer) ? rule.parent_rule_id : rule.parent_rule_id.to_i
-        rule_children[parent_id] ||= []
-        rule_children[parent_id] << rule
-      end
+      next unless rule.parent_rule_id
+
+      parent_id = rule.parent_rule_id.is_a?(Integer) ? rule.parent_rule_id : rule.parent_rule_id.to_i
+      rule_children[parent_id] ||= []
+      rule_children[parent_id] << rule
     end
 
     # Build rule_id => media_symbol map
@@ -313,11 +313,11 @@ module Cataract
     # Build parent-child relationships
     rule_children = {}
     rules.each do |rule|
-      if rule.parent_rule_id
-        parent_id = rule.parent_rule_id.is_a?(Integer) ? rule.parent_rule_id : rule.parent_rule_id.to_i
-        rule_children[parent_id] ||= []
-        rule_children[parent_id] << rule
-      end
+      next unless rule.parent_rule_id
+
+      parent_id = rule.parent_rule_id.is_a?(Integer) ? rule.parent_rule_id : rule.parent_rule_id.to_i
+      rule_children[parent_id] ||= []
+      rule_children[parent_id] << rule
     end
 
     # Build rule_id => media_symbol map
