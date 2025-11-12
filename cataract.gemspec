@@ -21,7 +21,10 @@ Gem::Specification.new do |spec|
 
   # Specify which files should be added to the gem when it is released.
   spec.files = Dir.chdir(File.expand_path(__dir__)) do
-    `git ls-files -z`.split("\x0").reject { |f| f.match(%r{^(test|spec|features)/}) || f.match(/^test_.*\.rb$/) }
+    `git ls-files -z`.split("\x0").reject do |f|
+      f.match(%r{^(test|spec|features|benchmarks|scripts)/}) ||
+        f.match(/^(test|benchmark)_.*\.rb$/)
+    end
   end
 
   spec.bindir        = 'exe'
