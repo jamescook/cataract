@@ -71,11 +71,13 @@ module Cataract
     #
     # @see Stylesheet#parse
     # @see Stylesheet.parse
-    def parse_css(css, imports: false)
-      # Resolve @import statements if requested
-      css = ImportResolver.resolve(css, imports) if imports
+    unless method_defined?(:parse_css)
+      def parse_css(css, imports: false)
+        # Resolve @import statements if requested
+        css = ImportResolver.resolve(css, imports) if imports
 
-      Stylesheet.parse(css)
+        Stylesheet.parse(css)
+      end
     end
 
     # Merge CSS rules according to CSS cascade rules.
