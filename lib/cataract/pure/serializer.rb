@@ -213,7 +213,7 @@ module Cataract
         return "&#{rest}"
       end
       # More complex cases like ".parent .foo .child"
-      return child_selector.gsub(parent_selector, '&')
+      child_selector.sub(parent_selector, '&')
     else # NESTING_STYLE_IMPLICIT
       # Remove parent prefix for implicit nesting
       # ".parent .child" with parent ".parent" => ".child"
