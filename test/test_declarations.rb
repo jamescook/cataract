@@ -205,7 +205,7 @@ class TestDeclarations < Minitest::Test
   def test_inline_comments_in_nested_block
     # Test comments in parse_mixed_block (which handles nesting)
     # This is CSS Nesting with comments between declarations
-    # Also tests property name with trailing whitespace before colon (line 508)
+    # Also tests property name with trailing whitespace before colon
     css = <<~CSS
       .parent {
         color  : red;
