@@ -907,13 +907,13 @@ module Cataract
       end
 
       # Try to create border-width/style/color shorthands
-      recreate_border_width!(rule, prop_map, widths) if widths.all?
-      recreate_border_style!(rule, prop_map, styles) if styles.all?
-      recreate_border_color!(rule, prop_map, colors) if colors.all?
+      recreate_border_width!(rule, widths) if widths.all?
+      recreate_border_style!(rule, styles) if styles.all?
+      recreate_border_color!(rule, colors) if colors.all?
     end
 
     # Recreate border-width shorthand
-    def self.recreate_border_width!(rule, prop_map, widths)
+    def self.recreate_border_width!(rule, widths)
       importances = widths.map(&:important).uniq
       return if importances.length > 1
 
@@ -927,7 +927,7 @@ module Cataract
     end
 
     # Recreate border-style shorthand
-    def self.recreate_border_style!(rule, prop_map, styles)
+    def self.recreate_border_style!(rule, styles)
       importances = styles.map(&:important).uniq
       return if importances.length > 1
 
@@ -941,7 +941,7 @@ module Cataract
     end
 
     # Recreate border-color shorthand
-    def self.recreate_border_color!(rule, prop_map, colors)
+    def self.recreate_border_color!(rule, colors)
       importances = colors.map(&:important).uniq
       return if importances.length > 1
 
