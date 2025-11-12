@@ -769,7 +769,11 @@ module Cataract
         end
 
         # Recursively parse block content (preserve parent media context)
-        nested_parser = Parser.new(byteslice_encoded(block_start, block_end - block_start), parent_media_sym: @parent_media_sym, depth: @depth + 1)
+        nested_parser = Parser.new(
+          byteslice_encoded(block_start, block_end - block_start),
+          parent_media_sym: @parent_media_sym, depth: @depth + 1
+        )
+
         nested_result = nested_parser.parse
 
         # Merge nested media_index into ours
@@ -839,7 +843,12 @@ module Cataract
         end
 
         # Parse the content with the combined media context
-        nested_parser = Parser.new(byteslice_encoded(block_start, block_end - block_start), parent_media_sym: combined_media_sym, depth: @depth + 1)
+        nested_parser = Parser.new(
+          byteslice_encoded(block_start, block_end - block_start),
+          parent_media_sym: combined_media_sym,
+          depth: @depth + 1
+        )
+
         nested_result = nested_parser.parse
 
         # Merge nested media_index into ours (for nested @media)

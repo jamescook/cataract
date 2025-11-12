@@ -24,7 +24,14 @@ module Cataract
   # @attr [Integer, nil] specificity CSS specificity value (calculated lazily)
   # @attr [Integer, nil] parent_rule_id Parent rule ID for nested rules
   # @attr [Integer, nil] nesting_style 0=implicit, 1=explicit, nil=not nested
-  Rule = Struct.new(:id, :selector, :declarations, :specificity, :parent_rule_id, :nesting_style) unless const_defined?(:Rule)
+  Rule = Struct.new(
+    :id,
+    :selector,
+    :declarations,
+    :specificity,
+    :parent_rule_id,
+    :nesting_style
+  )
 
   class Rule
     # Silence warning about method redefinition. We redefine below to lazily calculate

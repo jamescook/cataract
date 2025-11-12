@@ -12,7 +12,7 @@ module Cataract
   # @param has_nesting [Boolean] Whether any nested rules exist
   # @return [String] Compact CSS string
   def self._stylesheet_to_s(rules, media_index, charset, has_nesting)
-    result = +""
+    result = +''
 
     # Add @charset if present
     unless charset.nil?
@@ -169,7 +169,12 @@ module Cataract
         media_children = rule_children[child.id] || []
         media_children.each_with_index do |media_child, media_idx|
           result << ' ' if media_idx > 0 || !child.declarations.empty?
-          nested_media_selector = reconstruct_nested_selector(child.selector, media_child.selector, media_child.nesting_style)
+
+          nested_media_selector = reconstruct_nested_selector(
+            child.selector, media_child.selector,
+            media_child.nesting_style
+          )
+
           result << "#{nested_media_selector} { "
           serialize_declarations(result, media_child.declarations)
           result << ' }'
@@ -185,7 +190,13 @@ module Cataract
         grandchildren = rule_children[child.id] || []
         grandchildren.each_with_index do |grandchild, grandchild_idx|
           result << ' ' if grandchild_idx > 0 || !child.declarations.empty?
-          nested_grandchild_selector = reconstruct_nested_selector(child.selector, grandchild.selector, grandchild.nesting_style)
+
+          nested_grandchild_selector = reconstruct_nested_selector(
+            child.selector,
+            grandchild.selector,
+            grandchild.nesting_style
+          )
+
           result << "#{nested_grandchild_selector} { "
           serialize_declarations(result, grandchild.declarations)
           result << ' }'
@@ -298,7 +309,7 @@ module Cataract
   # @param has_nesting [Boolean] Whether any nested rules exist
   # @return [String] Formatted CSS string
   def self._stylesheet_to_formatted_s(rules, media_index, charset, has_nesting)
-    result = String.new
+    result = +''
 
     # Add @charset if present
     unless charset.nil?
@@ -459,7 +470,12 @@ module Cataract
         # Recursively handle media children
         media_children = rule_children[child.id] || []
         media_children.each do |media_child|
-          nested_media_selector = reconstruct_nested_selector(child.selector, media_child.selector, media_child.nesting_style)
+          nested_media_selector = reconstruct_nested_selector(
+            child.selector,
+            media_child.selector,
+            media_child.nesting_style
+          )
+
           result << indent
           result << "    #{nested_media_selector} {\n"
           unless media_child.declarations.empty?
@@ -483,7 +499,12 @@ module Cataract
         # Recursively handle grandchildren
         grandchildren = rule_children[child.id] || []
         grandchildren.each do |grandchild|
-          nested_grandchild_selector = reconstruct_nested_selector(child.selector, grandchild.selector, grandchild.nesting_style)
+          nested_grandchild_selector = reconstruct_nested_selector(
+            child.selector,
+            grandchild.selector,
+            grandchild.nesting_style
+          )
+
           result << indent
           result << "    #{nested_grandchild_selector} {\n"
           unless grandchild.declarations.empty?
