@@ -392,9 +392,11 @@ module Cataract
     # Iterate through rules, grouping consecutive media queries
     current_media = nil
     in_media_block = false
+    rule_index = 0
 
     rules.each do |rule|
       rule_media = rule_to_media[rule.id]
+      is_first_rule = (rule_index == 0)
 
       if rule_media.nil?
         # Not in any media query - close any open media block first
@@ -404,20 +406,21 @@ module Cataract
           current_media = nil
         end
 
-        # Output rule with no indentation
-        serialize_rule_formatted(result, rule, '')
+        # Add blank line prefix for non-first rules
+        result << "\n" unless is_first_rule
+
+        # Output rule with no indentation (always single newline suffix)
+        serialize_rule_formatted(result, rule, '', true)
       else
         # This rule is in a media query
         if current_media.nil? || current_media != rule_media
           # Close previous media block if open
           if in_media_block
             result << "}\n"
-          else
-            # Add blank line before @media if transitioning from non-media rules
-            if result.length > 0
-              result << "\n"
-            end
           end
+
+          # Add blank line prefix for non-first rules
+          result << "\n" unless is_first_rule
 
           # Open new media block
           current_media = rule_media
@@ -426,8 +429,11 @@ module Cataract
         end
 
         # Serialize rule inside media block with 2-space indentation
-        serialize_rule_formatted(result, rule, '  ')
+        # Rules inside media blocks always get single newline (is_last=true)
+        serialize_rule_formatted(result, rule, '  ', true)
       end
+
+      rule_index += 1
     end
 
     # Close final media block if still open
@@ -525,7 +531,7 @@ module Cataract
   end
 
   # Helper: serialize a single rule with formatting
-  def self.serialize_rule_formatted(result, rule, indent)
+  def self.serialize_rule_formatted(result, rule, indent, is_last_rule = false)
     # Check if this is an AtRule
     if rule.is_a?(AtRule)
       serialize_at_rule_formatted(result, rule, indent)
@@ -541,9 +547,9 @@ module Cataract
     # Declarations (one per line)
     serialize_declarations_formatted(result, rule.declarations, "#{indent}  ")
 
-    # Closing brace
+    # Closing brace - double newline for all except last rule
     result << indent
-    result << "}\n"
+    result << (is_last_rule ? "}\n" : "}\n\n")
   end
 
   # Helper: serialize an at-rule with formatting

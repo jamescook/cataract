@@ -254,7 +254,7 @@ static void serialize_at_rule_formatted(VALUE result, VALUE at_rule, const char 
 }
 
 // Helper to serialize a single rule with formatting (indented, multi-line)
-static void serialize_rule_formatted(VALUE result, VALUE rule, const char *indent) {
+static void serialize_rule_formatted(VALUE result, VALUE rule, const char *indent, int is_last) {
     // Check if this is an AtRule
     if (rb_obj_is_kind_of(rule, cAtRule)) {
         serialize_at_rule_formatted(result, rule, indent);
@@ -277,9 +277,13 @@ static void serialize_rule_formatted(VALUE result, VALUE rule, const char *inden
     serialize_declarations_formatted(result, declarations, decl_indent_ptr);
     RB_GC_GUARD(decl_indent);
 
-    // Closing brace
+    // Closing brace - double newline for all except last rule
     rb_str_cat2(result, indent);
-    rb_str_cat2(result, "}\n");
+    if (is_last) {
+        rb_str_cat2(result, "}\n");
+    } else {
+        rb_str_cat2(result, "}\n\n");
+    }
 }
 
 // Context for building rule_to_media map
@@ -680,6 +684,7 @@ static VALUE stylesheet_to_formatted_s_original(VALUE rules_array, VALUE media_i
         VALUE rule = rb_ary_entry(rules_array, i);
         VALUE rule_id = rb_struct_aref(rule, INT2FIX(RULE_ID));
         VALUE rule_media = rb_hash_aref(rule_to_media, rule_id);
+        int is_first_rule = (i == 0);
 
         if (NIL_P(rule_media)) {
             // Not in any media query - close any open media block first
@@ -689,19 +694,24 @@ static VALUE stylesheet_to_formatted_s_original(VALUE rules_array, VALUE media_i
                 current_media = Qnil;
             }
 
-            // Output rule with no indentation
-            serialize_rule_formatted(result, rule, "");
+            // Add blank line prefix for non-first rules
+            if (!is_first_rule) {
+                rb_str_cat2(result, "\n");
+            }
+
+            // Output rule with no indentation (always single newline suffix)
+            serialize_rule_formatted(result, rule, "", 1);
         } else {
             // This rule is in a media query
             if (NIL_P(current_media) || !rb_equal(current_media, rule_media)) {
                 // Close previous media block if open
                 if (in_media_block) {
                     rb_str_cat2(result, "}\n");
-                } else {
-                    // Add blank line before @media if transitioning from non-media rules
-                    if (RSTRING_LEN(result) > 0) {
-                        rb_str_cat2(result, "\n");
-                    }
+                }
+
+                // Add blank line prefix for non-first rules
+                if (!is_first_rule) {
+                    rb_str_cat2(result, "\n");
                 }
 
                 // Open new media block
@@ -713,7 +723,8 @@ static VALUE stylesheet_to_formatted_s_original(VALUE rules_array, VALUE media_i
             }
 
             // Serialize rule inside media block with 2-space indentation
-            serialize_rule_formatted(result, rule, "  ");
+            // Rules inside media blocks always get single newline (is_last=1)
+            serialize_rule_formatted(result, rule, "  ", 1);
         }
     }
 

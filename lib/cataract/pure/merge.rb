@@ -251,6 +251,13 @@ module Cataract
       # Build final declarations array
       # NOTE: Using each with << instead of map for performance (1.05-1.11x faster)
       # The << pattern is faster than map's implicit array return (even without YJIT)
+      #
+      # NOTE: We don't sort by source_order here because:
+      # 1. Hash iteration order in Ruby is insertion order (since Ruby 1.9)
+      # 2. Declaration order doesn't affect CSS behavior (cascade is already resolved)
+      # 3. Sorting would add overhead for purely aesthetic output
+      # The output order is roughly source order but may vary when properties are
+      # overridden by later rules with higher specificity or importance.
       declarations = []
       decl_map.each do |prop, (_order, _spec, important, value)|
         declarations << Declaration.new(prop, value, important)
@@ -583,7 +590,7 @@ module Cataract
 
           if slash_idx
             size = size_part.byteslice(0, slash_idx)
-            line_height = size_part.byteslice(slash_idx + 1)
+            line_height = size_part.byteslice((slash_idx + 1)..-1)
           else
             size = size_part
           end
@@ -783,14 +790,14 @@ module Cataract
       # Try to recreate border
       recreate_border!(rule, prop_map)
 
+      # Try to recreate list-style
+      recreate_list_style!(rule, prop_map)
+
       # Try to recreate font
       recreate_font!(rule, prop_map)
 
       # Try to recreate background
       recreate_background!(rule, prop_map)
-
-      # Try to recreate list-style
-      recreate_list_style!(rule, prop_map)
     end
 
     # Try to recreate margin shorthand
@@ -815,9 +822,10 @@ module Cataract
       # Create optimized shorthand
       shorthand_value = optimize_four_sides(values)
 
-      # Remove individual sides and add shorthand
+      # Remove individual sides and append shorthand
+      # Note: We append rather than insert at original position to match C implementation behavior
       rule.declarations.reject! { |d| MARGIN_SIDES.include?(d.property) }
-      rule.declarations.unshift(Declaration.new(PROP_MARGIN, shorthand_value, important))
+      rule.declarations << Declaration.new(PROP_MARGIN, shorthand_value, important)
     end
 
     # Try to recreate padding shorthand
@@ -840,8 +848,10 @@ module Cataract
 
       shorthand_value = optimize_four_sides(values)
 
+      # Remove individual sides and append shorthand
+      # Note: We append rather than insert at original position to match C implementation behavior
       rule.declarations.reject! { |d| PADDING_SIDES.include?(d.property) }
-      rule.declarations.unshift(Declaration.new(PROP_PADDING, shorthand_value, important))
+      rule.declarations << Declaration.new(PROP_PADDING, shorthand_value, important)
     end
 
     # Helper: Check if all declarations have same value and importance
@@ -906,10 +916,10 @@ module Cataract
 
           border_value = parts.join(' ')
 
-          # Remove individual properties
+          # Remove individual properties and append shorthand
+          # Note: We append rather than insert at original position to match C implementation behavior
           rule.declarations.reject! { |d| BORDER_ALL.include?(d.property) }
-
-          rule.declarations.unshift(Declaration.new(PROP_BORDER, border_value, important))
+          rule.declarations << Declaration.new(PROP_BORDER, border_value, important)
           return
         end
       end
@@ -1045,11 +1055,10 @@ module Cataract
 
       shorthand_value = parts.join(' ')
 
-      # Remove individual properties
+      # Remove individual properties and append shorthand
+      # Note: We append rather than insert at original position to match C implementation behavior
       rule.declarations.reject! { |d| FONT_PROPERTIES.include?(d.property) }
-
-      # Add shorthand
-      rule.declarations.unshift(Declaration.new(PROP_FONT, shorthand_value, important))
+      rule.declarations << Declaration.new(PROP_FONT, shorthand_value, important)
     end
 
     # Try to recreate background shorthand
@@ -1099,11 +1108,10 @@ module Cataract
 
       shorthand_value = parts.join(' ')
 
-      # Remove individual properties
+      # Remove individual properties and append shorthand
+      # Note: We append rather than insert at original position to match C implementation behavior
       rule.declarations.reject! { |d| BACKGROUND_PROPERTIES.include?(d.property) }
-
-      # Add shorthand
-      rule.declarations.unshift(Declaration.new(PROP_BACKGROUND, shorthand_value, important))
+      rule.declarations << Declaration.new(PROP_BACKGROUND, shorthand_value, important)
     end
 
     # Try to recreate list-style shorthand
@@ -1129,11 +1137,10 @@ module Cataract
 
       shorthand_value = parts.join(' ')
 
-      # Remove individual properties
+      # Remove individual properties and append shorthand
+      # Note: We append rather than insert at original position to match C implementation behavior
       rule.declarations.reject! { |d| LIST_STYLE_PROPERTIES.include?(d.property) }
-
-      # Add shorthand
-      rule.declarations.unshift(Declaration.new(PROP_LIST_STYLE, shorthand_value, important))
+      rule.declarations << Declaration.new(PROP_LIST_STYLE, shorthand_value, important)
     end
   end
 end
