@@ -513,18 +513,23 @@ static inline void try_recreate_shorthand(VALUE properties_hash, const struct sh
  */
 struct expand_property_data {
     VALUE properties_hash;      // Target hash to store properties
-    int specificity;            // Specificity of the selector
+    VALUE selector;             // Selector string (for lazy specificity calculation)
+    int specificity;            // Cached specificity (-1 if not yet calculated)
     int is_important;           // Whether the original declaration was !important
     long source_order;          // Source order of the original declaration
 };
 
 /*
  * Callback: Process each expanded property and apply cascade rules
+ *
+ * Optimization: Specificity is calculated lazily only when needed for cascade comparison.
+ * This avoids expensive specificity calculation when:
+ * - Property doesn't exist yet (no comparison needed)
+ * - Importance levels differ (!important always wins, regardless of specificity)
  */
 static int process_expanded_property(VALUE prop_name, VALUE prop_value, VALUE arg) {
     struct expand_property_data *data = (struct expand_property_data *)arg;
     VALUE properties_hash = data->properties_hash;
-    int specificity = data->specificity;
     int is_important = data->is_important;
     long source_order = data->source_order;
 
@@ -536,10 +541,14 @@ static int process_expanded_property(VALUE prop_name, VALUE prop_value, VALUE ar
     VALUE existing = rb_hash_aref(properties_hash, prop_name);
     if (NIL_P(existing)) {
         DEBUG_PRINTF("             -> NEW property\n");
+        // Calculate specificity on first use (lazy initialization)
+        if (data->specificity == -1) {
+            data->specificity = NUM2INT(calculate_specificity(Qnil, data->selector));
+        }
         // Create array: [source_order, specificity, important, value]
         VALUE prop_data = rb_ary_new_capa(4);
         rb_ary_push(prop_data, LONG2NUM(source_order));
-        rb_ary_push(prop_data, INT2NUM(specificity));
+        rb_ary_push(prop_data, INT2NUM(data->specificity));
         rb_ary_push(prop_data, is_important ? Qtrue : Qfalse);
         rb_ary_push(prop_data, prop_value);
         rb_hash_aset(properties_hash, prop_name, prop_data);
@@ -550,39 +559,49 @@ static int process_expanded_property(VALUE prop_name, VALUE prop_value, VALUE ar
         VALUE existing_important = RARRAY_AREF(existing, PROP_IMPORTANT);
         int existing_is_important = RTEST(existing_important);
 
-        DEBUG_PRINTF("             -> COLLISION: existing spec=%d important=%d source_order=%ld, new spec=%d important=%d source_order=%ld\n",
-                     existing_spec, existing_is_important, existing_source_order,
-                     specificity, is_important, source_order);
-
         int should_replace = 0;
 
         // Apply CSS cascade rules:
-        // 1. !important always wins over non-!important
-        // 2. Higher specificity wins
+        // 1. !important always wins over non-!important (no specificity check needed)
+        // 2. Higher specificity wins (only check when importance is same)
         // 3. Later source order wins
         if (is_important && !existing_is_important) {
-            // New declaration is !important, existing is not - replace
+            // New declaration is !important, existing is not - replace (no specificity needed)
             should_replace = 1;
             DEBUG_PRINTF("             -> REPLACE (new is !important, existing is not)\n");
         } else if (!is_important && existing_is_important) {
-            // Existing declaration is !important, new is not - keep existing
+            // Existing declaration is !important, new is not - keep existing (no specificity needed)
             should_replace = 0;
             DEBUG_PRINTF("             -> KEEP (existing is !important, new is not)\n");
         } else {
+            // Same importance level - NOW we need specificity
+            // Calculate specificity on first use (lazy initialization)
+            if (data->specificity == -1) {
+                data->specificity = NUM2INT(calculate_specificity(Qnil, data->selector));
+            }
+
+            DEBUG_PRINTF("             -> COLLISION: existing spec=%d important=%d source_order=%ld, new spec=%d important=%d source_order=%ld\n",
+                         existing_spec, existing_is_important, existing_source_order,
+                         data->specificity, is_important, source_order);
+
             // Same importance level - check specificity then source order
-            if (specificity > existing_spec) {
+            if (data->specificity > existing_spec) {
                 should_replace = 1;
-            } else if (specificity == existing_spec) {
+            } else if (data->specificity == existing_spec) {
                 should_replace = source_order > existing_source_order;
             }
             DEBUG_PRINTF("             -> %s (same importance, spec=%d vs %d, order=%ld vs %ld)\n",
                          should_replace ? "REPLACE" : "KEEP",
-                         specificity, existing_spec, source_order, existing_source_order);
+                         data->specificity, existing_spec, source_order, existing_source_order);
         }
 
         if (should_replace) {
+            // Calculate specificity if we haven't yet (edge case: importance differs but we're replacing)
+            if (data->specificity == -1) {
+                data->specificity = NUM2INT(calculate_specificity(Qnil, data->selector));
+            }
             RARRAY_ASET(existing, PROP_SOURCE_ORDER, LONG2NUM(source_order));
-            RARRAY_ASET(existing, PROP_SPECIFICITY, INT2NUM(specificity));
+            RARRAY_ASET(existing, PROP_SPECIFICITY, INT2NUM(data->specificity));
             RARRAY_ASET(existing, PROP_IMPORTANT, is_important ? Qtrue : Qfalse);
             RARRAY_ASET(existing, PROP_VALUE, prop_value);
         }
@@ -643,10 +662,6 @@ static VALUE merge_rules_for_selector(VALUE rules_array, VALUE rule_indices, VAL
 
     DEBUG_PRINTF("    [merge_rules_for_selector] Merging %ld rules for selector '%s'\n",
                  num_rules_in_group, RSTRING_PTR(selector));
-
-    // Calculate specificity once for this selector
-    VALUE specificity_val = calculate_specificity(Qnil, selector);
-    int specificity = NUM2INT(specificity_val);
 
     // Process each rule in this selector group
     for (long g = 0; g < num_rules_in_group; g++) {
@@ -742,7 +757,8 @@ static VALUE merge_rules_for_selector(VALUE rules_array, VALUE rule_indices, VAL
                 // Iterate over expanded Declaration array
                 struct expand_property_data expand_data = {
                     .properties_hash = properties_hash,
-                    .specificity = specificity,
+                    .selector = selector,
+                    .specificity = -1,  // Lazy: calculated only when needed
                     .is_important = is_important,
                     .source_order = source_order
                 };
@@ -757,7 +773,8 @@ static VALUE merge_rules_for_selector(VALUE rules_array, VALUE rule_indices, VAL
                 // No expansion - process the original property directly
                 struct expand_property_data expand_data = {
                     .properties_hash = properties_hash,
-                    .specificity = specificity,
+                    .selector = selector,
+                    .specificity = -1,  // Lazy: calculated only when needed
                     .is_important = is_important,
                     .source_order = source_order
                 };
