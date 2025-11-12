@@ -485,37 +485,65 @@ module Cataract
       self
     end
 
-    # Remove rules matching criteria
+    # Remove rules from the stylesheet
     #
-    # @param selector [String, nil] Selector to match (nil matches all)
-    # @param media_types [Symbol, Array<Symbol>, nil] Media types to filter by (nil matches all)
+    # @param rules_or_css [String, Rule, AtRule, Array<Rule, AtRule>] Rules to remove.
+    #   Can be a CSS string to parse (selectors will be matched), a single Rule/AtRule object,
+    #   or an array of Rule/AtRule objects.
+    # @param media_types [Symbol, Array<Symbol>, nil] Optional media types to filter removal.
+    #   Only removes rules that match these media types. Pass :all to include base rules.
     # @return [self] Returns self for method chaining
     #
-    # @example Remove all rules with a specific selector
-    #   sheet.remove_rules!(selector: '.header')
+    # @example Remove rules by CSS string
+    #   sheet.remove_rules!('.header { }')
+    #   sheet.remove_rules!('.header { } .footer { }')
     #
     # @example Remove rules from specific media type
-    #   sheet.remove_rules!(selector: '.header', media_types: :screen)
+    #   sheet.remove_rules!('.header { }', media_types: :screen)
     #
-    # @example Remove all rules from a media type
-    #   sheet.remove_rules!(media_types: :print)
-    def remove_rules!(selector: nil, media_types: nil)
+    # @example Remove specific rule objects
+    #   rules = sheet.select { |r| r.selector =~ /\.btn-/ }
+    #   sheet.remove_rules!(rules)
+    #
+    # @example Remove rules with media filtering
+    #   sheet.remove_rules!(sheet.with_selector('.header'), media_types: :print)
+    def remove_rules!(rules_or_css, media_types: nil)
+      # Determine if we're matching by selector (CSS string) or by object identity (rule objects)
+      if rules_or_css.is_a?(String)
+        # Parse CSS string and extract selectors for matching
+        parsed = Stylesheet.parse(rules_or_css)
+        selectors_to_remove = parsed.rules.map(&:selector).compact.to_set
+        match_by_selector = true
+      else
+        # Use rule objects directly
+        rules_to_remove = rules_or_css.is_a?(Array) ? rules_or_css : [rules_or_css]
+        return self if rules_to_remove.empty?
+        match_by_selector = false
+      end
+
       # Normalize media_types to array
       filter_media = media_types ? Array(media_types).map(&:to_sym) : nil
 
-      # Find rules to remove
-      rules_to_remove = []
+      # Find rule IDs to remove
+      rule_ids_to_remove = []
       @rules.each_with_index do |rule, rule_id|
-        # Check selector match
-        next if selector && rule.selector != selector
+        # Check if this rule matches
+        matches = if match_by_selector
+                    # Match by selector for CSS string input
+                    selectors_to_remove.include?(rule.selector)
+                  else
+                    # Match by object equality for rule collection input
+                    rules_to_remove.any? { |r| r == rule }
+                  end
+        next unless matches
 
-        # Check media type match
+        # Check media type match if filter is specified
         if filter_media
           rule_media_types = @_media_index.select { |_media, ids| ids.include?(rule_id) }.keys
           # Extract individual media types from complex queries
           individual_types = rule_media_types.flat_map { |key| Cataract.parse_media_types(key) }.uniq
 
-          # If rule is not in any media query (base rule), skip if filtering by media
+          # If rule is not in any media query (base rule), skip unless :all is specified
           if individual_types.empty?
             next unless filter_media.include?(:all)
           else
@@ -524,11 +552,11 @@ module Cataract
           end
         end
 
-        rules_to_remove << rule_id
+        rule_ids_to_remove << rule_id
       end
 
       # Remove rules and update media_index (sort in reverse to maintain indices during deletion)
-      rules_to_remove.sort.reverse_each do |rule_id|
+      rule_ids_to_remove.sort.reverse_each do |rule_id|
         @rules.delete_at(rule_id)
 
         # Remove from media_index and update IDs for rules after this one

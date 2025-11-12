@@ -456,6 +456,44 @@ static int process_expanded_property(VALUE prop_name, VALUE prop_value, VALUE ar
     return ST_CONTINUE;
 }
 
+// Context for merge_selector_group_callback
+struct merge_selectors_context {
+    VALUE merged_rules;
+    VALUE rules_array;
+    int *rule_id_counter;
+    long selector_index;
+    long total_selectors;
+};
+
+// Forward declaration
+static VALUE merge_rules_for_selector(VALUE rules_array, VALUE rule_indices, VALUE selector);
+
+// Callback for rb_hash_foreach when merging selector groups
+static int merge_selector_group_callback(VALUE selector, VALUE group_indices, VALUE arg) {
+    struct merge_selectors_context *ctx = (struct merge_selectors_context *)arg;
+    ctx->selector_index++;
+
+    DEBUG_PRINTF("\n[Selector %ld/%ld] '%s' - %ld rules in group\n",
+                 ctx->selector_index, ctx->total_selectors,
+                 RSTRING_PTR(selector), RARRAY_LEN(group_indices));
+
+    // Merge all rules in this selector group
+    VALUE merged_decls = merge_rules_for_selector(ctx->rules_array, group_indices, selector);
+
+    // Create new rule with this selector and merged declarations
+    VALUE new_rule = rb_struct_new(cRule,
+        INT2FIX((*ctx->rule_id_counter)++),
+        selector,
+        merged_decls,
+        Qnil,  // specificity
+        Qnil,  // parent_rule_id
+        Qnil   // nesting_style
+    );
+    rb_ary_push(ctx->merged_rules, new_rule);
+
+    return ST_CONTINUE;
+}
+
 /*
  * Helper function: Merge multiple rules with the same selector
  *
@@ -512,61 +550,74 @@ static VALUE merge_rules_for_selector(VALUE rules_array, VALUE rule_indices, VAL
                          is_important ? " !important" : "", source_order);
 
             // Expand shorthands (margin, padding, background, font, etc.)
-            // The expand functions return a hash of {property => value}
+            // The expand functions return an array of Declaration structs
             const char *prop_cstr = RSTRING_PTR(property);
             VALUE expanded = Qnil;
 
-            if (strcmp(prop_cstr, "margin") == 0) {
-                expanded = cataract_expand_margin(Qnil, value);
-                DEBUG_PRINTF("          -> Expanding margin shorthand (%ld longhands)\n", RHASH_SIZE(expanded));
-            } else if (strcmp(prop_cstr, "padding") == 0) {
-                expanded = cataract_expand_padding(Qnil, value);
-                DEBUG_PRINTF("          -> Expanding padding shorthand (%ld longhands)\n", RHASH_SIZE(expanded));
-            } else if (strcmp(prop_cstr, "background") == 0) {
-                expanded = cataract_expand_background(Qnil, value);
-                DEBUG_PRINTF("          -> Expanding background shorthand (%ld longhands)\n", RHASH_SIZE(expanded));
-            } else if (strcmp(prop_cstr, "font") == 0) {
-                expanded = cataract_expand_font(Qnil, value);
-                DEBUG_PRINTF("          -> Expanding font shorthand (%ld longhands)\n", RHASH_SIZE(expanded));
-            } else if (strcmp(prop_cstr, "border") == 0) {
-                expanded = cataract_expand_border(Qnil, value);
-                DEBUG_PRINTF("          -> Expanding border shorthand (%ld longhands)\n", RHASH_SIZE(expanded));
-            } else if (strcmp(prop_cstr, "border-color") == 0) {
-                expanded = cataract_expand_border_color(Qnil, value);
-                DEBUG_PRINTF("          -> Expanding border-color shorthand (%ld longhands)\n", RHASH_SIZE(expanded));
-            } else if (strcmp(prop_cstr, "border-style") == 0) {
-                expanded = cataract_expand_border_style(Qnil, value);
-                DEBUG_PRINTF("          -> Expanding border-style shorthand (%ld longhands)\n", RHASH_SIZE(expanded));
-            } else if (strcmp(prop_cstr, "border-width") == 0) {
-                expanded = cataract_expand_border_width(Qnil, value);
-                DEBUG_PRINTF("          -> Expanding border-width shorthand (%ld longhands)\n", RHASH_SIZE(expanded));
-            } else if (strcmp(prop_cstr, "list-style") == 0) {
-                expanded = cataract_expand_list_style(Qnil, value);
-                DEBUG_PRINTF("          -> Expanding list-style shorthand (%ld longhands)\n", RHASH_SIZE(expanded));
-            } else if (strcmp(prop_cstr, "border-top") == 0) {
-                expanded = cataract_expand_border_side(Qnil, STR_NEW_CSTR("top"), value);
-                DEBUG_PRINTF("          -> Expanding border-top shorthand (%ld longhands)\n", RHASH_SIZE(expanded));
-            } else if (strcmp(prop_cstr, "border-right") == 0) {
-                expanded = cataract_expand_border_side(Qnil, STR_NEW_CSTR("right"), value);
-                DEBUG_PRINTF("          -> Expanding border-right shorthand (%ld longhands)\n", RHASH_SIZE(expanded));
-            } else if (strcmp(prop_cstr, "border-bottom") == 0) {
-                expanded = cataract_expand_border_side(Qnil, STR_NEW_CSTR("bottom"), value);
-                DEBUG_PRINTF("          -> Expanding border-bottom shorthand (%ld longhands)\n", RHASH_SIZE(expanded));
-            } else if (strcmp(prop_cstr, "border-left") == 0) {
-                expanded = cataract_expand_border_side(Qnil, STR_NEW_CSTR("left"), value);
-                DEBUG_PRINTF("          -> Expanding border-left shorthand (%ld longhands)\n", RHASH_SIZE(expanded));
+            // Early exit: shorthand properties only start with m, p, b, f, or l
+            char first_char = prop_cstr[0];
+            if (first_char == 'm' || first_char == 'p' || first_char == 'b' ||
+                first_char == 'f' || first_char == 'l') {
+                // Potentially a shorthand - check specific property names
+                if (strcmp(prop_cstr, "margin") == 0) {
+                    expanded = cataract_expand_margin(Qnil, value);
+                    DEBUG_PRINTF("          -> Expanding margin shorthand (%ld longhands)\n", RARRAY_LEN(expanded));
+                } else if (strcmp(prop_cstr, "padding") == 0) {
+                    expanded = cataract_expand_padding(Qnil, value);
+                    DEBUG_PRINTF("          -> Expanding padding shorthand (%ld longhands)\n", RARRAY_LEN(expanded));
+                } else if (strcmp(prop_cstr, "background") == 0) {
+                    expanded = cataract_expand_background(Qnil, value);
+                    DEBUG_PRINTF("          -> Expanding background shorthand (%ld longhands)\n", RARRAY_LEN(expanded));
+                } else if (strcmp(prop_cstr, "font") == 0) {
+                    expanded = cataract_expand_font(Qnil, value);
+                    DEBUG_PRINTF("          -> Expanding font shorthand (%ld longhands)\n", RARRAY_LEN(expanded));
+                } else if (strcmp(prop_cstr, "border") == 0) {
+                    expanded = cataract_expand_border(Qnil, value);
+                    DEBUG_PRINTF("          -> Expanding border shorthand (%ld longhands)\n", RARRAY_LEN(expanded));
+                } else if (strcmp(prop_cstr, "border-color") == 0) {
+                    expanded = cataract_expand_border_color(Qnil, value);
+                    DEBUG_PRINTF("          -> Expanding border-color shorthand (%ld longhands)\n", RARRAY_LEN(expanded));
+                } else if (strcmp(prop_cstr, "border-style") == 0) {
+                    expanded = cataract_expand_border_style(Qnil, value);
+                    DEBUG_PRINTF("          -> Expanding border-style shorthand (%ld longhands)\n", RARRAY_LEN(expanded));
+                } else if (strcmp(prop_cstr, "border-width") == 0) {
+                    expanded = cataract_expand_border_width(Qnil, value);
+                    DEBUG_PRINTF("          -> Expanding border-width shorthand (%ld longhands)\n", RARRAY_LEN(expanded));
+                } else if (strcmp(prop_cstr, "list-style") == 0) {
+                    expanded = cataract_expand_list_style(Qnil, value);
+                    DEBUG_PRINTF("          -> Expanding list-style shorthand (%ld longhands)\n", RARRAY_LEN(expanded));
+                } else if (strcmp(prop_cstr, "border-top") == 0) {
+                    expanded = cataract_expand_border_side(Qnil, STR_NEW_CSTR("top"), value);
+                    DEBUG_PRINTF("          -> Expanding border-top shorthand (%ld longhands)\n", RARRAY_LEN(expanded));
+                } else if (strcmp(prop_cstr, "border-right") == 0) {
+                    expanded = cataract_expand_border_side(Qnil, STR_NEW_CSTR("right"), value);
+                    DEBUG_PRINTF("          -> Expanding border-right shorthand (%ld longhands)\n", RARRAY_LEN(expanded));
+                } else if (strcmp(prop_cstr, "border-bottom") == 0) {
+                    expanded = cataract_expand_border_side(Qnil, STR_NEW_CSTR("bottom"), value);
+                    DEBUG_PRINTF("          -> Expanding border-bottom shorthand (%ld longhands)\n", RARRAY_LEN(expanded));
+                } else if (strcmp(prop_cstr, "border-left") == 0) {
+                    expanded = cataract_expand_border_side(Qnil, STR_NEW_CSTR("left"), value);
+                    DEBUG_PRINTF("          -> Expanding border-left shorthand (%ld longhands)\n", RARRAY_LEN(expanded));
+                }
             }
+            // If first_char doesn't match, expanded stays Qnil and we skip to processing original property
 
             // Process expanded properties or the original property
-            if (!NIL_P(expanded) && RHASH_SIZE(expanded) > 0) {
-                // Use rb_hash_foreach to iterate over expanded properties
+            if (!NIL_P(expanded) && RARRAY_LEN(expanded) > 0) {
+                // Iterate over expanded Declaration array
                 struct expand_property_data expand_data = {
                     .properties_hash = properties_hash,
                     .specificity = specificity,
                     .is_important = is_important,
                     .source_order = source_order
                 };
-                rb_hash_foreach(expanded, process_expanded_property, (VALUE)&expand_data);
+                long expanded_len = RARRAY_LEN(expanded);
+                for (long i = 0; i < expanded_len; i++) {
+                    VALUE decl = rb_ary_entry(expanded, i);
+                    VALUE prop = rb_struct_aref(decl, INT2FIX(DECL_PROPERTY));
+                    VALUE val = rb_struct_aref(decl, INT2FIX(DECL_VALUE));
+                    process_expanded_property(prop, val, (VALUE)&expand_data);
+                }
             } else {
                 // No expansion - process the original property directly
                 struct expand_property_data expand_data = {
@@ -1181,32 +1232,18 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
         VALUE merged_rules = rb_ary_new();
         int rule_id_counter = 0;
 
-        // Iterate through each selector group
-        VALUE selectors = rb_funcall(selector_groups, rb_intern("keys"), 0);
-        long num_selectors = RARRAY_LEN(selectors);
-        DEBUG_PRINTF("\n=== Processing %ld selector groups ===\n", num_selectors);
+        // Iterate through each selector group using rb_hash_foreach
+        // to avoid rb_funcall in hot path
+        struct merge_selectors_context merge_ctx;
+        merge_ctx.merged_rules = merged_rules;
+        merge_ctx.rules_array = rules_array;
+        merge_ctx.rule_id_counter = &rule_id_counter;
+        merge_ctx.selector_index = 0;
+        merge_ctx.total_selectors = RHASH_SIZE(selector_groups);
 
-        for (long s = 0; s < num_selectors; s++) {
-            VALUE selector = rb_ary_entry(selectors, s);
-            VALUE group_indices = rb_hash_aref(selector_groups, selector);
+        DEBUG_PRINTF("\n=== Processing %ld selector groups ===\n", merge_ctx.total_selectors);
 
-            DEBUG_PRINTF("\n[Selector %ld/%ld] '%s' - %ld rules in group\n",
-                         s + 1, num_selectors, RSTRING_PTR(selector), RARRAY_LEN(group_indices));
-
-            // Merge all rules in this selector group
-            VALUE merged_decls = merge_rules_for_selector(rules_array, group_indices, selector);
-
-            // Create new rule with this selector and merged declarations
-            VALUE new_rule = rb_struct_new(cRule,
-                INT2FIX(rule_id_counter++),
-                selector,
-                merged_decls,
-                Qnil,  // specificity
-                Qnil,  // parent_rule_id
-                Qnil   // nesting_style
-            );
-            rb_ary_push(merged_rules, new_rule);
-        }
+        rb_hash_foreach(selector_groups, merge_selector_group_callback, (VALUE)&merge_ctx);
 
         // Add passthrough AtRules to output (preserve @keyframes, @font-face, etc.)
         long num_passthrough = RARRAY_LEN(passthrough_rules);
@@ -1317,45 +1354,58 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
             const char *prop_str = StringValueCStr(property);
             VALUE expanded = Qnil;
 
-            if (strcmp(prop_str, "margin") == 0) {
-                expanded = cataract_expand_margin(Qnil, value);
-            } else if (strcmp(prop_str, "padding") == 0) {
-                expanded = cataract_expand_padding(Qnil, value);
-            } else if (strcmp(prop_str, "border") == 0) {
-                expanded = cataract_expand_border(Qnil, value);
-            } else if (strcmp(prop_str, "border-color") == 0) {
-                expanded = cataract_expand_border_color(Qnil, value);
-            } else if (strcmp(prop_str, "border-style") == 0) {
-                expanded = cataract_expand_border_style(Qnil, value);
-            } else if (strcmp(prop_str, "border-width") == 0) {
-                expanded = cataract_expand_border_width(Qnil, value);
-            } else if (strcmp(prop_str, "border-top") == 0) {
-                expanded = cataract_expand_border_side(Qnil, USASCII_STR("top"), value);
-            } else if (strcmp(prop_str, "border-right") == 0) {
-                expanded = cataract_expand_border_side(Qnil, USASCII_STR("right"), value);
-            } else if (strcmp(prop_str, "border-bottom") == 0) {
-                expanded = cataract_expand_border_side(Qnil, USASCII_STR("bottom"), value);
-            } else if (strcmp(prop_str, "border-left") == 0) {
-                expanded = cataract_expand_border_side(Qnil, USASCII_STR("left"), value);
-            } else if (strcmp(prop_str, "font") == 0) {
-                expanded = cataract_expand_font(Qnil, value);
-            } else if (strcmp(prop_str, "list-style") == 0) {
-                expanded = cataract_expand_list_style(Qnil, value);
-            } else if (strcmp(prop_str, "background") == 0) {
-                expanded = cataract_expand_background(Qnil, value);
+            // Early exit: shorthand properties only start with m, p, b, f, or l
+            char first_char = prop_str[0];
+            if (first_char == 'm' || first_char == 'p' || first_char == 'b' ||
+                first_char == 'f' || first_char == 'l') {
+                // Potentially a shorthand - check specific property names
+                if (strcmp(prop_str, "margin") == 0) {
+                    expanded = cataract_expand_margin(Qnil, value);
+                } else if (strcmp(prop_str, "padding") == 0) {
+                    expanded = cataract_expand_padding(Qnil, value);
+                } else if (strcmp(prop_str, "border") == 0) {
+                    expanded = cataract_expand_border(Qnil, value);
+                } else if (strcmp(prop_str, "border-color") == 0) {
+                    expanded = cataract_expand_border_color(Qnil, value);
+                } else if (strcmp(prop_str, "border-style") == 0) {
+                    expanded = cataract_expand_border_style(Qnil, value);
+                } else if (strcmp(prop_str, "border-width") == 0) {
+                    expanded = cataract_expand_border_width(Qnil, value);
+                } else if (strcmp(prop_str, "border-top") == 0) {
+                    expanded = cataract_expand_border_side(Qnil, USASCII_STR("top"), value);
+                } else if (strcmp(prop_str, "border-right") == 0) {
+                    expanded = cataract_expand_border_side(Qnil, USASCII_STR("right"), value);
+                } else if (strcmp(prop_str, "border-bottom") == 0) {
+                    expanded = cataract_expand_border_side(Qnil, USASCII_STR("bottom"), value);
+                } else if (strcmp(prop_str, "border-left") == 0) {
+                    expanded = cataract_expand_border_side(Qnil, USASCII_STR("left"), value);
+                } else if (strcmp(prop_str, "font") == 0) {
+                    expanded = cataract_expand_font(Qnil, value);
+                } else if (strcmp(prop_str, "list-style") == 0) {
+                    expanded = cataract_expand_list_style(Qnil, value);
+                } else if (strcmp(prop_str, "background") == 0) {
+                    expanded = cataract_expand_background(Qnil, value);
+                }
             }
+            // If first_char doesn't match, expanded stays Qnil
 
-            // If property was expanded, iterate and apply cascade using rb_hash_foreach
+            // If property was expanded, iterate array and apply cascade
             // Expansion is rare (most properties are not shorthands)
             if (!NIL_P(expanded)) {
-                Check_Type(expanded, T_HASH);
+                Check_Type(expanded, T_ARRAY);
 
                 struct expand_context ctx;
                 ctx.properties_hash = properties_hash;
                 ctx.specificity = specificity;
                 ctx.important = important;
 
-                rb_hash_foreach(expanded, merge_expanded_callback, (VALUE)&ctx);
+                long expanded_len = RARRAY_LEN(expanded);
+                for (long i = 0; i < expanded_len; i++) {
+                    VALUE decl = rb_ary_entry(expanded, i);
+                    VALUE prop = rb_struct_aref(decl, INT2FIX(DECL_PROPERTY));
+                    VALUE val = rb_struct_aref(decl, INT2FIX(DECL_VALUE));
+                    merge_expanded_callback(prop, val, (VALUE)&ctx);
+                }
 
                 RB_GC_GUARD(expanded);
                 continue; // Skip processing the original shorthand property

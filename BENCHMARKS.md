@@ -81,20 +81,20 @@ Time to merge multiple CSS rule sets with same selector
 
 | Test Case | Native | Pure (no YJIT) | Pure (YJIT) | css_parser (no YJIT) | css_parser (YJIT) |
 |-----------|--------|----------------|-------------|----------------------|-------------------|
-| No shorthand properties (large) | 10.5K i/s | 3.46K i/s | 6.73K i/s | 1.51K i/s | 2.27K i/s |
-| Simple properties | 125.51K i/s | 77.36K i/s | 110.86K i/s | 27.92K i/s | 40.42K i/s |
-| Cascade with specificity | 140.46K i/s | 80.08K i/s | 116.35K i/s | 31.48K i/s | 45.99K i/s |
-| Important declarations | 139.59K i/s | 80.29K i/s | 116.39K i/s | 30.84K i/s | 44.87K i/s |
-| Shorthand expansion | 10.5K i/s | 3.46K i/s | 6.73K i/s | 1.51K i/s | 2.27K i/s |
-| Complex merging | 24.74K i/s | 16.62K i/s | 23.57K i/s | 11.59K i/s | 16.48K i/s |
+| No shorthand properties (large) | 11.5K i/s | 3.14K i/s | 5.32K i/s | 1.59K i/s | 2.35K i/s |
+| Simple properties | 116.34K i/s | 75.52K i/s | 102.15K i/s | 28.3K i/s | 41.73K i/s |
+| Cascade with specificity | 135.78K i/s | 77.92K i/s | 109.05K i/s | 32.02K i/s | 47.52K i/s |
+| Important declarations | 135.96K i/s | 78.0K i/s | 108.97K i/s | 31.36K i/s | 46.66K i/s |
+| Shorthand expansion | 11.5K i/s | 3.14K i/s | 5.32K i/s | 1.59K i/s | 2.35K i/s |
+| Complex merging | 22.76K i/s | 16.05K i/s | 22.07K i/s | 11.66K i/s | 16.92K i/s |
 
 ### Speedups
 
 | Comparison | Speedup |
 |------------|---------|
-| Native vs Pure (no YJIT) | 1.87x faster (avg) |
-| Native vs Pure (YJIT) | 1.16x faster (avg) |
-| YJIT impact on Pure Ruby | 1.45x faster (avg) |
+| Native vs Pure (no YJIT) | 1.93x faster (avg) |
+| Native vs Pure (YJIT) | 1.19x faster (avg) |
+| YJIT impact on Pure Ruby | 1.39x faster (avg) |
 
 ---
 

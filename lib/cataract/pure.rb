@@ -118,6 +118,16 @@ module Cataract
     Merge.merge(stylesheet, mutate: true)
   end
 
+  # Expand a single shorthand declaration into longhand declarations.
+  # Underscore prefix indicates semi-private API - use with caution.
+  #
+  # @param decl [Declaration] Declaration to expand
+  # @return [Array<Declaration>] Array of expanded longhand declarations
+  # @api private
+  def self._expand_shorthand(decl)
+    Merge._expand_shorthand(decl)
+  end
+
   # Add stub method to Stylesheet for pure Ruby implementation
   class Stylesheet
     # Color conversion is only available in the native C extension

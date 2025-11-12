@@ -402,7 +402,7 @@ class TestParserMediaTypes < Minitest::Test
 
     assert_equal 3, @sheet.rules_count
 
-    @sheet.remove_rules!(selector: '.header')
+    @sheet.remove_rules!('.header { }')
 
     assert_equal 2, @sheet.rules_count
     assert_predicate @sheet.with_selector('body'), :any?
@@ -420,7 +420,7 @@ class TestParserMediaTypes < Minitest::Test
     assert_equal 3, @sheet.rules_count
 
     # Remove .header only from screen
-    @sheet.remove_rules!(selector: '.header', media_types: :screen)
+    @sheet.remove_rules!('.header { }', media_types: :screen)
 
     assert_equal 2, @sheet.rules_count
 
@@ -444,7 +444,7 @@ class TestParserMediaTypes < Minitest::Test
     assert_equal 3, @sheet.rules_count
 
     # Remove .header from ALL media types
-    @sheet.remove_rules!(selector: '.header')
+    @sheet.remove_rules!('.header { }')
 
     assert_equal 0, @sheet.rules_count
     assert_empty @sheet.with_media(:all).with_selector('.header')
@@ -458,7 +458,7 @@ class TestParserMediaTypes < Minitest::Test
     assert_equal 1, @sheet.rules_count
 
     # Remove the only rule in the screen group
-    @sheet.remove_rules!(selector: '.header', media_types: :screen)
+    @sheet.remove_rules!('.header { }', media_types: :screen)
 
     assert_equal 0, @sheet.rules_count
 
@@ -477,7 +477,7 @@ class TestParserMediaTypes < Minitest::Test
     assert_equal 4, @sheet.rules_count
 
     # Remove .header from screen and print only
-    @sheet.remove_rules!(selector: '.header', media_types: %i[screen print])
+    @sheet.remove_rules!('.header { }', media_types: %i[screen print])
 
     assert_equal 2, @sheet.rules_count
 

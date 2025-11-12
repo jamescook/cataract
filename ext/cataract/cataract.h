@@ -162,6 +162,7 @@ VALUE cataract_expand_border_side(VALUE self, VALUE side, VALUE value);
 VALUE cataract_expand_font(VALUE self, VALUE value);
 VALUE cataract_expand_list_style(VALUE self, VALUE value);
 VALUE cataract_expand_background(VALUE self, VALUE value);
+VALUE cataract_expand_shorthand(VALUE self, VALUE decl);
 VALUE cataract_create_margin_shorthand(VALUE self, VALUE properties);
 VALUE cataract_create_padding_shorthand(VALUE self, VALUE properties);
 VALUE cataract_create_border_width_shorthand(VALUE self, VALUE properties);

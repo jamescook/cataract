@@ -123,17 +123,36 @@ module Cataract
     # Compare rules for logical equality based on CSS semantics.
     #
     # Two rules are equal if they have the same selector and declarations.
+    # Shorthand properties are expanded before comparison, so
+    # `margin: 10px` equals `margin-top: 10px; margin-right: 10px; ...`
+    #
     # Internal implementation details (id, specificity) are not considered
-    # since they don't affect the CSS semantics. Specificity is derived from
-    # the selector, so if selectors match, specificity must match too.
+    # since they don't affect the CSS semantics.
     #
     # @param other [Object] Object to compare with
     # @return [Boolean] true if rules have same selector and declarations
     def ==(other)
       return false unless other.is_a?(Rule)
+      return false unless selector == other.selector
 
-      selector == other.selector &&
-        declarations == other.declarations
+      # Expand and normalize declarations for comparison
+      # Cache expansion on self, compute fresh for other
+      self_expanded = @_expanded_declarations ||= begin
+        expanded = declarations.flat_map { |decl| Cataract._expand_shorthand(decl) }
+        expanded.sort_by! { |d| [d.property, d.value, d.important ? 1 : 0] }
+        expanded
+      end
+
+      # Check if other already has expanded cache
+      if other.instance_variable_defined?(:@_expanded_declarations) && !other.instance_variable_get(:@_expanded_declarations).nil?
+        other_expanded = other.instance_variable_get(:@_expanded_declarations)
+      else
+        # Expand other without caching
+        other_expanded = other.declarations.flat_map { |decl| Cataract._expand_shorthand(decl) }
+        other_expanded.sort_by! { |d| [d.property, d.value, d.important ? 1 : 0] }
+      end
+
+      self_expanded == other_expanded
     end
     alias eql? ==
   end

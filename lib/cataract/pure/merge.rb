@@ -152,7 +152,9 @@ module Cataract
       end
 
       # Expand shorthands in regular rules only (AtRules don't have declarations)
-      regular_rules.each { |rule| expand_shorthands!(rule) }
+      regular_rules.each do |rule|
+        rule.declarations.replace(rule.declarations.flat_map { |decl| _expand_shorthand(decl) })
+      end
 
       merged_rules = []
 
@@ -284,42 +286,39 @@ module Cataract
       Cataract.calculate_specificity(selector)
     end
 
-    # Expand shorthand properties in a rule (mutates declarations)
+    # Expand a single shorthand declaration into longhand declarations.
+    # Returns an array of longhand declarations. If the declaration is not a shorthand,
+    # returns an array with just that declaration.
     #
-    # @param rule [Rule] Rule to expand
-    def self.expand_shorthands!(rule)
-      expanded = []
-
-      rule.declarations.each do |decl|
-        prop = decl.property
-
-        case prop
-        when 'margin'
-          expanded.concat(expand_margin(decl))
-        when 'padding'
-          expanded.concat(expand_padding(decl))
-        when 'border'
-          expanded.concat(expand_border(decl))
-        when 'border-top', 'border-right', 'border-bottom', 'border-left'
-          expanded.concat(expand_border_side(decl))
-        when 'border-width'
-          expanded.concat(expand_border_width(decl))
-        when 'border-style'
-          expanded.concat(expand_border_style(decl))
-        when 'border-color'
-          expanded.concat(expand_border_color(decl))
-        when 'font'
-          expanded.concat(expand_font(decl))
-        when 'background'
-          expanded.concat(expand_background(decl))
-        when 'list-style'
-          expanded.concat(expand_list_style(decl))
-        else
-          expanded << decl
-        end
+    # @param decl [Declaration] Declaration to expand
+    # @return [Array<Declaration>] Array of expanded longhand declarations
+    # @api private
+    def self._expand_shorthand(decl)
+      case decl.property
+      when 'margin'
+        expand_margin(decl)
+      when 'padding'
+        expand_padding(decl)
+      when 'border'
+        expand_border(decl)
+      when 'border-top', 'border-right', 'border-bottom', 'border-left'
+        expand_border_side(decl)
+      when 'border-width'
+        expand_border_width(decl)
+      when 'border-style'
+        expand_border_style(decl)
+      when 'border-color'
+        expand_border_color(decl)
+      when 'font'
+        expand_font(decl)
+      when 'background'
+        expand_background(decl)
+      when 'list-style'
+        expand_list_style(decl)
+      else
+        # Not a shorthand, return as-is in an array
+        [decl]
       end
-
-      rule.declarations.replace(expanded)
     end
 
     # Expand margin shorthand
