@@ -94,6 +94,14 @@ module Cataract
     parser.parse
   end
 
+  # NOTE: Copied from cataract.rb
+  # Need to untangle this eventually
+  def self.parse_css(css, imports: false)
+    css = ImportResolver.resolve(css, imports) if imports
+
+    Stylesheet.parse(css)
+  end
+
   # Merge stylesheet rules according to CSS cascade rules
   #
   # @param stylesheet [Stylesheet] Stylesheet to merge

@@ -8,7 +8,7 @@ require_relative 'cataract/rule'
 require_relative 'cataract/at_rule'
 
 # Load pure Ruby or C extension based on ENV var
-if %w[1 true].include?(ENV['CATARACT_PURE'])
+if %w[1 true].include?(ENV.fetch('CATARACT_PURE', nil)) || RUBY_ENGINE == 'jruby'
   require_relative 'cataract/pure'
 else
   require_relative 'cataract/native_extension'
