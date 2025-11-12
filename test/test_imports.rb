@@ -459,6 +459,32 @@ body { color: red; }"
     end
   end
 
+  def test_import_with_comments_between_imports
+    # Test comment skipping while iterating through @import statements
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, 'first.css'), '.first { color: red; }')
+      File.write(File.join(dir, 'second.css'), '.second { color: blue; }')
+
+      # CSS with comments between @import statements
+      css = <<~CSS
+        @import url('file://#{File.join(dir, 'first.css')}');
+        /* Comment between imports */
+        /* Another comment
+           spanning multiple lines */
+        @import url('file://#{File.join(dir, 'second.css')}');
+        body { margin: 0; }
+      CSS
+
+      sheet = Cataract.parse_css(css, imports: { allowed_schemes: ['file'] })
+
+      assert_equal 3, sheet.size
+
+      assert_has_selector '.first', sheet
+      assert_has_selector '.second', sheet
+      assert_has_selector 'body', sheet
+    end
+  end
+
   def test_stylesheet_load_uri_with_file_scheme_sets_base_path
     # Test that load_uri with file:// scheme sets base_path for resolving relative imports
     Dir.mktmpdir do |dir|

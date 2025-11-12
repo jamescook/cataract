@@ -202,6 +202,88 @@ class TestDeclarations < Minitest::Test
     assert_equal 'red', decl['color']
   end
 
+  def test_inline_comments_in_nested_block
+    # Test comments in parse_mixed_block (which handles nesting)
+    # This is CSS Nesting with comments between declarations
+    # Also tests property name with trailing whitespace before colon (line 508)
+    css = <<~CSS
+      .parent {
+        color  : red;
+        /* Comment in parent */
+        .nested {
+          background: blue;
+        }
+        /* Comment after nested rule */
+        margin   : 10px;
+      }
+    CSS
+
+    sheet = Cataract.parse_css(css)
+    parent_rule = sheet.rules.find { |r| r.selector == '.parent' }
+
+    assert parent_rule, 'Should have parent rule'
+    assert_equal 2, parent_rule.declarations.length, 'Parent should have 2 declarations (comments skipped)'
+    assert_equal 'color', parent_rule.declarations[0].property
+    assert_equal 'margin', parent_rule.declarations[1].property
+  end
+
+  def test_malformed_declarations_in_nested_block
+    # Test malformed CSS in parse_mixed_block (missing colons, etc.)
+    # Should gracefully skip malformed declarations and continue parsing
+    css = <<~CSS
+      .parent {
+        color: red;
+        badprop nocolon;
+        .nested {
+          background: blue;
+        }
+        anotherbad;
+        margin: 10px;
+      }
+    CSS
+
+    sheet = Cataract.parse_css(css)
+    parent_rule = sheet.rules.find { |r| r.selector == '.parent' }
+
+    assert parent_rule, 'Should have parent rule'
+    # Should skip malformed declarations but keep valid ones
+    valid_props = parent_rule.declarations.map(&:property)
+
+    assert_includes valid_props, 'color', 'Should parse valid color declaration'
+    assert_includes valid_props, 'margin', 'Should parse valid margin declaration'
+    # Malformed ones should be skipped
+    refute_includes valid_props, 'badprop', 'Should skip malformed badprop'
+    refute_includes valid_props, 'anotherbad', 'Should skip malformed anotherbad'
+  end
+
+  def test_malformed_declarations_in_at_rule
+    # Test malformed CSS in parse_declarations_block (used for @font-face, etc.)
+    # Should gracefully skip malformed declarations
+    css = <<~CSS
+      @font-face {
+        font-family: 'MyFont';
+        badprop nocolon;
+        src: url('font.woff');
+        anotherbad;
+        font-weight: bold;
+      }
+    CSS
+
+    sheet = Cataract.parse_css(css)
+    at_rule = sheet.rules.first
+
+    assert_equal '@font-face', at_rule.selector
+    # Should have valid declarations, skip malformed ones
+    valid_props = at_rule.content.map(&:property)
+
+    assert_includes valid_props, 'font-family', 'Should parse valid font-family'
+    assert_includes valid_props, 'src', 'Should parse valid src'
+    assert_includes valid_props, 'font-weight', 'Should parse valid font-weight'
+    # Malformed ones should be skipped
+    refute_includes valid_props, 'badprop', 'Should skip malformed badprop'
+    refute_includes valid_props, 'anotherbad', 'Should skip malformed anotherbad'
+  end
+
   def test_important_with_extra_whitespace
     # Various whitespace around !important
     decl = Cataract::Declarations.new

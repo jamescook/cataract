@@ -240,16 +240,6 @@ module Cataract
       @css.getbyte(@pos)
     end
 
-    # Read current byte and advance position
-    # @return [Integer, nil] Byte value or nil if EOF
-    def read_byte
-      return nil if eof?
-
-      byte = @css.getbyte(@pos)
-      @pos += 1
-      byte
-    end
-
     # Delegate to module-level helper methods (now work with bytes)
     def whitespace?(byte)
       Cataract.is_whitespace?(byte)
@@ -313,13 +303,6 @@ module Cataract
       end
 
       pos
-    end
-
-    # Find matching closing paren
-    def find_matching_paren(start_pos)
-      # TODO: Track depth, handle nested parens
-      # Return position of matching ')' or len if not found
-      start_pos
     end
 
     # Parse selector (read until '{')
@@ -1137,12 +1120,6 @@ module Cataract
       end
     end
 
-    # Lowercase property name (CSS properties are ASCII)
-    def lowercase_property(str)
-      # Simple ASCII lowercase (no encoding issues)
-      str.downcase
-    end
-
     # Combine parent and child media queries
     # Translated from C: see ext/cataract/css_parser.c combine_media_queries
     # Examples:
@@ -1180,24 +1157,6 @@ module Cataract
       end
 
       @pos += 1 if peek_byte == BYTE_SEMICOLON # consume semicolon
-    end
-
-    # Skip to next rule (error recovery for at-rules we don't handle yet)
-    def skip_to_next_rule
-      depth = 0
-      until eof?
-        char = peek_byte
-        if char == BYTE_LBRACE
-          depth += 1
-        elsif char == BYTE_RBRACE
-          depth -= 1
-          if depth <= 0
-            @pos += 1 # consume final '}'
-            break
-          end
-        end
-        @pos += 1
-      end
     end
 
     # Skip @import statements at the beginning of CSS
