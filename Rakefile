@@ -28,7 +28,6 @@ end
 # rake-compiler already adds: tmp/, lib/**/*.{so,bundle}, etc.
 CLEAN.include('ext/**/Makefile', 'ext/**/*.o')
 
-# Test tasks - run C extension and pure Ruby implementations
 namespace :test do
   desc 'Run tests with C extension (default)'
   Rake::TestTask.new(:c) do |t|
@@ -47,18 +46,25 @@ namespace :test do
 
   desc 'Run tests for both C extension and pure Ruby'
   task :all do
-    puts "\n#{'=' * 80}"
-    puts 'Running tests for C EXTENSION'
-    puts '=' * 80
-    Rake::Task['test:c'].invoke
+    impls = ['pure ruby']
+
+    unless RUBY_ENGINE == 'jruby'
+      puts "\n#{'=' * 80}"
+      puts 'Running tests for C EXTENSION'
+      puts '=' * 80
+      impls << 'C extension'
+
+      Rake::Task['test:c'].invoke
+    end
 
     puts "\n#{'=' * 80}"
     puts 'Running tests for PURE RUBY implementation'
     puts '=' * 80
+
     Rake::Task['test:pure'].invoke
 
     puts "\n#{'=' * 80}"
-    puts '✓ All tests passed for both C extension and pure Ruby!'
+    puts "✓ All tests passed for #{impls.join(' and ')}"
     puts '=' * 80
   end
 end
@@ -82,25 +88,25 @@ end
 
 namespace :benchmark do
   desc 'Benchmark CSS parsing performance'
-  task :parsing => :compile do
+  task parsing: :compile do
     puts 'Running parsing benchmark...'
     ruby 'benchmarks/benchmark_parsing.rb'
   end
 
   desc 'Benchmark CSS serialization (to_s) performance'
-  task :serialization => :compile do
+  task serialization: :compile do
     puts 'Running serialization benchmark...'
     ruby 'benchmarks/benchmark_serialization.rb'
   end
 
   desc 'Benchmark specificity calculation performance'
-  task :specificity => :compile do
+  task specificity: :compile do
     puts 'Running specificity benchmark...'
     ruby 'benchmarks/benchmark_specificity.rb'
   end
 
   desc 'Benchmark CSS merging performance'
-  task :merging => :compile do
+  task merging: :compile do
     puts 'Running merging benchmark...'
     ruby 'benchmarks/benchmark_merging.rb'
   end
