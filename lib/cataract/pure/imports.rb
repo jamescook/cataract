@@ -28,6 +28,7 @@ module Cataract
 
     true
   end
+
   # Extract @import statements from CSS
   #
   # @param css_string [String] CSS to scan for @imports

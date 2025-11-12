@@ -14,6 +14,7 @@ module SerializationTests
       def bootstrap_path
         File.expand_path('../test/fixtures/bootstrap.css', __dir__)
       end
+
       def bootstrap_css
         @bootstrap_css ||= File.read(bootstrap_path)
       end

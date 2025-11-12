@@ -15,9 +15,11 @@ module ParsingTests
       def fixtures_dir
         File.expand_path('../test/fixtures', __dir__)
       end
+
       def css1
         @css1 ||= File.read(File.join(fixtures_dir, 'css1_sample.css'))
       end
+
       def css2
         @css2 ||= File.read(File.join(fixtures_dir, 'css2_sample.css'))
       end
