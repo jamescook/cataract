@@ -48,6 +48,9 @@ module Cataract
       @rules = [] # Flat array of Rule structs
       @_media_index = {} # Hash: Symbol => Array of rule IDs
       @charset = nil
+      @_has_nesting = nil # Set by parser (nil or boolean)
+      @_last_rule_id = nil # Tracks next rule ID for add_block
+      @selectors = nil # Memoized cache of selectors
     end
 
     # Parse CSS and return a new Stylesheet
@@ -297,12 +300,13 @@ module Cataract
         Cataract._stylesheet_to_s(@rules, @_media_index, @charset, @_has_nesting || false)
       else
         # Collect all rule IDs that match the requested media types
-        matching_rule_ids = Set.new
+        matching_rule_ids = []
         which_media_array.each do |media_sym|
           if @_media_index[media_sym]
-            matching_rule_ids.merge(@_media_index[media_sym])
+            matching_rule_ids.concat(@_media_index[media_sym])
           end
         end
+        matching_rule_ids.uniq! # Dedupe: same rule can be in multiple media indexes
 
         # Build filtered rules array (keep original IDs, no recreation needed)
         filtered_rules = matching_rule_ids.sort.map! { |rule_id| @rules[rule_id] }
@@ -311,7 +315,7 @@ module Cataract
         filtered_media_index = {}
         which_media_array.each do |media_sym|
           if @_media_index[media_sym]
-            filtered_media_index[media_sym] = @_media_index[media_sym] & matching_rule_ids.to_a
+            filtered_media_index[media_sym] = @_media_index[media_sym] & matching_rule_ids
           end
         end
 
@@ -353,20 +357,21 @@ module Cataract
         Cataract._stylesheet_to_formatted_s(@rules, @_media_index, @charset, @_has_nesting || false)
       else
         # Collect all rule IDs that match the requested media types
-        matching_rule_ids = Set.new
+        matching_rule_ids = []
 
         # Include rules not in any media query (they apply to all media)
         media_rule_ids = @_media_index.values.flatten.uniq
         all_rule_ids = (0...@rules.length).to_a
         non_media_rule_ids = all_rule_ids - media_rule_ids
-        matching_rule_ids.merge(non_media_rule_ids)
+        matching_rule_ids.concat(non_media_rule_ids)
 
         # Include rules from requested media types
         which_media_array.each do |media_sym|
           if @_media_index[media_sym]
-            matching_rule_ids.merge(@_media_index[media_sym])
+            matching_rule_ids.concat(@_media_index[media_sym])
           end
         end
+        matching_rule_ids.uniq! # Dedupe: same rule can be in multiple media indexes
 
         # Build filtered rules array (keep original IDs, no recreation needed)
         filtered_rules = matching_rule_ids.sort.map! { |rule_id| @rules[rule_id] }
@@ -375,7 +380,7 @@ module Cataract
         filtered_media_index = {}
         which_media_array.each do |media_sym|
           if @_media_index[media_sym]
-            filtered_media_index[media_sym] = @_media_index[media_sym] & matching_rule_ids.to_a
+            filtered_media_index[media_sym] = @_media_index[media_sym] & matching_rule_ids
           end
         end
 
@@ -499,7 +504,7 @@ module Cataract
       filter_media = media_types ? Array(media_types).map(&:to_sym) : nil
 
       # Find rules to remove
-      rules_to_remove = Set.new
+      rules_to_remove = []
       @rules.each_with_index do |rule, rule_id|
         # Check selector match
         next if selector && rule.selector != selector
@@ -522,7 +527,7 @@ module Cataract
         rules_to_remove << rule_id
       end
 
-      # Remove rules and update media_index
+      # Remove rules and update media_index (sort in reverse to maintain indices during deletion)
       rules_to_remove.sort.reverse_each do |rule_id|
         @rules.delete_at(rule_id)
 

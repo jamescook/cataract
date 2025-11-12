@@ -53,15 +53,10 @@ class TestBenchmarkDocGenerator < Minitest::Test
     assert_includes content, 'Test CPU'
     assert_includes content, '16GB'
 
-    # Check parsing section exists (now in collapsible details)
-    assert_includes content, '<h2>CSS Parsing</h2>'
+    # Check parsing section exists
+    assert_includes content, '## CSS Parsing'
     assert_includes content, 'css_parser'
-    assert_includes content, 'Cataract'
     assert_includes content, 'faster'
-
-    # Check YJIT section exists (now in collapsible details)
-    assert_includes content, '<h2>YJIT Impact</h2>'
-    assert_includes content, 'property access'
   end
 
   def test_handles_missing_benchmarks

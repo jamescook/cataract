@@ -28,14 +28,44 @@ end
 # rake-compiler already adds: tmp/, lib/**/*.{so,bundle}, etc.
 CLEAN.include('ext/**/Makefile', 'ext/**/*.o')
 
-Rake::TestTask.new(:test) do |t|
-  t.libs << 'test'
-  t.libs << 'lib'
-  # Load test_helper before running tests (handles SimpleCov setup)
-  t.ruby_opts << '-rtest_helper'
-  # Exclude css_parser_compat directory (reference tests only, not run)
-  t.test_files = FileList['test/**/test_*.rb'].exclude('test/css_parser_compat/**/*')
+# Test tasks - run C extension and pure Ruby implementations
+namespace :test do
+  desc 'Run tests with C extension (default)'
+  Rake::TestTask.new(:c) do |t|
+    t.libs << 'test'
+    t.libs << 'lib'
+    t.ruby_opts << '-rtest_helper'
+    t.test_files = FileList['test/**/test_*.rb'].exclude('test/css_parser_compat/**/*', 'test/color/**/*')
+  end
+
+  desc 'Run tests with pure Ruby implementation'
+  task :pure do
+    # Run in subprocess to avoid conflicts with C extension
+    success = system({ 'CATARACT_PURE' => '1' }, 'rake', 'test:c')
+    abort('Pure Ruby tests failed!') unless success
+  end
+
+  desc 'Run tests for both C extension and pure Ruby'
+  task :all do
+    puts "\n#{'=' * 80}"
+    puts 'Running tests for C EXTENSION'
+    puts '=' * 80
+    Rake::Task['test:c'].invoke
+
+    puts "\n#{'=' * 80}"
+    puts 'Running tests for PURE RUBY implementation'
+    puts '=' * 80
+    Rake::Task['test:pure'].invoke
+
+    puts "\n#{'=' * 80}"
+    puts '✓ All tests passed for both C extension and pure Ruby!'
+    puts '=' * 80
+  end
 end
+
+# Default test task runs both implementations
+desc 'Run tests for both C extension and pure Ruby (default)'
+task test: 'test:all'
 
 desc 'Run all benchmarks'
 task :benchmark do
@@ -44,7 +74,6 @@ task :benchmark do
   Rake::Task['benchmark:serialization'].invoke
   Rake::Task['benchmark:specificity'].invoke
   Rake::Task['benchmark:merging'].invoke
-  Rake::Task['benchmark:yjit'].invoke
   puts "\n#{'-' * 80}"
   puts 'All benchmarks complete!'
   puts 'Generate documentation with: rake benchmark:generate_docs'
@@ -53,33 +82,27 @@ end
 
 namespace :benchmark do
   desc 'Benchmark CSS parsing performance'
-  task :parsing do
+  task :parsing => :compile do
     puts 'Running parsing benchmark...'
     ruby 'benchmarks/benchmark_parsing.rb'
   end
 
   desc 'Benchmark CSS serialization (to_s) performance'
-  task :serialization do
+  task :serialization => :compile do
     puts 'Running serialization benchmark...'
     ruby 'benchmarks/benchmark_serialization.rb'
   end
 
   desc 'Benchmark specificity calculation performance'
-  task :specificity do
+  task :specificity => :compile do
     puts 'Running specificity benchmark...'
     ruby 'benchmarks/benchmark_specificity.rb'
   end
 
   desc 'Benchmark CSS merging performance'
-  task :merging do
+  task :merging => :compile do
     puts 'Running merging benchmark...'
     ruby 'benchmarks/benchmark_merging.rb'
-  end
-
-  desc 'Benchmark Ruby-side operations with YJIT on vs off'
-  task :yjit do
-    puts 'Running YJIT benchmark...'
-    ruby 'benchmarks/benchmark_yjit.rb'
   end
 
   desc 'Benchmark string allocation optimization (buffer vs dynamic)'
@@ -189,10 +212,8 @@ begin
 
   desc 'Generate documentation and open in browser'
   task docs: :generate_example do
-    # Generate YARD documentation
-    YARD::CLI::Yardoc.run('--output-dir', 'docs', '--readme', 'README.md',
-                          '--title', 'Cataract - Fast CSS Parser',
-                          'lib/**/*.rb', 'ext/**/*.c', '-', 'docs/files/EXAMPLE.md')
+    # Generate YARD documentation (uses .yardopts for configuration)
+    YARD::CLI::Yardoc.run
 
     # Open in browser (skip in CI)
     unless ENV['CI']

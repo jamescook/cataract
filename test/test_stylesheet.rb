@@ -195,6 +195,29 @@ class TestStylesheet < Minitest::Test
     assert_includes media_queries, :print
   end
 
+  def test_multi_media_serialization_no_duplicates
+    # Regression test: ensure rules in multi-media queries don't get duplicated
+    # when serializing with multiple media types
+    css = <<~CSS
+      @media screen, print {
+        .foo { color: red; }
+      }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css)
+
+    # Serialize with both media types
+    output = sheet.to_s(media: [:screen, :print])
+
+    # Count occurrences of .foo - should appear exactly once
+    foo_count = output.scan(/\.foo/).count
+    assert_equal 1, foo_count,
+                 "Rule should appear once, not duplicated. Parser adds same rule ID to multiple media indexes."
+
+    # Verify the output actually contains the rule
+    assert_includes output, '.foo { color: red; }'
+  end
+
   # ============================================================================
   # Charset handling
   # ============================================================================

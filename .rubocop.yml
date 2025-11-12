@@ -1,3 +1,5 @@
+inherit_from: .rubocop_todo.yml
+
 plugins:
   - rubocop-performance
   - rubocop-minitest
@@ -44,6 +46,12 @@ Metrics/BlockLength:
 Metrics/ParameterLists:
   Enabled: false
 
+# Block nesting in byte-level parsers reflects CSS structure, not complexity
+# Extracting helper methods would add method dispatch overhead in hot path
+Metrics/BlockNesting:
+  Exclude:
+    - 'lib/cataract/pure/**/*.rb'
+
 # Keep line length for tests disabled - long test strings are fine
 Layout/LineLength:
   Exclude:
@@ -63,6 +71,8 @@ Style/Documentation:
    Exclude:
     - 'test/**/*'
     - 'benchmarks/**/*'
+    - 'lib/cataract/pure/**/*.rb'
+    - 'lib/cataract/pure.rb'
 
 # Disable modifier if/unless enforcement - use it when it's clearer, not because a cop says so
 Style/IfUnlessModifier:
@@ -81,3 +91,51 @@ Naming/VariableNumber:
 Naming/PredicatePrefix:
   Exclude:
     - 'lib/**/*.rb'
+
+# Performance-critical hot path exclusions for lib/cataract/pure
+# These cosmetic style rules add overhead via method dispatch or allocation
+
+# Disable numeric predicates in hot path - method dispatch overhead
+# Benchmark shows `> 0` is faster than `.positive?` due to avoiding method call
+Style/NumericPredicate:
+  Exclude:
+    - 'lib/cataract/pure/**/*.rb'
+
+# Disable multiple comparison style - avoid array allocation
+# `||` chain is faster than `Array#include?` which allocates an array
+Style/MultipleComparison:
+  Exclude:
+    - 'lib/cataract/pure/**/*.rb'
+
+# Disable zero-length predicate in hot path - method dispatch overhead
+# Direct comparison `.length > 0` is faster than `.empty?` method call
+Style/ZeroLengthPredicate:
+  Exclude:
+    - 'lib/cataract/pure/**/*.rb'
+
+# Benchmarked range vs offsets. Range has to allocated
+# so not ideal in the hot path
+Style/SlicingWithRange:
+  Exclude:
+    - 'lib/cataract/pure/**/*.rb'
+
+# Disable modifier while/until style in parsing code - readability
+# Byte-level parsing loops are clearer with traditional while...end form
+# Example: `while i < len && ident_char?(selector.getbyte(i)); i += 1; end`
+# is more readable than `i += 1 while i < len && ident_char?(selector.getbyte(i))`
+Style/WhileUntilModifier:
+  Exclude:
+    - 'lib/cataract/pure/**/*.rb'
+
+# Disable between? suggestion in hot path - method dispatch overhead
+# Benchmark shows `byte >= X && byte <= Y` is 2.60-4.82x faster than `.between?(X, Y)`
+Style/ComparableBetween:
+  Exclude:
+    - 'lib/cataract/pure/**/*.rb'
+
+# Disable map suggestion for array building - performance
+# Benchmark shows `each { arr << x }` is 1.05-1.11x faster than `arr = map { x }`
+# The << pattern is faster than map's implicit array return (even without YJIT)
+Style/MapIntoArray:
+  Exclude:
+    - 'lib/cataract/pure/**/*.rb'
