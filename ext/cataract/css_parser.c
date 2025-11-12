@@ -412,8 +412,14 @@ static VALUE parse_declarations(const char *start, const char *end) {
         // Example: "color: red; ..."
         //           ^pos  ^pos (at :)
         const char *prop_start = pos;
-        while (pos < end && *pos != ':') pos++;
-        if (pos >= end) break;  // No colon found
+        while (pos < end && *pos != ':' && *pos != ';') pos++;
+
+        // Malformed declaration - skip to next semicolon to recover
+        if (pos >= end || *pos != ':') {
+            while (pos < end && *pos != ';') pos++;
+            if (pos < end) pos++;  // Skip the semicolon
+            continue;
+        }
 
         const char *prop_end = pos;
         // Trim whitespace from property
