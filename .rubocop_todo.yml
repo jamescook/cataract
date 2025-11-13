@@ -34,13 +34,13 @@ Layout/MultilineOperationIndentation:
 # This cop supports safe autocorrection (--autocorrect).
 Lint/AmbiguousOperatorPrecedence:
   Exclude:
-    - 'lib/cataract/pure/merge.rb'
+    - 'lib/cataract/pure/flatten.rb'
 
 # Offense count: 2
 # Configuration parameters: IgnoreLiteralBranches, IgnoreConstantBranches, IgnoreDuplicateElseBranch.
 Lint/DuplicateBranch:
   Exclude:
-    - 'lib/cataract/pure/merge.rb'
+    - 'lib/cataract/pure/flatten.rb'
 
 # Offense count: 1
 Lint/IneffectiveAccessModifier:
@@ -74,7 +74,7 @@ Minitest/EmptyLineBeforeAssertionMethods:
 Performance/UnfreezeString:
   Exclude:
     - 'lib/cataract/pure.rb'
-    - 'lib/cataract/pure/merge.rb'
+    - 'lib/cataract/pure/flatten.rb'
     - 'lib/cataract/pure/parser.rb'
 
 # Offense count: 4
@@ -84,7 +84,7 @@ Performance/UnfreezeString:
 Style/ConditionalAssignment:
   Exclude:
     - 'lib/cataract/pure/imports.rb'
-    - 'lib/cataract/pure/merge.rb'
+    - 'lib/cataract/pure/flatten.rb'
 
 # Offense count: 4
 # Configuration parameters: AllowedConstants.
@@ -123,7 +123,7 @@ Style/IdenticalConditionalBranches:
 # Configuration parameters: AllowIfModifier.
 Style/IfInsideElse:
   Exclude:
-    - 'lib/cataract/pure/merge.rb'
+    - 'lib/cataract/pure/flatten.rb'
     - 'lib/cataract/pure/serializer.rb'
     - 'lib/cataract/pure/specificity.rb'
 
@@ -131,7 +131,7 @@ Style/IfInsideElse:
 # This cop supports safe autocorrection (--autocorrect).
 Style/NegatedIfElseCondition:
   Exclude:
-    - 'lib/cataract/pure/merge.rb'
+    - 'lib/cataract/pure/flatten.rb'
 
 # Offense count: 1
 # This cop supports safe autocorrection (--autocorrect).
@@ -157,7 +157,7 @@ Style/RedundantRegexpArgument:
 # Configuration parameters: AllowModifier.
 Style/SoleNestedConditional:
   Exclude:
-    - 'lib/cataract/pure/merge.rb'
+    - 'lib/cataract/pure/flatten.rb'
     - 'lib/cataract/pure/parser.rb'
 
 # Offense count: 3

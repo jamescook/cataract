@@ -720,28 +720,38 @@ module Cataract
     #
     # @return [Stylesheet] New stylesheet with cascade applied
     def flatten
-      Cataract.merge(self)
+      Cataract.flatten(self)
     end
     alias cascade flatten
-    alias merge flatten # Backwards compatibility
+
+    # Deprecated: Use flatten instead
+    def merge
+      warn 'Stylesheet#merge is deprecated, use #flatten instead', uplevel: 1
+      flatten
+    end
 
     # Flatten rules in-place, mutating the receiver.
     #
     # This is a convenience method that updates the stylesheet's internal
     # rules and media_index with the flattened result. The Stylesheet object
-    # itself is mutated (same object_id), but note that the C merge function
+    # itself is mutated (same object_id), but note that the C flatten function
     # still allocates new arrays internally.
     #
     # @return [self] Returns self for method chaining
     def flatten!
-      flattened = Cataract.merge(self)
+      flattened = Cataract.flatten(self)
       @rules = flattened.instance_variable_get(:@rules)
       @_media_index = flattened.instance_variable_get(:@_media_index)
       @_has_nesting = flattened.instance_variable_get(:@_has_nesting)
       self
     end
     alias cascade! flatten!
-    alias merge! flatten! # Backwards compatibility
+
+    # Deprecated: Use flatten! instead
+    def merge!
+      warn 'Stylesheet#merge! is deprecated, use #flatten! instead', uplevel: 1
+      flatten!
+    end
 
     # Concatenate another stylesheet's rules into this one and apply cascade.
     #

@@ -157,3 +157,7 @@ Style/StderrPuts:
 Performance:
   Exclude:
     - 'test/**/*'
+
+Style/HashLikeCase:
+  Exclude:
+    - 'benchmarks/**/*'

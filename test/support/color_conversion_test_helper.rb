@@ -5,12 +5,12 @@
 module ColorConversionTestHelper
   # Parse CSS, convert colors, and get declarations
   #
-  # This helper merges all rules in the stylesheet and returns the declarations
-  # from the merged result, wrapped in a Declarations object for convenient access.
+  # This helper flattens all rules in the stylesheet and returns the declarations
+  # from the flattened result, wrapped in a Declarations object for convenient access.
   #
   # @param css [String] CSS to parse
   # @param options [Hash] Options to pass to convert_colors!
-  # @return [Declarations] Declarations object with merged declarations
+  # @return [Declarations] Declarations object with flattened declarations
   #
   # @example
   #   decls = convert_and_get_declarations(
@@ -22,13 +22,13 @@ module ColorConversionTestHelper
     sheet = Cataract.parse_css(css)
     sheet.convert_colors!(**options)
 
-    # Merge all rules to get final cascaded declarations
-    merged = sheet.merge
+    # Flatten all rules to get final cascaded declarations
+    flattened = sheet.flatten
 
-    # The merged stylesheet should have exactly one rule with all declarations
-    assert_equal 1, merged.rules.length, "Expected merged stylesheet to have 1 rule, got #{merged.rules.length}"
+    # The flattened stylesheet should have exactly one rule with all declarations
+    assert_equal 1, flattened.rules.length, "Expected flattened stylesheet to have 1 rule, got #{flattened.rules.length}"
 
-    # Return Declarations object from the merged rule
-    Cataract::Declarations.new(merged.rules.first.declarations)
+    # Return Declarations object from the flattened rule
+    Cataract::Declarations.new(flattened.rules.first.declarations)
   end
 end

@@ -131,15 +131,15 @@ Performance comparison between Cataract's C extension and pure Ruby implementati
 ---
 <%- end -%>
 
-<%- if merging_data -%>
-## CSS Merging
+<%- if flattening_data -%>
+## CSS Flattening (Cascade)
 
-<%= merging_data['description'] %>
+<%= flattening_data['description'] %>
 
 | Test Case | Native | Pure (no YJIT) | Pure (YJIT) | css_parser (no YJIT) | css_parser (YJIT) |
 |-----------|--------|----------------|-------------|----------------------|-------------------|
-<%- merging_data['metadata']['test_cases'].each do |test_case| -%>
-<%- results = merging_data['results'].select { |r| r['name'].include?(test_case['key']) } -%>
+<%- flattening_data['metadata']['test_cases'].each do |test_case| -%>
+<%- results = flattening_data['results'].select { |r| r['name'].include?(test_case['key']) } -%>
 <%- pure_no_yjit = results.find { |r| r['implementation'] == 'pure_without_yjit' } -%>
 <%- pure_with_yjit = results.find { |r| r['implementation'] == 'pure_with_yjit' } -%>
 <%- native = results.find { |r| r['implementation'] == 'native' } -%>
@@ -152,17 +152,17 @@ Performance comparison between Cataract's C extension and pure Ruby implementati
 
 | Comparison | Speedup |
 |------------|---------|
-<%- if merging_data['metadata']['speedups'] -%>
-| Native vs Pure (no YJIT) | <%= format_speedup(merging_data['metadata']['speedups']['avg']) %> (avg) |
+<%- if flattening_data['metadata']['speedups'] -%>
+| Native vs Pure (no YJIT) | <%= format_speedup(flattening_data['metadata']['speedups']['avg']) %> (avg) |
 <%- end -%>
 <%- # Calculate Native vs Pure with YJIT -%>
-<%- pure_with_yjit_avg = merging_data['results'].select { |r| r['implementation'] == 'pure_with_yjit' }.map { |r| r['central_tendency'] }.sum / [merging_data['results'].select { |r| r['implementation'] == 'pure_with_yjit' }.size, 1].max -%>
-<%- native_avg = merging_data['results'].select { |r| r['implementation'] == 'native' }.map { |r| r['central_tendency'] }.sum / [merging_data['results'].select { |r| r['implementation'] == 'native' }.size, 1].max -%>
+<%- pure_with_yjit_avg = flattening_data['results'].select { |r| r['implementation'] == 'pure_with_yjit' }.map { |r| r['central_tendency'] }.sum / [flattening_data['results'].select { |r| r['implementation'] == 'pure_with_yjit' }.size, 1].max -%>
+<%- native_avg = flattening_data['results'].select { |r| r['implementation'] == 'native' }.map { |r| r['central_tendency'] }.sum / [flattening_data['results'].select { |r| r['implementation'] == 'native' }.size, 1].max -%>
 <%- if pure_with_yjit_avg > 0 && native_avg > 0 -%>
 | Native vs Pure (YJIT) | <%= format_speedup(native_avg / pure_with_yjit_avg) %> (avg) |
 <%- end -%>
 <%- # Calculate YJIT impact on pure Ruby -%>
-<%- pure_no_yjit_avg = merging_data['results'].select { |r| r['implementation'] == 'pure_without_yjit' }.map { |r| r['central_tendency'] }.sum / [merging_data['results'].select { |r| r['implementation'] == 'pure_without_yjit' }.size, 1].max -%>
+<%- pure_no_yjit_avg = flattening_data['results'].select { |r| r['implementation'] == 'pure_without_yjit' }.map { |r| r['central_tendency'] }.sum / [flattening_data['results'].select { |r| r['implementation'] == 'pure_without_yjit' }.size, 1].max -%>
 <%- if pure_no_yjit_avg > 0 && pure_with_yjit_avg > 0 -%>
 | YJIT impact on Pure Ruby | <%= format_speedup(pure_with_yjit_avg / pure_no_yjit_avg) %> (avg) |
 <%- end -%>
@@ -180,7 +180,7 @@ rake benchmark
 rake benchmark:parsing
 rake benchmark:serialization
 rake benchmark:specificity
-rake benchmark:merging
+rake benchmark:flattening
 
 # Generate documentation
 rake benchmark:generate_docs

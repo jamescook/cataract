@@ -1057,13 +1057,14 @@ void Init_native_extension(void) {
     rb_define_module_function(mCataract, "_stylesheet_to_formatted_s", stylesheet_to_formatted_s_new, 4);
     rb_define_module_function(mCataract, "parse_media_types", parse_media_types, 1);
     rb_define_module_function(mCataract, "parse_declarations", new_parse_declarations, 1);
-    rb_define_module_function(mCataract, "merge", cataract_merge_new, 1);
+    rb_define_module_function(mCataract, "flatten", cataract_flatten, 1);
+    rb_define_module_function(mCataract, "merge", cataract_flatten, 1); // Deprecated alias for backwards compatibility
     rb_define_module_function(mCataract, "extract_imports", extract_imports, 1);
     rb_define_module_function(mCataract, "calculate_specificity", calculate_specificity, 1);
     rb_define_module_function(mCataract, "_expand_shorthand", cataract_expand_shorthand, 1);
 
-    // Initialize merge constants (cached property strings)
-    init_merge_constants();
+    // Initialize flatten constants (cached property strings)
+    init_flatten_constants();
 
     // Export compile-time flags as a hash for runtime introspection
     VALUE compile_flags = rb_hash_new();

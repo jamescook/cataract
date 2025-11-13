@@ -24,9 +24,9 @@ class TestShorthandEquality < Minitest::Test
     assert_equal shorthand_rule, longhand_rule
   end
 
-  def test_remove_rules_with_merged_rule_objects_works
+  def test_remove_rules_with_flattened_rule_objects_works
     # This demonstrates that remove_rules! works correctly
-    # even when rules have been merged (shorthand expansion)
+    # even when rules have been flattened (shorthand expansion)
 
     sheet = Cataract.parse_css(<<~CSS)
       .box { margin-top: 10px; margin-right: 10px; margin-bottom: 10px; margin-left: 10px; }
@@ -34,15 +34,15 @@ class TestShorthandEquality < Minitest::Test
 
     assert_equal 1, sheet.rules_count
 
-    # Merge the stylesheet (this creates shorthand properties)
-    merged = sheet.merge
-    merged_rule = merged.rules.first
+    # Flatten the stylesheet (this creates shorthand properties)
+    flattened = sheet.flatten
+    flattened_rule = flattened.rules.first
 
-    # Remove using the merged rule object - should work now with shorthand-aware equality
-    sheet.remove_rules!(merged_rule)
+    # Remove using the flattened rule object - should work now with shorthand-aware equality
+    sheet.remove_rules!(flattened_rule)
 
     # Equality now works correctly with shorthand expansion
-    assert_equal 0, sheet.rules_count, 'Rule should be removed even after merge creates shorthand'
+    assert_equal 0, sheet.rules_count, 'Rule should be removed even after flatten creates shorthand'
   end
 
   def test_remove_rules_by_selector_avoids_equality_issue

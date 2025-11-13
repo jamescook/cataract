@@ -1141,7 +1141,7 @@ body { color: red; }'
     # Keep for backwards compatibility
     sheet = Cataract.parse_css('.box { color: red; } .box { color: blue; }')
 
-    result = sheet.merge
+    result = sheet.flatten
 
     assert_equal 1, result.rules.size
     assert result.rules.first.has_property?('color', 'blue')
@@ -1151,7 +1151,7 @@ body { color: red; }'
     # Keep for backwards compatibility
     sheet = Cataract.parse_css('.box { color: red; } .box { color: blue; }')
 
-    result = sheet.merge!
+    result = sheet.flatten!
 
     assert_same sheet, result
     assert_equal 1, sheet.rules.size

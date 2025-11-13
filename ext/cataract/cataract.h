@@ -140,9 +140,9 @@ VALUE parse_css_new(VALUE self, VALUE css_string);
 VALUE parse_css_new_impl(VALUE css_string, int rule_id_offset);
 VALUE parse_media_types(VALUE self, VALUE media_query_sym);
 
-// Merge (merge_new.c)
-VALUE cataract_merge_new(VALUE self, VALUE rules_array);
-void init_merge_constants(void);
+// Flatten (flatten.c)
+VALUE cataract_flatten(VALUE self, VALUE rules_array);
+void init_flatten_constants(void);
 
 // Specificity (specificity.c)
 VALUE calculate_specificity(VALUE self, VALUE selector);

@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
-# Pure Ruby CSS merge implementation
+# Pure Ruby CSS flatten implementation
 # NO REGEXP ALLOWED - use string manipulation only
 
 module Cataract
-  module Merge
+  module Flatten
     # Property name constants (US-ASCII for merge output)
     PROP_MARGIN = 'margin'.encode(Encoding::US_ASCII).freeze
     PROP_MARGIN_TOP = 'margin-top'.encode(Encoding::US_ASCII).freeze
@@ -138,7 +138,7 @@ module Cataract
     # @param stylesheet [Stylesheet] Stylesheet to merge
     # @param mutate [Boolean] If true, mutate the stylesheet; otherwise create new one
     # @return [Stylesheet] Merged stylesheet
-    def self.merge(stylesheet, mutate: false)
+    def self.flatten(stylesheet, mutate: false)
       # Separate AtRules (pass-through) from regular Rules (to merge)
       at_rules = []
       regular_rules = []
@@ -162,7 +162,7 @@ module Cataract
       # (Nesting is flattened during parsing, so we just merge by resolved selector)
       grouped = regular_rules.group_by(&:selector)
       grouped.each do |selector, rules|
-        merged_rule = merge_rules_for_selector(selector, rules)
+        merged_rule = flatten_rules_for_selector(selector, rules)
         merged_rules << merged_rule if merged_rule
       end
 
@@ -197,7 +197,7 @@ module Cataract
     # @param selector [String] The selector
     # @param rules [Array<Rule>] Rules with this selector
     # @return [Rule] Merged rule with cascaded declarations
-    def self.merge_rules_for_selector(selector, rules)
+    def self.flatten_rules_for_selector(selector, rules)
       # Build declaration map: property => [source_order, specificity, important, value]
       decl_map = {}
 

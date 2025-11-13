@@ -1,12 +1,15 @@
 #include "cataract.h"
 
+// NOTE: This file was previously called merge.c and the functions were named cataract_merge_*
+// The terminology was changed to "flatten" to better represent CSS cascade behavior.
+
 // Array indices for property metadata: [source_order, specificity, important, value]
 #define PROP_SOURCE_ORDER 0
 #define PROP_SPECIFICITY 1
 #define PROP_IMPORTANT 2
 #define PROP_VALUE 3
 
-// Cache frequently used symbol IDs (initialized in init_merge_constants)
+// Cache frequently used symbol IDs (initialized in init_flatten_constants)
 static ID id_all = 0;
 
 // Cached ivar IDs for Stylesheet
@@ -20,7 +23,7 @@ static VALUE str_merged_selector = Qnil;
  * Shorthand recreation mapping: defines how to recreate shorthands from longhand properties
  *
  * We cache VALUE objects for property names to avoid repeated string allocations during
- * hash lookups. These are initialized once in init_merge_constants().
+ * hash lookups. These are initialized once in init_flatten_constants().
  */
 struct shorthand_mapping {
     const char *shorthand_name;          // e.g., "border-width"
@@ -38,7 +41,7 @@ struct shorthand_mapping {
 };
 
 // Static mapping table for all 4-sided shorthand properties
-// The _val fields are initialized to Qnil here and populated in init_merge_constants()
+// The _val fields are initialized to Qnil here and populated in init_flatten_constants()
 static struct shorthand_mapping SHORTHAND_MAPPINGS[] = {
     {"margin", 6, Qnil, "margin-top", Qnil, "margin-right", Qnil, "margin-bottom", Qnil, "margin-left", Qnil, cataract_create_margin_shorthand},
     {"padding", 7, Qnil, "padding-top", Qnil, "padding-right", Qnil, "padding-bottom", Qnil, "padding-left", Qnil, cataract_create_padding_shorthand},
@@ -49,7 +52,7 @@ static struct shorthand_mapping SHORTHAND_MAPPINGS[] = {
 };
 
 // Cached property name strings (frozen, never GC'd)
-// Initialized in init_merge_constants() at module load time
+// Initialized in init_flatten_constants() at module load time
 static VALUE str_margin = Qnil;
 static VALUE str_margin_top = Qnil;
 static VALUE str_margin_right = Qnil;
@@ -103,7 +106,7 @@ struct expand_context {
 };
 
 // Callback for rb_hash_foreach - process expanded properties and apply cascade
-static int merge_expanded_callback(VALUE exp_prop, VALUE exp_value, VALUE ctx_val) {
+static int flatten_expanded_callback(VALUE exp_prop, VALUE exp_value, VALUE ctx_val) {
     struct expand_context *ctx = (struct expand_context *)ctx_val;
 
     // Expanded properties from shorthand expanders are already lowercase
@@ -157,7 +160,7 @@ static int merge_expanded_callback(VALUE exp_prop, VALUE exp_value, VALUE ctx_va
 }
 
 // Callback for rb_hash_foreach - builds result array from properties hash
-static int merge_build_result_callback(VALUE property, VALUE prop_data, VALUE result_ary) {
+static int flatten_build_result_callback(VALUE property, VALUE prop_data, VALUE result_ary) {
     // Extract value and important flag from array: [source_order, specificity, important, value]
     VALUE value = RARRAY_AREF(prop_data, PROP_VALUE);
     VALUE important = RARRAY_AREF(prop_data, PROP_IMPORTANT);
@@ -170,7 +173,7 @@ static int merge_build_result_callback(VALUE property, VALUE prop_data, VALUE re
 }
 
 // Initialize cached property strings (called once at module init)
-void init_merge_constants(void) {
+void init_flatten_constants(void) {
     // Initialize symbol IDs
     id_all = rb_intern("all");
 
@@ -610,8 +613,8 @@ static int process_expanded_property(VALUE prop_name, VALUE prop_value, VALUE ar
     return ST_CONTINUE;
 }
 
-// Context for merge_selector_group_callback
-struct merge_selectors_context {
+// Context for flatten_selector_group_callback
+struct flatten_selectors_context {
     VALUE merged_rules;
     VALUE rules_array;
     int *rule_id_counter;
@@ -620,11 +623,11 @@ struct merge_selectors_context {
 };
 
 // Forward declaration
-static VALUE merge_rules_for_selector(VALUE rules_array, VALUE rule_indices, VALUE selector);
+static VALUE flatten_rules_for_selector(VALUE rules_array, VALUE rule_indices, VALUE selector);
 
 // Callback for rb_hash_foreach when merging selector groups
-static int merge_selector_group_callback(VALUE selector, VALUE group_indices, VALUE arg) {
-    struct merge_selectors_context *ctx = (struct merge_selectors_context *)arg;
+static int flatten_selector_group_callback(VALUE selector, VALUE group_indices, VALUE arg) {
+    struct flatten_selectors_context *ctx = (struct flatten_selectors_context *)arg;
     ctx->selector_index++;
 
     DEBUG_PRINTF("\n[Selector %ld/%ld] '%s' - %ld rules in group\n",
@@ -632,7 +635,7 @@ static int merge_selector_group_callback(VALUE selector, VALUE group_indices, VA
                  RSTRING_PTR(selector), RARRAY_LEN(group_indices));
 
     // Merge all rules in this selector group
-    VALUE merged_decls = merge_rules_for_selector(ctx->rules_array, group_indices, selector);
+    VALUE merged_decls = flatten_rules_for_selector(ctx->rules_array, group_indices, selector);
 
     // Create new rule with this selector and merged declarations
     VALUE new_rule = rb_struct_new(cRule,
@@ -656,11 +659,11 @@ static int merge_selector_group_callback(VALUE selector, VALUE group_indices, VA
  *
  * Returns: Array of merged Declaration structs
  */
-static VALUE merge_rules_for_selector(VALUE rules_array, VALUE rule_indices, VALUE selector) {
+static VALUE flatten_rules_for_selector(VALUE rules_array, VALUE rule_indices, VALUE selector) {
     long num_rules_in_group = RARRAY_LEN(rule_indices);
     VALUE properties_hash = rb_hash_new();
 
-    DEBUG_PRINTF("    [merge_rules_for_selector] Merging %ld rules for selector '%s'\n",
+    DEBUG_PRINTF("    [flatten_rules_for_selector] Merging %ld rules for selector '%s'\n",
                  num_rules_in_group, RSTRING_PTR(selector));
 
     // Process each rule in this selector group
@@ -789,7 +792,7 @@ static VALUE merge_rules_for_selector(VALUE rules_array, VALUE rule_indices, VAL
     }
 
     // Recreate shorthands where possible (reduces output size)
-    DEBUG_PRINTF("    [merge_rules_for_selector] Recreating shorthands...\n");
+    DEBUG_PRINTF("    [flatten_rules_for_selector] Recreating shorthands...\n");
 
     // Try to recreate all 4-sided shorthands using the mapping table
     for (const struct shorthand_mapping *mapping = SHORTHAND_MAPPINGS; mapping->shorthand_name != NULL; mapping++) {
@@ -1004,18 +1007,18 @@ static VALUE merge_rules_for_selector(VALUE rules_array, VALUE rule_indices, VAL
     // The output order is roughly source order but may vary when properties are
     // overridden by later rules with higher specificity or importance.
     VALUE merged_decls = rb_ary_new();
-    rb_hash_foreach(properties_hash, merge_build_result_callback, merged_decls);
+    rb_hash_foreach(properties_hash, flatten_build_result_callback, merged_decls);
 
-    DEBUG_PRINTF("    [merge_rules_for_selector] Result: %ld merged declarations\n",
+    DEBUG_PRINTF("    [flatten_rules_for_selector] Result: %ld merged declarations\n",
                  RARRAY_LEN(merged_decls));
 
     return merged_decls;
 }
 
-// Merge CSS rules according to cascade rules
+// Flatten CSS rules by applying cascade rules
 // Input: Stylesheet object or CSS string
-// Output: Stylesheet with merged declarations
-VALUE cataract_merge_new(VALUE self, VALUE input) {
+// Output: Stylesheet with flattened declarations (cascade applied)
+VALUE cataract_flatten(VALUE self, VALUE input) {
     VALUE rules_array;
 
     // Handle different input types
@@ -1051,13 +1054,13 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
 
     /*
      * ============================================================================
-     * MERGE ALGORITHM - Rules and Implementation Notes
+     * FLATTEN ALGORITHM - Rules and Implementation Notes
      * ============================================================================
      *
-     * CORE PRINCIPLE: Group rules by selector, merge declarations within each group
+     * CORE PRINCIPLE: Group rules by selector, flatten declarations within each group
      *
      * Different selectors (.test vs #test) target different elements and must stay separate.
-     * Same selectors should merge into one rule to reduce output size.
+     * Same selectors should flatten into one rule to reduce output size.
      *
      * ALGORITHM STEPS:
      * 1. Group rules by selector (.test, #test, etc.)
@@ -1077,7 +1080,7 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
      * This ensures declarations within the same rule maintain relative order.
      *
      * SHORTHAND EXPANSION:
-     * When merging, all shorthands must be expanded to longhands first.
+     * When flattening, all shorthands must be expanded to longhands first.
      * Example: "background: blue" expands to:
      *   - background-color: blue
      *   - background-image: none
@@ -1107,9 +1110,9 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
      * (The "none", "repeat", etc. are just defaults from expansion)
      *
      * EDGE CASES:
-     * - Empty rules (no declarations): Skip during merge
+     * - Empty rules (no declarations): Skip during flatten
      * - Nested CSS: Parent rules with children are containers only, skip their declarations
-     * - Mixed !important: Properties with different importance cannot merge into shorthand
+     * - Mixed !important: Properties with different importance cannot flatten into shorthand
      * - Single property: Don't create shorthand (e.g., background-color alone stays as-is)
      *   Reason: "background: blue" resets all other background properties to defaults,
      *   which is semantically different from just setting background-color.
@@ -1117,16 +1120,16 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
      * PERFORMANCE NOTES:
      * - Use cached static strings (VALUE) for property names (no allocation)
      * - Group by selector in single pass (O(n) hash building)
-     * - Merge within groups (O(n*m) where m is avg declarations per rule)
+     * - Flatten within groups (O(n*m) where m is avg declarations per rule)
      * ============================================================================
      */
 
     // For nested CSS: identify parent rules (rules that have children)
-    // These should be skipped during merge, even if they have declarations
+    // These should be skipped during flatten, even if they have declarations
     // Use Ruby hash as a set: parent_id => true
     VALUE parent_ids = Qnil;
     if (has_nesting) {
-        DEBUG_PRINTF("\n=== MERGE: has_nesting=true, num_rules=%ld ===\n", num_rules);
+        DEBUG_PRINTF("\n=== FLATTEN: has_nesting=true, num_rules=%ld ===\n", num_rules);
         parent_ids = rb_hash_new();
         for (long i = 0; i < num_rules; i++) {
             VALUE rule = RARRAY_AREF(rules_array, i);
@@ -1143,7 +1146,7 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
         }
     }
 
-    // ALWAYS build selector groups - this is the core of merge logic
+    // ALWAYS build selector groups - this is the core of flatten logic
     // Group rules by selector: different selectors stay separate
     // selector => [rule indices]
     DEBUG_PRINTF("\n=== Building selector groups (has_nesting=%d) ===\n", has_nesting);
@@ -1229,7 +1232,7 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
 
         // Iterate through each selector group using rb_hash_foreach
         // to avoid rb_funcall in hot path
-        struct merge_selectors_context merge_ctx;
+        struct flatten_selectors_context merge_ctx;
         merge_ctx.merged_rules = merged_rules;
         merge_ctx.rules_array = rules_array;
         merge_ctx.rule_id_counter = &rule_id_counter;
@@ -1238,7 +1241,7 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
 
         DEBUG_PRINTF("\n=== Processing %ld selector groups ===\n", merge_ctx.total_selectors);
 
-        rb_hash_foreach(selector_groups, merge_selector_group_callback, (VALUE)&merge_ctx);
+        rb_hash_foreach(selector_groups, flatten_selector_group_callback, (VALUE)&merge_ctx);
 
         // Add passthrough AtRules to output (preserve @keyframes, @font-face, etc.)
         long num_passthrough = RARRAY_LEN(passthrough_rules);
@@ -1403,7 +1406,7 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
                     VALUE decl = rb_ary_entry(expanded, i);
                     VALUE prop = rb_struct_aref(decl, INT2FIX(DECL_PROPERTY));
                     VALUE val = rb_struct_aref(decl, INT2FIX(DECL_VALUE));
-                    merge_expanded_callback(prop, val, (VALUE)&ctx);
+                    flatten_expanded_callback(prop, val, (VALUE)&ctx);
                 }
 
                 RB_GC_GUARD(expanded);
@@ -1705,7 +1708,7 @@ VALUE cataract_merge_new(VALUE self, VALUE input) {
 
     // Build merged declarations array
     VALUE merged_declarations = rb_ary_new();
-    rb_hash_foreach(properties_hash, merge_build_result_callback, merged_declarations);
+    rb_hash_foreach(properties_hash, flatten_build_result_callback, merged_declarations);
 
     // Determine final selector (allocate only once at the end)
     VALUE final_selector;
