@@ -147,3 +147,7 @@ Style/OptionalBooleanParameter:
 Style/StderrPuts:
   Exclude:
     - 'scripts/**/*.rb'
+
+Performance/CollectionLiteralInLoop:
+  Exclude:
+    - 'test/**/*.rb'
