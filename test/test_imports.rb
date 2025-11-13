@@ -6,6 +6,21 @@ require 'tmpdir'
 require 'webmock/minitest'
 
 class TestImports < Minitest::Test
+  # Helper class for testing custom fetcher with state
+  class CachingFetcher
+    attr_reader :fetch_count
+
+    def initialize
+      @cache = {}
+      @fetch_count = 0
+    end
+
+    def call(url, _opts)
+      @fetch_count += 1
+      @cache[url] ||= ".cached-#{@fetch_count} { content: '#{url}'; }"
+    end
+  end
+
   # ============================================================================
   # imports: false (default) - @import is treated as a regular rule
   # ============================================================================
@@ -505,5 +520,200 @@ body { color: red; }"
       assert_has_selector '.imported', sheet
       assert_has_selector 'body', sheet
     end
+  end
+
+  # ============================================================================
+  # Custom fetcher API
+  # ============================================================================
+
+  def test_custom_fetcher_with_lambda
+    # Create a simple lambda fetcher that returns mock CSS
+    custom_fetcher = lambda do |url, _opts|
+      case url
+      when 'https://example.com/custom.css'
+        '.custom { color: purple; }'
+      else
+        raise Cataract::ImportError, "Unknown URL: #{url}"
+      end
+    end
+
+    css = "@import url('https://example.com/custom.css');\nbody { color: red; }"
+
+    sheet = Cataract.parse_css(css, imports: { fetcher: custom_fetcher })
+
+    assert_equal 2, sheet.size
+    assert_has_selector '.custom', sheet
+    assert_has_selector 'body', sheet
+  end
+
+  def test_custom_fetcher_with_callable_object
+    # Test using the CachingFetcher helper class defined above
+    fetcher = CachingFetcher.new
+
+    css = "@import url('https://example.com/styles.css');\nbody { color: red; }"
+
+    sheet = Cataract.parse_css(css, imports: { fetcher: fetcher })
+
+    assert_equal 2, sheet.size
+    assert_equal 1, fetcher.fetch_count
+  end
+
+  def test_custom_fetcher_with_nested_imports
+    # Test that custom fetcher is passed through recursive imports
+    fetch_log = []
+
+    custom_fetcher = lambda do |url, _opts|
+      fetch_log << url
+      case url
+      when 'https://example.com/level1.css'
+        "@import url('https://example.com/level2.css'); .level1 { color: red; }"
+      when 'https://example.com/level2.css'
+        '.level2 { color: blue; }'
+      else
+        raise Cataract::ImportError, "Unknown URL: #{url}"
+      end
+    end
+
+    css = "@import url('https://example.com/level1.css');"
+
+    sheet = Cataract.parse_css(css, imports: { fetcher: custom_fetcher })
+
+    assert_equal 2, sheet.size
+    assert_equal ['https://example.com/level1.css', 'https://example.com/level2.css'], fetch_log
+    assert_has_selector '.level1', sheet
+    assert_has_selector '.level2', sheet
+  end
+
+  def test_custom_fetcher_receives_options
+    # Test that fetcher receives the full options hash
+    received_options = nil
+
+    custom_fetcher = lambda do |_url, opts|
+      received_options = opts
+      '.test { color: green; }'
+    end
+
+    css = "@import url('https://example.com/test.css');"
+
+    Cataract.parse_css(css, imports: {
+                         fetcher: custom_fetcher,
+                         max_depth: 10,
+                         allowed_schemes: ['https'],
+                         timeout: 30
+                       })
+
+    refute_nil received_options
+    assert_equal 10, received_options[:max_depth]
+    assert_equal ['https'], received_options[:allowed_schemes]
+    assert_equal 30, received_options[:timeout]
+  end
+
+  def test_custom_fetcher_can_raise_import_error
+    # Test that custom fetcher can raise ImportError for error handling
+    custom_fetcher = lambda do |url, _opts|
+      raise Cataract::ImportError, "Custom fetcher: cannot fetch #{url}"
+    end
+
+    css = "@import url('https://example.com/error.css');"
+
+    error = assert_raises(Cataract::ImportError) do
+      Cataract.parse_css(css, imports: { fetcher: custom_fetcher })
+    end
+
+    assert_match(/Custom fetcher/, error.message)
+  end
+
+  def test_custom_fetcher_with_media_queries
+    # Test that custom fetcher works with @import media queries
+    custom_fetcher = lambda do |_url, _opts|
+      '.print-styles { page-break-after: always; }'
+    end
+
+    css = "@import url('https://example.com/print.css') print;"
+
+    sheet = Cataract.parse_css(css, imports: { fetcher: custom_fetcher })
+
+    assert_equal 1, sheet.size
+    assert_has_selector '.print-styles', sheet, media: :print
+  end
+
+  def test_default_fetcher_still_works_without_explicit_option
+    # Test that existing behavior works when no fetcher is specified
+    # This should use the DefaultFetcher internally
+    stub_request(:get, 'https://example.com/default.css')
+      .to_return(status: 200, body: '.default { color: orange; }')
+
+    css = '@import url("https://example.com/default.css");'
+
+    sheet = Cataract.parse_css(css, imports: true)
+
+    assert_equal 1, sheet.size
+    assert_has_selector '.default', sheet
+  end
+
+  def test_custom_fetcher_for_browser_simulation
+    # Simulate a browser-compatible fetcher (synchronous, no file access)
+    browser_fetcher = lambda do |url, _opts|
+      # In real Opal, this would call JavaScript fetch() via Native
+      # For this test, we just simulate the behavior
+
+      uri = URI.parse(url)
+
+      # Browser can't access file:// in typical scenarios
+      if uri.scheme == 'file'
+        raise Cataract::ImportError, 'Browser cannot access file:// URLs'
+      end
+
+      # Simulate fetching from network
+      case url
+      when 'https://cdn.example.com/reset.css'
+        '* { margin: 0; padding: 0; }'
+      when 'https://cdn.example.com/theme.css'
+        'body { font-family: sans-serif; }'
+      else
+        raise Cataract::ImportError, "Network error: could not fetch #{url}"
+      end
+    end
+
+    css = <<~CSS
+      @import url('https://cdn.example.com/reset.css');
+      @import url('https://cdn.example.com/theme.css');
+      .app { padding: 20px; }
+    CSS
+
+    sheet = Cataract.parse_css(css, imports: { fetcher: browser_fetcher })
+
+    assert_equal 3, sheet.size
+    assert_has_selector '*', sheet
+    assert_has_selector 'body', sheet
+    assert_has_selector '.app', sheet
+  end
+
+  def test_custom_fetcher_for_user_provided_imports
+    # Simulate a scenario where user provides all imports upfront
+    # (useful for interactive browser tools)
+    user_provided_imports = {
+      'https://example.com/vars.css' => ':root { --primary: blue; }',
+      'https://example.com/buttons.css' => 'button { background: var(--primary); }'
+    }
+
+    static_fetcher = lambda do |url, _opts|
+      user_provided_imports.fetch(url) do
+        raise Cataract::ImportError, "Import not provided by user: #{url}"
+      end
+    end
+
+    css = <<~CSS
+      @import url('https://example.com/vars.css');
+      @import url('https://example.com/buttons.css');
+      .main { color: black; }
+    CSS
+
+    sheet = Cataract.parse_css(css, imports: { fetcher: static_fetcher })
+
+    assert_equal 3, sheet.size
+    assert_has_selector ':root', sheet
+    assert_has_selector 'button', sheet
+    assert_has_selector '.main', sheet
   end
 end
