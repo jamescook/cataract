@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require_relative 'test_helper'
-
 class TestRoundtrip < Minitest::Test
   def test_roundtrip_preserves_rules
     css = <<~CSS

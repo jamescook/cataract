@@ -1,11 +1,9 @@
 # frozen_string_literal: true
 
-require_relative 'test_helper'
-
 # Real-world CSS parsing tests using actual framework CSS files
 class TestRealWorld < Minitest::Test
   def setup
-    @bootstrap_css = File.read(File.expand_path('fixtures/bootstrap.css', __dir__))
+    @bootstrap_css = File.read(File.expand_path('../fixtures/bootstrap.css', __dir__))
   end
 
   def test_bootstrap_parses_successfully
