@@ -306,7 +306,7 @@ Each `Rule` is a struct containing:
 - `specificity`: Calculated CSS specificity (cached)
 
 Implementation details:
-- **C implementation**: Critical paths implemented in C (parsing, merging, serialization)
+- **C implementation**: Critical paths implemented in C (parsing, cascade/flatten, serialization)
 - **Flat rule array**: All rules stored in a single array, preserving source order
 - **Efficient media query handling**: O(1) lookup via internal media index
 - **Memory efficient**: Minimal allocations, reuses string buffers where possible
