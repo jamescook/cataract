@@ -53,6 +53,20 @@ module Cataract
       @selectors = nil # Memoized cache of selectors
     end
 
+    # Initialize copy for proper deep duplication.
+    #
+    # Ensures that dup/clone creates a proper deep copy of the stylesheet,
+    # duplicating internal arrays and hashes so mutations don't affect the original.
+    #
+    # @param source [Stylesheet] Source stylesheet being copied
+    def initialize_copy(source)
+      super
+      @rules = source.instance_variable_get(:@rules).dup
+      @_media_index = source.instance_variable_get(:@_media_index).transform_values(&:dup)
+      @selectors = nil # Clear memoized cache
+      @_hash = nil # Clear cached hash
+    end
+
     # Parse CSS and return a new Stylesheet
     #
     # @param css [String] CSS string to parse
@@ -586,7 +600,6 @@ module Cataract
     # @param fix_braces [Boolean] Automatically close missing braces
     # @param media_types [Symbol, Array<Symbol>] Optional media query to wrap CSS in
     # @return [self] Returns self for method chaining
-    # TODO: Move to C?
     def add_block(css, fix_braces: false, media_types: nil)
       css += ' }' if fix_braces && !css.strip.end_with?('}')
 
@@ -699,32 +712,132 @@ module Cataract
       @_hash ||= [self.class, rules, @_media_index].hash # rubocop:disable Naming/MemoizedInstanceVariableName
     end
 
-    # Merge all rules in this stylesheet according to CSS cascade rules
+    # Flatten all rules in this stylesheet according to CSS cascade rules.
     #
     # Applies specificity and !important precedence rules to compute the final
     # set of declarations. Also recreates shorthand properties from longhand
     # properties where possible.
     #
-    # @return [Stylesheet] New stylesheet with a single merged rule
-    def merge
-      # C function handles everything - returns new Stylesheet
+    # @return [Stylesheet] New stylesheet with cascade applied
+    def flatten
       Cataract.merge(self)
     end
+    alias cascade flatten
+    alias merge flatten # Backwards compatibility
 
-    # Merge rules in-place, mutating the receiver.
+    # Flatten rules in-place, mutating the receiver.
     #
     # This is a convenience method that updates the stylesheet's internal
-    # rules and media_index with the merged result. The Stylesheet object
+    # rules and media_index with the flattened result. The Stylesheet object
     # itself is mutated (same object_id), but note that the C merge function
     # still allocates new arrays internally.
     #
     # @return [self] Returns self for method chaining
-    def merge!
-      merged = Cataract.merge(self)
-      @rules = merged.instance_variable_get(:@rules)
-      @_media_index = merged.instance_variable_get(:@_media_index)
-      @_has_nesting = merged.instance_variable_get(:@_has_nesting)
+    def flatten!
+      flattened = Cataract.merge(self)
+      @rules = flattened.instance_variable_get(:@rules)
+      @_media_index = flattened.instance_variable_get(:@_media_index)
+      @_has_nesting = flattened.instance_variable_get(:@_has_nesting)
       self
+    end
+    alias cascade! flatten!
+    alias merge! flatten! # Backwards compatibility
+
+    # Concatenate another stylesheet's rules into this one and apply cascade.
+    #
+    # Adds all rules from the other stylesheet to this one, then applies
+    # CSS cascade to resolve conflicts. Media queries are merged.
+    #
+    # @param other [Stylesheet] Stylesheet to concatenate
+    # @return [self] Returns self for method chaining
+    def concat(other)
+      raise ArgumentError, 'Argument must be a Stylesheet' unless other.is_a?(Stylesheet)
+
+      # Get the current offset for rule IDs
+      offset = @rules.length
+
+      # Add rules with updated IDs
+      other.rules.each do |rule|
+        new_rule = rule.dup
+        new_rule.id = @rules.length
+        @rules << new_rule
+      end
+
+      # Merge media_index with offsetted IDs
+      other.instance_variable_get(:@_media_index).each do |media_sym, rule_ids|
+        offsetted_ids = rule_ids.map { |id| id + offset }
+        if @_media_index[media_sym]
+          @_media_index[media_sym].concat(offsetted_ids)
+        else
+          @_media_index[media_sym] = offsetted_ids
+        end
+      end
+
+      # Update nesting flag if other has nesting
+      other_has_nesting = other.instance_variable_get(:@_has_nesting)
+      @_has_nesting = true if other_has_nesting
+
+      # Clear memoized cache
+      @selectors = nil
+
+      # Apply cascade in-place
+      flatten!
+    end
+
+    # Combine two stylesheets into a new one and apply cascade.
+    #
+    # Creates a new stylesheet containing rules from both stylesheets,
+    # then applies CSS cascade to resolve conflicts.
+    #
+    # @param other [Stylesheet] Stylesheet to combine with
+    # @return [Stylesheet] New stylesheet with combined and cascaded rules
+    def +(other)
+      result = dup
+      result.concat(other)
+      result
+    end
+
+    # Remove matching rules from this stylesheet.
+    #
+    # Creates a new stylesheet with rules that don't match any rules in the
+    # other stylesheet. Uses Rule#== for matching (shorthand-aware).
+    # Does NOT apply cascade to the result.
+    #
+    # @param other [Stylesheet] Stylesheet containing rules to remove
+    # @return [Stylesheet] New stylesheet with matching rules removed
+    def -(other)
+      raise ArgumentError, 'Argument must be a Stylesheet' unless other.is_a?(Stylesheet)
+
+      result = dup
+
+      # Remove matching rules using Rule#==
+      rules_to_remove_ids = []
+      result.rules.each_with_index do |rule, idx|
+        rules_to_remove_ids << idx if other.rules.include?(rule)
+      end
+
+      # Remove in reverse order to maintain indices
+      rules_to_remove_ids.reverse_each do |idx|
+        result.rules.delete_at(idx)
+
+        # Update media_index: remove this rule ID and decrement higher IDs
+        result.instance_variable_get(:@_media_index).each_value do |ids|
+          ids.delete(idx)
+          ids.map! { |id| id > idx ? id - 1 : id }
+        end
+      end
+
+      # Re-index remaining rules
+      result.rules.each_with_index { |rule, new_id| rule.id = new_id }
+
+      # Clean up empty media_index entries
+      result.instance_variable_get(:@_media_index).delete_if { |_media, ids| ids.empty? }
+
+      # Clear memoized cache
+      result.instance_variable_set(:@selectors, nil)
+      result.instance_variable_set(:@_hash, nil)
+
+      result
     end
 
     private

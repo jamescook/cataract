@@ -153,4 +153,70 @@ class TestRule < Minitest::Test
 
     assert_equal 2, unique_rules.length, 'uniq should remove shorthand/longhand duplicate'
   end
+
+  def test_equality_with_string_exact_match
+    rule = Cataract.parse_css('.box { color: red; }').rules.first
+
+    assert_equal rule, '.box { color: red; }' # rubocop:disable Minitest/LiteralAsActualArgument
+  end
+
+  def test_equality_with_string_shorthand_vs_longhand
+    rule = Cataract.parse_css('.box { margin: 10px; }').rules.first
+
+    # Should match longhand equivalent
+    assert_equal rule, '.box { margin-top: 10px; margin-right: 10px; margin-bottom: 10px; margin-left: 10px; }' # rubocop:disable Minitest/LiteralAsActualArgument
+  end
+
+  def test_equality_with_string_different_selector
+    rule = Cataract.parse_css('.box { color: red; }').rules.first
+
+    refute_equal rule, '.other { color: red; }'
+  end
+
+  def test_equality_with_string_different_value
+    rule = Cataract.parse_css('.box { color: red; }').rules.first
+
+    refute_equal rule, '.box { color: blue; }'
+  end
+
+  def test_equality_with_string_multiple_rules
+    rule = Cataract.parse_css('.box { color: red; }').rules.first
+
+    # String with multiple rules should not match
+    refute_equal rule, '.box { color: red; } .other { margin: 10px; }'
+  end
+
+  def test_equality_with_string_empty
+    rule = Cataract.parse_css('.box { color: red; }').rules.first
+
+    # Empty CSS string - let parser handle it
+    refute_equal rule, ''
+  end
+
+  def test_equality_with_string_invalid_css
+    rule = Cataract.parse_css('.box { color: red; }').rules.first
+
+    # Invalid CSS - parser will raise or return empty stylesheet
+    # Let's see what happens naturally
+    result = rule == 'this is not valid css at all { { {'
+
+    refute result, 'Invalid CSS should not match'
+  end
+
+  def test_reject_with_string_css
+    sheet = Cataract.parse_css('.box { margin: 10px; } .other { color: red; }')
+
+    # Remove rules matching the CSS string
+    sheet.rules.reject! { |r| r == '.box { margin: 10px; }' }
+
+    assert_equal 1, sheet.rules.size
+    assert_equal '.other', sheet.rules.first.selector
+  end
+
+  def test_any_with_string_css
+    sheet = Cataract.parse_css('.box { margin: 10px; } .other { color: red; }')
+
+    # Check if any rule matches (with shorthand awareness)
+    assert sheet.rules.any? { |r| r == '.box { margin-top: 10px; margin-right: 10px; margin-bottom: 10px; margin-left: 10px; }' }
+  end
 end

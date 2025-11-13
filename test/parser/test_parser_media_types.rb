@@ -77,7 +77,19 @@ class TestParserMediaTypes < Minitest::Test
       body { color: black }
     CSS
 
-    assert_includes @sheet.to_s, 'color: black'
+    assert_equal 2, @sheet.rules.size
+
+    # Check print media rule
+    print_rule = @sheet.with_media(:print).with_selector('body').first
+
+    assert_has_property({ 'font-size': '10pt' }, print_rule)
+
+    # Check base rule (no media query)
+    base_rules = @sheet.base_rules
+
+    assert_equal 1, base_rules.size
+    assert_equal 'body', base_rules[0].selector
+    assert_has_property({ color: 'black' }, base_rules[0])
   end
 
   def test_adding_rule_set_with_media_type
@@ -94,11 +106,17 @@ class TestParserMediaTypes < Minitest::Test
   end
 
   def test_to_s_includes_media_queries
-    @sheet.add_rule(selector: 'body', declarations: 'color: black', media_types: :screen)
+    @sheet.add_block('@media screen { body { color: black; } }')
     output = @sheet.to_s
 
-    assert_includes output, '@media'
-    assert_includes output, 'color: black'
+    # Parse output and verify structure
+    reparsed = Cataract.parse_css(output)
+
+    assert_equal 1, reparsed.rules.size
+
+    # Should have screen media rule
+    assert_has_selector('body', reparsed, media: :screen)
+    assert_has_property({ color: 'black' }, reparsed.with_media(:screen).with_selector('body').first)
   end
 
   def test_multiple_media_types_single_rule
@@ -230,12 +248,22 @@ class TestParserMediaTypes < Minitest::Test
 
     output = @sheet.to_s(media: :all)
 
-    # Should include all rules
-    assert_includes output, 'body { color: black; }'
-    assert_includes output, '@media screen'
-    assert_includes output, '.header { color: blue; }'
-    assert_includes output, '@media print'
-    assert_includes output, '.footer { color: red; }'
+    # Parse output and verify structure
+    reparsed = Cataract.parse_css(output)
+
+    assert_equal 3, reparsed.rules.size
+
+    # Check base rule
+    assert_has_selector('body', reparsed)
+    assert_has_property({ color: 'black' }, reparsed.with_selector('body').first)
+
+    # Check screen media rule
+    assert_has_selector('.header', reparsed, media: :screen)
+    assert_has_property({ color: 'blue' }, reparsed.with_media(:screen).with_selector('.header').first)
+
+    # Check print media rule
+    assert_has_selector('.footer', reparsed, media: :print)
+    assert_has_property({ color: 'red' }, reparsed.with_media(:print).with_selector('.footer').first)
   end
 
   def test_to_s_with_screen_media_type_only
@@ -266,14 +294,18 @@ class TestParserMediaTypes < Minitest::Test
 
     output = @sheet.to_s(media: :print)
 
-    # Should only include print rules
-    assert_includes output, '@media print'
-    assert_includes output, '.footer { color: red; }'
+    # Parse output and verify only print rules
+    reparsed = Cataract.parse_css(output)
 
-    # Should NOT include universal or screen rules
-    refute_includes output, 'body { color: black; }'
-    refute_includes output, '@media screen'
-    refute_includes output, '.header { color: blue; }'
+    assert_equal 1, reparsed.rules.size
+
+    # Should only have print media rule
+    assert_has_selector('.footer', reparsed, media: :print)
+    assert_has_property({ color: 'red' }, reparsed.with_media(:print).with_selector('.footer').first)
+
+    # Should NOT have base or screen rules
+    assert_no_selector_matches('body', reparsed)
+    assert_no_selector_matches('.header', reparsed)
   end
 
   def test_to_s_with_multiple_media_types
@@ -286,16 +318,21 @@ class TestParserMediaTypes < Minitest::Test
 
     output = @sheet.to_s(media: %i[screen print])
 
-    # Should include screen and print rules
-    assert_includes output, '@media screen'
-    assert_includes output, '.header { color: blue; }'
-    assert_includes output, '@media print'
-    assert_includes output, '.footer { color: red; }'
+    # Parse output and verify only screen and print rules
+    reparsed = Cataract.parse_css(output)
 
-    # Should NOT include universal or handheld rules
-    refute_includes output, 'body { color: black; }'
-    refute_includes output, '@media handheld'
-    refute_includes output, '.mobile { width: 100%; }'
+    assert_equal 2, reparsed.rules.size
+
+    # Should have screen and print rules
+    assert_has_selector('.header', reparsed, media: :screen)
+    assert_has_property({ color: 'blue' }, reparsed.with_media(:screen).with_selector('.header').first)
+
+    assert_has_selector('.footer', reparsed, media: :print)
+    assert_has_property({ color: 'red' }, reparsed.with_media(:print).with_selector('.footer').first)
+
+    # Should NOT have base or handheld rules
+    assert_no_selector_matches('body', reparsed)
+    assert_no_selector_matches('.mobile', reparsed)
   end
 
   def test_add_block_with_media_override_to_existing_group

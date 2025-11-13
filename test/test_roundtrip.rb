@@ -12,11 +12,16 @@ class TestRoundtrip < Minitest::Test
     sheet = Cataract::Stylesheet.parse(css)
     dumped = sheet.to_s
 
-    # Both selectors should be present
-    assert_includes dumped, '.btn'
-    assert_includes dumped, '.alert'
-    assert_includes dumped, 'padding: 10px'
-    assert_includes dumped, 'margin: 5px'
+    # Parse and verify structure
+    reparsed = Cataract::Stylesheet.parse(dumped)
+
+    assert_equal 2, reparsed.rules.size
+
+    assert_has_selector('.btn', reparsed)
+    assert_has_property({ padding: '10px' }, reparsed.with_selector('.btn').first)
+
+    assert_has_selector('.alert', reparsed)
+    assert_has_property({ margin: '5px' }, reparsed.with_selector('.alert').first)
   end
 
   def test_roundtrip_preserves_important
@@ -25,9 +30,12 @@ class TestRoundtrip < Minitest::Test
     sheet = Cataract::Stylesheet.parse(css)
     dumped = sheet.to_s
 
-    # Should have !important preserved
-    assert_includes dumped, 'color: red'
-    assert_includes dumped, 'margin: 10px !important'
+    # Parse and verify !important is preserved
+    reparsed = Cataract::Stylesheet.parse(dumped)
+    rule = reparsed.with_selector('.test').first
+
+    assert_has_property({ color: 'red' }, rule)
+    assert_has_property({ margin: '10px !important' }, rule)
   end
 
   def test_roundtrip_bootstrap_fixture
@@ -64,8 +72,13 @@ class TestRoundtrip < Minitest::Test
     sheet = Cataract::Stylesheet.parse(css)
     dumped = sheet.to_s
 
-    assert_includes dumped, '.test'
-    assert_includes dumped, 'color: red'
+    # Parse and verify structure
+    reparsed = Cataract::Stylesheet.parse(dumped)
+
+    assert_equal 1, reparsed.rules.size
+
+    assert_has_selector('.test', reparsed)
+    assert_has_property({ color: 'red' }, reparsed.with_selector('.test').first)
   end
 
   def test_roundtrip_preserves_utf8_in_content
@@ -82,15 +95,22 @@ class TestRoundtrip < Minitest::Test
     sheet = Cataract::Stylesheet.parse(css)
     dumped = sheet.to_s
 
-    # Verify UTF-8 content is preserved
-    assert_includes dumped, '👍'
-    assert_includes dumped, '✨'
-    assert_includes dumped, '🎉'
-    assert_includes dumped, 'こんにちは世界'
-    assert_includes dumped, 'ゴシック'
-
     # Verify encoding
     assert_equal Encoding::UTF_8, dumped.encoding
+
+    # Parse and verify UTF-8 content is preserved
+    reparsed = Cataract::Stylesheet.parse(dumped)
+
+    assert_equal 2, reparsed.rules.size
+
+    emoji_rule = reparsed.with_selector('.emoji::before').first
+
+    assert_has_property({ content: '"👍 ✨ 🎉"' }, emoji_rule)
+
+    japanese_rule = reparsed.with_selector('.japanese').first
+
+    assert_has_property({ content: '"こんにちは世界"' }, japanese_rule)
+    assert_has_property({ 'font-family': '"ＭＳ ゴシック"' }, japanese_rule)
   end
 
   def test_roundtrip_preserves_utf8_selectors
@@ -109,13 +129,22 @@ class TestRoundtrip < Minitest::Test
     sheet = Cataract::Stylesheet.parse(css)
     dumped = sheet.to_s
 
-    # Verify UTF-8 selectors are preserved
-    assert_includes dumped, '日本語クラス'
-    assert_includes dumped, '한글클래스'
-    assert_includes dumped, '中文类名'
-
     # Verify encoding
     assert_equal Encoding::UTF_8, dumped.encoding
+
+    # Parse and verify UTF-8 selectors are preserved
+    reparsed = Cataract::Stylesheet.parse(dumped)
+
+    assert_equal 3, reparsed.rules.size
+
+    assert_has_selector('.日本語クラス', reparsed)
+    assert_has_property({ color: 'red' }, reparsed.with_selector('.日本語クラス').first)
+
+    assert_has_selector('.한글클래스', reparsed)
+    assert_has_property({ color: 'blue' }, reparsed.with_selector('.한글클래스').first)
+
+    assert_has_selector('.中文类名', reparsed)
+    assert_has_property({ color: 'green' }, reparsed.with_selector('.中文类名').first)
   end
 
   def test_roundtrip_mixed_ascii_and_utf8
@@ -132,11 +161,19 @@ class TestRoundtrip < Minitest::Test
     sheet = Cataract::Stylesheet.parse(css)
     dumped = sheet.to_s
 
-    # Verify both ASCII and UTF-8 preserved
-    assert_includes dumped, 'button'
-    assert_includes dumped, 'padding: 10px'
-    assert_includes dumped, '→'
-    assert_includes dumped, '⟶'
+    # Parse and verify both ASCII and UTF-8 preserved
+    reparsed = Cataract::Stylesheet.parse(dumped)
+
+    assert_equal 2, reparsed.rules.size
+
+    assert_has_selector('.button', reparsed)
+    button_rule = reparsed.with_selector('.button').first
+
+    assert_has_property({ content: '"→ Click here"' }, button_rule)
+    assert_has_property({ padding: '10px' }, button_rule)
+
+    assert_has_selector('.arrow::after', reparsed)
+    assert_has_property({ content: '"⟶"' }, reparsed.with_selector('.arrow::after').first)
 
     # Parse-dump-parse cycle should be idempotent
     sheet2 = Cataract::Stylesheet.parse(dumped)
@@ -159,16 +196,23 @@ class TestRoundtrip < Minitest::Test
     sheet = Cataract::Stylesheet.parse(css)
     dumped = sheet.to_s
 
-    # Should preserve media queries
-    assert_includes dumped, '@media screen'
-    assert_includes dumped, '@media print'
-    assert_includes dumped, '.test'
-
     # Parse again to verify structure
-    sheet2 = Cataract::Stylesheet.parse(dumped)
+    reparsed = Cataract::Stylesheet.parse(dumped)
 
-    assert_equal 3, sheet2.size, 'Should have 3 rules (1 base + 2 media)'
-    assert_equal 2, sheet2.media_queries.size, 'Should have 2 media queries'
+    assert_equal 3, reparsed.size, 'Should have 3 rules (1 base + 2 media)'
+    assert_equal 2, reparsed.media_queries.size, 'Should have 2 media queries'
+
+    # Verify base rule
+    assert_has_selector('.test', reparsed)
+    assert_has_property({ color: 'red' }, reparsed.with_selector('.test').first)
+
+    # Verify screen media rule
+    assert_has_selector('.test', reparsed, media: :screen)
+    assert_has_property({ color: 'blue' }, reparsed.with_media(:screen).with_selector('.test').first)
+
+    # Verify print media rule
+    assert_has_selector('.test', reparsed, media: :print)
+    assert_has_property({ color: 'black' }, reparsed.with_media(:print).with_selector('.test').first)
   end
 
   def test_roundtrip_preserves_declaration_order
@@ -177,20 +221,19 @@ class TestRoundtrip < Minitest::Test
     sheet = Cataract::Stylesheet.parse(css)
     dumped = sheet.to_s
 
-    # Parse again
-    sheet2 = Cataract::Stylesheet.parse(dumped)
+    # Parse again and verify structure
+    reparsed = Cataract::Stylesheet.parse(dumped)
 
-    # Check declarations are in some order (order preserved within each rule)
-    sheet2.select(&:selector?).each do |rule|
-      next unless rule.selector == '.test'
+    assert_equal 1, reparsed.rules.size
 
-      properties = rule.declarations.map(&:property)
+    rule = reparsed.with_selector('.test').first
 
-      assert_equal 3, properties.size
-      # Should have all three properties
-      assert_includes properties, 'margin'
-      assert_includes properties, 'padding'
-      assert_includes properties, 'border'
-    end
+    # Verify all properties exist
+    assert_has_property({ margin: '0' }, rule)
+    assert_has_property({ padding: '20px' }, rule)
+    assert_has_property({ border: '1px solid' }, rule)
+
+    # Check property count
+    assert_equal 3, rule.declarations.size
   end
 end

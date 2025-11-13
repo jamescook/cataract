@@ -66,6 +66,15 @@ Layout/LineLength:
 Minitest/MultipleAssertions:
   Max: 10
 
+# Disable ambiguous block association warnings in tests
+# Tests frequently use assert/refute with blocks that call methods with their own blocks,
+# e.g., `assert sheet.rules.any? { |r| r == '.box { color: red; }' }`
+# This compares Rule objects against CSS strings using our custom Rule#== implementation.
+# While this triggers the ambiguous block warning, it's intentional and clear in context.
+Lint/AmbiguousBlockAssociation:
+  Exclude:
+    - 'test/**/*'
+
 Style/Documentation:
    Enabled: false
 
@@ -143,6 +152,8 @@ Style/StderrPuts:
   Exclude:
     - 'scripts/**/*.rb'
 
-Performance/CollectionLiteralInLoop:
+# Disable all performance cops in tests - test clarity is more important than micro-optimizations
+# Performance suggestions often hurt readability without meaningful benefit in test code
+Performance:
   Exclude:
-    - 'test/**/*.rb'
+    - 'test/**/*'

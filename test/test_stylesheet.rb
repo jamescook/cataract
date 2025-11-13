@@ -882,4 +882,278 @@ body { color: red; }'
     refute_equal sheet, 'not a stylesheet'
     refute_equal sheet, nil
   end
+
+  # ============================================================================
+  # Stylesheet combining tests (concat, +)
+  # ============================================================================
+
+  def test_concat_combines_and_applies_cascade
+    sheet1 = Cataract.parse_css('.box { color: red; }')
+    sheet2 = Cataract.parse_css('.other { margin: 10px; }')
+
+    sheet1.concat(sheet2)
+
+    assert_equal 2, sheet1.rules.size
+    assert_equal '.box', sheet1.rules[0].selector
+    assert_equal '.other', sheet1.rules[1].selector
+  end
+
+  def test_concat_returns_self
+    sheet1 = Cataract.parse_css('.box { color: red; }')
+    sheet2 = Cataract.parse_css('.other { margin: 10px; }')
+
+    result = sheet1.concat(sheet2)
+
+    assert_same sheet1, result, 'concat should return self for chaining'
+  end
+
+  def test_concat_applies_cascade_on_conflicts
+    # concat SHOULD apply cascade when rules conflict
+    sheet1 = Cataract.parse_css('.box { color: red; }')
+    sheet2 = Cataract.parse_css('.box { color: blue; }')
+
+    sheet1.concat(sheet2)
+
+    assert_equal 1, sheet1.rules.size, 'concat should apply cascade'
+    assert sheet1.rules[0].has_property?('color', 'blue'), 'Last rule should win'
+  end
+
+  def test_concat_merges_non_conflicting_properties
+    sheet1 = Cataract.parse_css('.box { color: red; margin: 10px; }')
+    sheet2 = Cataract.parse_css('.box { color: blue; padding: 5px; }')
+
+    sheet1.concat(sheet2)
+
+    assert_equal 1, sheet1.rules.size
+    assert sheet1.rules[0].has_property?('color', 'blue'), 'Conflicting property: last wins'
+    assert sheet1.rules[0].has_property?('margin', '10px'), 'Non-conflicting from sheet1'
+    assert sheet1.rules[0].has_property?('padding', '5px'), 'Non-conflicting from sheet2'
+  end
+
+  def test_plus_operator_combines_and_applies_cascade
+    sheet1 = Cataract.parse_css('.box { color: red; }')
+    sheet2 = Cataract.parse_css('.other { margin: 10px; }')
+
+    result = sheet1 + sheet2
+
+    assert_equal 2, result.rules.size
+    assert_equal '.box', result.rules[0].selector
+    assert_equal '.other', result.rules[1].selector
+  end
+
+  def test_plus_operator_returns_new_stylesheet
+    sheet1 = Cataract.parse_css('.box { color: red; }')
+    sheet2 = Cataract.parse_css('.other { margin: 10px; }')
+
+    result = sheet1 + sheet2
+
+    refute_same sheet1, result, '+ should return new stylesheet'
+    refute_same sheet2, result, '+ should return new stylesheet'
+    assert_equal 1, sheet1.rules.size, 'Original sheet1 should be unchanged'
+    assert_equal 1, sheet2.rules.size, 'Original sheet2 should be unchanged'
+  end
+
+  def test_plus_operator_applies_cascade_on_conflicts
+    # + SHOULD apply cascade when rules conflict
+    sheet1 = Cataract.parse_css('.box { color: red; }')
+    sheet2 = Cataract.parse_css('.box { color: blue; }')
+
+    result = sheet1 + sheet2
+
+    assert_equal 1, result.rules.size, '+ should apply cascade'
+    assert result.rules[0].has_property?('color', 'blue'), 'Last rule should win'
+  end
+
+  # ============================================================================
+  # Stylesheet subtraction tests (-)
+  # ============================================================================
+
+  def test_minus_operator_removes_matching_rules
+    sheet1 = Cataract.parse_css('.box { color: red; } .other { margin: 10px; }')
+    sheet2 = Cataract.parse_css('.box { color: red; }')
+
+    result = sheet1 - sheet2
+
+    assert_equal 1, result.rules.size, '- should remove matching rules'
+    assert_equal '.other', result.rules[0].selector
+  end
+
+  def test_minus_operator_returns_new_stylesheet
+    sheet1 = Cataract.parse_css('.box { color: red; }')
+    sheet2 = Cataract.parse_css('.box { color: red; }')
+
+    result = sheet1 - sheet2
+
+    refute_same sheet1, result, '- should return new stylesheet'
+    assert_equal 1, sheet1.rules.size, 'Original should be unchanged'
+  end
+
+  def test_minus_operator_uses_shorthand_aware_matching
+    # Should remove rule using Rule#== (shorthand-aware)
+    sheet1 = Cataract.parse_css('.box { margin: 10px; } .other { color: red; }')
+    sheet2 = Cataract.parse_css('.box { margin-top: 10px; margin-right: 10px; margin-bottom: 10px; margin-left: 10px; }')
+
+    result = sheet1 - sheet2
+
+    assert_equal 1, result.rules.size, 'Shorthand should match longhand'
+    assert_equal '.other', result.rules[0].selector
+  end
+
+  def test_minus_operator_does_not_apply_cascade
+    # - should NOT apply cascade, just remove rules
+    sheet1 = Cataract.parse_css('.box { color: red; } .box { color: blue; }')
+    sheet2 = Cataract.parse_css('.other { margin: 10px; }')
+
+    result = sheet1 - sheet2
+
+    assert_equal 2, result.rules.size, '- should not apply cascade'
+    assert_equal '.box', result.rules[0].selector
+    assert_equal '.box', result.rules[1].selector
+  end
+
+  def test_minus_operator_no_matching_rules
+    sheet1 = Cataract.parse_css('.box { color: red; }')
+    sheet2 = Cataract.parse_css('.other { margin: 10px; }')
+
+    result = sheet1 - sheet2
+
+    assert_equal 1, result.rules.size, 'Should keep all rules when no matches'
+    assert_equal '.box', result.rules[0].selector
+  end
+
+  def test_minus_operator_removes_all_rules
+    sheet1 = Cataract.parse_css('.box { color: red; }')
+    sheet2 = Cataract.parse_css('.box { color: red; }')
+
+    result = sheet1 - sheet2
+
+    assert_equal 0, result.rules.size, 'Should remove all matching rules'
+  end
+
+  def test_minus_operator_preserves_media_queries
+    # Keep rules with media queries that don't match
+    sheet1 = Cataract.parse_css('@media print { .box { color: red; } } @media screen { .other { margin: 10px; } }')
+    sheet2 = Cataract.parse_css('@media print { .box { color: red; } }')
+
+    result = sheet1 - sheet2
+
+    assert_equal 1, result.rules.size, 'Should remove matching media rule'
+    assert_equal '.other', result.rules[0].selector
+    assert_includes result.media_queries, :screen
+    refute_includes result.media_queries, :print
+  end
+
+  def test_minus_operator_updates_media_index_correctly
+    # Test that media index IDs are updated when rules are removed
+    sheet1 = Cataract.parse_css('.base { color: red; } @media print { .print1 { margin: 10px; } } .middle { padding: 5px; } @media screen { .screen1 { font-size: 16px; } }')
+    sheet2 = Cataract.parse_css('.base { color: red; }')
+
+    result = sheet1 - sheet2
+
+    # .base removed (was ID 0), so remaining rules shift down
+    assert_equal 3, result.rules.size
+    assert_equal '.print1', result.rules[0].selector  # Now ID 0 (was 1)
+    assert_equal '.middle', result.rules[1].selector  # Now ID 1 (was 2)
+    assert_equal '.screen1', result.rules[2].selector # Now ID 2 (was 3)
+
+    # Media index should have updated IDs
+    print_rules = result.with_media(:print).to_a
+    assert_equal 1, print_rules.size
+    assert_equal 0, print_rules[0].id, 'Media index should reference updated ID'
+
+    screen_rules = result.with_media(:screen).to_a
+    assert_equal 1, screen_rules.size
+    assert_equal 2, screen_rules[0].id, 'Media index should reference updated ID'
+  end
+
+  def test_minus_operator_removes_middle_rule_with_media
+    # Remove a rule in the middle and verify IDs update correctly
+    sheet1 = Cataract.parse_css('@media print { .first { color: red; } } @media screen { .second { margin: 10px; } } @media print { .third { padding: 5px; } }')
+    sheet2 = Cataract.parse_css('@media screen { .second { margin: 10px; } }')
+
+    result = sheet1 - sheet2
+
+    assert_equal 2, result.rules.size
+    assert_equal '.first', result.rules[0].selector
+    assert_equal '.third', result.rules[1].selector
+
+    # Check media index
+    print_rules = result.with_media(:print).to_a
+    assert_equal 2, print_rules.size
+    assert_equal 0, print_rules[0].id
+    assert_equal 1, print_rules[1].id
+
+    # Screen media should be gone
+    refute_includes result.media_queries, :screen
+  end
+
+  # ============================================================================
+  # Stylesheet flattening tests (flatten, cascade)
+  # ============================================================================
+
+  def test_flatten_applies_cascade
+    sheet = Cataract.parse_css('.box { color: red; } .box { color: blue; }')
+
+    result = sheet.flatten
+
+    assert_equal 1, result.rules.size
+    assert result.rules.first.has_property?('color', 'blue'), 'Should apply cascade (last rule wins)'
+  end
+
+  def test_flatten_returns_new_stylesheet
+    sheet = Cataract.parse_css('.box { color: red; }')
+
+    result = sheet.flatten
+
+    refute_same sheet, result, 'flatten should return new stylesheet'
+  end
+
+  def test_flatten_bang_mutates_stylesheet
+    sheet = Cataract.parse_css('.box { color: red; } .box { color: blue; }')
+    original_object_id = sheet.object_id
+
+    result = sheet.flatten!
+
+    assert_same sheet, result, 'flatten! should return self'
+    assert_equal original_object_id, sheet.object_id, 'flatten! should mutate in place'
+    assert_equal 1, sheet.rules.size
+  end
+
+  def test_cascade_alias_for_flatten
+    sheet = Cataract.parse_css('.box { color: red; } .box { color: blue; }')
+
+    result = sheet.cascade
+
+    assert_equal 1, result.rules.size
+    assert result.rules.first.has_property?('color', 'blue')
+  end
+
+  def test_cascade_bang_alias_for_flatten_bang
+    sheet = Cataract.parse_css('.box { color: red; } .box { color: blue; }')
+
+    result = sheet.cascade!
+
+    assert_same sheet, result
+    assert_equal 1, sheet.rules.size
+  end
+
+  def test_merge_alias_still_works
+    # Keep for backwards compatibility
+    sheet = Cataract.parse_css('.box { color: red; } .box { color: blue; }')
+
+    result = sheet.merge
+
+    assert_equal 1, result.rules.size
+    assert result.rules.first.has_property?('color', 'blue')
+  end
+
+  def test_merge_bang_alias_still_works
+    # Keep for backwards compatibility
+    sheet = Cataract.parse_css('.box { color: red; } .box { color: blue; }')
+
+    result = sheet.merge!
+
+    assert_same sheet, result
+    assert_equal 1, sheet.rules.size
+  end
 end

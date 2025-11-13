@@ -129,13 +129,25 @@ module Cataract
     # Internal implementation details (id, specificity) are not considered
     # since they don't affect the CSS semantics.
     #
-    # @param other [Object] Object to compare with
+    # Can also compare against a CSS string, which is parsed and compared.
+    #
+    # @param other [Object] Object to compare with (Rule or String)
     # @return [Boolean] true if rules have same selector and declarations
     def ==(other)
-      return false unless other.is_a?(Rule)
-      return false unless selector == other.selector
+      case other
+      when Rule
+        return false unless selector == other.selector
 
-      expanded_declarations == other.expanded_declarations
+        expanded_declarations == other.expanded_declarations
+      when String
+        # Parse CSS string and compare to first rule
+        parsed = Cataract.parse_css(other)
+        return false unless parsed.rules.size == 1
+
+        self == parsed.rules.first
+      else
+        false
+      end
     end
     alias eql? ==
 
