@@ -1,5 +1,8 @@
 inherit_from: .rubocop_todo.yml
 
+require:
+  - ./.rubocop/cataract/ban_assert_includes.rb
+
 plugins:
   - rubocop-performance
   - rubocop-minitest
@@ -161,3 +164,12 @@ Performance:
 Style/HashLikeCase:
   Exclude:
     - 'benchmarks/**/*'
+
+# Custom Cataract cops
+Cataract/BanAssertIncludes:
+  Enabled: true
+  Include:
+    - 'test/**/*'
+  Exclude:
+    - 'test/test_benchmark_doc_generator.rb'
+    - 'test/support/**/*'  # Support files define assert_contains which uses assert_includes internally

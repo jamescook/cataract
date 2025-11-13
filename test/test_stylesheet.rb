@@ -81,10 +81,16 @@ class TestStylesheet < Minitest::Test
     CSS
 
     sheet = Cataract::Stylesheet.parse(css)
-    output = sheet.to_s
 
-    # Should preserve exact order
-    assert_match(/body.*@media.*p/m, output)
+    # Verify order is preserved: body rule, then h1 rule (in @media print), then p rule
+    rules = sheet.to_a
+    assert_equal 3, rules.length
+    assert_equal 'body', rules[0].selector
+    assert_equal 'h1', rules[1].selector
+    assert_equal 'p', rules[2].selector
+
+    # Verify h1 is in print media query
+    assert_media_types [:print], rules[1], sheet
   end
 
   def test_complex_interleaved_media
@@ -191,8 +197,8 @@ class TestStylesheet < Minitest::Test
     media_queries = sheet.media_queries
 
     assert_equal 2, media_queries.length
-    assert_includes media_queries, :screen
-    assert_includes media_queries, :print
+    assert_member media_queries, :screen
+    assert_member media_queries, :print
   end
 
   def test_multi_media_serialization_no_duplicates
@@ -206,16 +212,19 @@ class TestStylesheet < Minitest::Test
 
     sheet = Cataract::Stylesheet.parse(css)
 
+    # Verify the rule exists with correct properties
+    assert_has_selector '.foo', sheet
+    foo_rule = sheet.with_selector('.foo').first
+    assert_has_property({ color: 'red' }, foo_rule)
+
     # Serialize with both media types
     output = sheet.to_s(media: [:screen, :print])
 
-    # Count occurrences of .foo - should appear exactly once
+    # Count occurrences of .foo - should appear exactly once in serialized output
     foo_count = output.scan(/\.foo/).count
     assert_equal 1, foo_count,
-                 "Rule should appear once, not duplicated. Parser adds same rule ID to multiple media indexes."
-
-    # Verify the output actually contains the rule
-    assert_includes output, '.foo { color: red; }'
+                 "Rule should appear once in serialized output, not duplicated. " \
+                 "Parser adds same rule ID to multiple media indexes, but serialization should dedupe."
   end
 
   # ============================================================================
@@ -253,8 +262,8 @@ body { color: red; }'
 
     inspect_str = sheet.inspect
 
-    assert_includes inspect_str, 'Stylesheet'
-    assert_includes inspect_str, 'empty'
+    # Verify inspect format shows empty state
+    assert_equal '#<Cataract::Stylesheet empty>', inspect_str
   end
 
   def test_inspect_with_rules
@@ -263,8 +272,8 @@ body { color: red; }'
 
     inspect_str = sheet.inspect
 
-    assert_includes inspect_str, 'Stylesheet'
-    assert_includes inspect_str, '2 rules'
+    # Verify inspect format shows count and selectors
+    assert_equal '#<Cataract::Stylesheet 2 rules: body, div>', inspect_str
   end
 
   # ============================================================================
@@ -399,9 +408,9 @@ body { color: red; }'
     sels = sheet.selectors
 
     assert_equal 3, sels.length
-    assert_includes sels, 'body'
-    assert_includes sels, '.header'
-    assert_includes sels, '#main'
+    assert_member sels, 'body'
+    assert_member sels, '.header'
+    assert_member sels, '#main'
   end
 
   def test_rules_count_alias
@@ -662,8 +671,10 @@ body { color: red; }'
 
     assert_equal 2, keyframes.size
     assert keyframes.all?(&:at_rule?)
-    assert_includes keyframes.map(&:selector), '@keyframes fadeIn'
-    assert_includes keyframes.map(&:selector), '@keyframes slideIn'
+
+    selectors = keyframes.map(&:selector)
+    assert_member selectors, '@keyframes fadeIn'
+    assert_member selectors, '@keyframes slideIn'
   end
 
   def test_with_at_rule_type_font_face
@@ -869,7 +880,7 @@ body { color: red; }'
     stylesheets = Set.new
     stylesheets << sheet1
 
-    assert_includes stylesheets, sheet2, 'Set should recognize equivalent stylesheet'
+    assert_member stylesheets, sheet2, 'Set should recognize equivalent stylesheet'
     assert_equal 1, stylesheets.size
 
     stylesheets << sheet2
@@ -1039,7 +1050,7 @@ body { color: red; }'
 
     assert_equal 1, result.rules.size, 'Should remove matching media rule'
     assert_equal '.other', result.rules[0].selector
-    assert_includes result.media_queries, :screen
+    assert_member result.media_queries, :screen
     refute_includes result.media_queries, :print
   end
 
