@@ -80,4 +80,77 @@ class TestRule < Minitest::Test
 
     assert rule1.eql?(rule2), 'eql? should be aliased to =='
   end
+
+  def test_hash_contract_equal_objects_same_hash
+    # Hash contract: if a == b, then a.hash == b.hash
+    decls1 = [Cataract::Declaration.new('color', 'red', false)]
+    decls2 = [Cataract::Declaration.new('color', 'red', false)]
+
+    rule1 = Cataract::Rule.new(0, '.foo', decls1, 10, nil, nil)
+    rule2 = Cataract::Rule.new(99, '.foo', decls2, 10, nil, nil)
+
+    assert_equal rule1, rule2, 'Rules should be equal'
+    assert_equal rule1.hash, rule2.hash, 'Equal rules must have same hash'
+  end
+
+  def test_hash_contract_shorthand_vs_longhand
+    # Parse shorthand vs longhand - should have same hash
+    sheet1 = Cataract.parse_css('.box { margin: 10px; }')
+    sheet2 = Cataract.parse_css('.box { margin-top: 10px; margin-right: 10px; margin-bottom: 10px; margin-left: 10px; }')
+
+    rule1 = sheet1.rules.first
+    rule2 = sheet2.rules.first
+
+    assert_equal rule1, rule2, 'Shorthand and longhand should be equal'
+    assert_equal rule1.hash, rule2.hash, 'Equal rules must have same hash'
+  end
+
+  def test_rules_as_hash_keys
+    # Rules should work as Hash keys
+    sheet1 = Cataract.parse_css('.box { margin: 10px; }')
+    sheet2 = Cataract.parse_css('.box { margin-top: 10px; margin-right: 10px; margin-bottom: 10px; margin-left: 10px; }')
+
+    rule1 = sheet1.rules.first
+    rule2 = sheet2.rules.first
+
+    cache = {}
+    cache[rule1] = 'cached_value'
+
+    # Should find the value using the equivalent longhand rule
+    assert_equal 'cached_value', cache[rule2], 'Equal rules should work as same Hash key'
+  end
+
+  def test_rules_in_set
+    require 'set'
+
+    sheet1 = Cataract.parse_css('.box { margin: 10px; }')
+    sheet2 = Cataract.parse_css('.box { margin-top: 10px; margin-right: 10px; margin-bottom: 10px; margin-left: 10px; }')
+
+    rule1 = sheet1.rules.first
+    rule2 = sheet2.rules.first
+
+    rules = Set.new
+    rules << rule1
+
+    assert_includes rules, rule2, 'Set should recognize equivalent longhand rule'
+    assert_equal 1, rules.size, 'Set should not add duplicate equivalent rule'
+
+    # Adding the equivalent rule shouldn't change the size
+    rules << rule2
+
+    assert_equal 1, rules.size, 'Set should still have only 1 rule after adding equivalent'
+  end
+
+  def test_array_uniq_with_shorthand_awareness
+    # Array#uniq uses hash + eql? when available
+    sheet1 = Cataract.parse_css('.box { margin: 10px; }')
+    sheet2 = Cataract.parse_css('.box { margin-top: 10px; margin-right: 10px; margin-bottom: 10px; margin-left: 10px; }')
+    sheet3 = Cataract.parse_css('.box { color: red; }')
+
+    rules = [sheet1.rules.first, sheet2.rules.first, sheet3.rules.first]
+
+    unique_rules = rules.uniq
+
+    assert_equal 2, unique_rules.length, 'uniq should remove shorthand/longhand duplicate'
+  end
 end

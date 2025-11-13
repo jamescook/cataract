@@ -512,12 +512,13 @@ module Cataract
       if rules_or_css.is_a?(String)
         # Parse CSS string and extract selectors for matching
         parsed = Stylesheet.parse(rules_or_css)
-        selectors_to_remove = parsed.rules.map(&:selector).compact.to_set
+        selectors_to_remove = parsed.rules.filter_map(&:selector).to_set
         match_by_selector = true
       else
         # Use rule objects directly
         rules_to_remove = rules_or_css.is_a?(Array) ? rules_or_css : [rules_or_css]
         return self if rules_to_remove.empty?
+
         match_by_selector = false
       end
 
@@ -533,7 +534,7 @@ module Cataract
                     selectors_to_remove.include?(rule.selector)
                   else
                     # Match by object equality for rule collection input
-                    rules_to_remove.any? { |r| r == rule }
+                    rules_to_remove.any?(rule)
                   end
         next unless matches
 
@@ -668,6 +669,34 @@ module Cataract
         more = total_rules > 3 ? ', ...' : ''
         "#<Cataract::Stylesheet #{total_rules} rules: #{preview}#{more}>"
       end
+    end
+
+    # Compare stylesheets for equality.
+    #
+    # Two stylesheets are equal if they have the same rules in the same order
+    # and the same media queries. Rule equality uses shorthand-aware comparison.
+    # Order matters because CSS cascade depends on rule order.
+    #
+    # Charset is ignored since it's file encoding metadata, not semantic content.
+    #
+    # @param other [Object] Object to compare with
+    # @return [Boolean] true if stylesheets are equal
+    def ==(other)
+      return false unless other.is_a?(Stylesheet)
+      return false unless rules == other.rules
+      return false unless @_media_index == other.instance_variable_get(:@_media_index)
+
+      true
+    end
+    alias eql? ==
+
+    # Generate hash code for this stylesheet.
+    #
+    # Hash is based on rules and media_index to match equality semantics.
+    #
+    # @return [Integer] hash code
+    def hash
+      @_hash ||= [self.class, rules, @_media_index].hash # rubocop:disable Naming/MemoizedInstanceVariableName
     end
 
     # Merge all rules in this stylesheet according to CSS cascade rules

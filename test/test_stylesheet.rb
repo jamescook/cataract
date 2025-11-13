@@ -793,4 +793,93 @@ body { color: red; }'
     assert_equal 1, result2.size
     assert_equal '.header', result2.first.selector
   end
+
+  # ============================================================================
+  # Stylesheet equality and hash tests
+  # ============================================================================
+
+  def test_stylesheet_equality_same_rules
+    sheet1 = Cataract.parse_css('.box { color: red; }')
+    sheet2 = Cataract.parse_css('.box { color: red; }')
+
+    assert_equal sheet1, sheet2
+  end
+
+  def test_stylesheet_equality_shorthand_vs_longhand
+    # Your example from the discussion
+    sheet1 = Cataract.parse_css('.box { margin: 10px; }')
+    sheet2 = Cataract.parse_css('.box { margin-top: 10px; margin-right: 10px; margin-bottom: 10px; margin-left: 10px; }')
+
+    assert_equal sheet1, sheet2, 'Shorthand and longhand stylesheets should be equal'
+  end
+
+  def test_stylesheet_equality_different_rules
+    sheet1 = Cataract.parse_css('.box { color: red; }')
+    sheet2 = Cataract.parse_css('.box { color: blue; }')
+
+    refute_equal sheet1, sheet2
+  end
+
+  def test_stylesheet_equality_different_order
+    # Order matters for cascade rules
+    sheet1 = Cataract.parse_css('.box { color: red; } .box { color: blue; }')
+    sheet2 = Cataract.parse_css('.box { color: blue; } .box { color: red; }')
+
+    refute_equal sheet1, sheet2, 'Order matters for CSS cascade'
+  end
+
+  def test_stylesheet_equality_with_media_queries
+    sheet1 = Cataract.parse_css('@media print { .box { color: red; } }')
+    sheet2 = Cataract.parse_css('@media print { .box { color: red; } }')
+
+    assert_equal sheet1, sheet2
+  end
+
+  def test_stylesheet_equality_different_media
+    sheet1 = Cataract.parse_css('@media print { .box { color: red; } }')
+    sheet2 = Cataract.parse_css('@media screen { .box { color: red; } }')
+
+    refute_equal sheet1, sheet2, 'Different media queries should not be equal'
+  end
+
+  def test_stylesheet_hash_contract_equal_objects_same_hash
+    sheet1 = Cataract.parse_css('.box { margin: 10px; }')
+    sheet2 = Cataract.parse_css('.box { margin-top: 10px; margin-right: 10px; margin-bottom: 10px; margin-left: 10px; }')
+
+    assert_equal sheet1, sheet2, 'Stylesheets should be equal'
+    assert_equal sheet1.hash, sheet2.hash, 'Equal stylesheets must have same hash'
+  end
+
+  def test_stylesheets_as_hash_keys
+    sheet1 = Cataract.parse_css('.box { margin: 10px; }')
+    sheet2 = Cataract.parse_css('.box { margin-top: 10px; margin-right: 10px; margin-bottom: 10px; margin-left: 10px; }')
+
+    cache = {}
+    cache[sheet1] = 'processed_stylesheet'
+
+    assert_equal 'processed_stylesheet', cache[sheet2], 'Equal stylesheets should work as same Hash key'
+  end
+
+  def test_stylesheets_in_set
+    require 'set'
+
+    sheet1 = Cataract.parse_css('.box { margin: 10px; }')
+    sheet2 = Cataract.parse_css('.box { margin-top: 10px; margin-right: 10px; margin-bottom: 10px; margin-left: 10px; }')
+
+    stylesheets = Set.new
+    stylesheets << sheet1
+
+    assert_includes stylesheets, sheet2, 'Set should recognize equivalent stylesheet'
+    assert_equal 1, stylesheets.size
+
+    stylesheets << sheet2
+    assert_equal 1, stylesheets.size, 'Set should not add duplicate'
+  end
+
+  def test_stylesheet_equality_with_non_stylesheet
+    sheet = Cataract.parse_css('.box { color: red; }')
+
+    refute_equal sheet, 'not a stylesheet'
+    refute_equal sheet, nil
+  end
 end

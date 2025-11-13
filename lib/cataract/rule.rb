@@ -135,25 +135,39 @@ module Cataract
       return false unless other.is_a?(Rule)
       return false unless selector == other.selector
 
-      # Expand and normalize declarations for comparison
-      # Cache expansion on self, compute fresh for other
-      self_expanded = @_expanded_declarations ||= begin
+      expanded_declarations == other.expanded_declarations
+    end
+    alias eql? ==
+
+    # Generate hash code for this rule.
+    #
+    # Hash is based on selector and expanded declarations to match the
+    # equality semantics. This allows rules to be used as Hash keys or
+    # in Sets correctly.
+    #
+    # @return [Integer] hash code
+    # rubocop:disable Naming/MemoizedInstanceVariableName
+    def hash
+      @_hash ||= [self.class, selector, expanded_declarations].hash
+    end
+    # rubocop:enable Naming/MemoizedInstanceVariableName
+
+    protected
+
+    # Get expanded and normalized declarations for this rule.
+    #
+    # Shorthands are expanded into their longhand equivalents and sorted
+    # to enable semantic comparison. Result is cached.
+    #
+    # @return [Array<Declaration>] expanded declarations
+    # rubocop:disable Naming/MemoizedInstanceVariableName
+    def expanded_declarations
+      @_expanded_declarations ||= begin
         expanded = declarations.flat_map { |decl| Cataract._expand_shorthand(decl) }
         expanded.sort_by! { |d| [d.property, d.value, d.important ? 1 : 0] }
         expanded
       end
-
-      # Check if other already has expanded cache
-      if other.instance_variable_defined?(:@_expanded_declarations) && !other.instance_variable_get(:@_expanded_declarations).nil?
-        other_expanded = other.instance_variable_get(:@_expanded_declarations)
-      else
-        # Expand other without caching
-        other_expanded = other.declarations.flat_map { |decl| Cataract._expand_shorthand(decl) }
-        other_expanded.sort_by! { |d| [d.property, d.value, d.important ? 1 : 0] }
-      end
-
-      self_expanded == other_expanded
     end
-    alias eql? ==
+    # rubocop:enable Naming/MemoizedInstanceVariableName
   end
 end

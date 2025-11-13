@@ -67,12 +67,7 @@ Minitest/MultipleAssertions:
   Max: 10
 
 Style/Documentation:
-   Enabled: true
-   Exclude:
-    - 'test/**/*'
-    - 'benchmarks/**/*'
-    - 'lib/cataract/pure/**/*.rb'
-    - 'lib/cataract/pure.rb'
+   Enabled: false
 
 # Disable modifier if/unless enforcement - use it when it's clearer, not because a cop says so
 Style/IfUnlessModifier:
