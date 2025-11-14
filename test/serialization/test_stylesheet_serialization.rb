@@ -703,4 +703,61 @@ class TestStylesheetSerialization < Minitest::Test
 
     assert_equal expected, sheet.to_formatted_s
   end
+
+  # Test mixing traditional @media with CSS nesting
+  def test_to_s_traditional_media_followed_by_nested_parent
+    css = <<~CSS
+      @media screen {
+        .screen { color: blue; }
+      }
+      .parent {
+        .child { color: red; }
+      }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css)
+    output = sheet.to_s
+
+    # Should serialize with @media block, then nested structure
+    expected = <<~CSS
+      @media screen {
+      .screen { color: blue; }
+      }
+      .parent { .child { color: red; } }
+    CSS
+
+    assert_equal expected, output
+  end
+
+  # Test mixing traditional @media with CSS nesting (formatted)
+  def test_to_formatted_s_traditional_media_followed_by_nested_parent
+    css = <<~CSS
+      @media screen {
+        .screen { color: blue; }
+      }
+      .parent {
+        .child { color: red; }
+      }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css)
+    output = sheet.to_formatted_s
+
+    # Should serialize with proper indentation
+    expected = <<~CSS
+      @media screen {
+        .screen {
+          color: blue;
+        }
+      }
+
+      .parent {
+        .child {
+          color: red;
+        }
+      }
+    CSS
+
+    assert_equal expected, output
+  end
 end

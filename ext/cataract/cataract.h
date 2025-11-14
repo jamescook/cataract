@@ -120,6 +120,10 @@ static inline VALUE strip_string(const char *str, long len) {
   #define MAX_PARSE_DEPTH 10  // Max recursion depth for nested @media/@supports blocks and CSS nesting
 #endif
 
+// Max buffer size for indent strings in serialization
+// (MAX_PARSE_DEPTH + 1) * 2 spaces + null terminator, rounded up for safety
+#define MAX_INDENT_BUFFER ((MAX_PARSE_DEPTH + 2) * 2 + 1)
+
 #ifndef MAX_PROPERTY_NAME_LENGTH
   #define MAX_PROPERTY_NAME_LENGTH 256  // Max length of CSS property name
 #endif
