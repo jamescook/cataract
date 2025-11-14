@@ -1,3 +1,7 @@
+## [0.2.1] - 2025-11-14
+
+- Fix serializer bug related to media queries
+
 ## [0.2.0] - 2025-11-14
 
 - Major: CSS `@import` resolution refactored from string-concatenation to parsed-object architecture with proper charset handling, media query combining,
