@@ -40,6 +40,23 @@ end
 
 COLOR_FORMATS = %i[hex rgb hsl hwb oklab oklch lab lch].freeze
 
+# In-memory import fetcher - same as in run.rb
+# Returns CSS from constant hash instead of reading files
+IMPORT_CSS_FILES = {
+  'base.css' => '.imported { color: blue; margin: 10px; }',
+  'responsive.css' => '@media screen and (min-width: 768px) { .responsive { display: flex; } }',
+  'parent.css' => "@import 'child.css';\n.parent { padding: 5px; }",
+  'child.css' => '.child { font-size: 14px; }',
+  'charset.css' => '@charset "UTF-8"; .unicode { content: "★"; }',
+  'nested.css' => '.outer { color: red; .inner { color: blue; } }',
+  'multi.css' => '.one { color: red; } .two { color: blue; } .three { color: green; }'
+}.freeze
+
+InMemoryImportFetcher = lambda do |url, _opts|
+  filename = url.split('/').last || 'base.css'
+  IMPORT_CSS_FILES[filename] || IMPORT_CSS_FILES['base.css']
+end
+
 # Read length-prefixed inputs and parse them
 loop do
   # Read 4-byte length prefix (network byte order)
@@ -53,8 +70,18 @@ loop do
   break if css.nil? || css.bytesize != length
 
   # Parse CSS (crash will kill subprocess)
+  # Enable import resolution with in-memory fetcher to exercise that code path
   begin
-    stylesheet = Cataract.parse_css(css)
+    # Silence warnings during parsing to avoid stderr buffer issues in subprocess
+    old_verbose = $VERBOSE
+    $VERBOSE = nil
+    stylesheet = Cataract.parse_css(css,
+                                    imports: {
+                                      fetcher: InMemoryImportFetcher,
+                                      allowed_schemes: %w[http https file], # Allow any scheme
+                                      max_depth: 5 # Limit recursion to avoid infinite loops in fuzzing
+                                    })
+    $VERBOSE = old_verbose
     rules = stylesheet.rules.to_a
     flatten_tested = false
     to_s_tested = false
