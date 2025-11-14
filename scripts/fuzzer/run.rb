@@ -226,6 +226,30 @@ CORPUS = [
   '.e { @media screen { @media print { } }', # Missing closing braces
   '.f { @media { @media { @media { } } } }', # Nested @media without queries
 
+  # @import statements - valid cases (will use InMemoryImportFetcher)
+  "@import 'base.css';",
+  "@import url('base.css');",
+  "@import 'responsive.css' screen;",
+  "@import url('parent.css');\nbody { margin: 0; }", # With rules after
+  "@import 'child.css';\n@import 'base.css';", # Multiple imports
+  "@import 'charset.css';", # Import with charset
+  "@import 'nested.css';", # Import with nesting
+  "@charset 'UTF-8';\n@import 'multi.css';", # Charset before import
+
+  # @import statements - malformed/garbage
+  '@import', # Incomplete
+  "@import 'missing.css", # Missing quote and semicolon
+  '@import url(', # Incomplete url()
+  "@import url('test.css'", # Missing closing paren
+  "@import 'test.css' {}", # Invalid syntax (block instead of semicolon)
+  "@import url url url('test.css');", # Multiple url()
+  '@import "test.css" "another.css";', # Multiple URLs
+  "@import 'test.css' garbage media query;", # Invalid media query
+  "@import \x00.css;", # Null byte in URL
+  "@import '#{'x' * 1000}.css';", # Very long URL
+  "body { margin: 0; }\n@import 'late.css';", # Import after rules (invalid)
+  "@import 'first.css';\nbody {}\n@import 'second.css';", # Import in middle
+
   # Extreme nesting garbage
   '.a { & .b { & .c { & .d { & .e { & .f { & .g { & .h { & .i { & .j { & .k { } } } } } } } } } } }', # 11 levels
   ".deep { #{'& .x { ' * 50}color: red;#{' }' * 50} }", # Very deep nesting
@@ -269,6 +293,41 @@ CORPUS = [
 
 # Color formats to test conversion between
 COLOR_FORMATS = %i[hex rgb hsl hwb oklab oklch lab lch named].freeze
+
+# In-memory import fetcher for testing @import resolution without I/O
+# This allows fuzzing the import resolution code path without creating files
+IMPORT_CSS_FILES = {
+  # Base imported file - simple CSS
+  'base.css' => '.imported { color: blue; margin: 10px; }',
+
+  # File with media query - tests media combining
+  'responsive.css' => '@media screen and (min-width: 768px) { .responsive { display: flex; } }',
+
+  # File that imports another file - tests recursive imports
+  'parent.css' => "@import 'child.css';\n.parent { padding: 5px; }",
+
+  # Nested import target
+  'child.css' => '.child { font-size: 14px; }',
+
+  # File with @charset - tests charset propagation
+  'charset.css' => '@charset "UTF-8"; .unicode { content: "★"; }',
+
+  # Complex file with nesting
+  'nested.css' => '.outer { color: red; .inner { color: blue; } }',
+
+  # File with multiple rules
+  'multi.css' => '.one { color: red; } .two { color: blue; } .three { color: green; }'
+}.freeze
+
+# In-memory fetcher - returns CSS from constant hash instead of reading files
+# Accepts any URL and maps it to a hardcoded CSS file
+InMemoryImportFetcher = lambda do |url, _opts|
+  # Extract filename from URL (supports file://, http://, https://, or bare names)
+  filename = url.split('/').last || 'base.css'
+
+  # Return CSS from our hash, default to base.css if not found
+  IMPORT_CSS_FILES[filename] || IMPORT_CSS_FILES['base.css']
+end
 
 # Mutation strategies (binary-safe)
 def mutate(css)
