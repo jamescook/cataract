@@ -56,19 +56,19 @@ loop do
   begin
     stylesheet = Cataract.parse_css(css)
     rules = stylesheet.rules.to_a
-    merge_tested = false
+    flatten_tested = false
     to_s_tested = false
     color_converted = false
 
-    # Test merge with valid CSS followed by fuzzed CSS
-    # This tests merge error handling when second rule set is invalid
+    # Test flatten with valid CSS followed by fuzzed CSS
+    # This tests flatten error handling when second rule set is invalid
     begin
       valid_stylesheet = Cataract.parse_css('body { margin: 0; color: red; }')
       valid_stylesheet.add_block(css) # Add fuzzed CSS to valid stylesheet
-      valid_stylesheet.merge # Call merge on the stylesheet
-      merge_tested = true
+      valid_stylesheet.flatten # Call flatten on the stylesheet
+      flatten_tested = true
     rescue Cataract::Error
-      # Expected - merge might fail on invalid CSS
+      # Expected - flatten might fail on invalid CSS
     end
 
     # Test to_s on parsed rules occasionally
@@ -100,7 +100,7 @@ loop do
 
     # Report what was tested: PARSE [+MERGE] [+TOS] [+COLOR]
     output = 'PARSE'
-    output += '+MERGE' if merge_tested
+    output += '+FLATTEN' if flatten_tested
     output += '+TOS' if to_s_tested
     output += '+COLOR' if color_converted
     $stdout.write("#{output}\n")

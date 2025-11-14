@@ -7,25 +7,25 @@ require 'open3'
 $LOAD_PATH.unshift File.expand_path('../lib', __dir__)
 require 'cataract'
 
-# CSS Merging Benchmark
+# CSS Flattening Benchmark
 # Compares css_parser gem vs Cataract pure Ruby vs Cataract C extension
-class MergingBenchmark < BenchmarkHarness
+class FlatteningBenchmark < BenchmarkHarness
   def self.benchmark_name
-    'merging'
+    'flattening'
   end
 
   def self.description
-    'Time to merge multiple CSS rule sets with same selector'
+    'Time to flatten multiple CSS rule sets with same selector'
   end
 
   def self.metadata
-    require_relative 'merging_tests'
-    MergingTests.metadata
+    require_relative 'flattening_tests'
+    FlatteningTests.metadata
   end
 
   def self.speedup_config
-    require_relative 'merging_tests'
-    MergingTests.speedup_config
+    require_relative 'flattening_tests'
+    FlatteningTests.speedup_config
   end
 
   def sanity_checks
@@ -35,54 +35,55 @@ class MergingBenchmark < BenchmarkHarness
     # Verify cataract works
     css = ".test { color: black; }\n.test { margin: 10px; }"
     cataract_rules = Cataract.parse_css(css)
-    cataract_merged = Cataract.merge(cataract_rules)
-    raise 'Cataract sanity check failed' if cataract_merged.rules.empty?
+    cataract_flattened = Cataract.flatten(cataract_rules)
+    raise 'Cataract sanity check failed' if cataract_flattened.rules.empty?
   end
 
   def call
-    require_relative 'merging_tests'
+    require_relative 'flattening_tests'
 
-    worker_script = File.expand_path('benchmark_merging_workers.rb', __dir__)
+    worker_script = File.expand_path('benchmark_flattening_workers.rb', __dir__)
 
     # Clean up any leftover worker files from previous runs
-    Dir.glob(File.join(RESULTS_DIR, 'merging_*.json')).each { |f| FileUtils.rm_f(f) }
+    Dir.glob(File.join(RESULTS_DIR, 'flattening_*.json')).each { |f| FileUtils.rm_f(f) }
 
-    puts 'Running merging benchmarks via subprocesses...'
+    puts 'Running flattening benchmarks via subprocesses...'
     puts 'Testing implementations with YJIT variations where applicable'
     puts
 
     # Define implementations to test
     implementations = [
-      { name: 'css_parser gem', base_impl: :css_parser, env: { 'MERGING_CSS_PARSER' => '1' } },
+      { name: 'css_parser gem', base_impl: :css_parser, env: { 'FLATTENING_CSS_PARSER' => '1' } },
       { name: 'Cataract pure Ruby', base_impl: :pure, env: { 'CATARACT_PURE' => '1' } },
       { name: 'Cataract C extension', base_impl: :native, env: { 'CATARACT_PURE' => nil } }
     ]
 
     implementations.each do |config|
-      if MergingTests.yjit_applicable?(config[:base_impl])
+      if FlatteningTests.yjit_applicable?(config[:base_impl])
         # Run both YJIT variants
         puts "→ Running #{config[:name]} without YJIT..."
         puts
-        stdout, status = run_subprocess(['ruby', '--disable-yjit', worker_script], env: config[:env])
+        _, status = run_subprocess(['ruby', '--disable-yjit', worker_script], env: config[:env])
         raise "#{config[:name]} (no YJIT) benchmark failed" unless status.success?
+
         puts
         puts
 
         puts "→ Running #{config[:name]} with YJIT..."
         puts
-        stdout, status = run_subprocess(['ruby', '--yjit', worker_script], env: config[:env])
+        _, status = run_subprocess(['ruby', '--yjit', worker_script], env: config[:env])
         raise "#{config[:name]} (YJIT) benchmark failed" unless status.success?
-        puts
-        puts
+
       else
         # Run without YJIT flags (YJIT not applicable)
         puts "→ Running #{config[:name]}..."
         puts
-        stdout, status = run_subprocess(['ruby', worker_script], env: config[:env])
+        _, status = run_subprocess(['ruby', worker_script], env: config[:env])
         raise "#{config[:name]} benchmark failed" unless status.success?
-        puts
-        puts
+
       end
+      puts
+      puts
     end
 
     # Combine results
@@ -127,7 +128,7 @@ class MergingBenchmark < BenchmarkHarness
 
   def combine_worker_results
     # Read all worker result files
-    all_results = read_worker_results('merging_*.json')
+    all_results = read_worker_results('flattening_*.json')
 
     # Combine into single result
     combined = {
@@ -158,14 +159,14 @@ class MergingBenchmark < BenchmarkHarness
     File.write(combined_path, JSON.pretty_generate(combined))
 
     # Clean up worker files
-    cleanup_worker_results('merging_*.json')
+    cleanup_worker_results('flattening_*.json')
 
     puts '=' * 80
-    puts '✓ All merging benchmarks complete'
+    puts '✓ All flattening benchmarks complete'
     puts "Results saved to: #{combined_path}"
     puts '=' * 80
   end
 end
 
 # Run if executed directly
-MergingBenchmark.run if __FILE__ == $PROGRAM_NAME
+FlatteningBenchmark.run if __FILE__ == $PROGRAM_NAME

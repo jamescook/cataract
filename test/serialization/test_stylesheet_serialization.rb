@@ -409,8 +409,8 @@ class TestStylesheetSerialization < Minitest::Test
     assert_equal css_expected, output
   end
 
-  def test_merged_shorthand_properties_are_present
-    # Test that when rules are merged and shorthands are recreated,
+  def test_flattened_shorthand_properties_are_present
+    # Test that when rules are flattened and shorthands are recreated,
     # all declarations are present with correct values
     css_input = <<~CSS
       .test { color: black; margin: 0px; }
@@ -419,15 +419,15 @@ class TestStylesheetSerialization < Minitest::Test
     CSS
 
     sheet = Cataract::Stylesheet.parse(css_input)
-    merged = sheet.merge
+    flattened = sheet.flatten
 
-    # After merge, all declarations should be present
-    result = Cataract::Declarations.new(merged.rules.first.declarations).to_s
+    # After flatten, all declarations should be present
+    result = Cataract::Declarations.new(flattened.rules.first.declarations).to_s
 
     assert_equal 'color: black; margin: 0px; padding: 5px; border: 1px solid red;', result
   end
 
-  def test_merged_multiple_shorthands_are_present
+  def test_flattened_multiple_shorthands_are_present
     # Test with multiple types of shorthand properties (margin, padding, border, background, font, list-style)
     # all mixed with regular properties
     css_input = <<~CSS
@@ -438,31 +438,31 @@ class TestStylesheetSerialization < Minitest::Test
     CSS
 
     sheet = Cataract::Stylesheet.parse(css_input)
-    merged = sheet.merge
+    flattened = sheet.flatten
 
     # All declarations should be present with correct values
-    result = Cataract::Declarations.new(merged.rules.first.declarations).to_s
+    result = Cataract::Declarations.new(flattened.rules.first.declarations).to_s
 
     assert_equal 'display: block; color: blue; margin: 10px; padding: 5px; border: 2px solid black; list-style: circle inside; font: bold 14px/1.5 Arial; background: white;', result
   end
 
-  def test_merged_border_subproperties_are_present
-    # Test that border-width, border-style, border-color get merged into border shorthand
+  def test_flattened_border_subproperties_are_present
+    # Test that border-width, border-style, border-color get flattened into border shorthand
     css_input = <<~CSS
       .element { color: red; border-width: 1px; border-style: solid; border-color: black; }
       .element { margin: 5px; }
     CSS
 
     sheet = Cataract::Stylesheet.parse(css_input)
-    merged = sheet.merge
+    flattened = sheet.flatten
 
     # Border shorthand should be created with all subproperties
-    result = Cataract::Declarations.new(merged.rules.first.declarations).to_s
+    result = Cataract::Declarations.new(flattened.rules.first.declarations).to_s
 
     assert_equal 'color: red; margin: 5px; border: 1px solid black;', result
   end
 
-  def test_merged_important_declarations_maintain_order
+  def test_flattened_important_declarations_maintain_order
     # Test that !important declarations maintain proper source order
     css_input = <<~CSS
       .test { color: black !important; margin: 10px; }
@@ -470,9 +470,9 @@ class TestStylesheetSerialization < Minitest::Test
     CSS
 
     sheet = Cataract::Stylesheet.parse(css_input)
-    merged = sheet.merge
+    flattened = sheet.flatten
 
-    result = Cataract::Declarations.new(merged.rules.first.declarations).to_s
+    result = Cataract::Declarations.new(flattened.rules.first.declarations).to_s
 
     assert_equal 'color: black !important; margin: 10px; padding: 5px !important;', result
   end

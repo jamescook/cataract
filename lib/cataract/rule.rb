@@ -123,18 +123,63 @@ module Cataract
     # Compare rules for logical equality based on CSS semantics.
     #
     # Two rules are equal if they have the same selector and declarations.
-    # Internal implementation details (id, specificity) are not considered
-    # since they don't affect the CSS semantics. Specificity is derived from
-    # the selector, so if selectors match, specificity must match too.
+    # Shorthand properties are expanded before comparison, so
+    # `margin: 10px` equals `margin-top: 10px; margin-right: 10px; ...`
     #
-    # @param other [Object] Object to compare with
+    # Internal implementation details (id, specificity) are not considered
+    # since they don't affect the CSS semantics.
+    #
+    # Can also compare against a CSS string, which is parsed and compared.
+    #
+    # @param other [Object] Object to compare with (Rule or String)
     # @return [Boolean] true if rules have same selector and declarations
     def ==(other)
-      return false unless other.is_a?(Rule)
+      case other
+      when Rule
+        return false unless selector == other.selector
 
-      selector == other.selector &&
-        declarations == other.declarations
+        expanded_declarations == other.expanded_declarations
+      when String
+        # Parse CSS string and compare to first rule
+        parsed = Cataract.parse_css(other)
+        return false unless parsed.rules.size == 1
+
+        self == parsed.rules.first
+      else
+        false
+      end
     end
     alias eql? ==
+
+    # Generate hash code for this rule.
+    #
+    # Hash is based on selector and expanded declarations to match the
+    # equality semantics. This allows rules to be used as Hash keys or
+    # in Sets correctly.
+    #
+    # @return [Integer] hash code
+    # rubocop:disable Naming/MemoizedInstanceVariableName
+    def hash
+      @_hash ||= [self.class, selector, expanded_declarations].hash
+    end
+    # rubocop:enable Naming/MemoizedInstanceVariableName
+
+    protected
+
+    # Get expanded and normalized declarations for this rule.
+    #
+    # Shorthands are expanded into their longhand equivalents and sorted
+    # to enable semantic comparison. Result is cached.
+    #
+    # @return [Array<Declaration>] expanded declarations
+    # rubocop:disable Naming/MemoizedInstanceVariableName
+    def expanded_declarations
+      @_expanded_declarations ||= begin
+        expanded = declarations.flat_map { |decl| Cataract._expand_shorthand(decl) }
+        expanded.sort_by! { |d| [d.property, d.value, d.important ? 1 : 0] }
+        expanded
+      end
+    end
+    # rubocop:enable Naming/MemoizedInstanceVariableName
   end
 end

@@ -6,6 +6,7 @@ require_relative 'cataract/version'
 require_relative 'cataract/declaration'
 require_relative 'cataract/rule'
 require_relative 'cataract/at_rule'
+require_relative 'cataract/import_statement'
 
 # Load pure Ruby or C extension based on ENV var
 if %w[1 true].include?(ENV.fetch('CATARACT_PURE', nil)) || RUBY_ENGINE == 'jruby'
@@ -34,8 +35,8 @@ require_relative 'cataract/import_resolver'
 #   # Query rules
 #   sheet.select(&:selector?).each { |rule| puts "#{rule.selector}: #{rule.declarations}" }
 #
-#   # Merge with cascade rules
-#   merged = sheet.merge
+#   # Flatten with cascade rules
+#   flattened = sheet.flatten
 #
 # @see Stylesheet Main class for working with parsed CSS
 # @see Rule Represents individual CSS rules
@@ -73,48 +74,51 @@ module Cataract
     # @see Stylesheet.parse
     unless method_defined?(:parse_css)
       def parse_css(css, imports: false)
-        # Resolve @import statements if requested
-        css = ImportResolver.resolve(css, imports) if imports
-
-        Stylesheet.parse(css)
+        # Pass import options to Stylesheet.parse
+        # The new flow: parse first (extract @import), then resolve them
+        if imports
+          Stylesheet.parse(css, import: imports)
+        else
+          Stylesheet.parse(css)
+        end
       end
     end
 
-    # Merge CSS rules according to CSS cascade rules.
+    # Flatten CSS rules according to CSS cascade rules.
     #
-    # Takes a Stylesheet or CSS string and merges all rules according to CSS cascade
-    # precedence rules. Returns a new Stylesheet with a single merged rule containing
+    # Takes a Stylesheet or CSS string and flattens all rules according to CSS cascade
+    # precedence rules. Returns a new Stylesheet with flattened rules containing
     # the final computed declarations.
     #
-    # @param stylesheet_or_css [Stylesheet, String] The stylesheet to merge, or a CSS string to parse and merge
-    # @return [Stylesheet] A new Stylesheet with merged rules
+    # @param stylesheet_or_css [Stylesheet, String] The stylesheet to flatten, or a CSS string to parse and flatten
+    # @return [Stylesheet] A new Stylesheet with flattened rules
     #
-    # Merge rules (in order of precedence):
+    # Flatten rules (in order of precedence):
     # 1. !important declarations win over non-important
     # 2. Higher specificity wins
     # 3. Later declarations with same specificity and importance win
     # 4. Shorthand properties are created from longhand when possible (e.g., margin-* -> margin)
     #
-    # @example Merge a stylesheet
+    # @example Flatten a stylesheet
     #   sheet = Cataract.parse_css(".test { color: red; } #test { color: blue; }")
-    #   merged = Cataract.merge(sheet)
-    #   merged.rules.first.declarations #=> [#<Declaration property="color" value="blue" important=false>]
+    #   flattened = Cataract.flatten(sheet)
+    #   flattened.rules.first.declarations #=> [#<Declaration property="color" value="blue" important=false>]
     #
-    # @example Merge with !important
+    # @example Flatten with !important
     #   sheet = Cataract.parse_css(".test { color: red !important; } #test { color: blue; }")
-    #   merged = Cataract.merge(sheet)
-    #   merged.rules.first.declarations #=> [#<Declaration property="color" value="red" important=true>]
+    #   flattened = Cataract.flatten(sheet)
+    #   flattened.rules.first.declarations #=> [#<Declaration property="color" value="red" important=true>]
     #
     # @example Shorthand creation
     #   css = ".test { margin-top: 10px; margin-right: 10px; margin-bottom: 10px; margin-left: 10px; }"
-    #   merged = Cataract.merge(Cataract.parse_css(css))
-    #   # merged contains single "margin: 10px" declaration instead of four longhand properties
+    #   flattened = Cataract.flatten(Cataract.parse_css(css))
+    #   # flattened contains single "margin: 10px" declaration instead of four longhand properties
     #
     # @note This is a module-level convenience method. The same functionality is available
-    #   as an instance method: `stylesheet.merge`
-    # @note Implemented in C (see ext/cataract/merge.c)
+    #   as an instance method: `stylesheet.flatten`
+    # @note Implemented in C (see ext/cataract/flatten.c)
     #
-    # @see Stylesheet#merge
-    # Cataract.merge is defined in C via rb_define_module_function
+    # @see Stylesheet#flatten
+    # Cataract.flatten is defined in C via rb_define_module_function
   end
 end

@@ -53,26 +53,26 @@ class TestDeclarationsToS < Minitest::Test
     assert_equal 'color: red !important; margin: 10px; background: blue !important;', result
   end
 
-  def test_with_merged_declarations
+  def test_with_flattened_declarations
     rules = Cataract.parse_css(<<~CSS)
       .test { color: black; margin: 0px; }
       .test { padding: 5px; }
     CSS
 
-    merged = rules.merge.rules.first.declarations
-    result = Cataract::Declarations.new(merged).to_s
+    flattened = rules.flatten.rules.first.declarations
+    result = Cataract::Declarations.new(flattened).to_s
 
     # Should contain all three properties in order
     assert_equal 'color: black; margin: 0px; padding: 5px;', result
   end
 
-  def test_with_important_from_merge
+  def test_with_important_from_flatten
     rules = Cataract.parse_css(<<~CSS)
       .test { color: black !important; margin: 10px; }
     CSS
 
-    merged = rules.merge.rules.first.declarations
-    result = Cataract::Declarations.new(merged).to_s
+    flattened = rules.flatten.rules.first.declarations
+    result = Cataract::Declarations.new(flattened).to_s
 
     assert_equal 'color: black !important; margin: 10px;', result
   end

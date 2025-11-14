@@ -17,6 +17,7 @@
 typedef struct {
     VALUE rules_array;        // Array of Rule structs
     VALUE media_index;        // Hash: Symbol => Array of rule IDs
+    VALUE imports_array;      // Array of ImportStatement structs
     int rule_id_counter;      // Next rule ID (0-indexed)
     int media_query_count;    // Safety limit for media queries
     st_table *media_cache;    // Parse-time cache: string => parsed media types
@@ -869,6 +870,119 @@ static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char
 }
 
 /*
+ * Parse @import statement
+ * @import "url" [media-query];
+ * @import url("url") [media-query];
+ *
+ * Modifies ctx->imports_array and ctx->rule_id_counter
+ */
+static void parse_import_statement(ParserContext *ctx, const char **p_ptr, const char *pe) {
+    const char *p = *p_ptr;
+
+    DEBUG_PRINTF("[IMPORT_STMT] Starting parse, input: %.50s\n", p);
+
+    // Skip whitespace
+    while (p < pe && IS_WHITESPACE(*p)) p++;
+
+    // Check for optional url(
+    int has_url_function = 0;
+    if (p + 4 <= pe && strncmp(p, "url(", 4) == 0) {
+        has_url_function = 1;
+        p += 4;
+
+        // Skip whitespace after url(
+        while (p < pe && IS_WHITESPACE(*p)) p++;
+    }
+
+    // Find opening quote
+    if (p >= pe || (*p != '"' && *p != '\'')) {
+        // Invalid @import, skip to semicolon
+        while (p < pe && *p != ';') p++;
+        if (p < pe) p++;
+        *p_ptr = p;
+        return;
+    }
+
+    char quote_char = *p;
+    p++; // Skip opening quote
+
+    const char *url_start = p;
+
+    // Find closing quote (handle escaped quotes)
+    while (p < pe && *p != quote_char) {
+        if (*p == '\\' && p + 1 < pe) {
+            p += 2; // Skip escaped character
+        } else {
+            p++;
+        }
+    }
+
+    if (p >= pe) {
+        // Unterminated string
+        *p_ptr = p;
+        return;
+    }
+
+    long url_len = p - url_start;
+    VALUE url = rb_utf8_str_new(url_start, url_len);
+    p++; // Skip closing quote
+
+    // Skip closing paren if we had url(
+    if (has_url_function) {
+        while (p < pe && IS_WHITESPACE(*p)) p++;
+        if (p < pe && *p == ')') p++;
+    }
+
+    // Skip whitespace
+    while (p < pe && IS_WHITESPACE(*p)) p++;
+
+    // Check for optional media query (everything until semicolon)
+    VALUE media = Qnil;
+    if (p < pe && *p != ';') {
+        const char *media_start = p;
+
+        // Find semicolon
+        while (p < pe && *p != ';') p++;
+
+        const char *media_end = p;
+
+        // Trim trailing whitespace from media query
+        while (media_end > media_start && IS_WHITESPACE(*(media_end - 1))) {
+            media_end--;
+        }
+
+        if (media_end > media_start) {
+            VALUE media_str = rb_utf8_str_new(media_start, media_end - media_start);
+            media = ID2SYM(rb_intern_str(media_str));
+        }
+    }
+
+    // Skip semicolon
+    if (p < pe && *p == ';') p++;
+
+    // Create ImportStatement (resolved: false by default)
+    VALUE import_stmt = rb_struct_new(cImportStatement,
+        INT2FIX(ctx->rule_id_counter),
+        url,
+        media,
+        Qfalse);
+
+    DEBUG_PRINTF("[IMPORT_STMT] Created import: id=%d, url=%s, media=%s\n",
+                 ctx->rule_id_counter,
+                 RSTRING_PTR(url),
+                 NIL_P(media) ? "nil" : RSTRING_PTR(rb_sym2str(media)));
+
+    rb_ary_push(ctx->imports_array, import_stmt);
+    ctx->rule_id_counter++;
+
+    *p_ptr = p;
+
+    RB_GC_GUARD(url);
+    RB_GC_GUARD(media);
+    RB_GC_GUARD(import_stmt);
+}
+
+/*
  * Parse CSS recursively with media query context and optional parent selector for nesting
  *
  * parent_media_sym: Parent media query symbol (or Qnil for no media context)
@@ -897,6 +1011,30 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
 
         // Skip comments (rare in typical CSS)
         SKIP_COMMENT(p, pe);
+
+        // Hail mary ...
+        // DEBUG_PRINTF("[LOOP] At position, char='%c' (0x%02x), brace_depth=%d, next 20 chars: %.20s\n",
+        //            *p >= 32 && *p <= 126 ? *p : '?', (unsigned char)*p, brace_depth, p);
+
+        // Check for @import at-rule (only at top level, before any rules)
+        if (RB_UNLIKELY(brace_depth == 0 && p + 7 < pe && *p == '@' &&
+            strncmp(p + 1, "import", 6) == 0 && IS_WHITESPACE(p[7]))) {
+            DEBUG_PRINTF("[IMPORT] Found @import at position, rules_count=%ld\n", RARRAY_LEN(ctx->rules_array));
+            // Check if we've already seen a rule
+            if (RARRAY_LEN(ctx->rules_array) > 0) {
+                // Warn and skip - @import must come before rules
+                rb_warn("CSS @import ignored: @import must appear before all rules (found import after rules)");
+                // Skip to semicolon
+                while (p < pe && *p != ';') p++;
+                if (p < pe) p++;
+                continue;
+            }
+
+            p += 7;  // Skip "@import "
+            parse_import_statement(ctx, &p, pe);
+            DEBUG_PRINTF("[IMPORT] After parsing, imports_count=%ld\n", RARRAY_LEN(ctx->imports_array));
+            continue;
+        }
 
         // Check for @media at-rule (only at depth 0)
         if (RB_UNLIKELY(brace_depth == 0 && p + 6 < pe && *p == '@' &&
@@ -1306,6 +1444,7 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
         // Start of selector
         if (brace_depth == 0 && selector_start == NULL) {
             selector_start = p;
+            DEBUG_PRINTF("[SELECTOR] Starting selector at: %.50s\n", selector_start);
         }
 
         p++;
@@ -1337,6 +1476,9 @@ VALUE parse_media_types(VALUE self, VALUE media_query_sym) {
 VALUE parse_css_new_impl(VALUE css_string, int rule_id_offset) {
     Check_Type(css_string, T_STRING);
 
+    DEBUG_PRINTF("\n[PARSE_NEW] ========== NEW PARSE CALL ==========\n");
+    DEBUG_PRINTF("[PARSE_NEW] Input CSS (first 100 chars): %.100s\n", RSTRING_PTR(css_string));
+
     const char *css = RSTRING_PTR(css_string);
     const char *pe = css + RSTRING_LEN(css_string);
     const char *p = css;
@@ -1345,59 +1487,33 @@ VALUE parse_css_new_impl(VALUE css_string, int rule_id_offset) {
 
     // Extract @charset
     if (RSTRING_LEN(css_string) > 10 && strncmp(css, "@charset ", 9) == 0) {
+        DEBUG_PRINTF("[CHARSET] Found @charset at start\n");
         char *quote_start = strchr(css + 9, '"');
         if (quote_start != NULL) {
             char *quote_end = strchr(quote_start + 1, '"');
             if (quote_end != NULL) {
                 charset = rb_str_new(quote_start + 1, quote_end - quote_start - 1);
+                DEBUG_PRINTF("[CHARSET] Extracted charset: %s\n", RSTRING_PTR(charset));
                 char *semicolon = quote_end + 1;
                 while (semicolon < pe && IS_WHITESPACE(*semicolon)) {
                     semicolon++;
                 }
                 if (semicolon < pe && *semicolon == ';') {
                     p = semicolon + 1;
+                    DEBUG_PRINTF("[CHARSET] Advanced past semicolon, remaining: %.50s\n", p);
                 }
             }
         }
     }
 
-    // Skip @import statements - they should be handled by ImportResolver at Ruby level
-    // Per CSS spec, @import must come before all rules (except @charset)
-    while (p < pe) {
-        // Skip whitespace
-        while (p < pe && IS_WHITESPACE(*p)) p++;
-        if (p >= pe) break;
-
-        // Skip comments
-        if (p + 1 < pe && p[0] == '/' && p[1] == '*') {
-            p += 2;
-            while (p + 1 < pe) {
-                if (p[0] == '*' && p[1] == '/') {
-                    p += 2;
-                    break;
-                }
-                p++;
-            }
-            continue;
-        }
-
-        // Check for @import
-        if (p + 7 <= pe && *p == '@' && strncasecmp(p + 1, "import", 6) == 0 &&
-            (p + 7 >= pe || IS_WHITESPACE(p[7]) || p[7] == '\'' || p[7] == '"')) {
-            // Skip to semicolon
-            while (p < pe && *p != ';') p++;
-            if (p < pe) p++; // Skip semicolon
-            continue;
-        }
-
-        // Hit non-@import content, stop skipping
-        break;
-    }
+    // @import statements are now handled in parse_css_recursive
+    // They must come before all rules (except @charset) per CSS spec
 
     // Initialize parser context with offset
     ParserContext ctx;
     ctx.rules_array = rb_ary_new();
     ctx.media_index = rb_hash_new();
+    ctx.imports_array = rb_ary_new();
     ctx.rule_id_counter = rule_id_offset;  // Start from offset
     ctx.media_query_count = 0;
     ctx.media_cache = NULL;  // Removed - no perf benefit
@@ -1405,15 +1521,23 @@ VALUE parse_css_new_impl(VALUE css_string, int rule_id_offset) {
     ctx.depth = 0;  // Start at depth 0
 
     // Parse CSS (top-level, no parent context)
+    DEBUG_PRINTF("[PARSE] Starting parse_css_recursive from: %.80s\n", p);
     parse_css_recursive(&ctx, p, pe, NO_PARENT_MEDIA, NO_PARENT_SELECTOR, NO_PARENT_RULE_ID);
 
     // Build result hash
     VALUE result = rb_hash_new();
     rb_hash_aset(result, ID2SYM(rb_intern("rules")), ctx.rules_array);
     rb_hash_aset(result, ID2SYM(rb_intern("_media_index")), ctx.media_index);
+    rb_hash_aset(result, ID2SYM(rb_intern("imports")), ctx.imports_array);
     rb_hash_aset(result, ID2SYM(rb_intern("charset")), charset);
     rb_hash_aset(result, ID2SYM(rb_intern("last_rule_id")), INT2FIX(ctx.rule_id_counter));
     rb_hash_aset(result, ID2SYM(rb_intern("_has_nesting")), ctx.has_nesting ? Qtrue : Qfalse);
+
+    RB_GC_GUARD(charset);
+    RB_GC_GUARD(ctx.rules_array);
+    RB_GC_GUARD(ctx.media_index);
+    RB_GC_GUARD(ctx.imports_array);
+    RB_GC_GUARD(result);
 
     return result;
 }

@@ -87,17 +87,17 @@ class TestEncoding < Minitest::Test
                  'ASCII selector should still be UTF-8 encoded for compatibility'
   end
 
-  def test_merge_property_names_are_us_ascii
-    # Property names created by merge operations should be US-ASCII
+  def test_flatten_property_names_are_us_ascii
+    # Property names created by flatten operations should be US-ASCII
     css = '.a { margin-top: 1px; margin-right: 2px; margin-bottom: 3px; margin-left: 4px; }'
     sheet = Cataract::Stylesheet.parse(css)
 
-    merged_sheet = sheet.merge
+    flattened_sheet = sheet.flatten
 
-    # Check all declarations in the merged result
-    merged_sheet.rules.first.declarations.each do |decl|
+    # Check all declarations in the flattened result
+    flattened_sheet.rules.first.declarations.each do |decl|
       assert_equal Encoding::US_ASCII, decl.property.encoding,
-                   "Merged property '#{decl.property}' should be US-ASCII"
+                   "Flattened property '#{decl.property}' should be US-ASCII"
     end
   end
 

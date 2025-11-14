@@ -26,7 +26,7 @@ require 'cataract'
 #
 #   3. benchmark-ips will show comparison results from both runs
 #
-# The benchmark tests merge/cascade performance on bootstrap.css (~10k rules).
+# The benchmark tests flatten/cascade performance on bootstrap.css (~10k rules).
 # =============================================================================
 
 module OptimizationBenchmark
@@ -57,7 +57,7 @@ module OptimizationBenchmark
     puts "  Lines: #{bootstrap_css.lines.count}"
     puts "  Size: #{bootstrap_css.bytesize} bytes (#{(bootstrap_css.bytesize / 1024.0).round(1)} KB)"
 
-    # Parse once to get rules for merge benchmark
+    # Parse once to get rules for flatten benchmark
     puts "\nParsing bootstrap.css to get rules..."
     parser = Cataract::Stylesheet.new
     begin
@@ -69,13 +69,13 @@ module OptimizationBenchmark
       exit 1
     end
 
-    # Verify merge works before benchmarking
+    # Verify flatten works before benchmarking
     puts "\nVerifying merge..."
     begin
-      merged = Cataract.apply_cascade(rules)
-      puts "  ✅ Merged successfully (#{merged.length} declarations)"
+      flattened = Cataract.apply_cascade(rules)
+      puts "  ✅ Flattened successfully (#{flattened.length} declarations)"
     rescue StandardError => e
-      puts "  ❌ ERROR: Failed to merge: #{e.message}"
+      puts "  ❌ ERROR: Failed to flatten: #{e.message}"
       exit 1
     end
 
@@ -97,7 +97,7 @@ module OptimizationBenchmark
     Benchmark.ips do |x|
       x.config(time: 20, warmup: 5)
 
-      x.report("merge_bootstrap_#{variant}") do
+      x.report("flatten_bootstrap_#{variant}") do
         Cataract.apply_cascade(rules)
       end
     end

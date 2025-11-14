@@ -21,8 +21,8 @@ def config_str_buf_optimization?
   enable_config('str-buf-optimization', true)
 end
 
-# Compile main file, parser, merge, and supporting files
-$objs = ['cataract.o', 'css_parser.o', 'merge.o', 'shorthand_expander.o', 'specificity.o', 'value_splitter.o',
+# Compile main file, parser, flatten, and supporting files
+$objs = ['cataract.o', 'css_parser.o', 'flatten.o', 'shorthand_expander.o', 'specificity.o', 'value_splitter.o',
          'import_scanner.o']
 
 # Suppress warnings

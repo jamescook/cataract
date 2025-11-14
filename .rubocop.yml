@@ -1,5 +1,8 @@
 inherit_from: .rubocop_todo.yml
 
+require:
+  - ./.rubocop/cataract/ban_assert_includes.rb
+
 plugins:
   - rubocop-performance
   - rubocop-minitest
@@ -66,13 +69,17 @@ Layout/LineLength:
 Minitest/MultipleAssertions:
   Max: 10
 
-Style/Documentation:
-   Enabled: true
-   Exclude:
+# Disable ambiguous block association warnings in tests
+# Tests frequently use assert/refute with blocks that call methods with their own blocks,
+# e.g., `assert sheet.rules.any? { |r| r == '.box { color: red; }' }`
+# This compares Rule objects against CSS strings using our custom Rule#== implementation.
+# While this triggers the ambiguous block warning, it's intentional and clear in context.
+Lint/AmbiguousBlockAssociation:
+  Exclude:
     - 'test/**/*'
-    - 'benchmarks/**/*'
-    - 'lib/cataract/pure/**/*.rb'
-    - 'lib/cataract/pure.rb'
+
+Style/Documentation:
+   Enabled: false
 
 # Disable modifier if/unless enforcement - use it when it's clearer, not because a cop says so
 Style/IfUnlessModifier:
@@ -147,3 +154,22 @@ Style/OptionalBooleanParameter:
 Style/StderrPuts:
   Exclude:
     - 'scripts/**/*.rb'
+
+# Disable all performance cops in tests - test clarity is more important than micro-optimizations
+# Performance suggestions often hurt readability without meaningful benefit in test code
+Performance:
+  Exclude:
+    - 'test/**/*'
+
+Style/HashLikeCase:
+  Exclude:
+    - 'benchmarks/**/*'
+
+# Custom Cataract cops
+Cataract/BanAssertIncludes:
+  Enabled: true
+  Include:
+    - 'test/**/*'
+  Exclude:
+    - 'test/test_benchmark_doc_generator.rb'
+    - 'test/support/**/*'  # Support files define assert_contains which uses assert_includes internally
