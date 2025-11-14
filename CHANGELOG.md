@@ -1,3 +1,13 @@
+## [0.2.0] - 2025-11-14
+
+- Major: CSS `@import` resolution refactored from string-concatenation to parsed-object architecture with proper charset handling, media query combining,
+and circular import detection
+- Major: Terminology change: all `merge` methods renamed to `flatten` to better represent CSS cascade behavior (old names deprecated with warnings)
+- Major: Rule equality now considers shorthand/longhand property equivalence (e.g., `margin: 10px` equals `margin-top: 10px; margin-right: 10px; ...`)
+- Performance: Flatten operation optimized with array-based property storage, pre-allocated frozen strings, and lazy specificity calculation
+- Feature: New Stylesheet collection methods (`+`, `-`, `|`, `concat`, `take`, `take_while`) with cascade rules applied
+- Feature: Added source order tracking for proper CSS cascade resolution
+
 ## [0.1.4] - 2025-11-12
 - Major: Pure Ruby implementation added (#12)
 - Fix: Media query serialization bugs - parentheses now preserved per CSS spec (min-width: 768px), fixed media query ordering
