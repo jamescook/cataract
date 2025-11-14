@@ -12,6 +12,7 @@ extern VALUE cRule;
 extern VALUE cDeclaration;
 extern VALUE cAtRule;
 extern VALUE cStylesheet;
+extern VALUE cImportStatement;
 
 // Error class references
 extern VALUE eCataractError;

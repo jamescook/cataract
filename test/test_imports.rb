@@ -24,18 +24,6 @@ class TestImports < Minitest::Test
   # imports: false (default) - @import is treated as a regular rule
   # ============================================================================
 
-  def test_import_disabled_by_default
-    css = '@import url("https://example.com/style.css");
-body { color: red; }'
-    sheet = Cataract.parse_css(css)
-
-    # @import is ignored when imports are disabled (per CSS spec, @import is a directive not a rule)
-    # Only body rule should be parsed
-    assert_equal 1, sheet.size
-
-    assert_selectors_match ['body'], sheet
-  end
-
   # ============================================================================
   # imports: true (safe defaults)
   # ============================================================================
@@ -278,21 +266,6 @@ body { color: red; }"
       sheet = Cataract.parse_css(css, imports: { allowed_schemes: ['file'], extensions: ['css'] })
 
       assert_equal 1, sheet.size
-    end
-  end
-
-  def test_import_with_media_query
-    Dir.mktmpdir do |dir|
-      imported_file = File.join(dir, 'print.css')
-      File.write(imported_file, '.print-only { color: blue; }')
-
-      css = "@import url('file://#{imported_file}') print;"
-      sheet = Cataract.parse_css(css, imports: { allowed_schemes: ['file'], extensions: ['css'] })
-
-      # Should import with print media type
-      assert_equal 1, sheet.size
-
-      assert_has_selector '.print-only', sheet, media: :print
     end
   end
 
@@ -619,7 +592,7 @@ body { color: red; }"
       Cataract.parse_css(css, imports: { fetcher: custom_fetcher })
     end
 
-    assert_match(/Custom fetcher/, error.message)
+    assert_match(/Custom fetcher/, error.message) # rubocop:disable Cataract/BanAssertIncludes
   end
 
   def test_custom_fetcher_with_media_queries
@@ -727,12 +700,18 @@ body { color: red; }"
 
       css = "body { color: red; }\n@import url('file://#{File.join(dir, 'imported.css')}');"
 
-      sheet = Cataract.parse_css(css, imports: { allowed_schemes: ['file'] })
+      warnings = capture_warnings do
+        @sheet = Cataract.parse_css(css, imports: { allowed_schemes: ['file'] })
+      end
 
       # Should only have body rule, @import should be ignored
-      assert_equal 1, sheet.size
-      assert_has_selector 'body', sheet
-      refute sheet.selectors.include?('.imported'), '@import after rules should be ignored'
+      assert_equal 1, @sheet.size
+      assert_has_selector 'body', @sheet
+      refute_includes @sheet.selectors, '.imported', '@import after rules should be ignored'
+
+      # Should emit a warning about @import after rules
+      assert_equal 1, warnings.length
+      assert_match(/CSS @import ignored.*must appear before all rules/i, warnings.first) # rubocop:disable Cataract/BanAssertIncludes
     end
   end
 
@@ -744,15 +723,21 @@ body { color: red; }"
 
       css = "@import url('file://#{File.join(dir, 'first.css')}');\nbody { color: green; }\n@import url('file://#{File.join(dir, 'second.css')}');\ndiv { margin: 0; }"
 
-      sheet = Cataract.parse_css(css, imports: { allowed_schemes: ['file'] })
+      warnings = capture_warnings do
+        @sheet = Cataract.parse_css(css, imports: { allowed_schemes: ['file'] })
+      end
 
       # Should have: .first (from valid import), body
       # The invalid @import and subsequent rules get parsed as malformed at-rule
       # This is current behavior - not ideal but spec-compliant (invalid @import is ignored)
-      assert sheet.size >= 2, "Should have at least .first and body rules"
-      assert_has_selector '.first', sheet
-      assert_has_selector 'body', sheet
-      refute sheet.selectors.include?('.second'), 'Second import content should not be loaded'
+      assert_operator @sheet.size, :>=, 2, 'Should have at least .first and body rules'
+      assert_has_selector '.first', @sheet
+      assert_has_selector 'body', @sheet
+      refute_includes @sheet.selectors, '.second', 'Second import content should not be loaded'
+
+      # Should emit a warning about the second @import after rules
+      assert_equal 1, warnings.length
+      assert_match(/CSS @import ignored.*must appear before all rules/i, warnings.first) # rubocop:disable Cataract/BanAssertIncludes
     end
   end
 
@@ -772,6 +757,7 @@ body { color: red; }"
 
       # Check order: imports first, then .main
       selectors = sheet.map(&:selector)
+
       assert_equal '*', selectors[0], 'First import should be first'
       assert_equal 'body', selectors[1], 'Second import should be second'
       assert_equal 'div', selectors[2], 'Third import should be third'
@@ -824,6 +810,7 @@ body { color: red; }"
       # 3. file1 rules (imports file2, then its own rules)
       # 4. base rules (imports file1, then its own rules)
       selectors = sheet.map(&:selector)
+
       assert_equal '.level3', selectors[0], 'Deepest import rule 1 should be first'
       assert_equal '.level3-extra', selectors[1], 'Deepest import rule 2 should be second'
       assert_equal '.level2', selectors[2], 'Second level rule 1 should be third'
@@ -884,6 +871,7 @@ body { color: red; }"
 
       # Check order: imports in order encountered, then local rules
       selectors = sheet.rules.map(&:selector)
+
       assert_equal '*', selectors[0], 'First import should be first'
       assert_equal 'body', selectors[1], 'Second import should be second'
       assert_equal 'div', selectors[2], 'Third import should be third'
@@ -922,6 +910,7 @@ body { color: red; }"
 
       # Order should be: level3, level2, level1, main (depth-first)
       selectors = sheet.rules.map(&:selector)
+
       assert_equal '.level3', selectors[0], 'Deepest import first'
       assert_equal '.level2', selectors[1]
       assert_equal '.level1', selectors[2]
@@ -943,16 +932,20 @@ body { color: red; }"
 
       # Imported rule should have print media
       import_rule = sheet.rules[0]
+
       assert_equal '.print-only', import_rule.selector
       # Check media via media_index
       assert_matches_media :print, sheet
       print_rules = sheet.with_media(:print)
+
       assert_member print_rules.map(&:selector), '.print-only'
 
       # Main rule should have no media (base rules)
       main_rule = sheet.rules[1]
+
       assert_equal 'body', main_rule.selector
       base_rules = sheet.base_rules
+
       assert_member base_rules.map(&:selector), 'body'
     end
   end
@@ -1055,6 +1048,7 @@ body { color: red; }"
       # Rule should have combined media query
       assert_equal 1, sheet.size
       rule = sheet.rules[0]
+
       assert_equal '.responsive', rule.selector
 
       # Should combine: "print and screen and (min-width: 768px)" or similar
@@ -1063,6 +1057,7 @@ body { color: red; }"
 
       # Find a media query that includes both 'print' and 'min-width'
       combined_query = media_queries.find { |mq| mq.to_s.include?('print') && mq.to_s.include?('min-width') }
+
       refute_nil combined_query, "Should have combined media query with both 'print' and 'min-width', got: #{media_queries.inspect}"
     end
   end
@@ -1077,6 +1072,7 @@ body { color: red; }"
 
       # Import should record the URL
       import = sheet.imports[0]
+
       assert_equal "file://#{File.join(dir, 'base.css')}", import.url
       assert_nil import.media
       assert import.resolved
@@ -1093,6 +1089,7 @@ body { color: red; }"
 
       # Import should record the media query
       import = sheet.imports[0]
+
       assert_equal "file://#{File.join(dir, 'mobile.css')}", import.url
       assert_equal :'screen and (max-width: 768px)', import.media
       assert import.resolved

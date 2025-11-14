@@ -74,21 +74,25 @@ class TestImportStatement < Minitest::Test
     assert_equal 1, sheet.size
 
     import1 = sheet.imports[0]
+
     assert_kind_of Cataract::ImportStatement, import1
     assert_equal 'reset.css', import1.url
     assert_nil import1.media
 
     import2 = sheet.imports[1]
+
     assert_kind_of Cataract::ImportStatement, import2
     assert_equal 'theme.css', import2.url
     assert_equal :screen, import2.media
 
     import3 = sheet.imports[2]
+
     assert_kind_of Cataract::ImportStatement, import3
     assert_equal 'print.css', import3.url
     assert_equal :print, import3.media
 
     rule = sheet[0]
+
     assert_kind_of Cataract::Rule, rule
     assert_equal 'body', rule.selector
   end
@@ -147,21 +151,27 @@ class TestImportStatement < Minitest::Test
       @import "second.css";
     CSS
 
-    sheet = Cataract::Stylesheet.parse(css)
+    warnings = capture_warnings do
+      @sheet = Cataract::Stylesheet.parse(css)
+    end
 
     # First import is valid, second is ignored
-    assert_equal 1, sheet.imports.length
-    assert_equal 1, sheet.size
+    assert_equal 1, @sheet.imports.length
+    assert_equal 1, @sheet.size
 
-    import = sheet.imports[0]
+    import = @sheet.imports[0]
 
     assert_kind_of Cataract::ImportStatement, import
     assert_equal 'first.css', import.url
 
-    rule = sheet[0]
+    rule = @sheet[0]
 
     assert_kind_of Cataract::Rule, rule
     assert_equal 'body', rule.selector
+
+    # Should emit a warning about the second @import after rules
+    assert_equal 1, warnings.length
+    assert_match(/CSS @import ignored.*must appear before all rules/i, warnings.first) # rubocop:disable Cataract/BanAssertIncludes
   end
 
   def test_import_statement_id_and_insertion_order

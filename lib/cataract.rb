@@ -74,10 +74,13 @@ module Cataract
     # @see Stylesheet.parse
     unless method_defined?(:parse_css)
       def parse_css(css, imports: false)
-        # Resolve @import statements if requested
-        css = ImportResolver.resolve(css, imports) if imports
-
-        Stylesheet.parse(css)
+        # Pass import options to Stylesheet.parse
+        # The new flow: parse first (extract @import), then resolve them
+        if imports
+          Stylesheet.parse(css, import: imports)
+        else
+          Stylesheet.parse(css)
+        end
       end
     end
 

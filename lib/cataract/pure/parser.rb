@@ -663,7 +663,7 @@ module Cataract
       if at_rule_name == 'import'
         # If we've already seen a rule, this @import is invalid
         if @rules.size > 0
-          warn "CSS @import ignored: @import must appear before all rules (found import after rules)"
+          warn 'CSS @import ignored: @import must appear before all rules (found import after rules)'
           # Skip to semicolon
           while !eof? && peek_byte != BYTE_SEMICOLON
             @pos += 1
@@ -1173,11 +1173,11 @@ module Cataract
 
       # Find closing quote (handle escaped quotes)
       while !eof? && peek_byte != quote_char
-        if peek_byte == BYTE_BACKSLASH && @pos + 1 < @len
-          @pos += 2 # Skip escaped character
-        else
-          @pos += 1
-        end
+        @pos += if peek_byte == BYTE_BACKSLASH && @pos + 1 < @len
+                  2 # Skip escaped character
+                else
+                  1
+                end
       end
 
       if eof?

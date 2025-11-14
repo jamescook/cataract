@@ -55,19 +55,23 @@ class TestStylesheetFlatten < Minitest::Test
     # Keep for backwards compatibility
     sheet = Cataract.parse_css('.box { color: red; } .box { color: blue; }')
 
-    result = sheet.merge
+    silence_warnings do
+      result = sheet.merge
 
-    assert_equal 1, result.rules.size
-    assert result.rules.first.has_property?('color', 'blue')
+      assert_equal 1, result.rules.size
+      assert result.rules.first.has_property?('color', 'blue')
+    end
   end
 
   def test_merge_bang_alias_still_works
     # Keep for backwards compatibility
     sheet = Cataract.parse_css('.box { color: red; } .box { color: blue; }')
 
-    result = sheet.merge!
+    silence_warnings do
+      result = sheet.merge!
 
-    assert_same sheet, result
-    assert_equal 1, sheet.rules.size
+      assert_same sheet, result
+      assert_equal 1, sheet.rules.size
+    end
   end
 end

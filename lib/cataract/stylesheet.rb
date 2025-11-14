@@ -933,21 +933,19 @@ module Cataract
             # TODO: Extract this logic to a helper method to keep it consistent across codebase
             rule_media = nil
             imported_sheet.instance_variable_get(:@_media_index).each do |m, ids|
-              if ids.include?(rule.id)
-                # Keep the longest/most specific media query
-                if rule_media.nil? || m.to_s.length > rule_media.to_s.length
-                  rule_media = m
-                end
+              # Keep the longest/most specific media query
+              if ids.include?(rule.id) && (rule_media.nil? || m.to_s.length > rule_media.to_s.length)
+                rule_media = m
               end
             end
 
             # Combine media queries: "import_media and rule_media"
             combined_media = if rule_media
-                              # Combine: "media and rule_media"
-                              :"#{media} and #{rule_media}"
-                            else
-                              media
-                            end
+                               # Combine: "media and rule_media"
+                               :"#{media} and #{rule_media}"
+                             else
+                               media
+                             end
 
             # Update media index
             if @_media_index[combined_media]
@@ -973,6 +971,9 @@ module Cataract
             @_media_index[media_sym] = rule_ids.dup
           end
         end
+
+        # Merge charset (first one wins per CSS spec)
+        @charset ||= imported_sheet.instance_variable_get(:@charset)
 
         # Mark as resolved
         import.resolved = true

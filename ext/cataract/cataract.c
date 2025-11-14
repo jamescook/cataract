@@ -7,6 +7,7 @@ VALUE cRule;
 VALUE cDeclaration;
 VALUE cAtRule;
 VALUE cStylesheet;
+VALUE cImportStatement;
 
 // Error class definitions (shared with main extension)
 VALUE eCataractError;
@@ -1042,6 +1043,12 @@ void Init_native_extension(void) {
         cAtRule = rb_const_get(mCataract, rb_intern("AtRule"));
     } else {
         rb_raise(rb_eLoadError, "Cataract::AtRule not defined. Do not require 'cataract/native_extension' directly, use require 'cataract'");
+    }
+
+    if (rb_const_defined(mCataract, rb_intern("ImportStatement"))) {
+        cImportStatement = rb_const_get(mCataract, rb_intern("ImportStatement"));
+    } else {
+        rb_raise(rb_eLoadError, "Cataract::ImportStatement not defined. Do not require 'cataract/native_extension' directly, use require 'cataract'");
     }
 
     // Define Declarations class and add to_s method

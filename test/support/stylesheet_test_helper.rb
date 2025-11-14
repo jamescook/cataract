@@ -291,18 +291,45 @@ module StylesheetTestHelper
   end
 
   # Lifted from Rails
-  def silence_warnings(&block)
-    with_warnings(nil, &block)
+  def silence_warnings(&)
+    with_warnings(nil, &)
   end
 
   # Sets $VERBOSE for the duration of the block and back to its original
   # value afterwards.
   def with_warnings(flag)
-    old_verbose, $VERBOSE = $VERBOSE, flag
+    old_verbose = $VERBOSE
+    $VERBOSE = flag
 
     yield
   ensure
     $VERBOSE = old_verbose
+  end
+
+  # Capture warnings emitted during the block
+  #
+  # @yield Block to execute while capturing warnings
+  # @return [Array<String>] Array of warning messages
+  #
+  # @example
+  #   warnings = capture_warnings do
+  #     warn "This is a warning"
+  #     warn "Another warning"
+  #   end
+  #   assert_equal 2, warnings.length
+  #   assert_includes warnings, "This is a warning"
+  def capture_warnings
+    old_stderr = $stderr
+    $stderr = StringIO.new
+    old_verbose = $VERBOSE
+    $VERBOSE = true
+
+    yield
+
+    $stderr.string.split("\n")
+  ensure
+    $VERBOSE = old_verbose
+    $stderr = old_stderr
   end
 
   private
