@@ -319,14 +319,7 @@ class TestAtRules < Minitest::Test
     @sheet.add_block(css)
     dumped = @sheet.to_s
 
-    # Should preserve vendor prefix
-    assert_includes dumped, '@-webkit-keyframes progress-bar-stripes'
-
-    # Count braces - should be balanced
-    open_braces = dumped.count('{')
-    close_braces = dumped.count('}')
-
-    assert_equal open_braces, close_braces, "Braces should be balanced in:\n#{dumped}"
+    assert_equal css, dumped
   end
 
   def test_keyframes_with_percentages
@@ -341,16 +334,7 @@ class TestAtRules < Minitest::Test
     @sheet.add_block(css)
     dumped = @sheet.to_s
 
-    assert_includes dumped, '@keyframes spin'
-    assert_includes dumped, '0%'
-    assert_includes dumped, '50%'
-    assert_includes dumped, '100%'
-
-    # Count braces - should be balanced
-    open_braces = dumped.count('{')
-    close_braces = dumped.count('}')
-
-    assert_equal open_braces, close_braces, "Braces should be balanced in:\n#{dumped}"
+    assert_equal css, dumped
   end
 
   # Other at-rules tests
@@ -365,6 +349,14 @@ class TestAtRules < Minitest::Test
     CSS
 
     assert_equal 2, @sheet.size
+
+    # Check both are @page rules with correct selectors
+    assert_equal '@page', @sheet.rules[0].selector
+    assert_equal '@page :first', @sheet.rules[1].selector
+
+    # Check declarations
+    assert_has_property({ margin: '1in' }, @sheet.rules[0])
+    assert_has_property({ 'margin-top': '2in' }, @sheet.rules[1])
   end
 
   def test_layer_rule

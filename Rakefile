@@ -79,7 +79,7 @@ task :benchmark do
   Rake::Task['benchmark:parsing'].invoke
   Rake::Task['benchmark:serialization'].invoke
   Rake::Task['benchmark:specificity'].invoke
-  Rake::Task['benchmark:merging'].invoke
+  Rake::Task['benchmark:flattening'].invoke
   puts "\n#{'-' * 80}"
   puts 'All benchmarks complete!'
   puts 'Generate documentation with: rake benchmark:generate_docs'
@@ -105,10 +105,10 @@ namespace :benchmark do
     ruby 'benchmarks/benchmark_specificity.rb'
   end
 
-  desc 'Benchmark CSS merging performance'
-  task merging: :compile do
-    puts 'Running merging benchmark...'
-    ruby 'benchmarks/benchmark_merging.rb'
+  desc 'Benchmark CSS flattening performance'
+  task flattening: :compile do
+    puts 'Running flattening benchmark...'
+    ruby 'benchmarks/benchmark_flattening.rb'
   end
 
   desc 'Benchmark string allocation optimization (buffer vs dynamic)'

@@ -12,6 +12,7 @@ extern VALUE cRule;
 extern VALUE cDeclaration;
 extern VALUE cAtRule;
 extern VALUE cStylesheet;
+extern VALUE cImportStatement;
 
 // Error class references
 extern VALUE eCataractError;
@@ -140,9 +141,9 @@ VALUE parse_css_new(VALUE self, VALUE css_string);
 VALUE parse_css_new_impl(VALUE css_string, int rule_id_offset);
 VALUE parse_media_types(VALUE self, VALUE media_query_sym);
 
-// Merge (merge_new.c)
-VALUE cataract_merge_new(VALUE self, VALUE rules_array);
-void init_merge_constants(void);
+// Flatten (flatten.c)
+VALUE cataract_flatten(VALUE self, VALUE rules_array);
+void init_flatten_constants(void);
 
 // Specificity (specificity.c)
 VALUE calculate_specificity(VALUE self, VALUE selector);
@@ -162,6 +163,7 @@ VALUE cataract_expand_border_side(VALUE self, VALUE side, VALUE value);
 VALUE cataract_expand_font(VALUE self, VALUE value);
 VALUE cataract_expand_list_style(VALUE self, VALUE value);
 VALUE cataract_expand_background(VALUE self, VALUE value);
+VALUE cataract_expand_shorthand(VALUE self, VALUE decl);
 VALUE cataract_create_margin_shorthand(VALUE self, VALUE properties);
 VALUE cataract_create_padding_shorthand(VALUE self, VALUE properties);
 VALUE cataract_create_border_width_shorthand(VALUE self, VALUE properties);

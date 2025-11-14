@@ -247,6 +247,91 @@ module StylesheetTestHelper
                  "Expected rule '#{rule.selector}' to have media types #{expected.inspect}, but got #{actual.inspect}"
   end
 
+  # Assert that an element is a member of a collection
+  #
+  # Use this for legitimate array/collection membership checks instead of assert_includes.
+  # IMPORTANT: This does NOT work with Strings, which is intentional to prevent regressions.
+  #
+  # The problem with assert_includes on strings:
+  #   css = 'body { color: red; } body { color: blue; }'
+  #   parsed = Cataract.parse(css).to_s
+  #   # BUG: parser drops second rule, output is 'body { color: red; }'
+  #   assert_includes parsed, 'body'  # PASSES but test is WRONG!
+  #
+  # The substring check is too loose - it passes even when output is incomplete/wrong
+  # because 'body' appears somewhere in the string. This hides parser/serializer bugs.
+  #
+  # @param collection [Enumerable] Collection to check (Array, Set, etc.) - NOT a String
+  # @param element [Object] Element to find in collection
+  # @param message [String, nil] Optional failure message
+  #
+  # @example Correct usage - checking collection membership
+  #   assert_member([:screen, :print], :screen)  # Is :screen in this array?
+  #   assert_member(stylesheet.selectors, 'body')  # Is 'body' in array of selectors?
+  #
+  # @example Wrong usage - will raise an error
+  #   assert_member(parsed_css, 'body')  # WRONG - use assert_equal or assert_has_selector
+  #
+  # For string assertions, use:
+  # - assert_equal for exact matches
+  # - Domain-specific assertions: assert_has_selector, assert_has_property, etc.
+  def assert_member(collection, element, message = nil)
+    unless collection.is_a?(Enumerable)
+      flunk "assert_member expects an Enumerable, got #{collection.class}. " \
+            'For strings, use assert_equal.'
+    end
+
+    if collection.is_a?(String)
+      flunk 'assert_member does not work with Strings. ' \
+            'Substring checks with assert_includes are too loose and can hide parser/serializer regressions. ' \
+            'Use assert_equal (exact match) or domain-specific assertions like assert_has_selector.'
+    end
+
+    assert_includes collection, element, message
+  end
+
+  # Lifted from Rails
+  def silence_warnings(&)
+    with_warnings(nil, &)
+  end
+
+  # Sets $VERBOSE for the duration of the block and back to its original
+  # value afterwards.
+  def with_warnings(flag)
+    old_verbose = $VERBOSE
+    $VERBOSE = flag
+
+    yield
+  ensure
+    $VERBOSE = old_verbose
+  end
+
+  # Capture warnings emitted during the block
+  #
+  # @yield Block to execute while capturing warnings
+  # @return [Array<String>] Array of warning messages
+  #
+  # @example
+  #   warnings = capture_warnings do
+  #     warn "This is a warning"
+  #     warn "Another warning"
+  #   end
+  #   assert_equal 2, warnings.length
+  #   assert_includes warnings, "This is a warning"
+  def capture_warnings
+    old_stderr = $stderr
+    $stderr = StringIO.new
+    old_verbose = $VERBOSE
+    $VERBOSE = true
+
+    yield
+
+    $stderr.string.split("\n")
+  ensure
+    $VERBOSE = old_verbose
+    $stderr = old_stderr
+  end
+
   private
 
   # Build a helpful error message for selector assertions

@@ -489,7 +489,7 @@ end
 stats = {
   total: 0,
   parsed: 0,
-  merge_tested: 0,
+  flatten_tested: 0,
   to_s_tested: 0,
   color_converted: 0,
   depth_errors: 0,
@@ -610,10 +610,10 @@ def parse_in_worker(stdin, stdout, stderr, wait_thr, input, last_input)
     case response
     when /^PARSE/
       # Extract which operations were tested
-      merge_tested = response.include?('+MERGE')
+      flatten_tested = response.include?('+FLATTEN')
       to_s_tested = response.include?('+TOS')
       color_converted = response.include?('+COLOR')
-      [:success, nil, nil, nil, merge_tested, to_s_tested, color_converted]
+      [:success, nil, nil, nil, flatten_tested, to_s_tested, color_converted]
     when 'DEPTH'
       [:depth_error, nil, nil, nil, false, false, false]
     when 'SIZE'
@@ -685,14 +685,14 @@ ITERATIONS.times do |i|
   RECENT_INPUTS.shift if RECENT_INPUTS.length > MAX_RECENT
 
   # Send to worker subprocess
-  result, error, crashed_input, stderr_output, merge_tested, to_s_tested, color_converted = parse_in_worker(stdin, stdout, stderr,
-                                                                                                            wait_thr, input, last_input)
+  result, error, crashed_input, stderr_output, flatten_tested, to_s_tested, color_converted = parse_in_worker(stdin, stdout, stderr,
+                                                                                                              wait_thr, input, last_input)
   last_input = input
 
   case result
   when :success
     stats[:parsed] += 1
-    stats[:merge_tested] += 1 if merge_tested
+    stats[:flatten_tested] += 1 if flatten_tested
     stats[:to_s_tested] += 1 if to_s_tested
     stats[:color_converted] += 1 if color_converted
   when :parse_error
@@ -788,7 +788,7 @@ ITERATIONS.times do |i|
   progress = "#{(i + 1).to_s.rjust(6)}/#{ITERATIONS}"
   iter_rate = "(#{rate.round(1).to_s.rjust(6)} iter/sec)"
   parsed = "Parsed: #{stats[:parsed].to_s.rjust(5)}"
-  merged = "Merged: #{stats[:merge_tested].to_s.rjust(5)}"
+  flattened = "Flattened: #{stats[:flatten_tested].to_s.rjust(5)}"
   to_s = "ToS: #{stats[:to_s_tested].to_s.rjust(4)}"
   color = "Color: #{stats[:color_converted].to_s.rjust(4)}"
   parse_err = "Err: #{stats[:parse_errors].to_s.rjust(4)}"
@@ -796,7 +796,7 @@ ITERATIONS.times do |i|
   memory = "Mem: #{rss_mb.round(1).to_s.rjust(6)} MB"
 
   # Use \r to overwrite the same line
-  print "\rProgress: #{progress} #{iter_rate} | #{parsed} | #{merged} | #{to_s} | #{color} | #{parse_err} | #{crashes} | #{memory}"
+  print "\rProgress: #{progress} #{iter_rate} | #{parsed} | #{flattened} | #{to_s} | #{color} | #{parse_err} | #{crashes} | #{memory}"
   $stdout.flush
 end
 
@@ -837,7 +837,7 @@ puts 'Fuzzing complete!'
 puts "Time: #{elapsed.round(2)}s (#{(stats[:total] / elapsed).round(1)} iter/sec)"
 puts "Total: #{stats[:total]}"
 puts "Parsed: #{stats[:parsed]} (#{(stats[:parsed] * 100.0 / stats[:total]).round(1)}%)"
-puts "Merge tested: #{stats[:merge_tested]} (#{(stats[:merge_tested] * 100.0 / stats[:total]).round(1)}%)"
+puts "Flatten tested: #{stats[:flatten_tested]} (#{(stats[:flatten_tested] * 100.0 / stats[:total]).round(1)}%)"
 puts "ToS tested: #{stats[:to_s_tested]} (#{(stats[:to_s_tested] * 100.0 / stats[:total]).round(1)}%)"
 puts "Color converted: #{stats[:color_converted]} (#{(stats[:color_converted] * 100.0 / stats[:total]).round(1)}%)"
 puts "Depth Errors: #{stats[:depth_errors]} (#{(stats[:depth_errors] * 100.0 / stats[:total]).round(1)}%)"

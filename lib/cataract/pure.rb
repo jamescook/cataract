@@ -32,6 +32,7 @@ require_relative 'version'
 require_relative 'declaration'
 require_relative 'rule'
 require_relative 'at_rule'
+require_relative 'import_statement'
 require_relative 'stylesheet_scope'
 require_relative 'stylesheet'
 require_relative 'declarations'
@@ -63,7 +64,7 @@ require_relative 'pure/specificity'
 require_relative 'pure/imports'
 require_relative 'pure/serializer'
 require_relative 'pure/parser'
-require_relative 'pure/merge'
+require_relative 'pure/flatten'
 
 module Cataract
   # Flag to indicate pure Ruby version is loaded
@@ -102,20 +103,42 @@ module Cataract
     Stylesheet.parse(css)
   end
 
-  # Merge stylesheet rules according to CSS cascade rules
+  # Flatten stylesheet rules according to CSS cascade rules
   #
-  # @param stylesheet [Stylesheet] Stylesheet to merge
-  # @return [Stylesheet] New stylesheet with merged rules
-  def self.merge(stylesheet)
-    Merge.merge(stylesheet, mutate: false)
+  # @param stylesheet [Stylesheet] Stylesheet to flatten
+  # @return [Stylesheet] New stylesheet with flattened rules
+  def self.flatten(stylesheet)
+    Flatten.flatten(stylesheet, mutate: false)
   end
 
-  # Merge stylesheet rules in-place (mutates receiver)
+  # Flatten stylesheet rules in-place (mutates receiver)
   #
-  # @param stylesheet [Stylesheet] Stylesheet to merge
+  # @param stylesheet [Stylesheet] Stylesheet to flatten
   # @return [Stylesheet] Same stylesheet (mutated)
+  def self.flatten!(stylesheet)
+    Flatten.flatten(stylesheet, mutate: true)
+  end
+
+  # Deprecated: Use flatten instead
+  def self.merge(stylesheet)
+    warn 'Cataract.merge is deprecated, use Cataract.flatten instead', uplevel: 1
+    flatten(stylesheet)
+  end
+
+  # Deprecated: Use flatten! instead
   def self.merge!(stylesheet)
-    Merge.merge(stylesheet, mutate: true)
+    warn 'Cataract.merge! is deprecated, use Cataract.flatten! instead', uplevel: 1
+    flatten!(stylesheet)
+  end
+
+  # Expand a single shorthand declaration into longhand declarations.
+  # Underscore prefix indicates semi-private API - use with caution.
+  #
+  # @param decl [Declaration] Declaration to expand
+  # @return [Array<Declaration>] Array of expanded longhand declarations
+  # @api private
+  def self._expand_shorthand(decl)
+    Flatten._expand_shorthand(decl)
   end
 
   # Add stub method to Stylesheet for pure Ruby implementation

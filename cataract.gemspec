@@ -22,7 +22,7 @@ Gem::Specification.new do |spec|
   # Specify which files should be added to the gem when it is released.
   spec.files = Dir.chdir(File.expand_path(__dir__)) do
     `git ls-files -z`.split("\x0").reject do |f|
-      f.match(%r{^(test|spec|features|benchmarks|scripts)/}) ||
+      f.match(%r{^(test|spec|features|benchmarks|scripts|\.rubocop)/}) ||
         f.match(/^(test|benchmark)_.*\.rb$/)
     end
   end

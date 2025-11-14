@@ -10,6 +10,52 @@ module Cataract
   # Resolves @import statements in CSS
   # Handles fetching imported files and inlining them with proper security controls
   module ImportResolver
+    # Default fetcher implementation using File I/O and Net::HTTP
+    # Can be replaced with custom fetchers for different environments (e.g., browser, caching)
+    class DefaultFetcher
+      # Fetch content from a URL
+      #
+      # @param url [String] URL to fetch
+      # @param options [Hash] Import resolution options
+      # @return [String] Fetched content
+      # @raise [ImportError] If fetching fails
+      def call(url, options)
+        uri = ImportResolver.normalize_url(url, options[:base_path])
+
+        case uri.scheme
+        when 'file'
+          # Read from local filesystem
+          File.read(uri.path)
+        when 'http', 'https'
+          # Fetch from network
+          fetch_http(uri, options)
+        else
+          raise ImportError, "Unsupported scheme: #{uri.scheme}"
+        end
+      rescue Errno::ENOENT
+        raise ImportError, "Import file not found: #{url}"
+      rescue OpenURI::HTTPError => e
+        raise ImportError, "HTTP error fetching import: #{url} (#{e.message})"
+      rescue SocketError => e
+        raise ImportError, "Network error fetching import: #{url} (#{e.message})"
+      rescue StandardError => e
+        raise ImportError, "Error fetching import: #{url} (#{e.class}: #{e.message})"
+      end
+
+      private
+
+      # Fetch content via HTTP/HTTPS
+      def fetch_http(uri, options)
+        # Use open-uri with timeout
+        open_uri_options = {
+          read_timeout: options[:timeout],
+          redirect: options[:follow_redirects]
+        }
+
+        # Use uri.open instead of URI.open to avoid shell command injection
+        uri.open(open_uri_options, &:read)
+      end
+    end
     # Default options for safe import resolution
     SAFE_DEFAULTS = {
       max_depth: 5,                      # Prevent infinite recursion
@@ -17,19 +63,30 @@ module Cataract
       extensions: ['css'],               # Only .css files
       timeout: 10,                       # 10 second timeout for fetches
       follow_redirects: true,            # Follow redirects
-      base_path: nil                     # Base path for resolving relative imports
+      base_path: nil,                    # Base path for resolving relative imports
+      fetcher: nil                       # Custom fetcher (defaults to DefaultFetcher)
     }.freeze
 
     # Resolve @import statements in CSS
     #
     # @param css [String] CSS content with @import statements
     # @param options [Hash] Import resolution options
+    #   @option options [#call] :fetcher Custom fetcher callable (receives url, options)
+    #   @option options [Integer] :max_depth Maximum import nesting depth
+    #   @option options [Array<String>] :allowed_schemes Allowed URL schemes
+    #   @option options [Array<String>] :extensions Allowed file extensions
+    #   @option options [Integer] :timeout HTTP request timeout in seconds
+    #   @option options [Boolean] :follow_redirects Follow HTTP redirects
+    #   @option options [String] :base_path Base path for relative imports
     # @param depth [Integer] Current recursion depth (internal)
     # @param imported_urls [Array] Array of already imported URLs to prevent circular references
     # @return [String] CSS with imports inlined
     def self.resolve(css, options = {}, depth: 0, imported_urls: [])
       # Normalize options
       opts = normalize_options(options)
+
+      # Get or create fetcher
+      fetcher = opts[:fetcher] || DefaultFetcher.new
 
       # Check recursion depth
       # depth starts at 0, max_depth is count of imports allowed
@@ -60,8 +117,8 @@ module Cataract
         # Check for circular references
         raise ImportError, "Circular import detected: #{url}" if imported_urls.include?(url)
 
-        # Fetch imported CSS
-        imported_css = fetch_url(url, opts)
+        # Fetch imported CSS using the fetcher
+        imported_css = fetcher.call(url, opts)
 
         # Recursively resolve imports in the imported CSS
         imported_urls_copy = imported_urls.dup
@@ -168,42 +225,6 @@ module Cataract
       true
     rescue URI::InvalidURIError => e
       raise ImportError, "Invalid import URL: #{url} (#{e.message})"
-    end
-
-    # Fetch content from URL
-    def self.fetch_url(url, options)
-      uri = normalize_url(url, options[:base_path])
-
-      case uri.scheme
-      when 'file'
-        # Read from local filesystem
-        File.read(uri.path)
-      when 'http', 'https'
-        # Fetch from network
-        fetch_http(uri, options)
-      else
-        raise ImportError, "Unsupported scheme: #{uri.scheme}"
-      end
-    rescue Errno::ENOENT
-      raise ImportError, "Import file not found: #{url}"
-    rescue OpenURI::HTTPError => e
-      raise ImportError, "HTTP error fetching import: #{url} (#{e.message})"
-    rescue SocketError => e
-      raise ImportError, "Network error fetching import: #{url} (#{e.message})"
-    rescue StandardError => e
-      raise ImportError, "Error fetching import: #{url} (#{e.class}: #{e.message})"
-    end
-
-    # Fetch content via HTTP/HTTPS
-    def self.fetch_http(uri, options)
-      # Use open-uri with timeout
-      open_uri_options = {
-        read_timeout: options[:timeout],
-        redirect: options[:follow_redirects]
-      }
-
-      # Use uri.open instead of URI.open to avoid shell command injection
-      uri.open(open_uri_options, &:read)
     end
   end
 end

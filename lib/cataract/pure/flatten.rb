@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
-# Pure Ruby CSS merge implementation
+# Pure Ruby CSS flatten implementation
 # NO REGEXP ALLOWED - use string manipulation only
 
 module Cataract
-  module Merge
+  module Flatten
     # Property name constants (US-ASCII for merge output)
     PROP_MARGIN = 'margin'.encode(Encoding::US_ASCII).freeze
     PROP_MARGIN_TOP = 'margin-top'.encode(Encoding::US_ASCII).freeze
@@ -138,7 +138,7 @@ module Cataract
     # @param stylesheet [Stylesheet] Stylesheet to merge
     # @param mutate [Boolean] If true, mutate the stylesheet; otherwise create new one
     # @return [Stylesheet] Merged stylesheet
-    def self.merge(stylesheet, mutate: false)
+    def self.flatten(stylesheet, mutate: false)
       # Separate AtRules (pass-through) from regular Rules (to merge)
       at_rules = []
       regular_rules = []
@@ -152,7 +152,9 @@ module Cataract
       end
 
       # Expand shorthands in regular rules only (AtRules don't have declarations)
-      regular_rules.each { |rule| expand_shorthands!(rule) }
+      regular_rules.each do |rule|
+        rule.declarations.replace(rule.declarations.flat_map { |decl| _expand_shorthand(decl) })
+      end
 
       merged_rules = []
 
@@ -160,7 +162,7 @@ module Cataract
       # (Nesting is flattened during parsing, so we just merge by resolved selector)
       grouped = regular_rules.group_by(&:selector)
       grouped.each do |selector, rules|
-        merged_rule = merge_rules_for_selector(selector, rules)
+        merged_rule = flatten_rules_for_selector(selector, rules)
         merged_rules << merged_rule if merged_rule
       end
 
@@ -195,7 +197,7 @@ module Cataract
     # @param selector [String] The selector
     # @param rules [Array<Rule>] Rules with this selector
     # @return [Rule] Merged rule with cascaded declarations
-    def self.merge_rules_for_selector(selector, rules)
+    def self.flatten_rules_for_selector(selector, rules)
       # Build declaration map: property => [source_order, specificity, important, value]
       decl_map = {}
 
@@ -284,42 +286,39 @@ module Cataract
       Cataract.calculate_specificity(selector)
     end
 
-    # Expand shorthand properties in a rule (mutates declarations)
+    # Expand a single shorthand declaration into longhand declarations.
+    # Returns an array of longhand declarations. If the declaration is not a shorthand,
+    # returns an array with just that declaration.
     #
-    # @param rule [Rule] Rule to expand
-    def self.expand_shorthands!(rule)
-      expanded = []
-
-      rule.declarations.each do |decl|
-        prop = decl.property
-
-        case prop
-        when 'margin'
-          expanded.concat(expand_margin(decl))
-        when 'padding'
-          expanded.concat(expand_padding(decl))
-        when 'border'
-          expanded.concat(expand_border(decl))
-        when 'border-top', 'border-right', 'border-bottom', 'border-left'
-          expanded.concat(expand_border_side(decl))
-        when 'border-width'
-          expanded.concat(expand_border_width(decl))
-        when 'border-style'
-          expanded.concat(expand_border_style(decl))
-        when 'border-color'
-          expanded.concat(expand_border_color(decl))
-        when 'font'
-          expanded.concat(expand_font(decl))
-        when 'background'
-          expanded.concat(expand_background(decl))
-        when 'list-style'
-          expanded.concat(expand_list_style(decl))
-        else
-          expanded << decl
-        end
+    # @param decl [Declaration] Declaration to expand
+    # @return [Array<Declaration>] Array of expanded longhand declarations
+    # @api private
+    def self._expand_shorthand(decl)
+      case decl.property
+      when 'margin'
+        expand_margin(decl)
+      when 'padding'
+        expand_padding(decl)
+      when 'border'
+        expand_border(decl)
+      when 'border-top', 'border-right', 'border-bottom', 'border-left'
+        expand_border_side(decl)
+      when 'border-width'
+        expand_border_width(decl)
+      when 'border-style'
+        expand_border_style(decl)
+      when 'border-color'
+        expand_border_color(decl)
+      when 'font'
+        expand_font(decl)
+      when 'background'
+        expand_background(decl)
+      when 'list-style'
+        expand_list_style(decl)
+      else
+        # Not a shorthand, return as-is in an array
+        [decl]
       end
-
-      rule.declarations.replace(expanded)
     end
 
     # Expand margin shorthand

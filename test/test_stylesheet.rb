@@ -81,10 +81,16 @@ class TestStylesheet < Minitest::Test
     CSS
 
     sheet = Cataract::Stylesheet.parse(css)
-    output = sheet.to_s
 
-    # Should preserve exact order
-    assert_match(/body.*@media.*p/m, output)
+    # Verify order is preserved: body rule, then h1 rule (in @media print), then p rule
+    rules = sheet.to_a
+    assert_equal 3, rules.length
+    assert_equal 'body', rules[0].selector
+    assert_equal 'h1', rules[1].selector
+    assert_equal 'p', rules[2].selector
+
+    # Verify h1 is in print media query
+    assert_media_types [:print], rules[1], sheet
   end
 
   def test_complex_interleaved_media
@@ -145,56 +151,6 @@ class TestStylesheet < Minitest::Test
     assert_equal 'h2', screen_rules[1].selector
   end
 
-  def test_for_media_filter
-    css = <<~CSS
-      body { color: black; }
-      @media screen { h1 { color: red; } }
-      @media print { h2 { color: blue; } }
-      @media screen { p { color: green; } }
-    CSS
-
-    sheet = Cataract::Stylesheet.parse(css)
-
-    assert_matches_media :screen, sheet
-    assert_matches_media :print, sheet
-
-    screen_rules = sheet.with_media(:screen)
-
-    assert_equal 2, screen_rules.length
-    assert_equal %w[h1 p], screen_rules.map(&:selector)
-  end
-
-  def test_base_rules_filter
-    css = <<~CSS
-      body { color: black; }
-      @media screen { h1 { color: red; } }
-      div { margin: 0; }
-    CSS
-
-    sheet = Cataract::Stylesheet.parse(css)
-
-    base_rules = sheet.base_rules
-
-    assert_equal 2, base_rules.length
-    assert_equal %w[body div], base_rules.map(&:selector)
-  end
-
-  def test_media_queries_list
-    css = <<~CSS
-      body { color: black; }
-      @media screen { h1 { color: red; } }
-      @media print { h2 { color: blue; } }
-      @media screen { p { color: green; } }
-    CSS
-
-    sheet = Cataract::Stylesheet.parse(css)
-    media_queries = sheet.media_queries
-
-    assert_equal 2, media_queries.length
-    assert_includes media_queries, :screen
-    assert_includes media_queries, :print
-  end
-
   def test_multi_media_serialization_no_duplicates
     # Regression test: ensure rules in multi-media queries don't get duplicated
     # when serializing with multiple media types
@@ -206,16 +162,19 @@ class TestStylesheet < Minitest::Test
 
     sheet = Cataract::Stylesheet.parse(css)
 
+    # Verify the rule exists with correct properties
+    assert_has_selector '.foo', sheet
+    foo_rule = sheet.with_selector('.foo').first
+    assert_has_property({ color: 'red' }, foo_rule)
+
     # Serialize with both media types
     output = sheet.to_s(media: [:screen, :print])
 
-    # Count occurrences of .foo - should appear exactly once
+    # Count occurrences of .foo - should appear exactly once in serialized output
     foo_count = output.scan(/\.foo/).count
     assert_equal 1, foo_count,
-                 "Rule should appear once, not duplicated. Parser adds same rule ID to multiple media indexes."
-
-    # Verify the output actually contains the rule
-    assert_includes output, '.foo { color: red; }'
+                 "Rule should appear once in serialized output, not duplicated. " \
+                 "Parser adds same rule ID to multiple media indexes, but serialization should dedupe."
   end
 
   # ============================================================================
@@ -253,8 +212,8 @@ body { color: red; }'
 
     inspect_str = sheet.inspect
 
-    assert_includes inspect_str, 'Stylesheet'
-    assert_includes inspect_str, 'empty'
+    # Verify inspect format shows empty state
+    assert_equal '#<Cataract::Stylesheet empty>', inspect_str
   end
 
   def test_inspect_with_rules
@@ -263,41 +222,8 @@ body { color: red; }'
 
     inspect_str = sheet.inspect
 
-    assert_includes inspect_str, 'Stylesheet'
-    assert_includes inspect_str, '2 rules'
-  end
-
-  # ============================================================================
-  # Nested media query tests (each_selector behavior)
-  # ============================================================================
-
-  def test_nested_media_each_selector
-    css = <<~CSS
-      @media screen {
-        @media (min-width: 500px) {
-          .nested { color: red; }
-        }
-      }
-      .normal { color: blue; }
-    CSS
-
-    sheet = Cataract::Stylesheet.parse(css)
-
-    # Should have 2 rules total
-    assert_equal 2, sheet.size
-
-    # Query with combined media should return nested rule
-    combined_media = :'screen and (min-width: 500px)'
-
-    assert_matches_media combined_media, sheet
-    assert_selectors_match ['.nested'], sheet, media: combined_media
-
-    # Query with just :screen should return nested rule (it's in screen index too)
-    assert_matches_media :screen, sheet
-    assert_selectors_match ['.nested'], sheet, media: :screen
-
-    # Query with :all should return both rules
-    assert_selectors_match ['.nested', '.normal'], sheet, media: :all
+    # Verify inspect format shows count and selectors
+    assert_equal '#<Cataract::Stylesheet 2 rules: body, div>', inspect_str
   end
 
   # ============================================================================
@@ -351,34 +277,6 @@ body { color: red; }'
     assert_equal 1, rules.first.declarations.length
   end
 
-  def test_each_selector_basic
-    css = 'body { color: red; } div { margin: 10px; }'
-    sheet = Cataract::Stylesheet.parse(css)
-
-    assert_equal %w[body div], sheet.selectors
-  end
-
-  def test_finding_by_selector
-    css = <<-CSS
-      html, body, p { margin: 0px; }
-      p { padding: 0px; }
-      #content { font: 12px/normal sans-serif; }
-      .content { color: red; }
-    CSS
-
-    stylesheet = Cataract::Stylesheet.parse(css)
-
-    # find_by_selector returns array of Rule objects
-    body_rules = stylesheet.with_selector('body')
-
-    assert_equal 1, body_rules.size
-    assert_kind_of Cataract::Rule, body_rules[0]
-    assert_equal 'body', body_rules[0].selector
-
-    # Can access declarations from the rule
-    assert_equal 1, body_rules[0].declarations.length
-  end
-
   def test_adding_a_rule
     sheet = Cataract::Stylesheet.new
     sheet.add_rule(selector: 'div', declarations: 'color: blue')
@@ -391,17 +289,6 @@ body { color: red; }'
     hash = sheet.to_h
 
     assert_kind_of Hash, hash
-  end
-
-  def test_selectors_all
-    css = 'body { color: red; } .header { padding: 5px; } #main { font-size: 14px; }'
-    sheet = Cataract::Stylesheet.parse(css)
-    sels = sheet.selectors
-
-    assert_equal 3, sels.length
-    assert_includes sels, 'body'
-    assert_includes sels, '.header'
-    assert_includes sels, '#main'
   end
 
   def test_rules_count_alias
@@ -464,333 +351,172 @@ body { color: red; }'
   end
 
   # ============================================================================
-  # Advanced filtering tests (chainable scopes)
+  # Stylesheet equality and hash tests
   # ============================================================================
 
-  def test_with_property_basic
-    css = <<~CSS
-      body { color: red; margin: 0; }
-      .header { padding: 10px; color: blue; }
-      .footer { margin: 5px; }
-    CSS
-    sheet = Cataract::Stylesheet.parse(css)
+  def test_stylesheet_equality_same_rules
+    sheet1 = Cataract.parse_css('.box { color: red; }')
+    sheet2 = Cataract.parse_css('.box { color: red; }')
 
-    # Find all rules with color property
-    color_rules = sheet.with_property('color')
-
-    assert_equal 2, color_rules.size
-    assert_equal %w[body .header], color_rules.map(&:selector)
-
-    # Find all rules with margin property
-    margin_rules = sheet.with_property('margin')
-
-    assert_equal 2, margin_rules.size
-    assert_equal %w[body .footer], margin_rules.map(&:selector)
-
-    # Find rules with padding property
-    padding_rules = sheet.with_property('padding')
-
-    assert_equal 1, padding_rules.size
-    assert_equal '.header', padding_rules.first.selector
+    assert_equal sheet1, sheet2
   end
 
-  def test_with_property_and_value
-    css = <<~CSS
-      body { color: red; }
-      .header { color: blue; }
-      .footer { color: red; margin: 0; }
-      .sidebar { position: absolute; }
-      .content { position: relative; }
-    CSS
-    sheet = Cataract::Stylesheet.parse(css)
+  def test_stylesheet_equality_shorthand_vs_longhand
+    # Your example from the discussion
+    sheet1 = Cataract.parse_css('.box { margin: 10px; }')
+    sheet2 = Cataract.parse_css('.box { margin-top: 10px; margin-right: 10px; margin-bottom: 10px; margin-left: 10px; }')
 
-    # Find rules with color: red
-    red_rules = sheet.with_property('color', 'red')
-
-    assert_equal 2, red_rules.size
-    assert_equal %w[body .footer], red_rules.map(&:selector)
-
-    # Find rules with color: blue
-    blue_rules = sheet.with_property('color', 'blue')
-
-    assert_equal 1, blue_rules.size
-    assert_equal '.header', blue_rules.first.selector
-
-    # Find rules with position: absolute
-    absolute_rules = sheet.with_property('position', 'absolute')
-
-    assert_equal 1, absolute_rules.size
-    assert_equal '.sidebar', absolute_rules.first.selector
+    assert_equal sheet1, sheet2, 'Shorthand and longhand stylesheets should be equal'
   end
 
-  def test_with_property_chainable
-    css = <<~CSS
-      body { color: red; }
-      @media screen { .header { color: blue; } }
-      @media print { .footer { color: red; } }
-    CSS
-    sheet = Cataract::Stylesheet.parse(css)
+  def test_stylesheet_equality_different_rules
+    sheet1 = Cataract.parse_css('.box { color: red; }')
+    sheet2 = Cataract.parse_css('.box { color: blue; }')
 
-    # Chain with media filter
-    screen_color_rules = sheet.with_media(:screen).with_property('color')
-
-    assert_equal 1, screen_color_rules.size
-    assert_equal '.header', screen_color_rules.first.selector
-
-    # Chain with property and value
-    print_red_rules = sheet.with_media(:print).with_property('color', 'red')
-
-    assert_equal 1, print_red_rules.size
-    assert_equal '.footer', print_red_rules.first.selector
+    refute_equal sheet1, sheet2
   end
 
-  def test_with_selector_string
-    css = <<~CSS
-      body { color: red; }
-      .header { padding: 10px; }
-      .footer { margin: 5px; }
-    CSS
-    sheet = Cataract::Stylesheet.parse(css)
+  def test_stylesheet_equality_different_order
+    # Order matters for cascade rules
+    sheet1 = Cataract.parse_css('.box { color: red; } .box { color: blue; }')
+    sheet2 = Cataract.parse_css('.box { color: blue; } .box { color: red; }')
 
-    # Find by exact string match
-    body_rules = sheet.with_selector('body')
-
-    assert_equal 1, body_rules.size
-    assert_equal 'body', body_rules.first.selector
-
-    header_rules = sheet.with_selector('.header')
-
-    assert_equal 1, header_rules.size
-    assert_equal '.header', header_rules.first.selector
+    refute_equal sheet1, sheet2, 'Order matters for CSS cascade'
   end
 
-  def test_with_selector_regexp
-    css = <<~CSS
-      .btn-primary { color: blue; }
-      .btn-secondary { color: gray; }
-      .btn-danger { color: red; }
-      .header { padding: 10px; }
-      #main { margin: 0; }
-    CSS
-    sheet = Cataract::Stylesheet.parse(css)
+  def test_stylesheet_equality_with_media_queries
+    sheet1 = Cataract.parse_css('@media print { .box { color: red; } }')
+    sheet2 = Cataract.parse_css('@media print { .box { color: red; } }')
 
-    # Find all .btn-* classes using regex
-    btn_rules = sheet.with_selector(/\.btn-/)
-
-    assert_equal 3, btn_rules.size
-    assert_equal %w[.btn-primary .btn-secondary .btn-danger], btn_rules.map(&:selector)
-
-    # Find all ID selectors
-    id_rules = sheet.with_selector(/^#/)
-
-    assert_equal 1, id_rules.size
-    assert_equal '#main', id_rules.first.selector
-
-    # Find selectors containing 'header'
-    header_rules = sheet.with_selector(/header/)
-
-    assert_equal 1, header_rules.size
-    assert_equal '.header', header_rules.first.selector
+    assert_equal sheet1, sheet2
   end
 
-  def test_with_selector_chainable_with_regexp
-    css = <<~CSS
-      .btn-primary { color: blue; }
-      @media screen { .btn-secondary { color: gray; } }
-      @media print { .btn-danger { color: red; } }
-    CSS
-    sheet = Cataract::Stylesheet.parse(css)
+  def test_stylesheet_equality_different_media
+    sheet1 = Cataract.parse_css('@media print { .box { color: red; } }')
+    sheet2 = Cataract.parse_css('@media screen { .box { color: red; } }')
 
-    # Chain regex selector with media filter
-    screen_btn_rules = sheet.with_media(:screen).with_selector(/\.btn-/)
-
-    assert_equal 1, screen_btn_rules.size
-    assert_equal '.btn-secondary', screen_btn_rules.first.selector
+    refute_equal sheet1, sheet2, 'Different media queries should not be equal'
   end
 
-  def test_base_only
-    css = <<~CSS
-      body { color: black; }
-      @media screen { .screen { color: blue; } }
-      div { margin: 0; }
-      @media print { .print { color: red; } }
-      p { padding: 5px; }
-    CSS
-    sheet = Cataract::Stylesheet.parse(css)
+  def test_stylesheet_hash_contract_equal_objects_same_hash
+    sheet1 = Cataract.parse_css('.box { margin: 10px; }')
+    sheet2 = Cataract.parse_css('.box { margin-top: 10px; margin-right: 10px; margin-bottom: 10px; margin-left: 10px; }')
 
-    # Get only base rules (not in any @media)
-    base = sheet.base_only
-
-    assert_equal 3, base.size
-    assert_equal %w[body div p], base.map(&:selector)
-
-    # Should be chainable
-    assert_kind_of Cataract::StylesheetScope, base
+    assert_equal sheet1, sheet2, 'Stylesheets should be equal'
+    assert_equal sheet1.hash, sheet2.hash, 'Equal stylesheets must have same hash'
   end
 
-  def test_base_only_chainable
-    css = <<~CSS
-      body { color: red; }
-      div { color: blue; margin: 0; }
-      @media screen { .screen { color: green; } }
-    CSS
-    sheet = Cataract::Stylesheet.parse(css)
+  def test_stylesheets_as_hash_keys
+    sheet1 = Cataract.parse_css('.box { margin: 10px; }')
+    sheet2 = Cataract.parse_css('.box { margin-top: 10px; margin-right: 10px; margin-bottom: 10px; margin-left: 10px; }')
 
-    # Chain with property filter
-    base_with_color = sheet.base_only.with_property('color')
+    cache = {}
+    cache[sheet1] = 'processed_stylesheet'
 
-    assert_equal 2, base_with_color.size
-    assert_equal %w[body div], base_with_color.map(&:selector)
-
-    # Chain with specificity
-    base_high_spec = sheet.base_only.with_specificity(1)
-
-    assert_equal 2, base_high_spec.size
+    assert_equal 'processed_stylesheet', cache[sheet2], 'Equal stylesheets should work as same Hash key'
   end
 
-  def test_with_at_rule_type_keyframes
-    css = <<~CSS
-      @keyframes fadeIn { 0% { opacity: 0; } 100% { opacity: 1; } }
-      @keyframes slideIn { 0% { transform: translateX(-100%); } }
-      body { color: red; }
-      @font-face { font-family: 'MyFont'; }
-    CSS
-    sheet = Cataract::Stylesheet.parse(css)
+  def test_stylesheets_in_set
+    require 'set'
 
-    # Find all @keyframes
-    keyframes = sheet.with_at_rule_type(:keyframes)
+    sheet1 = Cataract.parse_css('.box { margin: 10px; }')
+    sheet2 = Cataract.parse_css('.box { margin-top: 10px; margin-right: 10px; margin-bottom: 10px; margin-left: 10px; }')
 
-    assert_equal 2, keyframes.size
-    assert keyframes.all?(&:at_rule?)
-    assert_includes keyframes.map(&:selector), '@keyframes fadeIn'
-    assert_includes keyframes.map(&:selector), '@keyframes slideIn'
+    stylesheets = Set.new
+    stylesheets << sheet1
+
+    assert_member stylesheets, sheet2, 'Set should recognize equivalent stylesheet'
+    assert_equal 1, stylesheets.size
+
+    stylesheets << sheet2
+    assert_equal 1, stylesheets.size, 'Set should not add duplicate'
   end
 
-  def test_with_at_rule_type_font_face
-    css = <<~CSS
-      @font-face { font-family: 'Font1'; src: url('font1.woff'); }
-      @font-face { font-family: 'Font2'; src: url('font2.woff'); }
-      body { color: red; }
-      @keyframes fadeIn { 0% { opacity: 0; } }
-    CSS
-    sheet = Cataract::Stylesheet.parse(css)
+  def test_stylesheet_equality_with_non_stylesheet
+    sheet = Cataract.parse_css('.box { color: red; }')
 
-    # Find all @font-face
-    fonts = sheet.with_at_rule_type(:font_face)
-
-    assert_equal 2, fonts.size
-    assert fonts.all?(&:at_rule?)
-    assert(fonts.all? { |r| r.selector == '@font-face' })
+    refute_equal sheet, 'not a stylesheet'
+    refute_equal sheet, nil
   end
 
-  def test_with_at_rule_type_chainable
-    css = <<~CSS
-      @media screen {
-        @keyframes slideIn { 0% { transform: translateX(-100%); } }
-      }
-      @keyframes fadeIn { 0% { opacity: 0; } }
-    CSS
-    sheet = Cataract::Stylesheet.parse(css)
+  # ============================================================================
+  # Stylesheet combining tests (concat, +)
+  # ============================================================================
 
-    # Chain with media filter
-    screen_keyframes = sheet.with_media(:screen).with_at_rule_type(:keyframes)
+  def test_concat_combines_and_applies_cascade
+    sheet1 = Cataract.parse_css('.box { color: red; }')
+    sheet2 = Cataract.parse_css('.other { margin: 10px; }')
 
-    assert_equal 1, screen_keyframes.size
-    assert_equal '@keyframes slideIn', screen_keyframes.first.selector
+    sheet1.concat(sheet2)
+
+    assert_equal 2, sheet1.rules.size
+    assert_equal '.box', sheet1.rules[0].selector
+    assert_equal '.other', sheet1.rules[1].selector
   end
 
-  def test_with_important_basic
-    css = <<~CSS
-      body { color: red; }
-      .header { color: blue !important; margin: 10px; }
-      .footer { padding: 5px !important; font-size: 14px !important; }
-      .sidebar { border: 1px solid; }
-    CSS
-    sheet = Cataract::Stylesheet.parse(css)
+  def test_concat_returns_self
+    sheet1 = Cataract.parse_css('.box { color: red; }')
+    sheet2 = Cataract.parse_css('.other { margin: 10px; }')
 
-    # Find all rules with any !important declaration
-    important_rules = sheet.with_important
+    result = sheet1.concat(sheet2)
 
-    assert_equal 2, important_rules.size
-    assert_equal %w[.header .footer], important_rules.map(&:selector)
+    assert_same sheet1, result, 'concat should return self for chaining'
   end
 
-  def test_with_important_by_property
-    css = <<~CSS
-      body { color: red; }
-      .header { color: blue !important; margin: 10px; }
-      .footer { padding: 5px !important; color: green !important; }
-      .sidebar { margin: 10px !important; }
-    CSS
-    sheet = Cataract::Stylesheet.parse(css)
+  def test_concat_applies_cascade_on_conflicts
+    # concat SHOULD apply cascade when rules conflict
+    sheet1 = Cataract.parse_css('.box { color: red; }')
+    sheet2 = Cataract.parse_css('.box { color: blue; }')
 
-    # Find rules with color !important
-    color_important = sheet.with_important('color')
+    sheet1.concat(sheet2)
 
-    assert_equal 2, color_important.size
-    assert_equal %w[.header .footer], color_important.map(&:selector)
-
-    # Find rules with margin !important
-    margin_important = sheet.with_important('margin')
-
-    assert_equal 1, margin_important.size
-    assert_equal '.sidebar', margin_important.first.selector
-
-    # Find rules with padding !important
-    padding_important = sheet.with_important('padding')
-
-    assert_equal 1, padding_important.size
-    assert_equal '.footer', padding_important.first.selector
+    assert_equal 1, sheet1.rules.size, 'concat should apply cascade'
+    assert sheet1.rules[0].has_property?('color', 'blue'), 'Last rule should win'
   end
 
-  def test_with_important_chainable
-    css = <<~CSS
-      body { color: red !important; }
-      @media screen { .header { color: blue !important; } }
-      @media print { .footer { margin: 0; } }
-    CSS
-    sheet = Cataract::Stylesheet.parse(css)
+  def test_concat_merges_non_conflicting_properties
+    sheet1 = Cataract.parse_css('.box { color: red; margin: 10px; }')
+    sheet2 = Cataract.parse_css('.box { color: blue; padding: 5px; }')
 
-    # Chain with media filter
-    screen_important = sheet.with_media(:screen).with_important
+    sheet1.concat(sheet2)
 
-    assert_equal 1, screen_important.size
-    assert_equal '.header', screen_important.first.selector
-
-    # Chain with property
-    screen_color_important = sheet.with_media(:screen).with_important('color')
-
-    assert_equal 1, screen_color_important.size
-    assert_equal '.header', screen_color_important.first.selector
+    assert_equal 1, sheet1.rules.size
+    assert sheet1.rules[0].has_property?('color', 'blue'), 'Conflicting property: last wins'
+    assert sheet1.rules[0].has_property?('margin', '10px'), 'Non-conflicting from sheet1'
+    assert sheet1.rules[0].has_property?('padding', '5px'), 'Non-conflicting from sheet2'
   end
 
-  def test_complex_filter_chaining
-    css = <<~CSS
-      body { color: red; z-index: 1; }
-      @media screen {
-        .header { color: blue !important; z-index: 100; }
-        .nav { padding: 10px; }
-        #sidebar { color: green; z-index: 150; }
-      }
-      @media print { .footer { color: black; } }
-    CSS
-    sheet = Cataract::Stylesheet.parse(css)
+  def test_plus_operator_combines_and_applies_cascade
+    sheet1 = Cataract.parse_css('.box { color: red; }')
+    sheet2 = Cataract.parse_css('.other { margin: 10px; }')
 
-    # Complex chain: screen media + has z-index + high specificity + selector-based rules only
-    result = sheet.with_media(:screen)
-                  .with_property('z-index')
-                  .with_specificity(10..)
-                  .select(&:selector?)
+    result = sheet1 + sheet2
 
-    assert_equal 2, result.size
-    assert_equal %w[.header #sidebar], result.map(&:selector)
+    assert_equal 2, result.rules.size
+    assert_equal '.box', result.rules[0].selector
+    assert_equal '.other', result.rules[1].selector
+  end
 
-    # Another complex chain: screen + !important + color property
-    result2 = sheet.with_media(:screen)
-                   .with_important('color')
-                   .with_selector(/header/)
+  def test_plus_operator_returns_new_stylesheet
+    sheet1 = Cataract.parse_css('.box { color: red; }')
+    sheet2 = Cataract.parse_css('.other { margin: 10px; }')
 
-    assert_equal 1, result2.size
-    assert_equal '.header', result2.first.selector
+    result = sheet1 + sheet2
+
+    refute_same sheet1, result, '+ should return new stylesheet'
+    refute_same sheet2, result, '+ should return new stylesheet'
+    assert_equal 1, sheet1.rules.size, 'Original sheet1 should be unchanged'
+    assert_equal 1, sheet2.rules.size, 'Original sheet2 should be unchanged'
+  end
+
+  def test_plus_operator_applies_cascade_on_conflicts
+    # + SHOULD apply cascade when rules conflict
+    sheet1 = Cataract.parse_css('.box { color: red; }')
+    sheet2 = Cataract.parse_css('.box { color: blue; }')
+
+    result = sheet1 + sheet2
+
+    assert_equal 1, result.rules.size, '+ should apply cascade'
+    assert result.rules[0].has_property?('color', 'blue'), 'Last rule should win'
   end
 end

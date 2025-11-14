@@ -5,7 +5,7 @@ require 'cataract'
 
 # Tests for the Cataract module-level API
 # - Cataract.parse_css (wrapper for Stylesheet.parse)
-# - Cataract.merge (rule merging with CSS cascade)
+# - Cataract.flatten (rule merging with CSS cascade)
 class TestCataract < Minitest::Test
   # ============================================================================
   # Cataract.parse_css - Module-level parsing wrapper
@@ -19,7 +19,7 @@ class TestCataract < Minitest::Test
   end
 
   # ============================================================================
-  # Cataract.merge - CSS cascade merging
+  # Cataract.flatten - CSS cascade merging
   # ============================================================================
 
   # Helper to find declaration by property name
@@ -30,112 +30,112 @@ class TestCataract < Minitest::Test
     decl.important ? "#{decl.value} !important" : decl.value
   end
 
-  def test_merge_simple
+  def test_flatten_simple
     rules = Cataract.parse_css(<<~CSS)
       .test1 { color: black; }
       .test1 { margin: 0px; }
     CSS
 
-    merged = rules.merge.rules.first.declarations
+    flattened = rules.flatten.rules.first.declarations
 
-    assert_equal 'black', find_property(merged, 'color')
-    assert_equal '0px', find_property(merged, 'margin')
+    assert_equal 'black', find_property(flattened, 'color')
+    assert_equal '0px', find_property(flattened, 'margin')
   end
 
-  def test_merge_same_property_later_wins
+  def test_flatten_same_property_later_wins
     rules = Cataract.parse_css(<<~CSS)
       .test { color: red; }
       .test { color: blue; }
     CSS
 
-    merged = rules.merge.rules.first.declarations
+    flattened = rules.flatten.rules.first.declarations
 
-    assert_equal 'blue', find_property(merged, 'color')
+    assert_equal 'blue', find_property(flattened, 'color')
   end
 
-  def test_merge_with_specificity
+  def test_flatten_with_specificity
     rules = Cataract.parse_css(<<~CSS)
       .test { color: red; }
       #test { color: blue; }
     CSS
 
-    merged = rules.merge
+    flattened = rules.flatten
 
     # Different selectors should remain as separate rules (not merged)
-    assert_equal 2, merged.rules_count
+    assert_equal 2, flattened.rules_count
 
     # .test rule should have color: red
-    test_rule = merged.rules.find { |r| r.selector == '.test' }
+    test_rule = flattened.rules.find { |r| r.selector == '.test' }
 
     assert_equal 'red', find_property(test_rule.declarations, 'color')
 
     # #test rule should have color: blue
-    id_rule = merged.rules.find { |r| r.selector == '#test' }
+    id_rule = flattened.rules.find { |r| r.selector == '#test' }
 
     assert_equal 'blue', find_property(id_rule.declarations, 'color')
   end
 
-  def test_merge_important_wins
+  def test_flatten_important_wins
     rules = Cataract.parse_css(<<~CSS)
       .test { color: red !important; }
       #test { color: blue; }
     CSS
 
-    merged = rules.merge
+    flattened = rules.flatten
 
     # Different selectors should remain as separate rules (not merged)
-    assert_equal 2, merged.rules_count
+    assert_equal 2, flattened.rules_count
 
     # .test rule should have color: red !important
-    test_rule = merged.rules.find { |r| r.selector == '.test' }
+    test_rule = flattened.rules.find { |r| r.selector == '.test' }
 
     assert_equal 'red !important', find_property(test_rule.declarations, 'color')
 
     # #test rule should have color: blue (no !important)
-    id_rule = merged.rules.find { |r| r.selector == '#test' }
+    id_rule = flattened.rules.find { |r| r.selector == '#test' }
 
     assert_equal 'blue', find_property(id_rule.declarations, 'color')
   end
 
-  def test_merge_accepts_stylesheet
+  def test_flatten_accepts_stylesheet
     sheet = Cataract.parse_css('.test { color: red; margin: 10px; }')
-    merged = sheet.merge.rules.first.declarations
+    flattened = sheet.flatten.rules.first.declarations
 
-    assert_equal 'red', find_property(merged, 'color')
-    assert_equal '10px', find_property(merged, 'margin')
+    assert_equal 'red', find_property(flattened, 'color')
+    assert_equal '10px', find_property(flattened, 'margin')
   end
 
   # test_merge_accepts_array and test_merge_empty_returns_empty_array removed
-  # These tested the old module-level Cataract.merge API which has been replaced
+  # These tested the old module-level Cataract.flatten API which has been replaced
   # with the instance method Stylesheet#merge in the new parser
 
-  def test_merge_creates_shorthand_properties
+  def test_flatten_creates_shorthand_properties
     rules = Cataract.parse_css(<<~CSS)
       .test { margin-top: 10px; margin-right: 10px; margin-bottom: 10px; margin-left: 10px; }
     CSS
 
-    merged = rules.merge.rules.first.declarations
+    flattened = rules.flatten.rules.first.declarations
 
     # Should create margin shorthand
-    assert_equal '10px', find_property(merged, 'margin')
+    assert_equal '10px', find_property(flattened, 'margin')
     # Longhand properties should not be present
-    assert_nil find_property(merged, 'margin-top')
+    assert_nil find_property(flattened, 'margin-top')
   end
 
-  def test_merge_with_mixed_shorthand_longhand
+  def test_flatten_with_mixed_shorthand_longhand
     # Per W3C cascade rules, when you have:
     #   margin: 5px;        <- sets all four sides to 5px
     #   margin-top: 10px;   <- overrides just the top
     # The final computed values are: top=10px, right=5px, bottom=5px, left=5px
     #
-    # Cataract.merge optimizes this by creating a shorthand: "10px 5px 5px"
+    # Cataract.flatten optimizes this by creating a shorthand: "10px 5px 5px"
     # This is the CSS 3-value syntax: top, right/left, bottom (right and left collapsed)
     rules = Cataract.parse_css(<<~CSS)
       .test { margin: 5px; margin-top: 10px; }
     CSS
 
-    merged = rules.merge.rules.first.declarations
+    flattened = rules.flatten.rules.first.declarations
 
-    assert_equal '10px 5px 5px', find_property(merged, 'margin')
+    assert_equal '10px 5px 5px', find_property(flattened, 'margin')
   end
 end

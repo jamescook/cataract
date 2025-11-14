@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-# Shared test definitions for merging benchmarks
-module MergingTests
+# Shared test definitions for flattening benchmarks
+module FlatteningTests
   # Determines if YJIT testing is applicable for a given implementation
   def self.yjit_applicable?(impl_type)
     base_impl = impl_type.to_s.sub(/_with_yjit|_without_yjit/, '').to_sym
@@ -37,7 +37,7 @@ module MergingTests
           'css' => ".test { margin: 10px 20px; }\n.test { margin-left: 5px; }\n.test { padding: 1em 2em 3em 4em; }"
         },
         {
-          'name' => 'Complex merging',
+          'name' => 'Complex flattening',
           'key' => 'complex',
           'css' => "body { margin: 0; padding: 0; }\n.container { width: 100%; margin: 0 auto; }\n#main { background: white; color: black; }\n.button { padding: 10px 20px; border: 1px solid #ccc; }\n.button:hover { background: #f0f0f0; }\n.button.primary { background: blue !important; color: white; }"
         }
@@ -67,18 +67,18 @@ module MergingTests
       require 'css_parser'
       # Basic sanity check for css_parser
       parser = CssParser::Parser.new
-      parser.add_block!(".test { color: red; }")
+      parser.add_block!('.test { color: red; }')
       raise 'css_parser sanity check failed' if parser.to_s.empty?
     when :pure, :native
-      # Verify merging works correctly with Cataract
+      # Verify flattening works correctly with Cataract
       css = ".test { color: black; }\n.test { margin: 10px; }"
       cataract_rules = Cataract.parse_css(css)
-      cataract_merged = Cataract.merge(cataract_rules)
+      cataract_flattened = Cataract.flatten(cataract_rules)
 
-      raise 'Cataract merge failed' if cataract_merged.rules.empty?
+      raise 'Cataract flatten failed' if cataract_flattened.rules.empty?
 
-      merged_decls = cataract_merged.rules.first.declarations
-      raise 'Cataract merge incorrect' unless merged_decls.any? { |d| d.property == 'color' }
+      flattened_decls = cataract_flattened.rules.first.declarations
+      raise 'Cataract flatten incorrect' unless flattened_decls.any? { |d| d.property == 'color' }
     end
   end
 
@@ -100,7 +100,7 @@ module MergingTests
                    'cataract'
                  end
 
-    yjit_suffix = if MergingTests.yjit_applicable?(impl_type)
+    yjit_suffix = if FlatteningTests.yjit_applicable?(impl_type)
                     impl_type.to_s.include?('with_yjit') ? ' (YJIT)' : ' (no YJIT)'
                   else
                     ''
@@ -139,7 +139,7 @@ module MergingTests
         cataract_rules = Cataract.parse_css(css)
 
         x.report("cataract pure: #{key}") do
-          Cataract.merge(cataract_rules)
+          Cataract.flatten(cataract_rules)
         end
 
       when :native
@@ -147,7 +147,7 @@ module MergingTests
         cataract_rules = Cataract.parse_css(css)
 
         x.report("cataract: #{key}") do
-          Cataract.merge(cataract_rules)
+          Cataract.flatten(cataract_rules)
         end
       end
     end

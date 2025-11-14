@@ -155,7 +155,20 @@ module Cataract
         full_match = css_string[import_start...import_end]
 
         imports << { url: url, media: media, full_match: full_match }
+      elsif match_ascii_ci?(css_string, i, '@charset')
+        # Skip @charset if present - it can come before @import
+        while i < len && css_string.getbyte(i) != BYTE_SEMICOLON
+          i += 1
+        end
+        i += 1 if i < len # Skip semicolon
       else
+        # If we hit any other content (rules, other at-rules), stop scanning
+        # Per CSS spec, @import must be at the top (only @charset can come before)
+        byte = css_string.getbyte(i) if i < len
+        if i < len && !is_whitespace?(byte)
+          break
+        end
+
         i += 1
       end
     end
