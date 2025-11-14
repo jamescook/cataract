@@ -355,6 +355,9 @@ module Cataract
           current_media = nil
         end
 
+        # Add blank line before base rule if we just closed a media block (ends with "}\n")
+        result << "\n" if result.length > 1 && result.getbyte(-1) == BYTE_NEWLINE && result.getbyte(-2) == BYTE_RBRACE
+
         serialize_rule_with_nesting_formatted(result, rule, rule_children, rule_to_media, '')
       else
         if current_media.nil? || current_media != rule_media
