@@ -290,6 +290,21 @@ module StylesheetTestHelper
     assert_includes collection, element, message
   end
 
+  # Lifted from Rails
+  def silence_warnings(&block)
+    with_warnings(nil, &block)
+  end
+
+  # Sets $VERBOSE for the duration of the block and back to its original
+  # value afterwards.
+  def with_warnings(flag)
+    old_verbose, $VERBOSE = $VERBOSE, flag
+
+    yield
+  ensure
+    $VERBOSE = old_verbose
+  end
+
   private
 
   # Build a helpful error message for selector assertions

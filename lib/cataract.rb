@@ -6,6 +6,7 @@ require_relative 'cataract/version'
 require_relative 'cataract/declaration'
 require_relative 'cataract/rule'
 require_relative 'cataract/at_rule'
+require_relative 'cataract/import_statement'
 
 # Load pure Ruby or C extension based on ENV var
 if %w[1 true].include?(ENV.fetch('CATARACT_PURE', nil)) || RUBY_ENGINE == 'jruby'

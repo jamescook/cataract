@@ -74,6 +74,7 @@ module Cataract
       # Parser state
       @rules = []                    # Flat array of Rule structs
       @_media_index = {}             # Symbol => Array of rule IDs
+      @imports = []                  # Array of ImportStatement structs
       @rule_id_counter = 0           # Next rule ID (0-indexed)
       @media_query_count = 0         # Safety limit
       @_has_nesting = false          # Set to true if any nested rules found
@@ -82,9 +83,8 @@ module Cataract
     end
 
     def parse
-      # Skip @import statements at the beginning (they're handled by ImportResolver)
-      # Per CSS spec, @import must come before all rules (except @charset)
-      skip_imports
+      # @import statements are now handled in parse_at_rule
+      # They must come before all rules (except @charset) per CSS spec
 
       # Main parsing loop - char-by-char, NO REGEXP
       until eof?
@@ -182,6 +182,7 @@ module Cataract
       {
         rules: @rules,
         _media_index: @_media_index,
+        imports: @imports,
         charset: @charset,
         _has_nesting: @_has_nesting
       }
@@ -658,6 +659,23 @@ module Cataract
         return
       end
 
+      # Handle @import - must come before rules (except @charset)
+      if at_rule_name == 'import'
+        # If we've already seen a rule, this @import is invalid
+        if @rules.size > 0
+          warn "CSS @import ignored: @import must appear before all rules (found import after rules)"
+          # Skip to semicolon
+          while !eof? && peek_byte != BYTE_SEMICOLON
+            @pos += 1
+          end
+          @pos += 1 if peek_byte == BYTE_SEMICOLON
+          return
+        end
+
+        parse_import_statement
+        return
+      end
+
       # Handle conditional group at-rules: @supports, @layer, @container, @scope
       # These behave like @media but don't affect media context
       if AT_RULE_TYPES.include?(at_rule_name)
@@ -1123,7 +1141,93 @@ module Cataract
       @pos += 1 if peek_byte == BYTE_SEMICOLON # consume semicolon
     end
 
-    # Skip @import statements at the beginning of CSS
+    # Parse an @import statement
+    # @import "url" [media-query];
+    # @import url("url") [media-query];
+    def parse_import_statement
+      skip_ws_and_comments
+
+      # Check for optional url(
+      has_url_function = false
+      if @pos + 4 <= @len && match_ascii_ci?(@css, @pos, 'url(')
+        has_url_function = true
+        @pos += 4
+        skip_ws_and_comments
+      end
+
+      # Find opening quote
+      byte = peek_byte
+      if eof? || (byte != BYTE_DQUOTE && byte != BYTE_SQUOTE)
+        # Invalid @import, skip to semicolon
+        while !eof? && peek_byte != BYTE_SEMICOLON
+          @pos += 1
+        end
+        @pos += 1 unless eof?
+        return
+      end
+
+      quote_char = byte
+      @pos += 1 # Skip opening quote
+
+      url_start = @pos
+
+      # Find closing quote (handle escaped quotes)
+      while !eof? && peek_byte != quote_char
+        if peek_byte == BYTE_BACKSLASH && @pos + 1 < @len
+          @pos += 2 # Skip escaped character
+        else
+          @pos += 1
+        end
+      end
+
+      if eof?
+        # Unterminated string
+        return
+      end
+
+      url = byteslice_encoded(url_start, @pos - url_start)
+      @pos += 1 # Skip closing quote
+
+      # Skip closing paren if we had url(
+      if has_url_function
+        skip_ws_and_comments
+        @pos += 1 if peek_byte == BYTE_RPAREN
+      end
+
+      skip_ws_and_comments
+
+      # Check for optional media query (everything until semicolon)
+      media = nil
+      if !eof? && peek_byte != BYTE_SEMICOLON
+        media_start = @pos
+
+        # Find semicolon
+        while !eof? && peek_byte != BYTE_SEMICOLON
+          @pos += 1
+        end
+
+        media_end = @pos
+
+        # Trim trailing whitespace from media query
+        while media_end > media_start && whitespace?(@css.getbyte(media_end - 1))
+          media_end -= 1
+        end
+
+        if media_end > media_start
+          media = byteslice_encoded(media_start, media_end - media_start).to_sym
+        end
+      end
+
+      # Skip semicolon
+      @pos += 1 if peek_byte == BYTE_SEMICOLON
+
+      # Create ImportStatement (resolved: false by default)
+      import_stmt = ImportStatement.new(@rule_id_counter, url, media, false)
+      @imports << import_stmt
+      @rule_id_counter += 1
+    end
+
+    # Skip @import statements at the beginning of CSS (DEPRECATED - now parsed)
     # Per CSS spec, @import must come before all rules (except @charset)
     def skip_imports
       until eof?

@@ -19,6 +19,7 @@ module Cataract
   #
   # @attr_reader [Array<Rule>] rules Array of parsed CSS rules
   # @attr_reader [String, nil] charset The @charset declaration if present
+  # @attr_reader [Array<ImportStatement>] imports Array of @import statements
   class Stylesheet
     include Enumerable
 
@@ -27,6 +28,9 @@ module Cataract
 
     # @return [String, nil] The @charset declaration if present
     attr_reader :charset
+
+    # @return [Array<ImportStatement>] Array of @import statements
+    attr_reader :imports
 
     # Create a new empty stylesheet.
     #
@@ -48,6 +52,7 @@ module Cataract
       @rules = [] # Flat array of Rule structs
       @_media_index = {} # Hash: Symbol => Array of rule IDs
       @charset = nil
+      @imports = [] # Array of ImportStatement objects
       @_has_nesting = nil # Set by parser (nil or boolean)
       @_last_rule_id = nil # Tracks next rule ID for add_block
       @selectors = nil # Memoized cache of selectors
@@ -62,6 +67,7 @@ module Cataract
     def initialize_copy(source)
       super
       @rules = source.instance_variable_get(:@rules).dup
+      @imports = source.instance_variable_get(:@imports).dup
       @_media_index = source.instance_variable_get(:@_media_index).transform_values(&:dup)
       @selectors = nil # Clear memoized cache
       @_hash = nil # Clear cached hash
@@ -119,6 +125,12 @@ module Cataract
       return enum_for(:each) unless block_given?
 
       @rules.each(&)
+    end
+
+    def [](offset)
+      return unless @rules
+
+      @rules[offset]
     end
 
     # Filter rules by media query symbol(s).
@@ -609,18 +621,11 @@ module Cataract
         css = "@media #{media_list} { #{css} }"
       end
 
-      # Resolve @import statements if configured in constructor
-      css_to_parse = if @options[:import]
-                       ImportResolver.resolve(css, @options[:import])
-                     else
-                       css
-                     end
-
       # Get current rule ID offset
       offset = @_last_rule_id || 0
 
-      # Parse CSS with C function (returns hash)
-      result = Cataract._parse_css(css_to_parse)
+      # Parse CSS first (this extracts @import statements into result[:imports])
+      result = Cataract._parse_css(css)
 
       # Merge rules with offsetted IDs
       new_rules = result[:rules]
@@ -641,6 +646,28 @@ module Cataract
 
       # Update last rule ID
       @_last_rule_id = offset + new_rules.length
+
+      # Merge imports with offsetted IDs
+      if result[:imports]
+        new_imports = result[:imports]
+        new_imports.each do |import|
+          import.id += offset
+          @imports << import
+        end
+
+        # Resolve imports if configured
+        if @options[:import]
+          # Extract imported_urls and depth from options
+          if @options[:import].is_a?(Hash)
+            imported_urls = @options[:import][:imported_urls] || []
+            depth = @options[:import][:depth] || 0
+          else
+            imported_urls = []
+            depth = 0
+          end
+          resolve_imports(new_imports, @options[:import], imported_urls: imported_urls, depth: depth)
+        end
+      end
 
       # Set charset if not already set
       @charset ||= result[:charset]
@@ -857,6 +884,100 @@ module Cataract
     # This is an implementation detail and should not be relied upon by external code.
     # @return [Hash<Symbol, Array<Integer>>]
     attr_reader :_media_index
+
+    # Resolve @import statements by fetching and merging imported stylesheets
+    #
+    # @param imports [Array<ImportStatement>] Import statements to resolve
+    # @param options [Hash] Import resolution options
+    # @param imported_urls [Array<String>] URLs already imported (for circular detection)
+    # @param depth [Integer] Current import depth (for depth limit)
+    # @return [void]
+    def resolve_imports(imports, options, imported_urls: [], depth: 0)
+      # Normalize options with safe defaults
+      opts = ImportResolver.normalize_options(options)
+
+      # Check depth limit
+      if depth > opts[:max_depth]
+        raise ImportError, "Import nesting too deep: exceeded maximum depth of #{opts[:max_depth]}"
+      end
+
+      # Get or create fetcher
+      fetcher = opts[:fetcher] || ImportResolver::DefaultFetcher.new
+
+      imports.each do |import|
+        next if import.resolved # Skip already resolved imports
+
+        url = import.url
+        media = import.media
+
+        # Validate URL
+        ImportResolver.validate_url(url, opts)
+
+        # Check for circular references
+        raise ImportError, "Circular import detected: #{url}" if imported_urls.include?(url)
+
+        # Fetch imported CSS
+        imported_css = fetcher.call(url, opts)
+
+        # Parse imported CSS recursively
+        imported_urls_copy = imported_urls.dup
+        imported_urls_copy << url
+        imported_sheet = Stylesheet.parse(imported_css, import: opts.merge(imported_urls: imported_urls_copy, depth: depth + 1))
+
+        # Wrap rules in @media if import had media query
+        if media
+          imported_sheet.rules.each do |rule|
+            # Find rule's current media (if any) from imported sheet's media index
+            # A rule may be in multiple media entries (e.g., :screen and :"screen and (min-width: 768px)")
+            # We want the most specific one (longest string)
+            # TODO: Extract this logic to a helper method to keep it consistent across codebase
+            rule_media = nil
+            imported_sheet.instance_variable_get(:@_media_index).each do |m, ids|
+              if ids.include?(rule.id)
+                # Keep the longest/most specific media query
+                if rule_media.nil? || m.to_s.length > rule_media.to_s.length
+                  rule_media = m
+                end
+              end
+            end
+
+            # Combine media queries: "import_media and rule_media"
+            combined_media = if rule_media
+                              # Combine: "media and rule_media"
+                              :"#{media} and #{rule_media}"
+                            else
+                              media
+                            end
+
+            # Update media index
+            if @_media_index[combined_media]
+              @_media_index[combined_media] << rule.id
+            else
+              @_media_index[combined_media] = [rule.id]
+            end
+          end
+        end
+
+        # Merge imported rules into this stylesheet
+        # Insert at current position (before any remaining local rules)
+        insert_position = import.id
+        imported_sheet.rules.each_with_index do |rule, idx|
+          @rules.insert(insert_position + idx, rule)
+        end
+
+        # Merge media index
+        imported_sheet.instance_variable_get(:@_media_index).each do |media_sym, rule_ids|
+          if @_media_index[media_sym]
+            @_media_index[media_sym].concat(rule_ids)
+          else
+            @_media_index[media_sym] = rule_ids.dup
+          end
+        end
+
+        # Mark as resolved
+        import.resolved = true
+      end
+    end
 
     # Check if a rule matches any of the requested media queries
     #
