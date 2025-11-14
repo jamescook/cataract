@@ -549,18 +549,34 @@ static void serialize_rule_with_children(VALUE result, VALUE rules_array, long r
 
     if (formatted) {
         // Formatted output with indentation
+        DEBUG_PRINTF("[SERIALIZE_RULE] Formatted mode, indent_level=%d, selector=%s\n", indent_level, RSTRING_PTR(selector));
         rb_str_append(result, selector);
         rb_str_cat2(result, " {\n");
 
+        // Build indent strings based on indent_level
+        // Declarations are inside the rule, so add 1 level (2 spaces per level)
+        // Closing brace matches the opening selector level
+        char decl_indent[MAX_INDENT_BUFFER];
+        char closing_indent[MAX_INDENT_BUFFER];
+        int decl_spaces = (indent_level + 1) * 2;
+        int closing_spaces = indent_level * 2;
+        memset(decl_indent, ' ', decl_spaces);
+        decl_indent[decl_spaces] = '\0';
+        memset(closing_indent, ' ', closing_spaces);
+        closing_indent[closing_spaces] = '\0';
+
         // Serialize own declarations with indentation (each on its own line)
         if (!NIL_P(declarations) && RARRAY_LEN(declarations) > 0) {
-            serialize_declarations_formatted(result, declarations, "  ");
+            DEBUG_PRINTF("[SERIALIZE_RULE] Serializing %ld declarations with indent='%s' (%d spaces)\n",
+                        RARRAY_LEN(declarations), decl_indent, decl_spaces);
+            serialize_declarations_formatted(result, declarations, decl_indent);
         }
 
         // Serialize nested children
         serialize_children_only(result, rules_array, rule_idx, rule_to_media, parent_to_children,
                               selector, declarations, formatted, indent_level + 1);
 
+        rb_str_cat2(result, closing_indent);
         rb_str_cat2(result, "}\n");
     } else {
         // Compact output
@@ -576,6 +592,9 @@ static void serialize_rule_with_children(VALUE result, VALUE rules_array, long r
 
         rb_str_cat2(result, " }\n");
     }
+
+    // Prevent compiler from optimizing away 'rule' before we're done with selector/declarations
+    RB_GC_GUARD(rule);
 }
 
 // New stylesheet serialization entry point - checks for nesting and delegates
@@ -626,6 +645,10 @@ static VALUE stylesheet_to_s_new(VALUE self, VALUE rules_array, VALUE media_inde
 
     DEBUG_PRINTF("[MAP] parent_to_children map: %s\n", RSTRING_PTR(rb_inspect(parent_to_children)));
 
+    // Track media block state for proper opening/closing
+    VALUE current_media = Qnil;
+    int in_media_block = 0;
+
     // Serialize only top-level rules (parent_rule_id == nil)
     // Children are serialized recursively
     DEBUG_PRINTF("[SERIALIZE] Starting serialization, total_rules=%ld\n", total_rules);
@@ -643,6 +666,34 @@ static VALUE stylesheet_to_s_new(VALUE self, VALUE rules_array, VALUE media_inde
             continue;
         }
 
+        // Get media for this rule
+        VALUE rule_id = rb_struct_aref(rule, INT2FIX(RULE_ID));
+        VALUE rule_media = rb_hash_aref(rule_to_media, rule_id);
+
+        // Handle media block transitions
+        if (NIL_P(rule_media)) {
+            // Not in media - close any open media block
+            if (in_media_block) {
+                rb_str_cat2(result, "}\n");
+                in_media_block = 0;
+                current_media = Qnil;
+            }
+        } else {
+            // In media - check if we need to open/change block
+            if (NIL_P(current_media) || !rb_equal(current_media, rule_media)) {
+                // Close previous media block if open
+                if (in_media_block) {
+                    rb_str_cat2(result, "}\n");
+                }
+                // Open new media block
+                current_media = rule_media;
+                rb_str_cat2(result, "@media ");
+                rb_str_append(result, rb_sym2str(rule_media));
+                rb_str_cat2(result, " {\n");
+                in_media_block = 1;
+            }
+        }
+
         // Check if this is an AtRule
         if (rb_obj_is_kind_of(rule, cAtRule)) {
             serialize_at_rule(result, rule);
@@ -655,6 +706,11 @@ static VALUE stylesheet_to_s_new(VALUE self, VALUE rules_array, VALUE media_inde
             0,  // formatted (compact)
             0   // indent_level (top-level)
         );
+    }
+
+    // Close final media block if still open
+    if (in_media_block) {
+        rb_str_cat2(result, "}\n");
     }
 
     return result;
@@ -779,6 +835,10 @@ static VALUE stylesheet_to_formatted_s_new(VALUE self, VALUE rules_array, VALUE 
         }
     }
 
+    // Track media block state for proper opening/closing
+    VALUE current_media = Qnil;
+    int in_media_block = 0;
+
     // Serialize only top-level rules (parent_rule_id == nil)
     for (long i = 0; i < total_rules; i++) {
         VALUE rule = rb_ary_entry(rules_array, i);
@@ -789,18 +849,64 @@ static VALUE stylesheet_to_formatted_s_new(VALUE self, VALUE rules_array, VALUE 
             continue;
         }
 
+        // Get media for this rule
+        VALUE rule_id = rb_struct_aref(rule, INT2FIX(RULE_ID));
+        VALUE rule_media = rb_hash_aref(rule_to_media, rule_id);
+
+        // Handle media block transitions
+        if (NIL_P(rule_media)) {
+            // Not in media - close any open media block
+            if (in_media_block) {
+                rb_str_cat2(result, "}\n");
+                in_media_block = 0;
+                current_media = Qnil;
+
+                // Add blank line after closing media block
+                rb_str_cat2(result, "\n");
+            }
+        } else {
+            // In media - check if we need to open/change block
+            if (NIL_P(current_media) || !rb_equal(current_media, rule_media)) {
+                // Close previous media block if open
+                if (in_media_block) {
+                    rb_str_cat2(result, "}\n");
+                } else if (RSTRING_LEN(result) > 0) {
+                    // Add blank line before new media block (except at start)
+                    rb_str_cat2(result, "\n");
+                }
+                // Open new media block
+                current_media = rule_media;
+                rb_str_cat2(result, "@media ");
+                rb_str_append(result, rb_sym2str(rule_media));
+                rb_str_cat2(result, " {\n");
+                in_media_block = 1;
+            }
+        }
+
         // Check if this is an AtRule
         if (rb_obj_is_kind_of(rule, cAtRule)) {
             serialize_at_rule(result, rule);
             continue;
         }
 
+        // Add indent if inside media block
+        if (in_media_block) {
+            DEBUG_PRINTF("[FORMATTED] Adding base indent for media block\n");
+            rb_str_cat2(result, "  ");
+        }
+
         // Serialize rule with nested children
+        DEBUG_PRINTF("[FORMATTED] Calling serialize_rule_with_children, in_media_block=%d\n", in_media_block);
         serialize_rule_with_children(
             result, rules_array, i, rule_to_media, parent_to_children,
             1,  // formatted (with indentation)
-            0   // indent_level (top-level)
+            in_media_block ? 1 : 0   // indent_level (1 if inside media block, 0 otherwise)
         );
+    }
+
+    // Close final media block if still open
+    if (in_media_block) {
+        rb_str_cat2(result, "}\n");
     }
 
     return result;
