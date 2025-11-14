@@ -132,10 +132,13 @@ loop do
     output += '+COLOR' if color_converted
     $stdout.write("#{output}\n")
   rescue Cataract::DepthError
+    $VERBOSE = old_verbose if defined?(old_verbose)
     $stdout.write("DEPTH\n")
   rescue Cataract::SizeError
+    $VERBOSE = old_verbose if defined?(old_verbose)
     $stdout.write("SIZE\n")
   rescue StandardError => e
+    $VERBOSE = old_verbose if defined?(old_verbose)
     # Log errors to stderr if FUZZ_DEBUG is enabled
     if ENV['FUZZ_DEBUG'] == '1'
       $stderr.puts "[Worker Error] #{e.class}: #{e.message}"
