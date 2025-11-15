@@ -201,6 +201,7 @@ module Cataract
     #
     # @param property [String] CSS property name to match
     # @param value [String, nil] Optional property value to match
+    # @param prefix_match [Boolean] Whether to match by prefix (default: false)
     # @return [StylesheetScope] Scope with property filter applied
     #
     # @example Find all rules with color property
@@ -209,10 +210,13 @@ module Cataract
     # @example Find rules with position: absolute
     #   sheet.with_property('position', 'absolute').to_a
     #
+    # @example Find all margin-related properties (margin, margin-top, etc.)
+    #   sheet.with_property('margin', prefix_match: true).to_a
+    #
     # @example Chain with media filter
     #   sheet.with_media(:screen).with_property('z-index').to_a
-    def with_property(property, value = nil)
-      StylesheetScope.new(self, property: property, property_value: value)
+    def with_property(property, value = nil, prefix_match: false)
+      StylesheetScope.new(self, property: property, property_value: value, property_prefix_match: prefix_match)
     end
 
     # Filter to only base rules (rules not inside any @media query).

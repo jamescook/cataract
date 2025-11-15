@@ -328,4 +328,131 @@ class TestStylesheetChainable < Minitest::Test
     assert_equal 1, result2.size
     assert_equal '.header', result2.first.selector
   end
+
+  def test_with_property_prefix_match_basic
+    css = <<~CSS
+      .shorthand { margin: 10px; }
+      .margin-top { margin-top: 5px; }
+      .margin-bottom { margin-bottom: 20px; }
+      .no-margin { padding: 10px; }
+    CSS
+    sheet = Cataract::Stylesheet.parse(css)
+
+    # Default: exact match finds only 'margin' property
+    margin_exact = sheet.with_property('margin')
+
+    assert_equal 1, margin_exact.size
+    assert_equal '.shorthand', margin_exact.first.selector
+
+    # prefix_match: true finds all margin* properties
+    margin_all = sheet.with_property('margin', prefix_match: true)
+
+    assert_equal 3, margin_all.size
+    assert_equal %w[.shorthand .margin-top .margin-bottom], margin_all.map(&:selector)
+  end
+
+  def test_with_property_prefix_match_background
+    css = <<~CSS
+      .shorthand { background: red; }
+      .bg-color { background-color: blue; }
+      .bg-image { background-image: url(img.png); }
+      .bg-position { background-position: center; }
+      .no-bg { color: red; }
+    CSS
+    sheet = Cataract::Stylesheet.parse(css)
+
+    # Exact match finds only 'background' property
+    bg_exact = sheet.with_property('background')
+
+    assert_equal 1, bg_exact.size
+    assert_equal '.shorthand', bg_exact.first.selector
+
+    # Prefix match finds ALL background* properties
+    bg_all = sheet.with_property('background', prefix_match: true)
+
+    assert_equal 4, bg_all.size
+    assert_equal %w[.shorthand .bg-color .bg-image .bg-position], bg_all.map(&:selector)
+  end
+
+  def test_with_property_prefix_match_with_value
+    css = <<~CSS
+      .margin-all-10 { margin: 10px; }
+      .margin-top-10 { margin-top: 10px; }
+      .margin-top-20 { margin-top: 20px; }
+      .margin-bottom-10 { margin-bottom: 10px; }
+    CSS
+    sheet = Cataract::Stylesheet.parse(css)
+
+    # Prefix match with value filter
+    margin_10 = sheet.with_property('margin', '10px', prefix_match: true)
+
+    assert_equal 3, margin_10.size
+    assert_equal %w[.margin-all-10 .margin-top-10 .margin-bottom-10], margin_10.map(&:selector)
+
+    # Exact match with value
+    margin_exact_10 = sheet.with_property('margin', '10px')
+
+    assert_equal 1, margin_exact_10.size
+    assert_equal '.margin-all-10', margin_exact_10.first.selector
+  end
+
+  def test_with_property_prefix_match_chainable
+    css = <<~CSS
+      .base { margin: 10px; }
+      @media screen {
+        .screen-shorthand { margin: 5px; }
+        .screen-longhand { margin-top: 5px; }
+      }
+    CSS
+    sheet = Cataract::Stylesheet.parse(css)
+
+    # Chain prefix match with media query
+    screen_margin_all = sheet.with_media(:screen).with_property('margin', prefix_match: true)
+
+    assert_equal 2, screen_margin_all.size
+    assert_equal %w[.screen-shorthand .screen-longhand], screen_margin_all.map(&:selector)
+
+    # Exact match with media
+    screen_margin_exact = sheet.with_media(:screen).with_property('margin')
+
+    assert_equal 1, screen_margin_exact.size
+    assert_equal '.screen-shorthand', screen_margin_exact.first.selector
+  end
+
+  def test_with_property_prefix_match_border
+    css = <<~CSS
+      .shorthand { border: 1px solid; }
+      .border-width { border-width: 2px; }
+      .border-top-style { border-top-style: dashed; }
+      .border-left-color { border-left-color: red; }
+    CSS
+    sheet = Cataract::Stylesheet.parse(css)
+
+    # Prefix match finds ALL border* properties
+    border_all = sheet.with_property('border', prefix_match: true)
+
+    assert_equal 4, border_all.size
+    assert_equal %w[.shorthand .border-width .border-top-style .border-left-color],
+                 border_all.map(&:selector)
+
+    # Can also search for more specific prefixes
+    border_top = sheet.with_property('border-top', prefix_match: true)
+
+    assert_equal 1, border_top.size
+    assert_equal '.border-top-style', border_top.first.selector
+  end
+
+  def test_with_property_non_prefix_unchanged
+    css = <<~CSS
+      .color { color: red; }
+      .display { display: block; }
+    CSS
+    sheet = Cataract::Stylesheet.parse(css)
+
+    # Non-prefix properties work as exact match (default behavior)
+    color_rules = sheet.with_property('color')
+
+    assert_equal 1, color_rules.size
+    assert_equal '.color', color_rules.first.selector
+  end
 end

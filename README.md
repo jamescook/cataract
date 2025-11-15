@@ -134,6 +134,12 @@ sheet.with_specificity(100..).each do |rule|
   puts "High specificity: #{rule.selector} (#{rule.specificity})"
 end
 
+# Filter by property (returns chainable scope)
+sheet.with_property('margin')                       # Exact match: finds only 'margin' property
+sheet.with_property('margin', prefix_match: true)   # Prefix match: finds margin, margin-top, margin-left, etc.
+sheet.with_property('background', prefix_match: true)  # Finds ALL background-* properties
+sheet.with_property('margin', '10px')               # Filter by value too
+
 # Chain filters together
 sheet.with_media(:screen)
      .with_specificity(50..200)
@@ -141,9 +147,9 @@ sheet.with_media(:screen)
      .map(&:selector)
 # => ["#header .nav", ".sidebar > ul li"]
 
-# Find all rules with a specific property
-sheet.select(&:selector?).select do |rule|
-  rule.declarations.any? { |d| d.property == 'color' }
+# Find all rules with any margin-related property
+sheet.with_property('margin', prefix_match: true).each do |rule|
+  puts "#{rule.selector} uses margin"
 end
 
 # Find high-specificity selectors (potential refactoring targets)

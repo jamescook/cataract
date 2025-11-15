@@ -87,6 +87,7 @@ module Cataract
     #
     # @param property [String] CSS property name to match
     # @param value [String, nil] Optional value to match
+    # @param prefix_match [Boolean] Whether to match by prefix (default: false)
     # @return [Boolean] true if rule has matching declaration
     #
     # @example Check for color property
@@ -94,9 +95,16 @@ module Cataract
     #
     # @example Check for specific property value
     #   rule.has_property?('color', 'red') #=> true
-    def has_property?(property, value = nil)
+    #
+    # @example Check for any margin-related property
+    #   rule.has_property?('margin', prefix_match: true) #=> true if has margin, margin-top, etc.
+    def has_property?(property, value = nil, prefix_match: false)
       declarations.any? do |decl|
-        property_matches = decl.property == property
+        property_matches = if prefix_match
+                             decl.property.start_with?(property)
+                           else
+                             decl.property == property
+                           end
         value_matches = value.nil? || decl.value == value
         property_matches && value_matches
       end

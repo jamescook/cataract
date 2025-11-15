@@ -190,4 +190,96 @@ class TestImportStatement < Minitest::Test
     # Rule ID continues the sequence
     assert_equal 2, sheet.rules.first.id
   end
+
+  def test_import_statement_equality
+    # Two imports with same url and media are equal
+    import1 = Cataract::ImportStatement.new(0, 'styles.css', nil, false)
+    import2 = Cataract::ImportStatement.new(99, 'styles.css', nil, true)
+
+    assert_equal import1, import2, 'Imports with same url/media should be equal regardless of id/resolved'
+
+    # Different URL means not equal
+    import3 = Cataract::ImportStatement.new(0, 'other.css', nil, false)
+
+    refute_equal import1, import3
+
+    # Different media means not equal
+    import4 = Cataract::ImportStatement.new(0, 'styles.css', :print, false)
+
+    refute_equal import1, import4
+
+    # eql? should work the same as ==
+    assert import1.eql?(import2)
+    refute import1.eql?(import3)
+  end
+
+  def test_import_statement_hash_contract
+    # Hash contract: objects that are equal must have equal hashes
+    import1 = Cataract::ImportStatement.new(0, 'styles.css', :screen, false)
+    import2 = Cataract::ImportStatement.new(99, 'styles.css', :screen, true)
+    import3 = Cataract::ImportStatement.new(0, 'other.css', :screen, false)
+
+    # Equal objects must have equal hashes
+    assert_equal import1, import2
+    assert_equal import1.hash, import2.hash, 'Equal objects must have equal hash values'
+
+    # Non-equal objects should (ideally) have different hashes
+    refute_equal import1, import3
+    # NOTE: We don't assert hash inequality since hash collisions are technically allowed,
+    # but in practice they should differ
+  end
+
+  def test_import_statement_as_hash_key
+    # Test that ImportStatements work properly as hash keys
+    import1 = Cataract::ImportStatement.new(0, 'styles.css', nil, false)
+    import2 = Cataract::ImportStatement.new(99, 'styles.css', nil, true) # Same url/media, different id
+    import3 = Cataract::ImportStatement.new(1, 'other.css', nil, false)
+
+    hash = {}
+    hash[import1] = 'value1'
+    hash[import3] = 'value3'
+
+    # import2 is equal to import1, so should retrieve the same value
+    assert_equal 'value1', hash[import2], 'Equal imports should access same hash entry'
+    assert_equal 'value3', hash[import3]
+
+    # Hash should only have 2 entries (import1 and import2 are the same key)
+    assert_equal 2, hash.size
+  end
+
+  def test_import_statement_in_set
+    # Test that ImportStatements work in Sets (requires proper hash/eql?)
+    require 'set'
+
+    import1 = Cataract::ImportStatement.new(0, 'styles.css', :screen, false)
+    import2 = Cataract::ImportStatement.new(99, 'styles.css', :screen, true) # Equal to import1
+    import3 = Cataract::ImportStatement.new(1, 'other.css', :screen, false)
+
+    set = Set.new
+    set.add(import1)
+    set.add(import2) # Should not add (equal to import1)
+    set.add(import3)
+
+    # Set should deduplicate equal imports
+    assert_equal 2, set.size, 'Set should deduplicate equal imports'
+    assert_member set, import1
+    assert_member set, import2, 'Equal import should be found in set'
+    assert_member set, import3
+  end
+
+  def test_import_statement_array_uniq
+    # Test that Array#uniq works with ImportStatements
+    import1 = Cataract::ImportStatement.new(0, 'styles.css', nil, false)
+    import2 = Cataract::ImportStatement.new(1, 'styles.css', nil, false) # Equal to import1
+    import3 = Cataract::ImportStatement.new(2, 'other.css', nil, false)
+    import4 = Cataract::ImportStatement.new(3, 'styles.css', nil, false) # Equal to import1
+
+    arr = [import1, import2, import3, import4]
+    unique = arr.uniq
+
+    # Should have only 2 unique imports
+    assert_equal 2, unique.size
+    assert_equal 'styles.css', unique[0].url
+    assert_equal 'other.css', unique[1].url
+  end
 end
