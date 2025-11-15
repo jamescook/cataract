@@ -107,24 +107,28 @@ Naming/PredicatePrefix:
 Style/NumericPredicate:
   Exclude:
     - 'lib/cataract/pure/**/*.rb'
+    - 'lib/cataract/unit_conversion.rb'
 
 # Disable multiple comparison style - avoid array allocation
 # `||` chain is faster than `Array#include?` which allocates an array
 Style/MultipleComparison:
   Exclude:
     - 'lib/cataract/pure/**/*.rb'
+    - 'lib/cataract/unit_conversion.rb'
 
 # Disable zero-length predicate in hot path - method dispatch overhead
 # Direct comparison `.length > 0` is faster than `.empty?` method call
 Style/ZeroLengthPredicate:
   Exclude:
     - 'lib/cataract/pure/**/*.rb'
+    - 'lib/cataract/unit_conversion.rb'
 
 # Benchmarked range vs offsets. Range has to allocated
 # so not ideal in the hot path
 Style/SlicingWithRange:
   Exclude:
     - 'lib/cataract/pure/**/*.rb'
+    - 'lib/cataract/unit_conversion.rb'
 
 # Disable modifier while/until style in parsing code - readability
 # Byte-level parsing loops are clearer with traditional while...end form
@@ -133,12 +137,14 @@ Style/SlicingWithRange:
 Style/WhileUntilModifier:
   Exclude:
     - 'lib/cataract/pure/**/*.rb'
+    - 'lib/cataract/unit_conversion.rb'
 
 # Disable between? suggestion in hot path - method dispatch overhead
 # Benchmark shows `byte >= X && byte <= Y` is 2.60-4.82x faster than `.between?(X, Y)`
 Style/ComparableBetween:
   Exclude:
     - 'lib/cataract/pure/**/*.rb'
+    - 'lib/cataract/unit_conversion.rb'
 
 # Disable map suggestion for array building - performance
 # Benchmark shows `each { arr << x }` is 1.05-1.11x faster than `arr = map { x }`
@@ -146,6 +152,7 @@ Style/ComparableBetween:
 Style/MapIntoArray:
   Exclude:
     - 'lib/cataract/pure/**/*.rb'
+    - 'lib/cataract/unit_conversion.rb'
 
 Style/OptionalBooleanParameter:
   Exclude:
