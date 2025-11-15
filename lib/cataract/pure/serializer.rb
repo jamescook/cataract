@@ -82,81 +82,20 @@ module Cataract
     result
   end
 
-  # Helper: serialize rules without nesting support
+  # Helper: serialize rules without nesting support (compact format)
   def self.stylesheet_to_s_original(rules, media_index, result, selector_lists)
-    # Check if selector list grouping is enabled (non-empty hash means enabled)
-    grouping_enabled = selector_lists && !selector_lists.empty?
-
-    # Build rule_id => media_symbol map
-    rule_to_media = {}
-    media_index.each do |media_sym, rule_ids|
-      rule_ids.each do |rule_id|
-        rule_to_media[rule_id] = media_sym
-      end
-    end
-
-    # Iterate through rules in insertion order, grouping consecutive media queries
-    current_media = nil
-    in_media_block = false
-
-    # Track processed rules to avoid duplicates when grouping
-    processed_rule_ids = {}
-
-    rules.each do |rule|
-      # Skip if already processed (when grouped)
-      next if processed_rule_ids[rule.id]
-
-      rule_media = rule_to_media[rule.id]
-
-      if rule_media.nil?
-        # Not in any media query - close any open media block first
-        if in_media_block
-          result << "}\n"
-          in_media_block = false
-          current_media = nil
-        end
-      else
-        # This rule is in a media query
-        # Check if media query changed from previous rule
-        if current_media.nil? || current_media != rule_media
-          # Close previous media block if open
-          if in_media_block
-            result << "}\n"
-          end
-
-          # Open new media block
-          current_media = rule_media
-          result << "@media #{current_media} {\n"
-          in_media_block = true
-        end
-      end
-
-      # Try to group with other rules from same selector list
-      if grouping_enabled && rule.is_a?(Rule) && rule.selector_list_id
-        selectors = find_groupable_selectors(
-          rule: rule,
-          rules: rules,
-          selector_lists: selector_lists,
-          processed_rule_ids: processed_rule_ids,
-          rule_to_media: rule_to_media,
-          current_media: current_media
-        )
-        # Serialize with grouped selectors (compact format)
-        result << selectors.join(', ') << ' { '
-        serialize_declarations(result, rule.declarations)
-        result << " }\n"
-      else
-        serialize_rule(result, rule)
-        processed_rule_ids[rule.id] = true
-      end
-    end
-
-    # Close final media block if still open
-    if in_media_block
-      result << "}\n"
-    end
-
-    result
+    _serialize_stylesheet_with_grouping(
+      rules: rules,
+      media_index: media_index,
+      result: result,
+      selector_lists: selector_lists,
+      opening_brace: ' { ',
+      closing_brace: " }\n",
+      media_indent: '',
+      decl_indent_base: nil,
+      decl_indent_media: nil,
+      add_blank_lines: false
+    )
   end
 
   # Helper: serialize a rule with its nested children
@@ -295,6 +234,143 @@ module Cataract
 
     matching_selectors
   end
+
+  # Private shared implementation for stylesheet serialization with optional selector list grouping
+  # All formatting behavior controlled by kwargs to avoid mode flags and if/else branches
+  def self._serialize_stylesheet_with_grouping(
+    rules:,
+    media_index:,
+    result:,
+    selector_lists:,
+    opening_brace:,      # ' { ' (compact) vs " {\n" (formatted)
+    closing_brace:,      # " }\n" (compact) vs "}\n" (formatted)
+    media_indent:,       # '' (compact) vs '  ' (formatted)
+    decl_indent_base:,   # nil (compact) vs '  ' (formatted base rules)
+    decl_indent_media:,  # nil (compact) vs '    ' (formatted media rules)
+    add_blank_lines:     # false (compact) vs true (formatted)
+  )
+    grouping_enabled = selector_lists && !selector_lists.empty?
+
+    # Build rule_id => media_symbol map
+    rule_to_media = {}
+    media_index.each do |media_sym, rule_ids|
+      rule_ids.each do |rule_id|
+        rule_to_media[rule_id] = media_sym
+      end
+    end
+
+    # Track processed rules to avoid duplicates when grouping
+    processed_rule_ids = {}
+
+    # Iterate through rules in insertion order, grouping consecutive media queries
+    current_media = nil
+    in_media_block = false
+    rule_index = 0
+
+    rules.each do |rule|
+      # Skip if already processed (when grouped)
+      next if processed_rule_ids[rule.id]
+
+      rule_media = rule_to_media[rule.id]
+      is_first_rule = (rule_index == 0)
+
+      if rule_media.nil?
+        # Not in any media query - close any open media block first
+        if in_media_block
+          result << "}\n"
+          in_media_block = false
+          current_media = nil
+        end
+
+        # Add blank line prefix for non-first rules (formatted only)
+        result << "\n" if add_blank_lines && !is_first_rule
+
+        # Try to group with other rules from same selector list
+        if grouping_enabled && rule.is_a?(Rule) && rule.selector_list_id
+          selectors = find_groupable_selectors(
+            rule: rule,
+            rules: rules,
+            selector_lists: selector_lists,
+            processed_rule_ids: processed_rule_ids,
+            rule_to_media: rule_to_media,
+            current_media: rule_media
+          )
+
+          # Serialize with grouped selectors
+          result << selectors.join(', ') << opening_brace
+          if decl_indent_base
+            serialize_declarations_formatted(result, rule.declarations, decl_indent_base)
+          else
+            serialize_declarations(result, rule.declarations)
+          end
+          result << closing_brace
+        else
+          # Serialize individual rule
+          if decl_indent_base
+            serialize_rule_formatted(result, rule, '', true)
+          else
+            serialize_rule(result, rule)
+          end
+          processed_rule_ids[rule.id] = true
+        end
+      else
+        # This rule is in a media query
+        if current_media.nil? || current_media != rule_media
+          # Close previous media block if open
+          if in_media_block
+            result << "}\n"
+          end
+
+          # Add blank line prefix for non-first rules (formatted only)
+          result << "\n" if add_blank_lines && !is_first_rule
+
+          # Open new media block
+          current_media = rule_media
+          result << "@media #{current_media} {\n"
+          in_media_block = true
+        end
+
+        # Try to group with other rules from same selector list
+        if grouping_enabled && rule.is_a?(Rule) && rule.selector_list_id
+          selectors = find_groupable_selectors(
+            rule: rule,
+            rules: rules,
+            selector_lists: selector_lists,
+            processed_rule_ids: processed_rule_ids,
+            rule_to_media: rule_to_media,
+            current_media: rule_media
+          )
+
+          # Serialize with grouped selectors (with media indent)
+          result << media_indent << selectors.join(', ') << opening_brace
+          if decl_indent_media
+            serialize_declarations_formatted(result, rule.declarations, decl_indent_media)
+          else
+            serialize_declarations(result, rule.declarations)
+          end
+          result << media_indent << closing_brace
+        else
+          # Serialize individual rule inside media block
+          if decl_indent_media
+            serialize_rule_formatted(result, rule, media_indent, true)
+          else
+            serialize_rule(result, rule)
+          end
+          processed_rule_ids[rule.id] = true
+        end
+      end
+
+      rule_index += 1
+    end
+
+    # Close final media block if still open
+    if in_media_block
+      result << "}\n"
+    end
+
+    result
+  end
+  private_class_method :_serialize_stylesheet_with_grouping
 
   # Helper: check if two declaration arrays are equal
   def self.declarations_equal?(decls1, decls2)
@@ -459,70 +535,18 @@ module Cataract
 
   # Helper: formatted serialization without nesting support
   def self.stylesheet_to_formatted_s_original(rules, media_index, result, selector_lists)
-    # TODO: Phase 2 - implement selector list grouping for formatted output
-    # For now, just ignore selector_lists parameter
-
-    # Build rule_id => media_symbol map
-    rule_to_media = {}
-    media_index.each do |media_sym, rule_ids|
-      rule_ids.each do |rule_id|
-        rule_to_media[rule_id] = media_sym
-      end
-    end
-
-    # Iterate through rules, grouping consecutive media queries
-    current_media = nil
-    in_media_block = false
-    rule_index = 0
-
-    rules.each do |rule|
-      rule_media = rule_to_media[rule.id]
-      is_first_rule = (rule_index == 0)
-
-      if rule_media.nil?
-        # Not in any media query - close any open media block first
-        if in_media_block
-          result << "}\n"
-          in_media_block = false
-          current_media = nil
-        end
-
-        # Add blank line prefix for non-first rules
-        result << "\n" unless is_first_rule
-
-        # Output rule with no indentation (always single newline suffix)
-        serialize_rule_formatted(result, rule, '', true)
-      else
-        # This rule is in a media query
-        if current_media.nil? || current_media != rule_media
-          # Close previous media block if open
-          if in_media_block
-            result << "}\n"
-          end
-
-          # Add blank line prefix for non-first rules
-          result << "\n" unless is_first_rule
-
-          # Open new media block
-          current_media = rule_media
-          result << "@media #{current_media} {\n"
-          in_media_block = true
-        end
-
-        # Serialize rule inside media block with 2-space indentation
-        # Rules inside media blocks always get single newline (is_last=true)
-        serialize_rule_formatted(result, rule, '  ', true)
-      end
-
-      rule_index += 1
-    end
-
-    # Close final media block if still open
-    if in_media_block
-      result << "}\n"
-    end
-
-    result
+    _serialize_stylesheet_with_grouping(
+      rules: rules,
+      media_index: media_index,
+      result: result,
+      selector_lists: selector_lists,
+      opening_brace: " {\n",
+      closing_brace: "}\n",
+      media_indent: '  ',
+      decl_indent_base: '  ',
+      decl_indent_media: '    ',
+      add_blank_lines: true
+    )
   end
 
   # Helper: serialize a rule with nested children (formatted)

@@ -303,6 +303,17 @@ struct build_rule_map_ctx {
     VALUE rule_to_media;
 };
 
+// Formatting options for stylesheet serialization
+// Avoids mode flags and if/else branches - all behavior controlled by struct values
+struct format_opts {
+    const char *opening_brace;      // " { " (compact) vs " {\n" (formatted)
+    const char *closing_brace;      // " }\n" (compact) vs "}\n" (formatted)
+    const char *media_indent;       // "" (compact) vs "  " (formatted)
+    const char *decl_indent_base;   // NULL (compact) vs "  " (formatted base rules)
+    const char *decl_indent_media;  // NULL (compact) vs "    " (formatted media rules)
+    int add_blank_lines;            // 0 (compact) vs 1 (formatted)
+};
+
 // Callback to build reverse map from rule_id to media_sym
 static int build_rule_map_callback(VALUE media_sym, VALUE rule_ids, VALUE arg) {
     struct build_rule_map_ctx *ctx = (struct build_rule_map_ctx *)arg;
@@ -329,20 +340,15 @@ static int build_rule_map_callback(VALUE media_sym, VALUE rule_ids, VALUE arg) {
     return ST_CONTINUE;
 }
 
-// Original stylesheet serialization (no nesting support)
-static VALUE stylesheet_to_s_original(VALUE rules_array, VALUE media_index, VALUE charset, VALUE selector_lists) {
-    Check_Type(rules_array, T_ARRAY);
-    Check_Type(media_index, T_HASH);
-
-    VALUE result = rb_str_new_cstr("");
-
-    // Add charset if present
-    if (!NIL_P(charset)) {
-        rb_str_cat2(result, "@charset \"");
-        rb_str_append(result, charset);
-        rb_str_cat2(result, "\";\n");
-    }
-
+// Private shared implementation for stylesheet serialization with optional selector list grouping
+// All formatting behavior controlled by format_opts struct to avoid mode flags and if/else branches
+static VALUE serialize_stylesheet_with_grouping(
+    VALUE rules_array,
+    VALUE media_index,
+    VALUE result,
+    VALUE selector_lists,
+    const struct format_opts *opts
+) {
     long total_rules = RARRAY_LEN(rules_array);
 
     // Check if selector list grouping is enabled (non-empty hash)
@@ -370,6 +376,7 @@ static VALUE stylesheet_to_s_original(VALUE rules_array, VALUE media_index, VALU
         }
 
         VALUE rule_media = rb_hash_aref(rule_to_media, rule_id);
+        int is_first_rule = (i == 0);
 
         if (NIL_P(rule_media)) {
             // Not in any media query - close any open media block first
@@ -377,6 +384,11 @@ static VALUE stylesheet_to_s_original(VALUE rules_array, VALUE media_index, VALU
                 rb_str_cat2(result, "}\n");
                 in_media_block = 0;
                 current_media = Qnil;
+            }
+
+            // Add blank line prefix for non-first rules (formatted only)
+            if (opts->add_blank_lines && !is_first_rule) {
+                rb_str_cat2(result, "\n");
             }
 
             // Try to group with other rules from same selector list
@@ -389,7 +401,11 @@ static VALUE stylesheet_to_s_original(VALUE rules_array, VALUE media_index, VALU
 
                     if (NIL_P(rule_ids_in_list) || RARRAY_LEN(rule_ids_in_list) <= 1) {
                         // Just this rule, serialize normally
-                        serialize_rule(result, rule);
+                        if (opts->decl_indent_base) {
+                            serialize_rule_formatted(result, rule, "", 1);
+                        } else {
+                            serialize_rule(result, rule);
+                        }
                         rb_hash_aset(processed_rule_ids, rule_id, Qtrue);
                     } else {
                         // Find all rules with matching declarations and same media context
@@ -429,23 +445,39 @@ static VALUE stylesheet_to_s_original(VALUE rules_array, VALUE media_index, VALU
                             // Group selectors with comma-space separator
                             VALUE selector_str = rb_ary_join(matching_selectors, rb_str_new_cstr(", "));
                             rb_str_append(result, selector_str);
-                            rb_str_cat2(result, " { ");
-                            serialize_declarations(result, rule_declarations);
-                            rb_str_cat2(result, " }\n");
+                            rb_str_cat2(result, opts->opening_brace);
+                            if (opts->decl_indent_base) {
+                                serialize_declarations_formatted(result, rule_declarations, opts->decl_indent_base);
+                            } else {
+                                serialize_declarations(result, rule_declarations);
+                            }
+                            rb_str_cat2(result, opts->closing_brace);
                             RB_GC_GUARD(selector_str);
                         } else {
                             // Just one rule, serialize normally
-                            serialize_rule(result, rule);
+                            if (opts->decl_indent_base) {
+                                serialize_rule_formatted(result, rule, "", 1);
+                            } else {
+                                serialize_rule(result, rule);
+                            }
                         }
                     }
                 } else {
                     // No selector_list_id, serialize normally
-                    serialize_rule(result, rule);
+                    if (opts->decl_indent_base) {
+                        serialize_rule_formatted(result, rule, "", 1);
+                    } else {
+                        serialize_rule(result, rule);
+                    }
                     rb_hash_aset(processed_rule_ids, rule_id, Qtrue);
                 }
             } else {
                 // Grouping disabled, serialize normally
-                serialize_rule(result, rule);
+                if (opts->decl_indent_base) {
+                    serialize_rule_formatted(result, rule, "", 1);
+                } else {
+                    serialize_rule(result, rule);
+                }
                 rb_hash_aset(processed_rule_ids, rule_id, Qtrue);
             }
         } else {
@@ -455,6 +487,11 @@ static VALUE stylesheet_to_s_original(VALUE rules_array, VALUE media_index, VALU
                 // Close previous media block if open
                 if (in_media_block) {
                     rb_str_cat2(result, "}\n");
+                }
+
+                // Add blank line prefix for non-first rules (formatted only)
+                if (opts->add_blank_lines && !is_first_rule) {
+                    rb_str_cat2(result, "\n");
                 }
 
                 // Open new media block
@@ -473,7 +510,11 @@ static VALUE stylesheet_to_s_original(VALUE rules_array, VALUE media_index, VALU
                     VALUE rule_ids_in_list = rb_hash_aref(selector_lists, selector_list_id);
 
                     if (NIL_P(rule_ids_in_list) || RARRAY_LEN(rule_ids_in_list) <= 1) {
-                        serialize_rule(result, rule);
+                        if (opts->decl_indent_media) {
+                            serialize_rule_formatted(result, rule, opts->media_indent, 1);
+                        } else {
+                            serialize_rule(result, rule);
+                        }
                         rb_hash_aset(processed_rule_ids, rule_id, Qtrue);
                     } else {
                         VALUE matching_selectors = rb_ary_new();
@@ -500,21 +541,39 @@ static VALUE stylesheet_to_s_original(VALUE rules_array, VALUE media_index, VALU
 
                         if (RARRAY_LEN(matching_selectors) > 1) {
                             VALUE selector_str = rb_ary_join(matching_selectors, rb_str_new_cstr(", "));
+                            rb_str_cat2(result, opts->media_indent);
                             rb_str_append(result, selector_str);
-                            rb_str_cat2(result, " { ");
-                            serialize_declarations(result, rule_declarations);
-                            rb_str_cat2(result, " }\n");
+                            rb_str_cat2(result, opts->opening_brace);
+                            if (opts->decl_indent_media) {
+                                serialize_declarations_formatted(result, rule_declarations, opts->decl_indent_media);
+                            } else {
+                                serialize_declarations(result, rule_declarations);
+                            }
+                            rb_str_cat2(result, opts->media_indent);
+                            rb_str_cat2(result, opts->closing_brace);
                             RB_GC_GUARD(selector_str);
                         } else {
-                            serialize_rule(result, rule);
+                            if (opts->decl_indent_media) {
+                                serialize_rule_formatted(result, rule, opts->media_indent, 1);
+                            } else {
+                                serialize_rule(result, rule);
+                            }
                         }
                     }
                 } else {
-                    serialize_rule(result, rule);
+                    if (opts->decl_indent_media) {
+                        serialize_rule_formatted(result, rule, opts->media_indent, 1);
+                    } else {
+                        serialize_rule(result, rule);
+                    }
                     rb_hash_aset(processed_rule_ids, rule_id, Qtrue);
                 }
             } else {
-                serialize_rule(result, rule);
+                if (opts->decl_indent_media) {
+                    serialize_rule_formatted(result, rule, opts->media_indent, 1);
+                } else {
+                    serialize_rule(result, rule);
+                }
                 rb_hash_aset(processed_rule_ids, rule_id, Qtrue);
             }
         }
@@ -528,6 +587,33 @@ static VALUE stylesheet_to_s_original(VALUE rules_array, VALUE media_index, VALU
     RB_GC_GUARD(rule_to_media);
     RB_GC_GUARD(processed_rule_ids);
     return result;
+}
+
+// Original stylesheet serialization (no nesting support) - compact format
+static VALUE stylesheet_to_s_original(VALUE rules_array, VALUE media_index, VALUE charset, VALUE selector_lists) {
+    Check_Type(rules_array, T_ARRAY);
+    Check_Type(media_index, T_HASH);
+
+    VALUE result = rb_str_new_cstr("");
+
+    // Add charset if present
+    if (!NIL_P(charset)) {
+        rb_str_cat2(result, "@charset \"");
+        rb_str_append(result, charset);
+        rb_str_cat2(result, "\";\n");
+    }
+
+    // Compact formatting options
+    struct format_opts opts = {
+        .opening_brace = " { ",
+        .closing_brace = " }\n",
+        .media_indent = "",
+        .decl_indent_base = NULL,
+        .decl_indent_media = NULL,
+        .add_blank_lines = 0
+    };
+
+    return serialize_stylesheet_with_grouping(rules_array, media_index, result, selector_lists, &opts);
 }
 
 // Forward declarations
@@ -863,8 +949,7 @@ static VALUE stylesheet_to_s_new(VALUE self, VALUE rules_array, VALUE media_inde
 }
 
 // Original formatted serialization (no nesting support)
-static VALUE stylesheet_to_formatted_s_original(VALUE rules_array, VALUE media_index, VALUE charset) {
-    long total_rules = RARRAY_LEN(rules_array);
+static VALUE stylesheet_to_formatted_s_original(VALUE rules_array, VALUE media_index, VALUE charset, VALUE selector_lists) {
     VALUE result = rb_str_new_cstr("");
 
     // Add charset if present
@@ -874,82 +959,27 @@ static VALUE stylesheet_to_formatted_s_original(VALUE rules_array, VALUE media_i
         rb_str_cat2(result, "\";\n");
     }
 
-    // Build a map from rule_id to media query symbol
-    VALUE rule_to_media = rb_hash_new();
-    struct build_rule_map_ctx map_ctx = { rule_to_media };
-    rb_hash_foreach(media_index, build_rule_map_callback, (VALUE)&map_ctx);
+    // Formatted output options
+    struct format_opts opts = {
+        .opening_brace = " {\n",
+        .closing_brace = "}\n",
+        .media_indent = "  ",
+        .decl_indent_base = "  ",
+        .decl_indent_media = "    ",
+        .add_blank_lines = 1
+    };
 
-    // Iterate through rules, grouping consecutive media queries
-    VALUE current_media = Qnil;
-    int in_media_block = 0;
-
-    for (long i = 0; i < total_rules; i++) {
-        VALUE rule = rb_ary_entry(rules_array, i);
-        VALUE rule_id = rb_struct_aref(rule, INT2FIX(RULE_ID));
-        VALUE rule_media = rb_hash_aref(rule_to_media, rule_id);
-        int is_first_rule = (i == 0);
-
-        if (NIL_P(rule_media)) {
-            // Not in any media query - close any open media block first
-            if (in_media_block) {
-                rb_str_cat2(result, "}\n");
-                in_media_block = 0;
-                current_media = Qnil;
-            }
-
-            // Add blank line prefix for non-first rules
-            if (!is_first_rule) {
-                rb_str_cat2(result, "\n");
-            }
-
-            // Output rule with no indentation (always single newline suffix)
-            serialize_rule_formatted(result, rule, "", 1);
-        } else {
-            // This rule is in a media query
-            if (NIL_P(current_media) || !rb_equal(current_media, rule_media)) {
-                // Close previous media block if open
-                if (in_media_block) {
-                    rb_str_cat2(result, "}\n");
-                }
-
-                // Add blank line prefix for non-first rules
-                if (!is_first_rule) {
-                    rb_str_cat2(result, "\n");
-                }
-
-                // Open new media block
-                current_media = rule_media;
-                rb_str_cat2(result, "@media ");
-                rb_str_append(result, rb_sym2str(rule_media));
-                rb_str_cat2(result, " {\n");
-                in_media_block = 1;
-            }
-
-            // Serialize rule inside media block with 2-space indentation
-            // Rules inside media blocks always get single newline (is_last=1)
-            serialize_rule_formatted(result, rule, "  ", 1);
-        }
-    }
-
-    // Close final media block if still open
-    if (in_media_block) {
-        rb_str_cat2(result, "}\n");
-    }
-
-    RB_GC_GUARD(rule_to_media);
-    return result;
+    return serialize_stylesheet_with_grouping(rules_array, media_index, result, selector_lists, &opts);
 }
 
 // Formatted version with indentation and newlines (with nesting support)
 static VALUE stylesheet_to_formatted_s_new(VALUE self, VALUE rules_array, VALUE media_index, VALUE charset, VALUE has_nesting, VALUE selector_lists) {
     Check_Type(rules_array, T_ARRAY);
     Check_Type(media_index, T_HASH);
-    // TODO: Phase 2 - use selector_lists for grouping
-    (void)selector_lists; // Suppress unused parameter warning
 
     // Fast path: if no nesting, use original implementation (zero overhead)
     if (!RTEST(has_nesting)) {
-        return stylesheet_to_formatted_s_original(rules_array, media_index, charset);
+        return stylesheet_to_formatted_s_original(rules_array, media_index, charset, selector_lists);
     }
 
     // SLOW PATH: Has nesting - use parameterized serialization with formatted=1

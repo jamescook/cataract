@@ -154,6 +154,33 @@ class TestSelectorListSerialization < Minitest::Test
     assert_equal expected, sheet.to_s
   end
 
+  def test_child_combinator_selectors_in_list
+    css = 'div > p, span > a { font-weight: bold; }'
+    sheet = Cataract::Stylesheet.parse(css)
+
+    expected = "div > p, span > a { font-weight: bold; }\n"
+
+    assert_equal expected, sheet.to_s
+  end
+
+  def test_adjacent_sibling_combinator_in_list
+    css = 'h1 + p, h2 + p { margin-top: 0; }'
+    sheet = Cataract::Stylesheet.parse(css)
+
+    expected = "h1 + p, h2 + p { margin-top: 0; }\n"
+
+    assert_equal expected, sheet.to_s
+  end
+
+  def test_general_sibling_combinator_in_list
+    css = 'h1 ~ p, h2 ~ p { color: gray; }'
+    sheet = Cataract::Stylesheet.parse(css)
+
+    expected = "h1 ~ p, h2 ~ p { color: gray; }\n"
+
+    assert_equal expected, sheet.to_s
+  end
+
   # ============================================================================
   # Whitespace handling
   # ============================================================================
