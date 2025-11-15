@@ -23,6 +23,10 @@ module ParsingTests
       def css2
         @css2 ||= File.read(File.join(fixtures_dir, 'css2_sample.css'))
       end
+
+      def selector_lists_css
+        @selector_lists_css ||= File.read(File.join(File.expand_path('fixtures', __dir__), 'selector_lists.css'))
+      end
     end.new
 
     {
@@ -38,6 +42,12 @@ module ParsingTests
           'fixture' => 'medium with @media',
           'lines' => instance.css2.lines.count,
           'bytes' => instance.css2.length
+        },
+        {
+          'name' => "Selector lists (#{instance.selector_lists_css.lines.count} lines, #{(instance.selector_lists_css.length / 1024.0).round(1)}KB, 500 lists)",
+          'fixture' => 'selector lists',
+          'lines' => instance.selector_lists_css.lines.count,
+          'bytes' => instance.selector_lists_css.length
         }
       ]
     }
@@ -83,6 +93,7 @@ module ParsingTests
   def call
     run_css1_benchmark
     run_css2_benchmark
+    run_selector_lists_benchmark
   end
 
   def css1
@@ -91,6 +102,10 @@ module ParsingTests
 
   def css2
     @css2 ||= File.read(File.join(fixtures_dir, 'css2_sample.css'))
+  end
+
+  def selector_lists_css
+    @selector_lists_css ||= File.read(File.expand_path('fixtures/selector_lists.css', __dir__))
   end
 
   private
@@ -171,6 +186,35 @@ module ParsingTests
           parser.add_block(css2)
         end
       end
+    end
+  end
+
+  def run_selector_lists_benchmark
+    # Only test Cataract implementations (css_parser doesn't have this feature)
+    return if base_impl_type == :css_parser
+
+    puts "\n#{'=' * 80}"
+    puts "TEST: Selector lists (#{selector_lists_css.lines.count} lines, #{selector_lists_css.length} chars) - #{implementation_label}"
+    puts '=' * 80
+
+    benchmark('selector_lists') do |x|
+      x.config(time: 5, warmup: 2)
+
+      impl_label = base_impl_type == :pure ? 'cataract pure' : 'cataract'
+
+      # Test WITH selector_lists enabled (default, feature overhead included)
+      x.report("#{impl_label}: selector lists") do
+        parser = Cataract::Stylesheet.new(parser: { selector_lists: true })
+        parser.add_block(selector_lists_css)
+      end
+
+      # Test WITHOUT selector_lists (baseline, no feature overhead)
+      x.report("#{impl_label}: selector lists (disabled)") do
+        parser = Cataract::Stylesheet.new(parser: { selector_lists: false })
+        parser.add_block(selector_lists_css)
+      end
+
+      x.compare!
     end
   end
 end

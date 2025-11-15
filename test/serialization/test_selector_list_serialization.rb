@@ -186,8 +186,6 @@ class TestSelectorListSerialization < Minitest::Test
   # ============================================================================
 
   def test_selector_list_normalizes_whitespace
-    skip 'Parser bug: pure Ruby parser requires space before { - see test/parser/test_edge_cases.rb'
-
     # Input has inconsistent spacing
     css = 'h1,h2  ,  h3{ color: red; }'
     sheet = Cataract::Stylesheet.parse(css)
