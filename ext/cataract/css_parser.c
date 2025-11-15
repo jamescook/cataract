@@ -1356,11 +1356,31 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                                 // Determine selector_list_id value
                                 VALUE selector_list_id_val = (list_id >= 0) ? INT2FIX(list_id) : Qnil;
 
+                                // Deep copy declarations for selector lists to avoid shared state
+                                // (principle of least surprise - modifying one rule shouldn't affect others)
+                                VALUE rule_declarations;
+                                if (list_id >= 0) {
+                                    // Deep copy: both array and Declaration structs inside
+                                    long decl_count = RARRAY_LEN(declarations);
+                                    rule_declarations = rb_ary_new_capa(decl_count);
+                                    for (long k = 0; k < decl_count; k++) {
+                                        VALUE decl = rb_ary_entry(declarations, k);
+                                        VALUE new_decl = rb_struct_new(cDeclaration,
+                                            rb_struct_aref(decl, INT2FIX(DECL_PROPERTY)),
+                                            rb_struct_aref(decl, INT2FIX(DECL_VALUE)),
+                                            rb_struct_aref(decl, INT2FIX(DECL_IMPORTANT))
+                                        );
+                                        rb_ary_push(rule_declarations, new_decl);
+                                    }
+                                } else {
+                                    rule_declarations = rb_ary_dup(declarations);
+                                }
+
                                 // Create Rule
                                 VALUE rule = rb_struct_new(cRule,
                                     INT2FIX(rule_id),
                                     resolved_selector,
-                                    rb_ary_dup(declarations),
+                                    rule_declarations,
                                     Qnil,  // specificity
                                     parent_id_val,
                                     nesting_style_val,

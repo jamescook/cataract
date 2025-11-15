@@ -381,8 +381,9 @@ module Cataract
   # @param media_index [Hash] Media query symbol => array of rule IDs
   # @param charset [String, nil] @charset value
   # @param has_nesting [Boolean] Whether any nested rules exist
+  # @param selector_lists [Hash] Selector list ID => array of rule IDs (for grouping)
   # @return [String] Formatted CSS string
-  def self._stylesheet_to_formatted_s(rules, media_index, charset, has_nesting)
+  def self._stylesheet_to_formatted_s(rules, media_index, charset, has_nesting, selector_lists = {})
     result = +''
 
     # Add @charset if present
@@ -392,7 +393,7 @@ module Cataract
 
     # Fast path: no nesting - use simple algorithm
     unless has_nesting
-      return stylesheet_to_formatted_s_original(rules, media_index, result)
+      return stylesheet_to_formatted_s_original(rules, media_index, result, selector_lists)
     end
 
     # Build parent-child relationships
@@ -457,7 +458,10 @@ module Cataract
   end
 
   # Helper: formatted serialization without nesting support
-  def self.stylesheet_to_formatted_s_original(rules, media_index, result)
+  def self.stylesheet_to_formatted_s_original(rules, media_index, result, selector_lists)
+    # TODO: Phase 2 - implement selector list grouping for formatted output
+    # For now, just ignore selector_lists parameter
+
     # Build rule_id => media_symbol map
     rule_to_media = {}
     media_index.each do |media_sym, rule_ids|
