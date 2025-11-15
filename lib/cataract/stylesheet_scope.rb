@@ -66,6 +66,7 @@ module Cataract
     #
     # @param property [String] CSS property name to match
     # @param value [String, nil] Optional property value to match
+    # @param prefix_match [Boolean] Whether to match by prefix (default: false)
     # @return [StylesheetScope] New scope with property filter applied
     #
     # @example Find rules with color property
@@ -74,8 +75,11 @@ module Cataract
     # @example Find rules with specific property value
     #   sheet.with_property('position', 'absolute')
     #   sheet.with_property('color', 'red')
-    def with_property(property, value = nil)
-      StylesheetScope.new(@stylesheet, @filters.merge(property: property, property_value: value))
+    #
+    # @example Find all margin-related properties (margin, margin-top, etc.)
+    #   sheet.with_property('margin', prefix_match: true)
+    def with_property(property, value = nil, prefix_match: false)
+      StylesheetScope.new(@stylesheet, @filters.merge(property: property, property_value: value, property_prefix_match: prefix_match))
     end
 
     # Filter to only base rules (rules not inside any @media query).
@@ -170,8 +174,11 @@ module Cataract
         end
 
         # Property filter
-        if @filters[:property] && !rule.has_property?(@filters[:property], @filters[:property_value])
-          next
+        if @filters[:property]
+          prefix_match = @filters.fetch(:property_prefix_match, false)
+          unless rule.has_property?(@filters[:property], @filters[:property_value], prefix_match: prefix_match)
+            next
+          end
         end
 
         # At-rule type filter
