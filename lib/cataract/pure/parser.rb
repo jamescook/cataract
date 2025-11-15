@@ -65,15 +65,25 @@ module Cataract
       true
     end
 
-    def initialize(css_string, parent_media_sym: nil, depth: 0)
+    def initialize(css_string, parser_options: {}, parent_media_sym: nil, depth: 0)
       @css = css_string.dup.freeze
       @pos = 0
       @len = @css.bytesize
       @parent_media_sym = parent_media_sym
 
+      # Parser options with defaults
+      @parser_options = {
+        selector_lists: true
+      }.merge(parser_options)
+
+      # Extract selector_lists option to ivar to avoid repeated hash lookups in hot path
+      @selector_lists_enabled = @parser_options[:selector_lists]
+
       # Parser state
       @rules = []                    # Flat array of Rule structs
       @_media_index = {}             # Symbol => Array of rule IDs
+      @_selector_lists = {}          # Hash: list_id => Array of rule IDs
+      @_next_selector_list_id = 0    # Counter for selector list IDs
       @imports = []                  # Array of ImportStatement structs
       @rule_id_counter = 0           # Next rule ID (0-indexed)
       @media_query_count = 0         # Safety limit
@@ -159,22 +169,37 @@ module Cataract
           # Split comma-separated selectors into individual rules
           selectors = selector.split(',')
 
+          # Determine if we should track this as a selector list
+          # Check boolean first to potentially avoid size() call via short-circuit evaluation
+          list_id = nil
+          if @selector_lists_enabled && selectors.size > 1
+            list_id = @_next_selector_list_id
+            @_next_selector_list_id += 1
+            @_selector_lists[list_id] = []
+          end
+
           selectors.each do |individual_selector|
             individual_selector.strip!
             next if individual_selector.empty?
 
-            # Create Rule struct
+            rule_id = @rule_id_counter
+
+            # Create Rule struct (with selector_list_id as 7th parameter)
             rule = Rule.new(
-              @rule_id_counter,    # id
+              rule_id,             # id
               individual_selector, # selector
               declarations,        # declarations
               nil,                 # specificity (calculated lazily)
               nil,                 # parent_rule_id
-              nil                  # nesting_style
+              nil,                 # nesting_style
+              list_id              # selector_list_id
             )
 
             @rules << rule
             @rule_id_counter += 1
+
+            # Track in selector list if applicable
+            @_selector_lists[list_id] << rule_id if list_id
           end
         end
       end
@@ -182,6 +207,7 @@ module Cataract
       {
         rules: @rules,
         _media_index: @_media_index,
+        _selector_lists: @_selector_lists,
         imports: @imports,
         charset: @charset,
         _has_nesting: @_has_nesting
@@ -702,10 +728,23 @@ module Cataract
         # Recursively parse block content (preserve parent media context)
         nested_parser = Parser.new(
           byteslice_encoded(block_start, block_end - block_start),
-          parent_media_sym: @parent_media_sym, depth: @depth + 1
+          parser_options: @parser_options,
+          parent_media_sym: @parent_media_sym,
+          depth: @depth + 1
         )
 
         nested_result = nested_parser.parse
+
+        # Merge nested selector_lists with offsetted IDs
+        list_id_offset = @_next_selector_list_id
+        if nested_result[:_selector_lists] && !nested_result[:_selector_lists].empty?
+          nested_result[:_selector_lists].each do |list_id, rule_ids|
+            new_list_id = list_id + list_id_offset
+            offsetted_rule_ids = rule_ids.map { |rid| rid + @rule_id_counter }
+            @_selector_lists[new_list_id] = offsetted_rule_ids
+          end
+          @_next_selector_list_id = list_id_offset + nested_result[:_selector_lists].size
+        end
 
         # Merge nested media_index into ours
         nested_result[:_media_index].each do |media, rule_ids|
@@ -717,6 +756,10 @@ module Cataract
         # Add nested rules to main rules array
         nested_result[:rules].each do |rule|
           rule.id = @rule_id_counter
+          # Update selector_list_id if applicable
+          if rule.is_a?(Rule) && rule.selector_list_id
+            rule.selector_list_id += list_id_offset
+          end
           @rule_id_counter += 1
           @rules << rule
         end
@@ -776,11 +819,23 @@ module Cataract
         # Parse the content with the combined media context
         nested_parser = Parser.new(
           byteslice_encoded(block_start, block_end - block_start),
+          parser_options: @parser_options,
           parent_media_sym: combined_media_sym,
           depth: @depth + 1
         )
 
         nested_result = nested_parser.parse
+
+        # Merge nested selector_lists with offsetted IDs
+        list_id_offset = @_next_selector_list_id
+        if nested_result[:_selector_lists] && !nested_result[:_selector_lists].empty?
+          nested_result[:_selector_lists].each do |list_id, rule_ids|
+            new_list_id = list_id + list_id_offset
+            offsetted_rule_ids = rule_ids.map { |rid| rid + @rule_id_counter }
+            @_selector_lists[new_list_id] = offsetted_rule_ids
+          end
+          @_next_selector_list_id = list_id_offset + nested_result[:_selector_lists].size
+        end
 
         # Merge nested media_index into ours (for nested @media)
         nested_result[:_media_index].each do |media, rule_ids|
@@ -792,6 +847,10 @@ module Cataract
         # Add nested rules to main rules array and update media_index
         nested_result[:rules].each do |rule|
           rule.id = @rule_id_counter
+          # Update selector_list_id if applicable
+          if rule.is_a?(Rule) && rule.selector_list_id
+            rule.selector_list_id += list_id_offset
+          end
 
           # Extract media types and add to each first (if different from full query)
           # We add these BEFORE the full query so that when iterating the media_index hash,
@@ -856,7 +915,11 @@ module Cataract
 
         # Parse keyframe blocks as rules (0%/from/to etc)
         # Create a nested parser context
-        nested_parser = Parser.new(byteslice_encoded(block_start, block_end - block_start), depth: @depth + 1)
+        nested_parser = Parser.new(
+          byteslice_encoded(block_start, block_end - block_start),
+          parser_options: @parser_options,
+          depth: @depth + 1
+        )
         nested_result = nested_parser.parse
         content = nested_result[:rules]
 

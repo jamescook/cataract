@@ -32,10 +32,21 @@ VALUE eSizeError;
  * This matches the old parse_css API
  *
  * @param css_string [String] CSS to parse
+ * @param parser_options [Hash] Parser options (optional, defaults to {})
  * @return [Hash] { rules: [...], media_index: {...}, charset: "..." }
  */
-VALUE parse_css_new(VALUE self, VALUE css_string) {
-    return parse_css_new_impl(css_string, 0);
+VALUE parse_css_new(int argc, VALUE *argv, VALUE self) {
+    VALUE css_string, parser_options;
+
+    // Parse arguments: required css_string, optional parser_options hash
+    rb_scan_args(argc, argv, "11", &css_string, &parser_options);
+
+    // Default to empty hash if not provided
+    if (NIL_P(parser_options)) {
+        parser_options = rb_hash_new();
+    }
+
+    return parse_css_new_impl(css_string, parser_options, 0);
 }
 
 /*
@@ -1165,7 +1176,7 @@ void Init_native_extension(void) {
     cStylesheet = rb_define_class_under(mCataract, "Stylesheet", rb_cObject);
 
     // Define module functions
-    rb_define_module_function(mCataract, "_parse_css", parse_css_new, 1);
+    rb_define_module_function(mCataract, "_parse_css", parse_css_new, -1);
     rb_define_module_function(mCataract, "_stylesheet_to_s", stylesheet_to_s_new, 4);
     rb_define_module_function(mCataract, "_stylesheet_to_formatted_s", stylesheet_to_formatted_s_new, 4);
     rb_define_module_function(mCataract, "parse_media_types", parse_media_types, 1);

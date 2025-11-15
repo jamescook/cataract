@@ -1025,7 +1025,8 @@ VALUE cataract_flatten(VALUE self, VALUE input) {
     // Most calls pass Stylesheet (common case), String is rare
     if (TYPE(input) == T_STRING) {
         // Parse CSS string first
-        VALUE parsed = parse_css_new(self, input);
+        VALUE argv[1] = { input };
+        VALUE parsed = parse_css_new(1, argv, self);
         rules_array = rb_hash_aref(parsed, ID2SYM(rb_intern("rules")));
     } else if (rb_obj_is_kind_of(input, cStylesheet)) {
         // Extract @rules from Stylesheet (common case)
