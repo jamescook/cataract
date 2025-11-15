@@ -113,7 +113,9 @@ module Cataract
         # Must be a selector-based rule
         selector = parse_selector
 
-        next if selector.nil? || selector.empty?
+        if selector.nil? || selector.empty?
+          next
+        end
 
         # Find the block boundaries
         decl_start = @pos # Should be right after the {
@@ -323,6 +325,7 @@ module Cataract
 
       # Trim whitespace from selector (in-place to avoid allocation)
       selector_text.strip!
+      selector_text
     end
 
     # Parse mixed block containing declarations AND nested selectors/at-rules
@@ -622,7 +625,7 @@ module Cataract
           end
 
           # Check for 'important' (9 chars)
-          if i >= 8 && value[(i - 8)..i] == 'important'
+          if i >= 8 && value[(i - 8), 9] == 'important'
             i -= 9
             # Skip whitespace before 'important'
             while i >= 0
