@@ -609,9 +609,11 @@ static void serialize_rule_with_children(VALUE result, VALUE rules_array, long r
 }
 
 // New stylesheet serialization entry point - checks for nesting and delegates
-static VALUE stylesheet_to_s_new(VALUE self, VALUE rules_array, VALUE media_index, VALUE charset, VALUE has_nesting) {
+static VALUE stylesheet_to_s_new(VALUE self, VALUE rules_array, VALUE media_index, VALUE charset, VALUE has_nesting, VALUE selector_lists) {
     Check_Type(rules_array, T_ARRAY);
     Check_Type(media_index, T_HASH);
+    // TODO: Phase 2 - use selector_lists for grouping
+    (void)selector_lists; // Suppress unused parameter warning
 
     // Fast path: if no nesting, use original implementation (zero overhead)
     if (!RTEST(has_nesting)) {
@@ -805,9 +807,11 @@ static VALUE stylesheet_to_formatted_s_original(VALUE rules_array, VALUE media_i
 }
 
 // Formatted version with indentation and newlines (with nesting support)
-static VALUE stylesheet_to_formatted_s_new(VALUE self, VALUE rules_array, VALUE media_index, VALUE charset, VALUE has_nesting) {
+static VALUE stylesheet_to_formatted_s_new(VALUE self, VALUE rules_array, VALUE media_index, VALUE charset, VALUE has_nesting, VALUE selector_lists) {
     Check_Type(rules_array, T_ARRAY);
     Check_Type(media_index, T_HASH);
+    // TODO: Phase 2 - use selector_lists for grouping
+    (void)selector_lists; // Suppress unused parameter warning
 
     // Fast path: if no nesting, use original implementation (zero overhead)
     if (!RTEST(has_nesting)) {
@@ -1177,8 +1181,8 @@ void Init_native_extension(void) {
 
     // Define module functions
     rb_define_module_function(mCataract, "_parse_css", parse_css_new, -1);
-    rb_define_module_function(mCataract, "_stylesheet_to_s", stylesheet_to_s_new, 4);
-    rb_define_module_function(mCataract, "_stylesheet_to_formatted_s", stylesheet_to_formatted_s_new, 4);
+    rb_define_module_function(mCataract, "_stylesheet_to_s", stylesheet_to_s_new, 5);
+    rb_define_module_function(mCataract, "_stylesheet_to_formatted_s", stylesheet_to_formatted_s_new, 5);
     rb_define_module_function(mCataract, "parse_media_types", parse_media_types, 1);
     rb_define_module_function(mCataract, "parse_declarations", new_parse_declarations, 1);
     rb_define_module_function(mCataract, "flatten", cataract_flatten, 1);

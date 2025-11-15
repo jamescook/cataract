@@ -184,11 +184,20 @@ module Cataract
 
             rule_id = @rule_id_counter
 
+            # Dup declarations for each rule in a selector list to avoid shared state
+            # (principle of least surprise - modifying one rule shouldn't affect others)
+            # Must deep dup: both the array and the Declaration objects inside
+            rule_declarations = if list_id
+                                  declarations.map { |d| Declaration.new(d.property, d.value, d.important) }
+                                else
+                                  declarations
+                                end
+
             # Create Rule struct (with selector_list_id as 7th parameter)
             rule = Rule.new(
               rule_id,             # id
               individual_selector, # selector
-              declarations,        # declarations
+              rule_declarations,   # declarations
               nil,                 # specificity (calculated lazily)
               nil,                 # parent_rule_id
               nil,                 # nesting_style

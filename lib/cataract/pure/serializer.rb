@@ -10,8 +10,9 @@ module Cataract
   # @param media_index [Hash] Media query symbol => array of rule IDs
   # @param charset [String, nil] @charset value
   # @param has_nesting [Boolean] Whether any nested rules exist
+  # @param selector_lists [Hash] Selector list ID => array of rule IDs (for grouping)
   # @return [String] Compact CSS string
-  def self._stylesheet_to_s(rules, media_index, charset, has_nesting)
+  def self._stylesheet_to_s(rules, media_index, charset, has_nesting, selector_lists = {})
     result = +''
 
     # Add @charset if present
@@ -21,7 +22,7 @@ module Cataract
 
     # Fast path: no nesting - use simple algorithm
     unless has_nesting
-      return stylesheet_to_s_original(rules, media_index, result)
+      return stylesheet_to_s_original(rules, media_index, result, selector_lists)
     end
 
     # Build parent-child relationships
@@ -82,7 +83,10 @@ module Cataract
   end
 
   # Helper: serialize rules without nesting support
-  def self.stylesheet_to_s_original(rules, media_index, result)
+  def self.stylesheet_to_s_original(rules, media_index, result, selector_lists)
+    # Check if selector list grouping is enabled (non-empty hash means enabled)
+    grouping_enabled = selector_lists && !selector_lists.empty?
+
     # Build rule_id => media_symbol map
     rule_to_media = {}
     media_index.each do |media_sym, rule_ids|
@@ -95,7 +99,13 @@ module Cataract
     current_media = nil
     in_media_block = false
 
+    # Track processed rules to avoid duplicates when grouping
+    processed_rule_ids = {}
+
     rules.each do |rule|
+      # Skip if already processed (when grouped)
+      next if processed_rule_ids[rule.id]
+
       rule_media = rule_to_media[rule.id]
 
       if rule_media.nil?
@@ -121,7 +131,24 @@ module Cataract
         end
       end
 
-      serialize_rule(result, rule)
+      # Try to group with other rules from same selector list
+      if grouping_enabled && rule.is_a?(Rule) && rule.selector_list_id
+        selectors = find_groupable_selectors(
+          rule: rule,
+          rules: rules,
+          selector_lists: selector_lists,
+          processed_rule_ids: processed_rule_ids,
+          rule_to_media: rule_to_media,
+          current_media: current_media
+        )
+        # Serialize with grouped selectors (compact format)
+        result << selectors.join(', ') << ' { '
+        serialize_declarations(result, rule.declarations)
+        result << " }\n"
+      else
+        serialize_rule(result, rule)
+        processed_rule_ids[rule.id] = true
+      end
     end
 
     # Close final media block if still open
@@ -234,6 +261,53 @@ module Cataract
       end
       child_selector
     end
+  end
+
+  # Helper: find all selectors from same list with matching declarations
+  # Returns array of selectors that can be grouped, marks rules as processed
+  def self.find_groupable_selectors(rule:, rules:, selector_lists:, processed_rule_ids:, rule_to_media:, current_media:)
+    list_id = rule.selector_list_id
+    rule_ids_in_list = selector_lists[list_id]
+
+    # If no other rules in this list, return just this selector
+    if rule_ids_in_list.nil? || rule_ids_in_list.size <= 1
+      processed_rule_ids[rule.id] = true
+      return [rule.selector]
+    end
+
+    # Find all rules in this list that have identical declarations AND same media context
+    matching_selectors = []
+    rule_ids_in_list.each do |rid|
+      # Find the rule by ID
+      other_rule = rules.find { |r| r.id == rid }
+      next unless other_rule
+      next if processed_rule_ids[rid]
+
+      # Check same media context
+      next if rule_to_media[rid] != current_media
+
+      # Check declarations match (compare arrays directly for performance)
+      if declarations_equal?(rule.declarations, other_rule.declarations)
+        matching_selectors << other_rule.selector
+        processed_rule_ids[rid] = true
+      end
+    end
+
+    matching_selectors
+  end
+
+  # Helper: check if two declaration arrays are equal
+  def self.declarations_equal?(decls1, decls2)
+    return false if decls1.size != decls2.size
+
+    decls1.each_with_index do |d1, i|
+      d2 = decls2[i]
+      return false if d1.property != d2.property
+      return false if d1.value != d2.value
+      return false if d1.important != d2.important
+    end
+
+    true
   end
 
   # Helper: serialize a single rule
