@@ -710,11 +710,13 @@ static VALUE flatten_rules_for_selector(VALUE rules_array, VALUE rule_indices, V
     // Set output parameter: preserve selector_list_id only if all rules share same ID
     if (out_selector_list_id) {
         *out_selector_list_id = (all_same_selector_list_id && !NIL_P(first_selector_list_id)) ? first_selector_list_id : Qnil;
+#ifdef CATARACT_DEBUG
         if (!NIL_P(*out_selector_list_id)) {
             DEBUG_PRINTF("    -> Preserving selector_list_id=%ld for merged rule\n", NUM2LONG(*out_selector_list_id));
         } else {
             DEBUG_PRINTF("    -> NOT preserving selector_list_id (not all same)\n");
         }
+#endif
     }
 
     // Process each rule in this selector group
@@ -1141,7 +1143,9 @@ static void update_selector_lists_for_divergence(VALUE merged_rules, VALUE selec
         }
 
         VALUE selector_list_id = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR_LIST_ID));
+#ifdef CATARACT_DEBUG
         VALUE selector = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR));
+#endif
 
         if (NIL_P(selector_list_id)) {
             DEBUG_PRINTF("  Rule %ld (%s): no selector_list_id\n", i, RSTRING_PTR(selector));
@@ -1180,11 +1184,12 @@ static void update_selector_lists_for_divergence(VALUE merged_rules, VALUE selec
 
         // Get first rule as reference
         VALUE reference_rule = RARRAY_AREF(rules_in_list, 0);
-        VALUE reference_selector = rb_struct_aref(reference_rule, INT2FIX(RULE_SELECTOR));
         VALUE reference_decls = rb_struct_aref(reference_rule, INT2FIX(RULE_DECLARATIONS));
-
+#ifdef CATARACT_DEBUG
+        VALUE reference_selector = rb_struct_aref(reference_rule, INT2FIX(RULE_SELECTOR));
         DEBUG_PRINTF("    Reference rule: selector=%s, %ld declarations\n",
                      RSTRING_PTR(reference_selector), RARRAY_LEN(reference_decls));
+#endif
 
         // Find rules that still match (have identical declarations)
         VALUE matching_rules = rb_ary_new();
@@ -1192,10 +1197,11 @@ static void update_selector_lists_for_divergence(VALUE merged_rules, VALUE selec
 
         for (long j = 1; j < num_in_list; j++) {
             VALUE rule = RARRAY_AREF(rules_in_list, j);
-            VALUE selector = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR));
             VALUE decls = rb_struct_aref(rule, INT2FIX(RULE_DECLARATIONS));
-
+#ifdef CATARACT_DEBUG
+            VALUE selector = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR));
             DEBUG_PRINTF("    Comparing rule %ld (selector=%s):\n", j, RSTRING_PTR(selector));
+#endif
 
             if (declarations_equal(reference_decls, decls)) {
                 DEBUG_PRINTF("      -> MATCHES reference, keeping in list\n");
@@ -1502,7 +1508,6 @@ VALUE cataract_flatten(VALUE self, VALUE input) {
                 }
             } else {
                 // Default behavior when parser_options is nil: assume enabled
-                selector_lists_enabled = 1;
                 update_selector_lists_for_divergence(merged_rules, selector_lists);
             }
         }
