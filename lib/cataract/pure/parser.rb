@@ -11,7 +11,7 @@
 # Do NOT refactor to "clean Ruby" without benchmarking - you will make it slower.
 #
 # Example: RuboCop suggests using `.positive?` instead of `> 0`, but benchmarking
-# shows `> 0` is 1.26x faster (see benchmark_positive.rb). These micro-optimizations
+# shows `> 0` is 1.26x faster. These micro-optimizations
 # matter in a hot parsing loop.
 
 module Cataract
@@ -275,14 +275,18 @@ module Cataract
       true
     end
 
-    # Skip whitespace and comments
+    # Skip whitespace and comments until no more progress can be made
+    #
+    # Optimization: Using `begin...end until` instead of `loop + break` reduces VM overhead:
+    # - loop + break: 29 instructions with catch table for break/redo/next, uses throw/send
+    # - begin...end until: 24 instructions, simple jump-based loop, no catch table
+    # Benchmark shows 15-51% speedup depending on YJIT
     def skip_ws_and_comments
-      loop do
+      begin
         old_pos = @pos
         skip_whitespace
         skip_comment
-        break if @pos == old_pos # No progress made
-      end
+      end until @pos == old_pos # No progress made
     end
 
     # Find matching closing brace
@@ -1171,7 +1175,7 @@ module Cataract
         result = String.new
         result << parent_selector
         result << ' '
-        result << nested_selector.byteslice(start_pos..-1)
+        result << nested_selector.byteslice(start_pos, nested_selector.bytesize - start_pos)
 
         [result, nesting_style]
       end
@@ -1195,7 +1199,8 @@ module Cataract
       # If child is a condition (contains ':'), wrap it in parentheses
       combined += if child_str.include?(':')
                     # Add parens if not already present
-                    if child_str.start_with?('(') && child_str.end_with?(')')
+                    len = child_str.bytesize
+                    if len > 1 && child_str.getbyte(0) == BYTE_LPAREN && child_str.getbyte(len - 1) == BYTE_RPAREN
                       child_str
                     else
                       "(#{child_str})"

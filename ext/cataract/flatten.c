@@ -644,7 +644,8 @@ static int flatten_selector_group_callback(VALUE selector, VALUE group_indices, 
         merged_decls,
         Qnil,  // specificity
         Qnil,  // parent_rule_id
-        Qnil   // nesting_style
+        Qnil,  // nesting_style
+        Qnil   // selector_list_id
     );
     rb_ary_push(ctx->merged_rules, new_rule);
 
@@ -1732,7 +1733,8 @@ VALUE cataract_flatten(VALUE self, VALUE input) {
         merged_declarations,      // declarations
         Qnil,                     // specificity (not applicable)
         Qnil,                     // parent_rule_id (not nested)
-        Qnil                      // nesting_style (not nested)
+        Qnil,                     // nesting_style (not nested)
+        Qnil                      // selector_list_id
     );
 
     // Set @rules array with single merged rule (use cached ID)
