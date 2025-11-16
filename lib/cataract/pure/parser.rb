@@ -286,7 +286,7 @@ module Cataract
         old_pos = @pos
         skip_whitespace
         skip_comment
-      end until @pos == old_pos # No progress made
+      end until @pos == old_pos # No progress made # rubocop:disable Lint/Loop
     end
 
     # Find matching closing brace

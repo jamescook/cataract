@@ -295,11 +295,10 @@ class TestAtRules < Minitest::Test
     @sheet.add_block(css)
     dumped = @sheet.to_s
 
-    # Should have all closing braces
-    assert_includes dumped, '@keyframes fade'
-    assert_includes dumped, 'from'
-    assert_includes dumped, 'opacity: 0'
-    assert_includes dumped, 'opacity: 1'
+    # Verify exact round-trip serialization
+    expected = "@keyframes fade {\n  from { opacity: 0; }\n  to { opacity: 1; }\n}\n"
+
+    assert_equal expected, dumped
 
     # Count braces - should be balanced
     open_braces = dumped.count('{')
