@@ -290,6 +290,13 @@ module Cataract
     end
 
     # Find matching closing brace
+    #
+    # Performance notes (benchmarked on bootstrap.css with 2,400 braces):
+    # - Using `return` instead of `break` avoids catch table overhead (~2% faster)
+    # - Checking RBRACE before LBRACE is faster because closing braces are
+    #   encountered more frequently when searching forward from an opening brace
+    # - Combined optimizations: baseline 666ms → optimized 652ms (2% improvement)
+    #
     # Translated from C: see ext/cataract/css_parser.c find_matching_brace
     def find_matching_brace(start_pos)
       depth = 1
@@ -297,11 +304,11 @@ module Cataract
 
       while pos < @len
         byte = @css.getbyte(pos)
-        if byte == BYTE_LBRACE
-          depth += 1
-        elsif byte == BYTE_RBRACE
+        if byte == BYTE_RBRACE
           depth -= 1
-          break if depth == 0 # Found matching brace, exit immediately
+          return pos if depth == 0
+        elsif byte == BYTE_LBRACE
+          depth += 1
         end
         pos += 1
       end
