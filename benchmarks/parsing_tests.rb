@@ -23,6 +23,10 @@ module ParsingTests
       def css2
         @css2 ||= File.read(File.join(fixtures_dir, 'css2_sample.css'))
       end
+
+      def selector_lists_css
+        @selector_lists_css ||= File.read(File.join(File.expand_path('fixtures', __dir__), 'selector_lists.css'))
+      end
     end.new
 
     {
@@ -38,6 +42,12 @@ module ParsingTests
           'fixture' => 'medium with @media',
           'lines' => instance.css2.lines.count,
           'bytes' => instance.css2.length
+        },
+        {
+          'name' => "Selector lists (#{instance.selector_lists_css.lines.count} lines, #{(instance.selector_lists_css.length / 1024.0).round(1)}KB, 500 lists)",
+          'fixture' => 'selector lists',
+          'lines' => instance.selector_lists_css.lines.count,
+          'bytes' => instance.selector_lists_css.length
         }
       ]
     }
@@ -58,12 +68,6 @@ module ParsingTests
 
   def sanity_checks
     case base_impl_type
-    when :css_parser
-      require 'css_parser'
-      # Basic sanity check for css_parser
-      parser = CssParser::Parser.new(import: false, io_exceptions: false)
-      parser.add_block!(css1)
-      raise 'css_parser sanity check failed' if parser.to_s.empty?
     when :pure, :native
       # Verify fixtures parse correctly with Cataract
       parser = Cataract::Stylesheet.new
@@ -83,6 +87,7 @@ module ParsingTests
   def call
     run_css1_benchmark
     run_css2_benchmark
+    run_selector_lists_benchmark
   end
 
   def css1
@@ -93,6 +98,10 @@ module ParsingTests
     @css2 ||= File.read(File.join(fixtures_dir, 'css2_sample.css'))
   end
 
+  def selector_lists_css
+    @selector_lists_css ||= File.read(File.expand_path('fixtures/selector_lists.css', __dir__))
+  end
+
   private
 
   def fixtures_dir
@@ -101,8 +110,6 @@ module ParsingTests
 
   def implementation_label
     base_label = case base_impl_type
-                 when :css_parser
-                   'css_parser gem'
                  when :pure
                    'cataract pure'
                  when :native
@@ -127,11 +134,6 @@ module ParsingTests
       x.config(time: 5, warmup: 2)
 
       case base_impl_type
-      when :css_parser
-        x.report('css_parser gem: small') do
-          parser = CssParser::Parser.new(import: false, io_exceptions: false)
-          parser.add_block!(css1)
-        end
       when :pure
         x.report('cataract pure: small') do
           parser = Cataract::Stylesheet.new
@@ -155,11 +157,6 @@ module ParsingTests
       x.config(time: 5, warmup: 2)
 
       case base_impl_type
-      when :css_parser
-        x.report('css_parser gem: medium with @media') do
-          parser = CssParser::Parser.new(import: false, io_exceptions: false)
-          parser.add_block!(css2)
-        end
       when :pure
         x.report('cataract pure: medium with @media') do
           parser = Cataract::Stylesheet.new
@@ -171,6 +168,32 @@ module ParsingTests
           parser.add_block(css2)
         end
       end
+    end
+  end
+
+  def run_selector_lists_benchmark
+    puts "\n#{'=' * 80}"
+    puts "TEST: Selector lists (#{selector_lists_css.lines.count} lines, #{selector_lists_css.length} chars) - #{implementation_label}"
+    puts '=' * 80
+
+    benchmark('selector_lists') do |x|
+      x.config(time: 5, warmup: 2)
+
+      impl_label = base_impl_type == :pure ? 'cataract pure' : 'cataract'
+
+      # Test WITH selector_lists enabled (default, feature overhead included)
+      x.report("#{impl_label}: selector lists") do
+        parser = Cataract::Stylesheet.new(parser: { selector_lists: true })
+        parser.add_block(selector_lists_css)
+      end
+
+      # Test WITHOUT selector_lists (baseline, no feature overhead)
+      x.report("#{impl_label}: selector lists (disabled)") do
+        parser = Cataract::Stylesheet.new(parser: { selector_lists: false })
+        parser.add_block(selector_lists_css)
+      end
+
+      x.compare!
     end
   end
 end

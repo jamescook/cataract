@@ -275,14 +275,15 @@ class TestParserMediaTypes < Minitest::Test
 
     output = @sheet.to_s(media: :screen)
 
-    # Should only include screen rules
-    assert_includes output, '@media screen'
-    assert_includes output, '.header { color: blue; }'
+    # Should only include screen rules - verify by reparsing
+    reparsed = Cataract::Stylesheet.parse(output)
+
+    assert_has_selector '.header', reparsed, media: :screen
+    assert_has_property({ color: 'blue' }, reparsed.with_media(:screen).with_selector('.header').first)
 
     # Should NOT include universal or print rules
-    refute_includes output, 'body { color: black; }'
-    refute_includes output, '@media print'
-    refute_includes output, '.footer { color: red; }'
+    assert_equal 0, reparsed.with_selector('body').to_a.length
+    assert_no_selector_matches '.footer', reparsed
   end
 
   def test_to_s_with_print_media_type_only
@@ -356,12 +357,14 @@ class TestParserMediaTypes < Minitest::Test
     assert_has_selector '.header', @sheet, media: :screen
     assert_has_selector 'body', @sheet, media: :screen
 
-    # Verify output groups them under same @media
+    # Verify output groups them under same @media by reparsing
     output = @sheet.to_s
+    reparsed = Cataract::Stylesheet.parse(output)
 
-    assert_includes output, '@media screen'
-    assert_includes output, '.header { color: blue; }'
-    assert_includes output, 'body { margin: 0; }'
+    assert_has_selector '.header', reparsed, media: :screen
+    assert_has_property({ color: 'blue' }, reparsed.with_media(:screen).with_selector('.header').first)
+    assert_has_selector 'body', reparsed, media: :screen
+    assert_has_property({ margin: '0' }, reparsed.with_media(:screen).with_selector('body').first)
   end
 
   def test_add_block_with_media_override_adds_to_existing_group_count

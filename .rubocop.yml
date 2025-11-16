@@ -171,5 +171,7 @@ Cataract/BanAssertIncludes:
   Include:
     - 'test/**/*'
   Exclude:
+    - 'test/color/**/*.rb'
     - 'test/test_benchmark_doc_generator.rb'
+    - 'test/test_speedup_calculator.rb'
     - 'test/support/**/*'  # Support files define assert_contains which uses assert_includes internally

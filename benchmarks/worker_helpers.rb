@@ -16,7 +16,7 @@ module WorkerHelpers
 
   # Determines implementation type with YJIT suffix based on actual YJIT status
   #
-  # @param base_impl [Symbol] Base implementation (:css_parser, :pure, :native)
+  # @param base_impl [Symbol] Base implementation (:pure, :native)
   # @param test_module [Module] Test module that provides yjit_applicable? method
   # @return [Symbol] Implementation type with YJIT suffix if applicable
   #

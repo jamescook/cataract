@@ -152,16 +152,27 @@ module Cataract
       end
 
       # Expand shorthands in regular rules only (AtRules don't have declarations)
+      # NOTE: Using manual each + concat instead of .flat_map for performance.
+      # The concise form (.flat_map) is ~5-10% slower depending on number of shorthands to expand.
       regular_rules.each do |rule|
-        rule.declarations.replace(rule.declarations.flat_map { |decl| _expand_shorthand(decl) })
+        expanded = []
+        rule.declarations.each do |decl|
+          expanded.concat(_expand_shorthand(decl))
+        end
+        rule.declarations.replace(expanded)
       end
 
       merged_rules = []
 
       # Always group by selector and preserve original selectors
       # (Nesting is flattened during parsing, so we just merge by resolved selector)
-      grouped = regular_rules.group_by(&:selector)
-      grouped.each do |selector, rules|
+      # NOTE: Using manual each instead of .group_by to avoid intermediate hash allocation.
+      # The concise form (.group_by) is ~10-25% slower depending on selector uniqueness.
+      by_selector = {}
+      regular_rules.each do |rule|
+        (by_selector[rule.selector] ||= []) << rule
+      end
+      by_selector.each do |selector, rules|
         merged_rule = flatten_rules_for_selector(selector, rules)
         merged_rules << merged_rule if merged_rule
       end
@@ -169,16 +180,28 @@ module Cataract
       # Recreate shorthands where possible
       merged_rules.each { |rule| recreate_shorthands!(rule) }
 
+      # Assign new IDs before checking divergence (so we can build correct selector_lists hash)
+      merged_rules.each_with_index { |rule, i| rule.id = i }
+
+      # Handle selector list divergence: remove rules from selector lists if declarations no longer match
+      # This makes selector_list_id authoritative - if set, declarations MUST be identical
+      # Only process if selector_lists is enabled in the stylesheet's parser options
+      selector_lists = {}
+      parser_options = stylesheet.instance_variable_get(:@parser_options) || {}
+      if parser_options[:selector_lists]
+        update_selector_lists_for_divergence!(merged_rules, selector_lists)
+      end
+
       # Add passthrough AtRules to output
       merged_rules.concat(at_rules)
 
       # Create result stylesheet
       if mutate
         stylesheet.instance_variable_set(:@rules, merged_rules)
-        # Update rule IDs
-        merged_rules.each_with_index { |rule, i| rule.id = i }
         # Clear media index (no media rules after merge flattens everything)
         stylesheet.instance_variable_set(:@media_index, {})
+        # Update selector lists with divergence tracking
+        stylesheet.instance_variable_set(:@_selector_lists, selector_lists)
         stylesheet
       else
         # Create new Stylesheet with merged rules
@@ -186,8 +209,7 @@ module Cataract
         result.instance_variable_set(:@rules, merged_rules)
         result.instance_variable_set(:@media_index, {})
         result.instance_variable_set(:@charset, stylesheet.charset)
-        # Update rule IDs
-        merged_rules.each_with_index { |rule, i| rule.id = i }
+        result.instance_variable_set(:@_selector_lists, selector_lists)
         result
       end
     end
@@ -267,6 +289,11 @@ module Cataract
 
       return nil if declarations.empty?
 
+      # Preserve selector_list_id if all rules in group share the same one
+      selector_list_ids = rules.filter_map(&:selector_list_id)
+      selector_list_ids.uniq!
+      selector_list_id = selector_list_ids.size == 1 ? selector_list_ids.first : nil
+
       # Create merged rule
       Rule.new(
         0, # ID will be updated later
@@ -274,7 +301,8 @@ module Cataract
         declarations,
         rules.first.specificity, # Use first rule's specificity
         nil,  # No parent after flattening
-        nil   # No nesting style after flattening
+        nil,  # No nesting style after flattening
+        selector_list_id # Preserve if all rules share same ID
       )
     end
 
@@ -1140,6 +1168,73 @@ module Cataract
       # Note: We append rather than insert at original position to match C implementation behavior
       rule.declarations.reject! { |d| LIST_STYLE_PROPERTIES.include?(d.property) }
       rule.declarations << Declaration.new(PROP_LIST_STYLE, shorthand_value, important)
+    end
+
+    # Update selector lists to remove diverged rules
+    #
+    # After flattening/cascade, rules that were in the same selector list may have
+    # different declarations. This method builds the selector_lists hash with only
+    # rules that still match, and clears selector_list_id for diverged rules.
+    #
+    # @param merged_rules [Array<Rule>] Flattened rules (with new IDs assigned)
+    # @param selector_lists [Hash] Empty hash to populate with list_id => Array of rule IDs
+    def self.update_selector_lists_for_divergence!(merged_rules, selector_lists)
+      # Group merged rules by selector_list_id (skip rules with no list)
+      # Note: Using manual each loop instead of .select{}.group_by for performance.
+      # The more concise form (.select + .group_by) is ~50-60% slower due to intermediate array allocation.
+      rules_by_list = {}
+      merged_rules.each do |r|
+        next unless r.selector_list_id
+
+        (rules_by_list[r.selector_list_id] ||= []) << r
+      end
+
+      # For each selector list, check if declarations still match
+      rules_by_list.each do |list_id, rules_in_list|
+        # Skip if only one rule in list (nothing to compare)
+        next if rules_in_list.size <= 1
+
+        # Get first rule as reference
+        reference_rule = rules_in_list.first
+        reference_decls = reference_rule.declarations
+
+        # Find rules that still match (have identical declarations)
+        matching_rules = [reference_rule]
+
+        rules_in_list[1..].each do |rule|
+          if declarations_equal?(reference_decls, rule.declarations)
+            matching_rules << rule
+          else
+            # Clear selector_list_id for diverged rule
+            rule.selector_list_id = nil
+          end
+        end
+
+        # Only keep the selector list if at least 2 rules still match
+        if matching_rules.size >= 2
+          # Build selector_lists hash with NEW rule IDs
+          selector_lists[list_id] = matching_rules.map(&:id)
+        else
+          # Clear selector_list_id for the last remaining rule too
+          matching_rules.each { |r| r.selector_list_id = nil }
+        end
+      end
+    end
+
+    # Check if two declaration arrays are identical
+    #
+    # @param decls1 [Array<Declaration>]
+    # @param decls2 [Array<Declaration>]
+    # @return [Boolean]
+    def self.declarations_equal?(decls1, decls2)
+      return false if decls1.size != decls2.size
+
+      # Compare each declaration (property, value, important must all match)
+      decls1.zip(decls2).all? do |d1, d2|
+        d1.property == d2.property &&
+          d1.value == d2.value &&
+          d1.important == d2.important
+      end
     end
   end
 end

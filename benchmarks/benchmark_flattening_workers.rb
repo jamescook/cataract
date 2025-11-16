@@ -7,33 +7,6 @@ require_relative 'worker_helpers'
 # Load the local development version, not installed gem
 $LOAD_PATH.unshift File.expand_path('../lib', __dir__)
 
-# Worker benchmark: css_parser gem
-class MergingCssParserBenchmark < BenchmarkHarness
-  include FlatteningTests
-  include WorkerHelpers
-
-  def self.benchmark_name
-    'flattening_css_parser'
-  end
-
-  def self.description
-    'CSS flattening with css_parser gem'
-  end
-
-  def self.metadata
-    FlatteningTests.metadata
-  end
-
-  def self.speedup_config
-    FlatteningTests.speedup_config
-  end
-
-  def initialize
-    super
-    self.impl_type = determine_impl_type_with_yjit(:css_parser, FlatteningTests)
-  end
-end
-
 # Worker benchmark: Cataract pure Ruby
 class MergingCataractPureBenchmark < BenchmarkHarness
   include FlatteningTests
@@ -90,16 +63,11 @@ end
 
 # CLI entry point - run the appropriate worker
 if __FILE__ == $PROGRAM_NAME
-  if ENV['FLATTENING_CSS_PARSER']
-    require 'css_parser'
-    MergingCssParserBenchmark.run(skip_finalize: true)
-  else
-    require 'cataract'
+  require 'cataract'
 
-    if Cataract::IMPLEMENTATION == :ruby
-      MergingCataractPureBenchmark.run(skip_finalize: true)
-    else
-      MergingCataractNativeBenchmark.run(skip_finalize: true)
-    end
+  if Cataract::IMPLEMENTATION == :ruby
+    MergingCataractPureBenchmark.run(skip_finalize: true)
+  else
+    MergingCataractNativeBenchmark.run(skip_finalize: true)
   end
 end

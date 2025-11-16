@@ -41,9 +41,9 @@ class TestEncoding < Minitest::Test
 
         # Verify the UTF-8 content is correct
         if decl.property == 'content'
-          assert_includes decl.value, '世界', 'UTF-8 characters should be preserved'
+          assert_equal '"Hello 世界"', decl.value, 'UTF-8 characters should be preserved'
         elsif decl.property == 'font-family'
-          assert_includes decl.value, 'ゴシック', 'UTF-8 characters should be preserved'
+          assert_equal '"ＭＳ ゴシック"', decl.value, 'UTF-8 characters should be preserved'
         end
       end
     end
@@ -57,9 +57,7 @@ class TestEncoding < Minitest::Test
     decl = sheet.rules.first.declarations.first
 
     assert_equal Encoding::UTF_8, decl.value.encoding
-    assert_includes decl.value, '👍'
-    assert_includes decl.value, '✨'
-    assert_includes decl.value, '🎉'
+    assert_equal '"👍 ✨ 🎉"', decl.value
   end
 
   def test_selectors_with_utf8_are_utf8
@@ -71,7 +69,7 @@ class TestEncoding < Minitest::Test
 
     assert_equal Encoding::UTF_8, rule.selector.encoding,
                  'Selector with UTF-8 should be UTF-8 encoded'
-    assert_includes rule.selector, '日本語'
+    assert_equal '.日本語', rule.selector
   end
 
   def test_ascii_selectors_are_utf8

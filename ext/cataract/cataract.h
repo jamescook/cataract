@@ -23,13 +23,14 @@ extern VALUE eSizeError;
 // Struct field indices
 // ============================================================================
 
-// Rule struct field indices (id, selector, declarations, specificity, parent_rule_id, nesting_style)
+// Rule struct field indices (id, selector, declarations, specificity, parent_rule_id, nesting_style, selector_list_id)
 #define RULE_ID 0
 #define RULE_SELECTOR 1
 #define RULE_DECLARATIONS 2
 #define RULE_SPECIFICITY 3
 #define RULE_PARENT_RULE_ID 4
 #define RULE_NESTING_STYLE 5
+#define RULE_SELECTOR_LIST_ID 6
 
 // Nesting style constants
 #define NESTING_STYLE_IMPLICIT 0  // .parent { .child { } } - no &
@@ -141,8 +142,8 @@ static inline VALUE strip_string(const char *str, long len) {
 // ============================================================================
 
 // CSS parser (css_parser_new.c)
-VALUE parse_css_new(VALUE self, VALUE css_string);
-VALUE parse_css_new_impl(VALUE css_string, int rule_id_offset);
+VALUE parse_css_new(int argc, VALUE *argv, VALUE self);
+VALUE parse_css_new_impl(VALUE css_string, VALUE parser_options, int rule_id_offset);
 VALUE parse_media_types(VALUE self, VALUE media_query_sym);
 
 // Flatten (flatten.c)

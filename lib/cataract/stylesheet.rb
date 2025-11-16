@@ -43,14 +43,24 @@ module Cataract
     #   - :base_path [String] Base directory for relative imports
     # @option options [Boolean] :io_exceptions (true) Whether to raise exceptions
     #   on I/O errors (file not found, network errors, etc.)
+    # @option options [Hash] :parser ({}) Parser configuration options
+    #   - :selector_lists [Boolean] (true) Track selector lists for W3C-compliant serialization
     def initialize(options = {})
       @options = {
         import: false,
-        io_exceptions: true
+        io_exceptions: true,
+        parser: {}
       }.merge(options)
+
+      # Parser options with defaults (stored for passing to parser)
+      @parser_options = {
+        selector_lists: true
+      }.merge(@options[:parser] || {})
 
       @rules = [] # Flat array of Rule structs
       @_media_index = {} # Hash: Symbol => Array of rule IDs
+      @_selector_lists = {} # Hash: list_id => Array of rule IDs (for "h1, h2" grouping)
+      @_next_selector_list_id = 0 # Counter for selector list IDs
       @charset = nil
       @imports = [] # Array of ImportStatement objects
       @_has_nesting = nil # Set by parser (nil or boolean)
@@ -69,6 +79,9 @@ module Cataract
       @rules = source.instance_variable_get(:@rules).dup
       @imports = source.instance_variable_get(:@imports).dup
       @_media_index = source.instance_variable_get(:@_media_index).transform_values(&:dup)
+      @_selector_lists = source.instance_variable_get(:@_selector_lists).transform_values(&:dup)
+      @_next_selector_list_id = source.instance_variable_get(:@_next_selector_list_id)
+      @parser_options = source.instance_variable_get(:@parser_options).dup
       @selectors = nil # Clear memoized cache
       @_hash = nil # Clear cached hash
     end
@@ -327,7 +340,7 @@ module Cataract
 
       # If :all is present, return everything (no filtering)
       if which_media_array.include?(:all)
-        Cataract._stylesheet_to_s(@rules, @_media_index, @charset, @_has_nesting || false)
+        Cataract._stylesheet_to_s(@rules, @_media_index, @charset, @_has_nesting || false, @_selector_lists)
       else
         # Collect all rule IDs that match the requested media types
         matching_rule_ids = []
@@ -351,7 +364,7 @@ module Cataract
 
         # C serialization with filtered data
         # Note: Filtered rules might still contain nesting, so pass the flag
-        Cataract._stylesheet_to_s(filtered_rules, filtered_media_index, @charset, @_has_nesting || false)
+        Cataract._stylesheet_to_s(filtered_rules, filtered_media_index, @charset, @_has_nesting || false, @_selector_lists)
       end
     end
     alias to_css to_s
@@ -384,7 +397,7 @@ module Cataract
 
       # If :all is present, return everything (no filtering)
       if which_media_array.include?(:all)
-        Cataract._stylesheet_to_formatted_s(@rules, @_media_index, @charset, @_has_nesting || false)
+        Cataract._stylesheet_to_formatted_s(@rules, @_media_index, @charset, @_has_nesting || false, @_selector_lists)
       else
         # Collect all rule IDs that match the requested media types
         matching_rule_ids = []
@@ -416,7 +429,7 @@ module Cataract
 
         # C serialization with filtered data
         # Note: Filtered rules might still contain nesting, so pass the flag
-        Cataract._stylesheet_to_formatted_s(filtered_rules, filtered_media_index, @charset, @_has_nesting || false)
+        Cataract._stylesheet_to_formatted_s(filtered_rules, filtered_media_index, @charset, @_has_nesting || false, @_selector_lists)
       end
     end
 
@@ -629,12 +642,28 @@ module Cataract
       offset = @_last_rule_id || 0
 
       # Parse CSS first (this extracts @import statements into result[:imports])
-      result = Cataract._parse_css(css)
+      result = Cataract._parse_css(css, @parser_options)
+
+      # Merge selector_lists with offsetted IDs
+      # Must do this BEFORE updating rule IDs so we can update rule.selector_list_id
+      list_id_offset = @_next_selector_list_id
+      if result[:_selector_lists] && !result[:_selector_lists].empty?
+        result[:_selector_lists].each do |list_id, rule_ids|
+          new_list_id = list_id + list_id_offset
+          offsetted_rule_ids = rule_ids.map { |id| id + offset }
+          @_selector_lists[new_list_id] = offsetted_rule_ids
+        end
+        @_next_selector_list_id = list_id_offset + result[:_selector_lists].size
+      end
 
       # Merge rules with offsetted IDs
       new_rules = result[:rules]
       new_rules.each do |rule|
         rule.id += offset
+        # Update selector_list_id to point to offsetted list (only for Rule, not AtRule)
+        if rule.is_a?(Rule) && rule.selector_list_id
+          rule.selector_list_id += list_id_offset
+        end
         @rules << rule
       end
 

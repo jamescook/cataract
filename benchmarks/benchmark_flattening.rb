@@ -8,7 +8,7 @@ $LOAD_PATH.unshift File.expand_path('../lib', __dir__)
 require 'cataract'
 
 # CSS Flattening Benchmark
-# Compares css_parser gem vs Cataract pure Ruby vs Cataract C extension
+# Compares Cataract pure Ruby vs Cataract C extension
 class FlatteningBenchmark < BenchmarkHarness
   def self.benchmark_name
     'flattening'
@@ -29,9 +29,6 @@ class FlatteningBenchmark < BenchmarkHarness
   end
 
   def sanity_checks
-    # Verify css_parser gem is available
-    require 'css_parser'
-
     # Verify cataract works
     css = ".test { color: black; }\n.test { margin: 10px; }"
     cataract_rules = Cataract.parse_css(css)
@@ -53,7 +50,6 @@ class FlatteningBenchmark < BenchmarkHarness
 
     # Define implementations to test
     implementations = [
-      { name: 'css_parser gem', base_impl: :css_parser, env: { 'FLATTENING_CSS_PARSER' => '1' } },
       { name: 'Cataract pure Ruby', base_impl: :pure, env: { 'CATARACT_PURE' => '1' } },
       { name: 'Cataract C extension', base_impl: :native, env: { 'CATARACT_PURE' => nil } }
     ]

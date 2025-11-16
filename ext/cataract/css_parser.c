@@ -17,11 +17,14 @@
 typedef struct {
     VALUE rules_array;        // Array of Rule structs
     VALUE media_index;        // Hash: Symbol => Array of rule IDs
+    VALUE selector_lists;     // Hash: list_id => Array of rule IDs
     VALUE imports_array;      // Array of ImportStatement structs
     int rule_id_counter;      // Next rule ID (0-indexed)
+    int next_selector_list_id; // Next selector list ID (0-indexed)
     int media_query_count;    // Safety limit for media queries
     st_table *media_cache;    // Parse-time cache: string => parsed media types
     int has_nesting;          // Set to 1 if any nested rules are created
+    int selector_lists_enabled; // Parser option: track selector lists (1=enabled, 0=disabled)
     int depth;                // Current recursion depth (safety limit)
 } ParserContext;
 
@@ -691,7 +694,8 @@ static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char
                 media_declarations,
                 Qnil,  // specificity
                 parent_rule_id,  // Link to parent for nested @media serialization
-                Qnil   // nesting_style (nil for @media nesting)
+                Qnil,  // nesting_style (nil for @media nesting)
+                Qnil   // selector_list_id
             );
 
             // Mark that we have nesting (only set once)
@@ -773,7 +777,8 @@ static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char
                             nested_declarations,
                             Qnil,  // specificity
                             parent_rule_id,
-                            nesting_style
+                            nesting_style,
+                            Qnil   // selector_list_id
                         );
 
                         // Mark that we have nesting (only set once)
@@ -1158,10 +1163,14 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                 ParserContext nested_ctx = {
                     .rules_array = rb_ary_new(),
                     .media_index = rb_hash_new(),
+                    .selector_lists = rb_hash_new(),
+                    .imports_array = rb_ary_new(),
                     .rule_id_counter = 0,
+                    .next_selector_list_id = 0,
                     .media_query_count = 0,
                     .media_cache = NULL,
                     .has_nesting = 0,
+                    .selector_lists_enabled = ctx->selector_lists_enabled,
                     .depth = 0
                 };
                 parse_css_recursive(&nested_ctx, block_start, block_end, NO_PARENT_MEDIA, NO_PARENT_SELECTOR, NO_PARENT_RULE_ID);
@@ -1283,6 +1292,28 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                     // Example: ".a, .b, .c { color: red; }" creates 3 separate rules
                     //           ^selector_start      ^sel_end
                     //              ^seg_start=seg (scanning for commas)
+
+                    // Count selectors for selector list tracking
+                    int selector_count = 1;
+                    if (ctx->selector_lists_enabled) {
+                        const char *count_ptr = selector_start;
+                        while (count_ptr < sel_end) {
+                            if (*count_ptr == ',') {
+                                selector_count++;
+                            }
+                            count_ptr++;
+                        }
+                    }
+
+                    // Create selector list if enabled and multiple selectors
+                    int list_id = -1;
+                    VALUE rule_ids_array = Qnil;
+                    if (ctx->selector_lists_enabled && selector_count > 1) {
+                        list_id = ctx->next_selector_list_id++;
+                        rule_ids_array = rb_ary_new();
+                        rb_hash_aset(ctx->selector_lists, INT2FIX(list_id), rule_ids_array);
+                    }
+
                     const char *seg_start = selector_start;
                     const char *seg = selector_start;
 
@@ -1322,15 +1353,44 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                                 // Get rule ID and increment
                                 int rule_id = ctx->rule_id_counter++;
 
+                                // Determine selector_list_id value
+                                VALUE selector_list_id_val = (list_id >= 0) ? INT2FIX(list_id) : Qnil;
+
+                                // Deep copy declarations for selector lists to avoid shared state
+                                // (principle of least surprise - modifying one rule shouldn't affect others)
+                                VALUE rule_declarations;
+                                if (list_id >= 0) {
+                                    // Deep copy: both array and Declaration structs inside
+                                    long decl_count = RARRAY_LEN(declarations);
+                                    rule_declarations = rb_ary_new_capa(decl_count);
+                                    for (long k = 0; k < decl_count; k++) {
+                                        VALUE decl = rb_ary_entry(declarations, k);
+                                        VALUE new_decl = rb_struct_new(cDeclaration,
+                                            rb_struct_aref(decl, INT2FIX(DECL_PROPERTY)),
+                                            rb_struct_aref(decl, INT2FIX(DECL_VALUE)),
+                                            rb_struct_aref(decl, INT2FIX(DECL_IMPORTANT))
+                                        );
+                                        rb_ary_push(rule_declarations, new_decl);
+                                    }
+                                } else {
+                                    rule_declarations = rb_ary_dup(declarations);
+                                }
+
                                 // Create Rule
                                 VALUE rule = rb_struct_new(cRule,
                                     INT2FIX(rule_id),
                                     resolved_selector,
-                                    rb_ary_dup(declarations),
+                                    rule_declarations,
                                     Qnil,  // specificity
                                     parent_id_val,
-                                    nesting_style_val
+                                    nesting_style_val,
+                                    selector_list_id_val
                                 );
+
+                                // Track rule in selector list if applicable
+                                if (list_id >= 0) {
+                                    rb_ary_push(rule_ids_array, INT2FIX(rule_id));
+                                }
 
                                 // Mark that we have nesting (only set once)
                                 if (!ctx->has_nesting && !NIL_P(parent_id_val)) {
@@ -1358,6 +1418,28 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                     //   - .a .child with declarations [font: 14px]
                     //   - .b with declarations [color: red]
                     //   - .b .child with declarations [font: 14px]
+
+                    // Count selectors for selector list tracking
+                    int selector_count = 1;
+                    if (ctx->selector_lists_enabled) {
+                        const char *count_ptr = selector_start;
+                        while (count_ptr < sel_end) {
+                            if (*count_ptr == ',') {
+                                selector_count++;
+                            }
+                            count_ptr++;
+                        }
+                    }
+
+                    // Create selector list if enabled and multiple selectors
+                    int list_id = -1;
+                    VALUE rule_ids_array = Qnil;
+                    if (ctx->selector_lists_enabled && selector_count > 1) {
+                        list_id = ctx->next_selector_list_id++;
+                        rule_ids_array = rb_ary_new();
+                        rb_hash_aset(ctx->selector_lists, INT2FIX(list_id), rule_ids_array);
+                    }
+
                     const char *seg_start = selector_start;
                     const char *seg = selector_start;
 
@@ -1407,6 +1489,9 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                                                                              resolved_current, INT2FIX(current_rule_id), parent_media_sym);
                                 ctx->depth--;
 
+                                // Determine selector_list_id value
+                                VALUE selector_list_id_val = (list_id >= 0) ? INT2FIX(list_id) : Qnil;
+
                                 // Create parent rule and replace placeholder
                                 // Always create the rule (even if empty) to avoid edge cases
                                 VALUE rule = rb_struct_new(cRule,
@@ -1415,8 +1500,14 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                                     parent_declarations,
                                     Qnil,  // specificity
                                     current_parent_id,
-                                    current_nesting_style
+                                    current_nesting_style,
+                                    selector_list_id_val
                                 );
+
+                                // Track rule in selector list if applicable
+                                if (list_id >= 0) {
+                                    rb_ary_push(rule_ids_array, INT2FIX(current_rule_id));
+                                }
 
                                 // Mark that we have nesting (only set once)
                                 if (!ctx->has_nesting && !NIL_P(current_parent_id)) {
@@ -1473,11 +1564,16 @@ VALUE parse_media_types(VALUE self, VALUE media_query_sym) {
  * Main parse entry point
  * Returns: { rules: [...], media_index: {...}, charset: "..." | nil, last_rule_id: N }
  */
-VALUE parse_css_new_impl(VALUE css_string, int rule_id_offset) {
+VALUE parse_css_new_impl(VALUE css_string, VALUE parser_options, int rule_id_offset) {
     Check_Type(css_string, T_STRING);
+    Check_Type(parser_options, T_HASH);
 
     DEBUG_PRINTF("\n[PARSE_NEW] ========== NEW PARSE CALL ==========\n");
     DEBUG_PRINTF("[PARSE_NEW] Input CSS (first 100 chars): %.100s\n", RSTRING_PTR(css_string));
+
+    // Read parser options
+    VALUE selector_lists_opt = rb_hash_aref(parser_options, ID2SYM(rb_intern("selector_lists")));
+    int selector_lists_enabled = (NIL_P(selector_lists_opt) || RTEST(selector_lists_opt)) ? 1 : 0;
 
     const char *css = RSTRING_PTR(css_string);
     const char *pe = css + RSTRING_LEN(css_string);
@@ -1513,11 +1609,14 @@ VALUE parse_css_new_impl(VALUE css_string, int rule_id_offset) {
     ParserContext ctx;
     ctx.rules_array = rb_ary_new();
     ctx.media_index = rb_hash_new();
+    ctx.selector_lists = rb_hash_new();
     ctx.imports_array = rb_ary_new();
     ctx.rule_id_counter = rule_id_offset;  // Start from offset
+    ctx.next_selector_list_id = 0;  // Start from 0
     ctx.media_query_count = 0;
     ctx.media_cache = NULL;  // Removed - no perf benefit
     ctx.has_nesting = 0;  // Will be set to 1 if any nested rules are created
+    ctx.selector_lists_enabled = selector_lists_enabled;
     ctx.depth = 0;  // Start at depth 0
 
     // Parse CSS (top-level, no parent context)
@@ -1528,6 +1627,7 @@ VALUE parse_css_new_impl(VALUE css_string, int rule_id_offset) {
     VALUE result = rb_hash_new();
     rb_hash_aset(result, ID2SYM(rb_intern("rules")), ctx.rules_array);
     rb_hash_aset(result, ID2SYM(rb_intern("_media_index")), ctx.media_index);
+    rb_hash_aset(result, ID2SYM(rb_intern("_selector_lists")), ctx.selector_lists);
     rb_hash_aset(result, ID2SYM(rb_intern("imports")), ctx.imports_array);
     rb_hash_aset(result, ID2SYM(rb_intern("charset")), charset);
     rb_hash_aset(result, ID2SYM(rb_intern("last_rule_id")), INT2FIX(ctx.rule_id_counter));
@@ -1536,6 +1636,7 @@ VALUE parse_css_new_impl(VALUE css_string, int rule_id_offset) {
     RB_GC_GUARD(charset);
     RB_GC_GUARD(ctx.rules_array);
     RB_GC_GUARD(ctx.media_index);
+    RB_GC_GUARD(ctx.selector_lists);
     RB_GC_GUARD(ctx.imports_array);
     RB_GC_GUARD(result);
 

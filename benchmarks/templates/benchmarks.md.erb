@@ -4,7 +4,7 @@
 
 # Performance Benchmarks
 
-Performance comparison between Cataract's C extension and pure Ruby implementations, with css_parser as a reference.
+Performance comparison between Cataract's C extension and pure Ruby implementations.
 
 ## Test Environment
 
@@ -19,36 +19,21 @@ Performance comparison between Cataract's C extension and pure Ruby implementati
 
 <%= parsing_data['description'] %>
 
-| Test Case | Native | Pure (no YJIT) | Pure (YJIT) | css_parser (no YJIT) | css_parser (YJIT) |
-|-----------|--------|----------------|-------------|----------------------|-------------------|
+| Test Case | Native | Pure (no YJIT) | Pure (YJIT) |
+|-----------|--------|----------------|-------------|
 <%- parsing_data['metadata']['test_cases'].each do |test_case| -%>
 <%- results = parsing_data['results'].select { |r| r['name'].include?(test_case['fixture']) } -%>
 <%- pure_no_yjit = results.find { |r| r['implementation'] == 'pure_without_yjit' } -%>
 <%- pure_with_yjit = results.find { |r| r['implementation'] == 'pure_with_yjit' } -%>
 <%- native = results.find { |r| r['implementation'] == 'native' } -%>
-<%- css_no_yjit = results.find { |r| r['implementation'] == 'css_parser_without_yjit' } -%>
-<%- css_with_yjit = results.find { |r| r['implementation'] == 'css_parser_with_yjit' } -%>
-| <%= test_case['name'] %> | <%= native ? format_ips(native, short: true) : 'N/A' %> | <%= pure_no_yjit ? format_ips(pure_no_yjit, short: true) : 'N/A' %> | <%= pure_with_yjit ? format_ips(pure_with_yjit, short: true) : 'N/A' %> | <%= css_no_yjit ? format_ips(css_no_yjit, short: true) : 'N/A' %> | <%= css_with_yjit ? format_ips(css_with_yjit, short: true) : 'N/A' %> |
+| <%= test_case['name'] %> | <%= native ? format_ips(native, short: true) : 'N/A' %> | <%= pure_no_yjit ? format_ips(pure_no_yjit, short: true) : 'N/A' %> | <%= pure_with_yjit ? format_ips(pure_with_yjit, short: true) : 'N/A' %> |
 <%- end -%>
 
 ### Speedups
 
 | Comparison | Speedup |
 |------------|---------|
-<%- if parsing_data['metadata']['speedups'] -%>
-| Native vs Pure (no YJIT) | <%= format_speedup(parsing_data['metadata']['speedups']['avg']) %> (avg) |
-<%- end -%>
-<%- # Calculate Native vs Pure with YJIT -%>
-<%- pure_with_yjit_avg = parsing_data['results'].select { |r| r['implementation'] == 'pure_with_yjit' }.map { |r| r['central_tendency'] }.sum / [parsing_data['results'].select { |r| r['implementation'] == 'pure_with_yjit' }.size, 1].max -%>
-<%- native_avg = parsing_data['results'].select { |r| r['implementation'] == 'native' }.map { |r| r['central_tendency'] }.sum / [parsing_data['results'].select { |r| r['implementation'] == 'native' }.size, 1].max -%>
-<%- if pure_with_yjit_avg > 0 && native_avg > 0 -%>
-| Native vs Pure (YJIT) | <%= format_speedup(native_avg / pure_with_yjit_avg) %> (avg) |
-<%- end -%>
-<%- # Calculate YJIT impact on pure Ruby -%>
-<%- pure_no_yjit_avg = parsing_data['results'].select { |r| r['implementation'] == 'pure_without_yjit' }.map { |r| r['central_tendency'] }.sum / [parsing_data['results'].select { |r| r['implementation'] == 'pure_without_yjit' }.size, 1].max -%>
-<%- if pure_no_yjit_avg > 0 && pure_with_yjit_avg > 0 -%>
-| YJIT impact on Pure Ruby | <%= format_speedup(pure_with_yjit_avg / pure_no_yjit_avg) %> (avg) |
-<%- end -%>
+<%= speedup_rows(parsing_data, test_case_key: :fixture) %>
 
 ---
 <%- end -%>
@@ -58,36 +43,21 @@ Performance comparison between Cataract's C extension and pure Ruby implementati
 
 <%= serialization_data['description'] %>
 
-| Test Case | Native | Pure (no YJIT) | Pure (YJIT) | css_parser (no YJIT) | css_parser (YJIT) |
-|-----------|--------|----------------|-------------|----------------------|-------------------|
+| Test Case | Native | Pure (no YJIT) | Pure (YJIT) |
+|-----------|--------|----------------|-------------|
 <%- serialization_data['metadata']['test_cases'].each do |test_case| -%>
 <%- results = serialization_data['results'].select { |r| r['name'].include?(test_case['key']) } -%>
 <%- pure_no_yjit = results.find { |r| r['implementation'] == 'pure_without_yjit' } -%>
 <%- pure_with_yjit = results.find { |r| r['implementation'] == 'pure_with_yjit' } -%>
 <%- native = results.find { |r| r['implementation'] == 'native' } -%>
-<%- css_no_yjit = results.find { |r| r['implementation'] == 'css_parser_without_yjit' } -%>
-<%- css_with_yjit = results.find { |r| r['implementation'] == 'css_parser_with_yjit' } -%>
-| <%= test_case['name'] %> | <%= native ? format_ips(native, short: true) : 'N/A' %> | <%= pure_no_yjit ? format_ips(pure_no_yjit, short: true) : 'N/A' %> | <%= pure_with_yjit ? format_ips(pure_with_yjit, short: true) : 'N/A' %> | <%= css_no_yjit ? format_ips(css_no_yjit, short: true) : 'N/A' %> | <%= css_with_yjit ? format_ips(css_with_yjit, short: true) : 'N/A' %> |
+| <%= test_case['name'] %> | <%= native ? format_ips(native, short: true) : 'N/A' %> | <%= pure_no_yjit ? format_ips(pure_no_yjit, short: true) : 'N/A' %> | <%= pure_with_yjit ? format_ips(pure_with_yjit, short: true) : 'N/A' %> |
 <%- end -%>
 
 ### Speedups
 
 | Comparison | Speedup |
 |------------|---------|
-<%- if serialization_data['metadata']['speedups'] -%>
-| Native vs Pure (no YJIT) | <%= format_speedup(serialization_data['metadata']['speedups']['avg']) %> (avg) |
-<%- end -%>
-<%- # Calculate Native vs Pure with YJIT -%>
-<%- pure_with_yjit_avg = serialization_data['results'].select { |r| r['implementation'] == 'pure_with_yjit' }.map { |r| r['central_tendency'] }.sum / [serialization_data['results'].select { |r| r['implementation'] == 'pure_with_yjit' }.size, 1].max -%>
-<%- native_avg = serialization_data['results'].select { |r| r['implementation'] == 'native' }.map { |r| r['central_tendency'] }.sum / [serialization_data['results'].select { |r| r['implementation'] == 'native' }.size, 1].max -%>
-<%- if pure_with_yjit_avg > 0 && native_avg > 0 -%>
-| Native vs Pure (YJIT) | <%= format_speedup(native_avg / pure_with_yjit_avg) %> (avg) |
-<%- end -%>
-<%- # Calculate YJIT impact on pure Ruby -%>
-<%- pure_no_yjit_avg = serialization_data['results'].select { |r| r['implementation'] == 'pure_without_yjit' }.map { |r| r['central_tendency'] }.sum / [serialization_data['results'].select { |r| r['implementation'] == 'pure_without_yjit' }.size, 1].max -%>
-<%- if pure_no_yjit_avg > 0 && pure_with_yjit_avg > 0 -%>
-| YJIT impact on Pure Ruby | <%= format_speedup(pure_with_yjit_avg / pure_no_yjit_avg) %> (avg) |
-<%- end -%>
+<%= speedup_rows(serialization_data, test_case_key: :key) %>
 
 ---
 <%- end -%>
@@ -97,36 +67,21 @@ Performance comparison between Cataract's C extension and pure Ruby implementati
 
 <%= specificity_data['description'] %>
 
-| Test Case | Native | Pure (no YJIT) | Pure (YJIT) | css_parser (no YJIT) | css_parser (YJIT) |
-|-----------|--------|----------------|-------------|----------------------|-------------------|
+| Test Case | Native | Pure (no YJIT) | Pure (YJIT) |
+|-----------|--------|----------------|-------------|
 <%- specificity_data['metadata']['test_cases'].each do |test_case| -%>
 <%- results = specificity_data['results'].select { |r| r['name'].include?(test_case['key']) } -%>
 <%- pure_no_yjit = results.find { |r| r['implementation'] == 'pure_without_yjit' } -%>
 <%- pure_with_yjit = results.find { |r| r['implementation'] == 'pure_with_yjit' } -%>
 <%- native = results.find { |r| r['implementation'] == 'native' } -%>
-<%- css_no_yjit = results.find { |r| r['implementation'] == 'css_parser_without_yjit' } -%>
-<%- css_with_yjit = results.find { |r| r['implementation'] == 'css_parser_with_yjit' } -%>
-| <%= test_case['name'] %> | <%= native ? format_ips(native, short: true) : 'N/A' %> | <%= pure_no_yjit ? format_ips(pure_no_yjit, short: true) : 'N/A' %> | <%= pure_with_yjit ? format_ips(pure_with_yjit, short: true) : 'N/A' %> | <%= css_no_yjit ? format_ips(css_no_yjit, short: true) : 'N/A' %> | <%= css_with_yjit ? format_ips(css_with_yjit, short: true) : 'N/A' %> |
+| <%= test_case['name'] %> | <%= native ? format_ips(native, short: true) : 'N/A' %> | <%= pure_no_yjit ? format_ips(pure_no_yjit, short: true) : 'N/A' %> | <%= pure_with_yjit ? format_ips(pure_with_yjit, short: true) : 'N/A' %> |
 <%- end -%>
 
 ### Speedups
 
 | Comparison | Speedup |
 |------------|---------|
-<%- if specificity_data['metadata']['speedups'] -%>
-| Native vs Pure (no YJIT) | <%= format_speedup(specificity_data['metadata']['speedups']['avg']) %> (avg) |
-<%- end -%>
-<%- # Calculate Native vs Pure with YJIT -%>
-<%- pure_with_yjit_avg = specificity_data['results'].select { |r| r['implementation'] == 'pure_with_yjit' }.map { |r| r['central_tendency'] }.sum / [specificity_data['results'].select { |r| r['implementation'] == 'pure_with_yjit' }.size, 1].max -%>
-<%- native_avg = specificity_data['results'].select { |r| r['implementation'] == 'native' }.map { |r| r['central_tendency'] }.sum / [specificity_data['results'].select { |r| r['implementation'] == 'native' }.size, 1].max -%>
-<%- if pure_with_yjit_avg > 0 && native_avg > 0 -%>
-| Native vs Pure (YJIT) | <%= format_speedup(native_avg / pure_with_yjit_avg) %> (avg) |
-<%- end -%>
-<%- # Calculate YJIT impact on pure Ruby -%>
-<%- pure_no_yjit_avg = specificity_data['results'].select { |r| r['implementation'] == 'pure_without_yjit' }.map { |r| r['central_tendency'] }.sum / [specificity_data['results'].select { |r| r['implementation'] == 'pure_without_yjit' }.size, 1].max -%>
-<%- if pure_no_yjit_avg > 0 && pure_with_yjit_avg > 0 -%>
-| YJIT impact on Pure Ruby | <%= format_speedup(pure_with_yjit_avg / pure_no_yjit_avg) %> (avg) |
-<%- end -%>
+<%= speedup_rows(specificity_data, test_case_key: :key) %>
 
 ---
 <%- end -%>
@@ -136,36 +91,21 @@ Performance comparison between Cataract's C extension and pure Ruby implementati
 
 <%= flattening_data['description'] %>
 
-| Test Case | Native | Pure (no YJIT) | Pure (YJIT) | css_parser (no YJIT) | css_parser (YJIT) |
-|-----------|--------|----------------|-------------|----------------------|-------------------|
+| Test Case | Native | Pure (no YJIT) | Pure (YJIT) |
+|-----------|--------|----------------|-------------|
 <%- flattening_data['metadata']['test_cases'].each do |test_case| -%>
 <%- results = flattening_data['results'].select { |r| r['name'].include?(test_case['key']) } -%>
 <%- pure_no_yjit = results.find { |r| r['implementation'] == 'pure_without_yjit' } -%>
 <%- pure_with_yjit = results.find { |r| r['implementation'] == 'pure_with_yjit' } -%>
 <%- native = results.find { |r| r['implementation'] == 'native' } -%>
-<%- css_no_yjit = results.find { |r| r['implementation'] == 'css_parser_without_yjit' } -%>
-<%- css_with_yjit = results.find { |r| r['implementation'] == 'css_parser_with_yjit' } -%>
-| <%= test_case['name'] %> | <%= native ? format_ips(native, short: true) : 'N/A' %> | <%= pure_no_yjit ? format_ips(pure_no_yjit, short: true) : 'N/A' %> | <%= pure_with_yjit ? format_ips(pure_with_yjit, short: true) : 'N/A' %> | <%= css_no_yjit ? format_ips(css_no_yjit, short: true) : 'N/A' %> | <%= css_with_yjit ? format_ips(css_with_yjit, short: true) : 'N/A' %> |
+| <%= test_case['name'] %> | <%= native ? format_ips(native, short: true) : 'N/A' %> | <%= pure_no_yjit ? format_ips(pure_no_yjit, short: true) : 'N/A' %> | <%= pure_with_yjit ? format_ips(pure_with_yjit, short: true) : 'N/A' %> |
 <%- end -%>
 
 ### Speedups
 
 | Comparison | Speedup |
 |------------|---------|
-<%- if flattening_data['metadata']['speedups'] -%>
-| Native vs Pure (no YJIT) | <%= format_speedup(flattening_data['metadata']['speedups']['avg']) %> (avg) |
-<%- end -%>
-<%- # Calculate Native vs Pure with YJIT -%>
-<%- pure_with_yjit_avg = flattening_data['results'].select { |r| r['implementation'] == 'pure_with_yjit' }.map { |r| r['central_tendency'] }.sum / [flattening_data['results'].select { |r| r['implementation'] == 'pure_with_yjit' }.size, 1].max -%>
-<%- native_avg = flattening_data['results'].select { |r| r['implementation'] == 'native' }.map { |r| r['central_tendency'] }.sum / [flattening_data['results'].select { |r| r['implementation'] == 'native' }.size, 1].max -%>
-<%- if pure_with_yjit_avg > 0 && native_avg > 0 -%>
-| Native vs Pure (YJIT) | <%= format_speedup(native_avg / pure_with_yjit_avg) %> (avg) |
-<%- end -%>
-<%- # Calculate YJIT impact on pure Ruby -%>
-<%- pure_no_yjit_avg = flattening_data['results'].select { |r| r['implementation'] == 'pure_without_yjit' }.map { |r| r['central_tendency'] }.sum / [flattening_data['results'].select { |r| r['implementation'] == 'pure_without_yjit' }.size, 1].max -%>
-<%- if pure_no_yjit_avg > 0 && pure_with_yjit_avg > 0 -%>
-| YJIT impact on Pure Ruby | <%= format_speedup(pure_with_yjit_avg / pure_no_yjit_avg) %> (avg) |
-<%- end -%>
+<%= speedup_rows(flattening_data, test_case_key: :key) %>
 
 ---
 <%- end -%>
@@ -190,5 +130,4 @@ rake benchmark:generate_docs
 
 - Benchmarks use benchmark-ips with 1-2s warmup and 2-5s measurement periods
 - Measurements show median iterations per second (i/s)
-- css_parser gem is included for reference comparison
 - YJIT is enabled/disabled per subprocess for accurate comparison

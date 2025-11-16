@@ -32,10 +32,21 @@ VALUE eSizeError;
  * This matches the old parse_css API
  *
  * @param css_string [String] CSS to parse
+ * @param parser_options [Hash] Parser options (optional, defaults to {})
  * @return [Hash] { rules: [...], media_index: {...}, charset: "..." }
  */
-VALUE parse_css_new(VALUE self, VALUE css_string) {
-    return parse_css_new_impl(css_string, 0);
+VALUE parse_css_new(int argc, VALUE *argv, VALUE self) {
+    VALUE css_string, parser_options;
+
+    // Parse arguments: required css_string, optional parser_options hash
+    rb_scan_args(argc, argv, "11", &css_string, &parser_options);
+
+    // Default to empty hash if not provided
+    if (NIL_P(parser_options)) {
+        parser_options = rb_hash_new();
+    }
+
+    return parse_css_new_impl(css_string, parser_options, 0);
 }
 
 /*
@@ -292,6 +303,17 @@ struct build_rule_map_ctx {
     VALUE rule_to_media;
 };
 
+// Formatting options for stylesheet serialization
+// Avoids mode flags and if/else branches - all behavior controlled by struct values
+struct format_opts {
+    const char *opening_brace;      // " { " (compact) vs " {\n" (formatted)
+    const char *closing_brace;      // " }\n" (compact) vs "}\n" (formatted)
+    const char *media_indent;       // "" (compact) vs "  " (formatted)
+    const char *decl_indent_base;   // NULL (compact) vs "  " (formatted base rules)
+    const char *decl_indent_media;  // NULL (compact) vs "    " (formatted media rules)
+    int add_blank_lines;            // 0 (compact) vs 1 (formatted)
+};
+
 // Callback to build reverse map from rule_id to media_sym
 static int build_rule_map_callback(VALUE media_sym, VALUE rule_ids, VALUE arg) {
     struct build_rule_map_ctx *ctx = (struct build_rule_map_ctx *)arg;
@@ -318,8 +340,257 @@ static int build_rule_map_callback(VALUE media_sym, VALUE rule_ids, VALUE arg) {
     return ST_CONTINUE;
 }
 
-// Original stylesheet serialization (no nesting support)
-static VALUE stylesheet_to_s_original(VALUE rules_array, VALUE media_index, VALUE charset) {
+// Private shared implementation for stylesheet serialization with optional selector list grouping
+// All formatting behavior controlled by format_opts struct to avoid mode flags and if/else branches
+static VALUE serialize_stylesheet_with_grouping(
+    VALUE rules_array,
+    VALUE media_index,
+    VALUE result,
+    VALUE selector_lists,
+    const struct format_opts *opts
+) {
+    long total_rules = RARRAY_LEN(rules_array);
+
+    // Check if selector list grouping is enabled (non-empty hash)
+    int grouping_enabled = (!NIL_P(selector_lists) && TYPE(selector_lists) == T_HASH && RHASH_SIZE(selector_lists) > 0);
+
+    // Build a map from rule_id to media query symbol using rb_hash_foreach
+    VALUE rule_to_media = rb_hash_new();
+    struct build_rule_map_ctx map_ctx = { rule_to_media };
+    rb_hash_foreach(media_index, build_rule_map_callback, (VALUE)&map_ctx);
+
+    // Track processed rules to avoid duplicates when grouping
+    VALUE processed_rule_ids = rb_hash_new();
+
+    // Iterate through rules in insertion order, grouping consecutive media queries
+    VALUE current_media = Qnil;
+    int in_media_block = 0;
+
+    for (long i = 0; i < total_rules; i++) {
+        VALUE rule = rb_ary_entry(rules_array, i);
+        VALUE rule_id = rb_struct_aref(rule, INT2FIX(RULE_ID));
+
+        // Skip if already processed (when grouped)
+        if (RTEST(rb_hash_aref(processed_rule_ids, rule_id))) {
+            continue;
+        }
+
+        VALUE rule_media = rb_hash_aref(rule_to_media, rule_id);
+        int is_first_rule = (i == 0);
+
+        if (NIL_P(rule_media)) {
+            // Not in any media query - close any open media block first
+            if (in_media_block) {
+                rb_str_cat2(result, "}\n");
+                in_media_block = 0;
+                current_media = Qnil;
+            }
+
+            // Add blank line prefix for non-first rules (formatted only)
+            if (opts->add_blank_lines && !is_first_rule) {
+                rb_str_cat2(result, "\n");
+            }
+
+            // Try to group with other rules from same selector list
+            // Check if this is a Rule (not AtRule) before accessing selector_list_id
+            if (grouping_enabled && rb_obj_is_kind_of(rule, cRule)) {
+                VALUE selector_list_id = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR_LIST_ID));
+                if (!NIL_P(selector_list_id)) {
+                    // Get list of rule IDs in this selector list
+                    VALUE rule_ids_in_list = rb_hash_aref(selector_lists, selector_list_id);
+
+                    if (NIL_P(rule_ids_in_list) || RARRAY_LEN(rule_ids_in_list) <= 1) {
+                        // Just this rule, serialize normally
+                        if (opts->decl_indent_base) {
+                            serialize_rule_formatted(result, rule, "", 1);
+                        } else {
+                            serialize_rule(result, rule);
+                        }
+                        rb_hash_aset(processed_rule_ids, rule_id, Qtrue);
+                    } else {
+                        // Find all rules with matching declarations and same media context
+                        VALUE matching_selectors = rb_ary_new();
+                        VALUE rule_declarations = rb_struct_aref(rule, INT2FIX(RULE_DECLARATIONS));
+
+                        long list_len = RARRAY_LEN(rule_ids_in_list);
+                        for (long j = 0; j < list_len; j++) {
+                            VALUE other_rule_id = rb_ary_entry(rule_ids_in_list, j);
+
+                            // Skip if already processed
+                            if (RTEST(rb_hash_aref(processed_rule_ids, other_rule_id))) {
+                                continue;
+                            }
+
+                            // Find the rule by ID
+                            VALUE other_rule = rb_ary_entry(rules_array, FIX2INT(other_rule_id));
+                            if (NIL_P(other_rule)) continue;
+
+                            // Check same media context (both should be nil for base rules)
+                            VALUE other_rule_media = rb_hash_aref(rule_to_media, other_rule_id);
+                            if (!rb_equal(rule_media, other_rule_media)) {
+                                continue;
+                            }
+
+                            // Check if declarations match
+                            VALUE other_declarations = rb_struct_aref(other_rule, INT2FIX(RULE_DECLARATIONS));
+                            if (rb_equal(rule_declarations, other_declarations)) {
+                                VALUE other_selector = rb_struct_aref(other_rule, INT2FIX(RULE_SELECTOR));
+                                rb_ary_push(matching_selectors, other_selector);
+                                rb_hash_aset(processed_rule_ids, other_rule_id, Qtrue);
+                            }
+                        }
+
+                        // Serialize grouped or single rule
+                        if (RARRAY_LEN(matching_selectors) > 1) {
+                            // Group selectors with comma-space separator
+                            VALUE selector_str = rb_ary_join(matching_selectors, rb_str_new_cstr(", "));
+                            rb_str_append(result, selector_str);
+                            rb_str_cat2(result, opts->opening_brace);
+                            if (opts->decl_indent_base) {
+                                serialize_declarations_formatted(result, rule_declarations, opts->decl_indent_base);
+                            } else {
+                                serialize_declarations(result, rule_declarations);
+                            }
+                            rb_str_cat2(result, opts->closing_brace);
+                            RB_GC_GUARD(selector_str);
+                        } else {
+                            // Just one rule, serialize normally
+                            if (opts->decl_indent_base) {
+                                serialize_rule_formatted(result, rule, "", 1);
+                            } else {
+                                serialize_rule(result, rule);
+                            }
+                        }
+                    }
+                } else {
+                    // No selector_list_id, serialize normally
+                    if (opts->decl_indent_base) {
+                        serialize_rule_formatted(result, rule, "", 1);
+                    } else {
+                        serialize_rule(result, rule);
+                    }
+                    rb_hash_aset(processed_rule_ids, rule_id, Qtrue);
+                }
+            } else {
+                // Grouping disabled, serialize normally
+                if (opts->decl_indent_base) {
+                    serialize_rule_formatted(result, rule, "", 1);
+                } else {
+                    serialize_rule(result, rule);
+                }
+                rb_hash_aset(processed_rule_ids, rule_id, Qtrue);
+            }
+        } else {
+            // This rule is in a media query
+            // Check if media query changed from previous rule
+            if (NIL_P(current_media) || !rb_equal(current_media, rule_media)) {
+                // Close previous media block if open
+                if (in_media_block) {
+                    rb_str_cat2(result, "}\n");
+                }
+
+                // Add blank line prefix for non-first rules (formatted only)
+                if (opts->add_blank_lines && !is_first_rule) {
+                    rb_str_cat2(result, "\n");
+                }
+
+                // Open new media block
+                current_media = rule_media;
+                rb_str_cat2(result, "@media ");
+                rb_str_append(result, rb_sym2str(rule_media));
+                rb_str_cat2(result, " {\n");
+                in_media_block = 1;
+            }
+
+            // Serialize rule inside media block (with grouping if enabled)
+            // Check if this is a Rule (not AtRule) before accessing selector_list_id
+            if (grouping_enabled && rb_obj_is_kind_of(rule, cRule)) {
+                VALUE selector_list_id = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR_LIST_ID));
+                if (!NIL_P(selector_list_id)) {
+                    VALUE rule_ids_in_list = rb_hash_aref(selector_lists, selector_list_id);
+
+                    if (NIL_P(rule_ids_in_list) || RARRAY_LEN(rule_ids_in_list) <= 1) {
+                        if (opts->decl_indent_media) {
+                            serialize_rule_formatted(result, rule, opts->media_indent, 1);
+                        } else {
+                            serialize_rule(result, rule);
+                        }
+                        rb_hash_aset(processed_rule_ids, rule_id, Qtrue);
+                    } else {
+                        VALUE matching_selectors = rb_ary_new();
+                        VALUE rule_declarations = rb_struct_aref(rule, INT2FIX(RULE_DECLARATIONS));
+
+                        long list_len = RARRAY_LEN(rule_ids_in_list);
+                        for (long j = 0; j < list_len; j++) {
+                            VALUE other_rule_id = rb_ary_entry(rule_ids_in_list, j);
+                            if (RTEST(rb_hash_aref(processed_rule_ids, other_rule_id))) continue;
+
+                            VALUE other_rule = rb_ary_entry(rules_array, FIX2INT(other_rule_id));
+                            if (NIL_P(other_rule)) continue;
+
+                            VALUE other_rule_media = rb_hash_aref(rule_to_media, other_rule_id);
+                            if (!rb_equal(rule_media, other_rule_media)) continue;
+
+                            VALUE other_declarations = rb_struct_aref(other_rule, INT2FIX(RULE_DECLARATIONS));
+                            if (rb_equal(rule_declarations, other_declarations)) {
+                                VALUE other_selector = rb_struct_aref(other_rule, INT2FIX(RULE_SELECTOR));
+                                rb_ary_push(matching_selectors, other_selector);
+                                rb_hash_aset(processed_rule_ids, other_rule_id, Qtrue);
+                            }
+                        }
+
+                        if (RARRAY_LEN(matching_selectors) > 1) {
+                            VALUE selector_str = rb_ary_join(matching_selectors, rb_str_new_cstr(", "));
+                            rb_str_cat2(result, opts->media_indent);
+                            rb_str_append(result, selector_str);
+                            rb_str_cat2(result, opts->opening_brace);
+                            if (opts->decl_indent_media) {
+                                serialize_declarations_formatted(result, rule_declarations, opts->decl_indent_media);
+                            } else {
+                                serialize_declarations(result, rule_declarations);
+                            }
+                            rb_str_cat2(result, opts->media_indent);
+                            rb_str_cat2(result, opts->closing_brace);
+                            RB_GC_GUARD(selector_str);
+                        } else {
+                            if (opts->decl_indent_media) {
+                                serialize_rule_formatted(result, rule, opts->media_indent, 1);
+                            } else {
+                                serialize_rule(result, rule);
+                            }
+                        }
+                    }
+                } else {
+                    if (opts->decl_indent_media) {
+                        serialize_rule_formatted(result, rule, opts->media_indent, 1);
+                    } else {
+                        serialize_rule(result, rule);
+                    }
+                    rb_hash_aset(processed_rule_ids, rule_id, Qtrue);
+                }
+            } else {
+                if (opts->decl_indent_media) {
+                    serialize_rule_formatted(result, rule, opts->media_indent, 1);
+                } else {
+                    serialize_rule(result, rule);
+                }
+                rb_hash_aset(processed_rule_ids, rule_id, Qtrue);
+            }
+        }
+    }
+
+    // Close final media block if still open
+    if (in_media_block) {
+        rb_str_cat2(result, "}\n");
+    }
+
+    RB_GC_GUARD(rule_to_media);
+    RB_GC_GUARD(processed_rule_ids);
+    return result;
+}
+
+// Original stylesheet serialization (no nesting support) - compact format
+static VALUE stylesheet_to_s_original(VALUE rules_array, VALUE media_index, VALUE charset, VALUE selector_lists) {
     Check_Type(rules_array, T_ARRAY);
     Check_Type(media_index, T_HASH);
 
@@ -332,60 +603,17 @@ static VALUE stylesheet_to_s_original(VALUE rules_array, VALUE media_index, VALU
         rb_str_cat2(result, "\";\n");
     }
 
-    long total_rules = RARRAY_LEN(rules_array);
+    // Compact formatting options
+    struct format_opts opts = {
+        .opening_brace = " { ",
+        .closing_brace = " }\n",
+        .media_indent = "",
+        .decl_indent_base = NULL,
+        .decl_indent_media = NULL,
+        .add_blank_lines = 0
+    };
 
-    // Build a map from rule_id to media query symbol using rb_hash_foreach
-    VALUE rule_to_media = rb_hash_new();
-    struct build_rule_map_ctx map_ctx = { rule_to_media };
-    rb_hash_foreach(media_index, build_rule_map_callback, (VALUE)&map_ctx);
-
-    // Iterate through rules in insertion order, grouping consecutive media queries
-    VALUE current_media = Qnil;
-    int in_media_block = 0;
-
-    for (long i = 0; i < total_rules; i++) {
-        VALUE rule = rb_ary_entry(rules_array, i);
-        VALUE rule_id = rb_struct_aref(rule, INT2FIX(RULE_ID));
-        VALUE rule_media = rb_hash_aref(rule_to_media, rule_id);
-
-        if (NIL_P(rule_media)) {
-            // Not in any media query - close any open media block first
-            if (in_media_block) {
-                rb_str_cat2(result, "}\n");
-                in_media_block = 0;
-                current_media = Qnil;
-            }
-
-            // Output rule directly
-            serialize_rule(result, rule);
-        } else {
-            // This rule is in a media query
-            // Check if media query changed from previous rule
-            if (NIL_P(current_media) || !rb_equal(current_media, rule_media)) {
-                // Close previous media block if open
-                if (in_media_block) {
-                    rb_str_cat2(result, "}\n");
-                }
-
-                // Open new media block
-                current_media = rule_media;
-                rb_str_cat2(result, "@media ");
-                rb_str_append(result, rb_sym2str(rule_media));
-                rb_str_cat2(result, " {\n");
-                in_media_block = 1;
-            }
-
-            // Serialize rule inside media block
-            serialize_rule(result, rule);
-        }
-    }
-
-    // Close final media block if still open
-    if (in_media_block) {
-        rb_str_cat2(result, "}\n");
-    }
-
-    return result;
+    return serialize_stylesheet_with_grouping(rules_array, media_index, result, selector_lists, &opts);
 }
 
 // Forward declarations
@@ -598,13 +826,15 @@ static void serialize_rule_with_children(VALUE result, VALUE rules_array, long r
 }
 
 // New stylesheet serialization entry point - checks for nesting and delegates
-static VALUE stylesheet_to_s_new(VALUE self, VALUE rules_array, VALUE media_index, VALUE charset, VALUE has_nesting) {
+static VALUE stylesheet_to_s_new(VALUE self, VALUE rules_array, VALUE media_index, VALUE charset, VALUE has_nesting, VALUE selector_lists) {
     Check_Type(rules_array, T_ARRAY);
     Check_Type(media_index, T_HASH);
+    // TODO: Phase 2 - use selector_lists for grouping
+    (void)selector_lists; // Suppress unused parameter warning
 
     // Fast path: if no nesting, use original implementation (zero overhead)
     if (!RTEST(has_nesting)) {
-        return stylesheet_to_s_original(rules_array, media_index, charset);
+        return stylesheet_to_s_original(rules_array, media_index, charset, selector_lists);
     }
 
     // SLOW PATH: Has nesting - use lookahead approach
@@ -713,12 +943,13 @@ static VALUE stylesheet_to_s_new(VALUE self, VALUE rules_array, VALUE media_inde
         rb_str_cat2(result, "}\n");
     }
 
+    RB_GC_GUARD(rule_to_media);
+    RB_GC_GUARD(parent_to_children);
     return result;
 }
 
 // Original formatted serialization (no nesting support)
-static VALUE stylesheet_to_formatted_s_original(VALUE rules_array, VALUE media_index, VALUE charset) {
-    long total_rules = RARRAY_LEN(rules_array);
+static VALUE stylesheet_to_formatted_s_original(VALUE rules_array, VALUE media_index, VALUE charset, VALUE selector_lists) {
     VALUE result = rb_str_new_cstr("");
 
     // Add charset if present
@@ -728,79 +959,27 @@ static VALUE stylesheet_to_formatted_s_original(VALUE rules_array, VALUE media_i
         rb_str_cat2(result, "\";\n");
     }
 
-    // Build a map from rule_id to media query symbol
-    VALUE rule_to_media = rb_hash_new();
-    struct build_rule_map_ctx map_ctx = { rule_to_media };
-    rb_hash_foreach(media_index, build_rule_map_callback, (VALUE)&map_ctx);
+    // Formatted output options
+    struct format_opts opts = {
+        .opening_brace = " {\n",
+        .closing_brace = "}\n",
+        .media_indent = "  ",
+        .decl_indent_base = "  ",
+        .decl_indent_media = "    ",
+        .add_blank_lines = 1
+    };
 
-    // Iterate through rules, grouping consecutive media queries
-    VALUE current_media = Qnil;
-    int in_media_block = 0;
-
-    for (long i = 0; i < total_rules; i++) {
-        VALUE rule = rb_ary_entry(rules_array, i);
-        VALUE rule_id = rb_struct_aref(rule, INT2FIX(RULE_ID));
-        VALUE rule_media = rb_hash_aref(rule_to_media, rule_id);
-        int is_first_rule = (i == 0);
-
-        if (NIL_P(rule_media)) {
-            // Not in any media query - close any open media block first
-            if (in_media_block) {
-                rb_str_cat2(result, "}\n");
-                in_media_block = 0;
-                current_media = Qnil;
-            }
-
-            // Add blank line prefix for non-first rules
-            if (!is_first_rule) {
-                rb_str_cat2(result, "\n");
-            }
-
-            // Output rule with no indentation (always single newline suffix)
-            serialize_rule_formatted(result, rule, "", 1);
-        } else {
-            // This rule is in a media query
-            if (NIL_P(current_media) || !rb_equal(current_media, rule_media)) {
-                // Close previous media block if open
-                if (in_media_block) {
-                    rb_str_cat2(result, "}\n");
-                }
-
-                // Add blank line prefix for non-first rules
-                if (!is_first_rule) {
-                    rb_str_cat2(result, "\n");
-                }
-
-                // Open new media block
-                current_media = rule_media;
-                rb_str_cat2(result, "@media ");
-                rb_str_append(result, rb_sym2str(rule_media));
-                rb_str_cat2(result, " {\n");
-                in_media_block = 1;
-            }
-
-            // Serialize rule inside media block with 2-space indentation
-            // Rules inside media blocks always get single newline (is_last=1)
-            serialize_rule_formatted(result, rule, "  ", 1);
-        }
-    }
-
-    // Close final media block if still open
-    if (in_media_block) {
-        rb_str_cat2(result, "}\n");
-    }
-
-    return result;
+    return serialize_stylesheet_with_grouping(rules_array, media_index, result, selector_lists, &opts);
 }
 
 // Formatted version with indentation and newlines (with nesting support)
-static VALUE stylesheet_to_formatted_s_new(VALUE self, VALUE rules_array, VALUE media_index, VALUE charset, VALUE has_nesting) {
+static VALUE stylesheet_to_formatted_s_new(VALUE self, VALUE rules_array, VALUE media_index, VALUE charset, VALUE has_nesting, VALUE selector_lists) {
     Check_Type(rules_array, T_ARRAY);
     Check_Type(media_index, T_HASH);
 
     // Fast path: if no nesting, use original implementation (zero overhead)
     if (!RTEST(has_nesting)) {
-        return stylesheet_to_formatted_s_original(rules_array, media_index, charset);
+        return stylesheet_to_formatted_s_original(rules_array, media_index, charset, selector_lists);
     }
 
     // SLOW PATH: Has nesting - use parameterized serialization with formatted=1
@@ -909,6 +1088,8 @@ static VALUE stylesheet_to_formatted_s_new(VALUE self, VALUE rules_array, VALUE 
         rb_str_cat2(result, "}\n");
     }
 
+    RB_GC_GUARD(rule_to_media);
+    RB_GC_GUARD(parent_to_children);
     return result;
 }
 
@@ -1165,9 +1346,9 @@ void Init_native_extension(void) {
     cStylesheet = rb_define_class_under(mCataract, "Stylesheet", rb_cObject);
 
     // Define module functions
-    rb_define_module_function(mCataract, "_parse_css", parse_css_new, 1);
-    rb_define_module_function(mCataract, "_stylesheet_to_s", stylesheet_to_s_new, 4);
-    rb_define_module_function(mCataract, "_stylesheet_to_formatted_s", stylesheet_to_formatted_s_new, 4);
+    rb_define_module_function(mCataract, "_parse_css", parse_css_new, -1);
+    rb_define_module_function(mCataract, "_stylesheet_to_s", stylesheet_to_s_new, 5);
+    rb_define_module_function(mCataract, "_stylesheet_to_formatted_s", stylesheet_to_formatted_s_new, 5);
     rb_define_module_function(mCataract, "parse_media_types", parse_media_types, 1);
     rb_define_module_function(mCataract, "parse_declarations", new_parse_declarations, 1);
     rb_define_module_function(mCataract, "flatten", cataract_flatten, 1);

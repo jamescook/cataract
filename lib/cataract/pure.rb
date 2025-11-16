@@ -84,14 +84,16 @@ module Cataract
   #
   # @api private
   # @param css_string [String] CSS to parse
+  # @param parser_options [Hash] Parser configuration options
+  # @option parser_options [Boolean] :selector_lists (true) Track selector lists
   # @return [Hash] {
   #   rules: Array<Rule>,           # Flat array of Rule/AtRule structs
   #   _media_index: Hash,           # Symbol => Array of rule IDs
   #   charset: String|nil,          # @charset value if present
   #   _has_nesting: Boolean         # Whether any nested rules exist
   # }
-  def self._parse_css(css_string)
-    parser = Parser.new(css_string)
+  def self._parse_css(css_string, parser_options = {})
+    parser = Parser.new(css_string, parser_options: parser_options)
     parser.parse
   end
 

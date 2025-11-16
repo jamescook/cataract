@@ -4,12 +4,12 @@
 # Compares "baseline" vs "comparison" results and calculates speedup stats
 #
 # CONVENTION: Result names must use format "tool_name: test_case_id"
-# Example: "css_parser: CSS1", "cataract: CSS1"
+# Example: "pure_without_yjit: CSS1", "native: CSS1"
 class SpeedupCalculator
   # @param results [Array<Hash>] Array of benchmark results with 'name' and 'central_tendency'
   # @param test_cases [Array<Hash>] Array of test case metadata to annotate with speedups
-  # @param baseline_matcher [Proc] Block that returns true if result is baseline (e.g., css_parser)
-  # @param comparison_matcher [Proc] Block that returns true if result is comparison (e.g., cataract)
+  # @param baseline_matcher [Proc] Block that returns true if result is baseline (e.g., pure Ruby)
+  # @param comparison_matcher [Proc] Block that returns true if result is comparison (e.g., native C)
   # @param test_case_key [Symbol] Key in test_cases hash to match against test case id from result name
   def initialize(results:, test_cases:, baseline_matcher:, comparison_matcher:, test_case_key: nil)
     @results = results
@@ -56,18 +56,14 @@ class SpeedupCalculator
   private
 
   # Extract test case id from result name
-  # "css_parser: CSS1" -> "CSS1"
-  # "cataract gem: all" -> "all"
+  # "pure_without_yjit: CSS1" -> "CSS1"
+  # "native: all" -> "all"
   def extract_test_case(name)
     name.split(':').last.strip
   end
 
   # Common matchers
   class Matchers
-    def self.css_parser
-      ->(result) { base_implementation(result) == 'css_parser' }
-    end
-
     def self.cataract
       # Matches native cataract (for backwards compatibility)
       ->(result) { base_implementation(result) == 'native' }
