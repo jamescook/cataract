@@ -623,7 +623,7 @@ struct flatten_selectors_context {
 };
 
 // Forward declaration
-static VALUE flatten_rules_for_selector(VALUE rules_array, VALUE rule_indices, VALUE selector);
+static VALUE flatten_rules_for_selector(VALUE rules_array, VALUE rule_indices, VALUE selector, VALUE *out_selector_list_id);
 
 // Callback for rb_hash_foreach when merging selector groups
 static int flatten_selector_group_callback(VALUE selector, VALUE group_indices, VALUE arg) {
@@ -634,8 +634,9 @@ static int flatten_selector_group_callback(VALUE selector, VALUE group_indices, 
                  ctx->selector_index, ctx->total_selectors,
                  RSTRING_PTR(selector), RARRAY_LEN(group_indices));
 
-    // Merge all rules in this selector group
-    VALUE merged_decls = flatten_rules_for_selector(ctx->rules_array, group_indices, selector);
+    // Merge all rules in this selector group and preserve selector_list_id if all rules share same ID
+    VALUE selector_list_id = Qnil;
+    VALUE merged_decls = flatten_rules_for_selector(ctx->rules_array, group_indices, selector, &selector_list_id);
 
     // Create new rule with this selector and merged declarations
     VALUE new_rule = rb_struct_new(cRule,
@@ -644,7 +645,8 @@ static int flatten_selector_group_callback(VALUE selector, VALUE group_indices, 
         merged_decls,
         Qnil,  // specificity
         Qnil,  // parent_rule_id
-        Qnil   // nesting_style
+        Qnil,  // nesting_style
+        selector_list_id  // Preserve selector_list_id if all rules in group share same ID
     );
     rb_ary_push(ctx->merged_rules, new_rule);
 
@@ -657,14 +659,65 @@ static int flatten_selector_group_callback(VALUE selector, VALUE group_indices, 
  * Takes an array of rule indices that all share the same selector,
  * expands shorthands, applies cascade rules, and recreates shorthands.
  *
+ * @param out_selector_list_id Output parameter: set to selector_list_id if all rules share same ID, else Qnil
  * Returns: Array of merged Declaration structs
  */
-static VALUE flatten_rules_for_selector(VALUE rules_array, VALUE rule_indices, VALUE selector) {
+static VALUE flatten_rules_for_selector(VALUE rules_array, VALUE rule_indices, VALUE selector, VALUE *out_selector_list_id) {
     long num_rules_in_group = RARRAY_LEN(rule_indices);
     VALUE properties_hash = rb_hash_new();
 
     DEBUG_PRINTF("    [flatten_rules_for_selector] Merging %ld rules for selector '%s'\n",
                  num_rules_in_group, RSTRING_PTR(selector));
+
+    // Extract selector_list_id from rules - preserve if all rules share same ID
+    VALUE first_selector_list_id = Qnil;
+    int all_same_selector_list_id = 1;
+
+    DEBUG_PRINTF("    Checking if rules share same selector_list_id...\n");
+
+    for (long g = 0; g < num_rules_in_group; g++) {
+        long rule_idx = FIX2LONG(rb_ary_entry(rule_indices, g));
+        VALUE rule = RARRAY_AREF(rules_array, rule_idx);
+
+        // Skip AtRule objects - they don't have selector_list_id
+        if (rb_obj_is_kind_of(rule, cAtRule)) {
+            continue;
+        }
+
+        VALUE selector_list_id = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR_LIST_ID));
+
+        if (NIL_P(selector_list_id)) {
+            DEBUG_PRINTF("      Rule %ld: has nil selector_list_id, can't preserve\n", g);
+            // If any rule has nil selector_list_id, can't preserve
+            all_same_selector_list_id = 0;
+            break;
+        }
+
+        if (g == 0 || NIL_P(first_selector_list_id)) {
+            first_selector_list_id = selector_list_id;
+            DEBUG_PRINTF("      Rule %ld: first selector_list_id=%ld\n", g, NUM2LONG(first_selector_list_id));
+        } else if (!rb_equal(first_selector_list_id, selector_list_id)) {
+            DEBUG_PRINTF("      Rule %ld: different selector_list_id=%ld (vs %ld), can't preserve\n",
+                         g, NUM2LONG(selector_list_id), NUM2LONG(first_selector_list_id));
+            // Different selector_list_ids - can't preserve
+            all_same_selector_list_id = 0;
+            break;
+        } else {
+            DEBUG_PRINTF("      Rule %ld: same selector_list_id=%ld\n", g, NUM2LONG(selector_list_id));
+        }
+    }
+
+    // Set output parameter: preserve selector_list_id only if all rules share same ID
+    if (out_selector_list_id) {
+        *out_selector_list_id = (all_same_selector_list_id && !NIL_P(first_selector_list_id)) ? first_selector_list_id : Qnil;
+#ifdef CATARACT_DEBUG
+        if (!NIL_P(*out_selector_list_id)) {
+            DEBUG_PRINTF("    -> Preserving selector_list_id=%ld for merged rule\n", NUM2LONG(*out_selector_list_id));
+        } else {
+            DEBUG_PRINTF("    -> NOT preserving selector_list_id (not all same)\n");
+        }
+#endif
+    }
 
     // Process each rule in this selector group
     for (long g = 0; g < num_rules_in_group; g++) {
@@ -1015,6 +1068,178 @@ static VALUE flatten_rules_for_selector(VALUE rules_array, VALUE rule_indices, V
     return merged_decls;
 }
 
+/*
+ * Helper function: Check if two declaration arrays are equal
+ *
+ * Returns: true if declarations have same properties, values, and importance
+ */
+static int declarations_equal(VALUE decls1, VALUE decls2) {
+    long len1 = RARRAY_LEN(decls1);
+    long len2 = RARRAY_LEN(decls2);
+
+    DEBUG_PRINTF("      [declarations_equal] Comparing %ld vs %ld declarations\n", len1, len2);
+
+    if (len1 != len2) {
+        DEBUG_PRINTF("      -> Different lengths, NOT equal\n");
+        return 0;
+    }
+
+    // Compare each declaration (property, value, important must all match)
+    for (long i = 0; i < len1; i++) {
+        VALUE d1 = RARRAY_AREF(decls1, i);
+        VALUE d2 = RARRAY_AREF(decls2, i);
+
+        VALUE prop1 = rb_struct_aref(d1, INT2FIX(DECL_PROPERTY));
+        VALUE prop2 = rb_struct_aref(d2, INT2FIX(DECL_PROPERTY));
+        VALUE val1 = rb_struct_aref(d1, INT2FIX(DECL_VALUE));
+        VALUE val2 = rb_struct_aref(d2, INT2FIX(DECL_VALUE));
+        VALUE imp1 = rb_struct_aref(d1, INT2FIX(DECL_IMPORTANT));
+        VALUE imp2 = rb_struct_aref(d2, INT2FIX(DECL_IMPORTANT));
+
+        if (!rb_equal(prop1, prop2) || !rb_equal(val1, val2) || (RTEST(imp1) != RTEST(imp2))) {
+            DEBUG_PRINTF("      -> Decl %ld differs: %s:%s%s vs %s:%s%s\n",
+                         i,
+                         RSTRING_PTR(prop1), RSTRING_PTR(val1), RTEST(imp1) ? "!" : "",
+                         RSTRING_PTR(prop2), RSTRING_PTR(val2), RTEST(imp2) ? "!" : "");
+            // Protect VALUEs from GC after rb_equal() calls and before RSTRING_PTR usage above
+            RB_GC_GUARD(prop1);
+            RB_GC_GUARD(val1);
+            RB_GC_GUARD(prop2);
+            RB_GC_GUARD(val2);
+            return 0;
+        }
+    }
+
+    DEBUG_PRINTF("      -> All declarations match, equal\n");
+    return 1;
+}
+
+/*
+ * Update selector lists to remove diverged rules
+ *
+ * After flattening/cascade, rules that were in the same selector list may have
+ * different declarations. This function builds the selector_lists hash with only
+ * rules that still match, and clears selector_list_id for diverged rules.
+ *
+ * @param merged_rules Array of flattened rules (with new IDs assigned)
+ * @param selector_lists Empty hash to populate with list_id => Array of rule IDs
+ */
+static void update_selector_lists_for_divergence(VALUE merged_rules, VALUE selector_lists) {
+    DEBUG_PRINTF("\n=== update_selector_lists_for_divergence ===\n");
+
+    // Group merged rules by selector_list_id (skip rules with no list)
+    // NOTE: Using manual iteration instead of group_by to avoid Ruby method calls
+    VALUE rules_by_list = rb_hash_new();
+
+    long num_rules = RARRAY_LEN(merged_rules);
+    DEBUG_PRINTF("  Total merged rules: %ld\n", num_rules);
+
+    for (long i = 0; i < num_rules; i++) {
+        VALUE rule = RARRAY_AREF(merged_rules, i);
+
+        // Skip AtRule objects
+        if (rb_obj_is_kind_of(rule, cAtRule)) {
+            continue;
+        }
+
+        VALUE selector_list_id = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR_LIST_ID));
+#ifdef CATARACT_DEBUG
+        VALUE selector = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR));
+#endif
+
+        if (NIL_P(selector_list_id)) {
+            DEBUG_PRINTF("  Rule %ld (%s): no selector_list_id\n", i, RSTRING_PTR(selector));
+            continue;
+        }
+
+        DEBUG_PRINTF("  Rule %ld (%s): selector_list_id=%ld\n",
+                     i, RSTRING_PTR(selector), NUM2LONG(selector_list_id));
+
+        VALUE group = rb_hash_aref(rules_by_list, selector_list_id);
+        if (NIL_P(group)) {
+            group = rb_ary_new();
+            rb_hash_aset(rules_by_list, selector_list_id, group);
+            DEBUG_PRINTF("    -> Created new group for list_id=%ld\n", NUM2LONG(selector_list_id));
+        }
+        rb_ary_push(group, rule);
+    }
+
+    // For each selector list, check if declarations still match
+    VALUE list_ids = rb_funcall(rules_by_list, rb_intern("keys"), 0);
+    long num_lists = RARRAY_LEN(list_ids);
+    DEBUG_PRINTF("  Found %ld selector list groups to check\n", num_lists);
+
+    for (long i = 0; i < num_lists; i++) {
+        VALUE list_id = RARRAY_AREF(list_ids, i);
+        VALUE rules_in_list = rb_hash_aref(rules_by_list, list_id);
+        long num_in_list = RARRAY_LEN(rules_in_list);
+
+        DEBUG_PRINTF("\n  Checking list_id=%ld: %ld rules\n", NUM2LONG(list_id), num_in_list);
+
+        // Skip if only one rule in list (nothing to compare)
+        if (num_in_list <= 1) {
+            DEBUG_PRINTF("    -> Only 1 rule, skipping\n");
+            continue;
+        }
+
+        // Get first rule as reference
+        VALUE reference_rule = RARRAY_AREF(rules_in_list, 0);
+        VALUE reference_decls = rb_struct_aref(reference_rule, INT2FIX(RULE_DECLARATIONS));
+#ifdef CATARACT_DEBUG
+        VALUE reference_selector = rb_struct_aref(reference_rule, INT2FIX(RULE_SELECTOR));
+        DEBUG_PRINTF("    Reference rule: selector=%s, %ld declarations\n",
+                     RSTRING_PTR(reference_selector), RARRAY_LEN(reference_decls));
+#endif
+
+        // Find rules that still match (have identical declarations)
+        VALUE matching_rules = rb_ary_new();
+        rb_ary_push(matching_rules, reference_rule);
+
+        for (long j = 1; j < num_in_list; j++) {
+            VALUE rule = RARRAY_AREF(rules_in_list, j);
+            VALUE decls = rb_struct_aref(rule, INT2FIX(RULE_DECLARATIONS));
+#ifdef CATARACT_DEBUG
+            VALUE selector = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR));
+            DEBUG_PRINTF("    Comparing rule %ld (selector=%s):\n", j, RSTRING_PTR(selector));
+#endif
+
+            if (declarations_equal(reference_decls, decls)) {
+                DEBUG_PRINTF("      -> MATCHES reference, keeping in list\n");
+                rb_ary_push(matching_rules, rule);
+            } else {
+                DEBUG_PRINTF("      -> DIVERGED from reference, clearing selector_list_id\n");
+                // Clear selector_list_id for diverged rule
+                rb_struct_aset(rule, INT2FIX(RULE_SELECTOR_LIST_ID), Qnil);
+            }
+        }
+
+        // Only keep the selector list if at least 2 rules still match
+        long num_matching = RARRAY_LEN(matching_rules);
+        DEBUG_PRINTF("    Result: %ld/%ld rules still match\n", num_matching, num_in_list);
+
+        if (num_matching >= 2) {
+            // Build selector_lists hash with NEW rule IDs
+            VALUE rule_ids = rb_ary_new_capa(num_matching);
+            for (long j = 0; j < num_matching; j++) {
+                VALUE rule = RARRAY_AREF(matching_rules, j);
+                VALUE rule_id = rb_struct_aref(rule, INT2FIX(RULE_ID));
+                rb_ary_push(rule_ids, rule_id);
+            }
+            rb_hash_aset(selector_lists, list_id, rule_ids);
+            DEBUG_PRINTF("    -> Keeping selector list with %ld rules\n", num_matching);
+        } else {
+            DEBUG_PRINTF("    -> Only 1 rule left, clearing selector_list_id for it too\n");
+            // Clear selector_list_id for the last remaining rule too
+            for (long j = 0; j < num_matching; j++) {
+                VALUE rule = RARRAY_AREF(matching_rules, j);
+                rb_struct_aset(rule, INT2FIX(RULE_SELECTOR_LIST_ID), Qnil);
+            }
+        }
+    }
+
+    DEBUG_PRINTF("\n=== End divergence tracking: %ld selector lists preserved ===\n\n", RHASH_SIZE(selector_lists));
+}
+
 // Flatten CSS rules by applying cascade rules
 // Input: Stylesheet object or CSS string
 // Output: Stylesheet with flattened declarations (cascade applied)
@@ -1025,7 +1250,8 @@ VALUE cataract_flatten(VALUE self, VALUE input) {
     // Most calls pass Stylesheet (common case), String is rare
     if (TYPE(input) == T_STRING) {
         // Parse CSS string first
-        VALUE parsed = parse_css_new(self, input);
+        VALUE argv[1] = { input };
+        VALUE parsed = parse_css_new(1, argv, self);
         rules_array = rb_hash_aref(parsed, ID2SYM(rb_intern("rules")));
     } else if (rb_obj_is_kind_of(input, cStylesheet)) {
         // Extract @rules from Stylesheet (common case)
@@ -1214,10 +1440,8 @@ VALUE cataract_flatten(VALUE self, VALUE input) {
         VALUE passthrough_sheet = rb_class_new_instance(0, NULL, cStylesheet);
         rb_ivar_set(passthrough_sheet, id_ivar_rules, passthrough_rules);
 
-        // Set empty @media_index
+        // Set empty @media_index (no media rules after flatten)
         VALUE media_idx = rb_hash_new();
-        VALUE all_ids = rb_ary_new();
-        rb_hash_aset(media_idx, ID2SYM(id_all), all_ids);
         rb_ivar_set(passthrough_sheet, id_ivar_media_index, media_idx);
 
         return passthrough_sheet;
@@ -1258,14 +1482,44 @@ VALUE cataract_flatten(VALUE self, VALUE input) {
 
         rb_ivar_set(merged_sheet, id_ivar_rules, merged_rules);
 
-        // Set @media_index with :all pointing to all rule IDs
-        VALUE media_idx = rb_hash_new();
-        VALUE all_ids = rb_ary_new();
-        for (int i = 0; i < rule_id_counter; i++) {
-            rb_ary_push(all_ids, INT2FIX(i));
+        // Handle selector list divergence: remove rules from selector lists if declarations no longer match
+        // This makes selector_list_id authoritative - if set, declarations MUST be identical
+        // Only process if selector_lists is enabled in the stylesheet's parser options
+        VALUE selector_lists = rb_hash_new();
+        int selector_lists_enabled = 0;
+
+        if (rb_obj_is_kind_of(input, cStylesheet)) {
+            VALUE parser_options = rb_ivar_get(input, rb_intern("@parser_options"));
+
+            if (!NIL_P(parser_options)) {
+                VALUE enabled_val = rb_hash_aref(parser_options, ID2SYM(rb_intern("selector_lists")));
+                selector_lists_enabled = RTEST(enabled_val);
+
+                if (selector_lists_enabled) {
+                    update_selector_lists_for_divergence(merged_rules, selector_lists);
+                } else {
+                    // Clear all selector_list_ids when feature is disabled
+                    for (long i = 0; i < rule_id_counter; i++) {
+                        VALUE rule = RARRAY_AREF(merged_rules, i);
+                        if (!rb_obj_is_kind_of(rule, cAtRule)) {
+                            rb_struct_aset(rule, INT2FIX(RULE_SELECTOR_LIST_ID), Qnil);
+                        }
+                    }
+                }
+            } else {
+                // Default behavior when parser_options is nil: assume enabled
+                update_selector_lists_for_divergence(merged_rules, selector_lists);
+            }
         }
-        rb_hash_aset(media_idx, ID2SYM(id_all), all_ids);
+
+        // Set @media_index to empty hash (no media rules after flatten)
+        // NOTE: Setting to empty hash instead of { all: [ids] } to match pure Ruby behavior
+        // and avoid wrapping output in @media all during serialization
+        VALUE media_idx = rb_hash_new();
         rb_ivar_set(merged_sheet, id_ivar_media_index, media_idx);
+
+        // Set @_selector_lists with divergence tracking
+        rb_ivar_set(merged_sheet, rb_intern("@_selector_lists"), selector_lists);
 
         return merged_sheet;
     }
@@ -1731,7 +1985,8 @@ VALUE cataract_flatten(VALUE self, VALUE input) {
         merged_declarations,      // declarations
         Qnil,                     // specificity (not applicable)
         Qnil,                     // parent_rule_id (not nested)
-        Qnil                      // nesting_style (not nested)
+        Qnil,                     // nesting_style (not nested)
+        Qnil                      // selector_list_id
     );
 
     // Set @rules array with single merged rule (use cached ID)

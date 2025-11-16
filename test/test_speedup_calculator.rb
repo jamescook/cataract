@@ -16,8 +16,8 @@ class TestSpeedupCalculator < Minitest::Test
     calculator = SpeedupCalculator.new(
       results: data['results'],
       test_cases: data['metadata']['test_cases'],
-      baseline_matcher: SpeedupCalculator::Matchers.css_parser,
-      comparison_matcher: SpeedupCalculator::Matchers.cataract,
+      baseline_matcher: SpeedupCalculator::Matchers.cataract_pure_without_yjit,
+      comparison_matcher: SpeedupCalculator::Matchers.cataract_native,
       test_case_key: :fixture
     )
 
@@ -65,12 +65,12 @@ class TestSpeedupCalculator < Minitest::Test
   end
 
   def test_speedup_calculation_with_sample_data
-    # Create minimal sample data for testing
+    # Create minimal sample data for testing pure Ruby vs native
     results = [
-      { 'name' => 'css_parser: test1', 'implementation' => 'css_parser', 'central_tendency' => 100.0 },
-      { 'name' => 'cataract: test1', 'implementation' => 'native', 'central_tendency' => 500.0 },
-      { 'name' => 'css_parser: test2', 'implementation' => 'css_parser', 'central_tendency' => 200.0 },
-      { 'name' => 'cataract: test2', 'implementation' => 'native', 'central_tendency' => 800.0 }
+      { 'name' => 'pure_without_yjit: test1', 'implementation' => 'pure_without_yjit', 'central_tendency' => 100.0 },
+      { 'name' => 'native: test1', 'implementation' => 'native', 'central_tendency' => 500.0 },
+      { 'name' => 'pure_without_yjit: test2', 'implementation' => 'pure_without_yjit', 'central_tendency' => 200.0 },
+      { 'name' => 'native: test2', 'implementation' => 'native', 'central_tendency' => 800.0 }
     ]
 
     test_cases = [
@@ -81,8 +81,8 @@ class TestSpeedupCalculator < Minitest::Test
     calculator = SpeedupCalculator.new(
       results: results,
       test_cases: test_cases,
-      baseline_matcher: SpeedupCalculator::Matchers.css_parser,
-      comparison_matcher: SpeedupCalculator::Matchers.cataract,
+      baseline_matcher: SpeedupCalculator::Matchers.cataract_pure_without_yjit,
+      comparison_matcher: SpeedupCalculator::Matchers.cataract_native,
       test_case_key: :key
     )
 
@@ -103,15 +103,15 @@ class TestSpeedupCalculator < Minitest::Test
   def test_speedup_calculation_with_no_matches
     # No matching baseline/comparison pairs
     results = [
-      { 'name' => 'css_parser: test1', 'implementation' => 'css_parser', 'central_tendency' => 100.0 },
+      { 'name' => 'pure_without_yjit: test1', 'implementation' => 'pure_without_yjit', 'central_tendency' => 100.0 },
       { 'name' => 'other_tool: test2', 'implementation' => 'other', 'central_tendency' => 200.0 }
     ]
 
     calculator = SpeedupCalculator.new(
       results: results,
       test_cases: [],
-      baseline_matcher: SpeedupCalculator::Matchers.css_parser,
-      comparison_matcher: SpeedupCalculator::Matchers.cataract,
+      baseline_matcher: SpeedupCalculator::Matchers.cataract_pure_without_yjit,
+      comparison_matcher: SpeedupCalculator::Matchers.cataract_native,
       test_case_key: nil
     )
 
@@ -122,13 +122,21 @@ class TestSpeedupCalculator < Minitest::Test
   end
 
   def test_matchers
-    # Test css_parser matcher
-    assert SpeedupCalculator::Matchers.css_parser.call({ 'implementation' => 'css_parser' })
-    refute SpeedupCalculator::Matchers.css_parser.call({ 'implementation' => 'native' })
+    # Test cataract pure matchers
+    assert SpeedupCalculator::Matchers.cataract_pure_without_yjit.call({ 'implementation' => 'pure_without_yjit' })
+    refute SpeedupCalculator::Matchers.cataract_pure_without_yjit.call({ 'implementation' => 'pure_with_yjit' })
+    refute SpeedupCalculator::Matchers.cataract_pure_without_yjit.call({ 'implementation' => 'native' })
 
-    # Test cataract matcher (matches native)
+    assert SpeedupCalculator::Matchers.cataract_pure_with_yjit.call({ 'implementation' => 'pure_with_yjit' })
+    refute SpeedupCalculator::Matchers.cataract_pure_with_yjit.call({ 'implementation' => 'pure_without_yjit' })
+
+    # Test cataract native matcher
+    assert SpeedupCalculator::Matchers.cataract_native.call({ 'implementation' => 'native' })
+    refute SpeedupCalculator::Matchers.cataract_native.call({ 'implementation' => 'pure_without_yjit' })
+
+    # Test cataract matcher (backwards compatibility - matches native)
     assert SpeedupCalculator::Matchers.cataract.call({ 'implementation' => 'native' })
-    refute SpeedupCalculator::Matchers.cataract.call({ 'implementation' => 'css_parser' })
+    refute SpeedupCalculator::Matchers.cataract.call({ 'implementation' => 'pure_without_yjit' })
 
     # Test YJIT matchers
     assert SpeedupCalculator::Matchers.with_yjit.call({ 'implementation' => 'pure_with_yjit' })

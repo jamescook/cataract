@@ -729,7 +729,7 @@ class TestCssNesting < Minitest::Test
       Cataract::Stylesheet.parse(css)
     end
 
-    assert_match(/CSS nesting too deep.*exceeded maximum depth of 10/i, error.message)
+    assert_equal 'CSS nesting too deep: exceeded maximum depth of 10', error.message
   end
 
   # Test depth error with @media nesting
@@ -741,7 +741,7 @@ class TestCssNesting < Minitest::Test
       Cataract::Stylesheet.parse(css)
     end
 
-    assert_match(/CSS nesting too deep.*exceeded maximum depth of 10/i, error.message)
+    assert_equal 'CSS nesting too deep: exceeded maximum depth of 10', error.message
   end
 
   # Test that depth error doesn't trigger at exactly max depth
@@ -1114,7 +1114,7 @@ class TestCssNesting < Minitest::Test
 
     assert_equal :'(orientation: landscape)', landscape_media
     # Combined media query should be: (orientation: landscape) and (min-width > 1024px)
-    assert_match(/orientation.*landscape.*min-width.*1024px/, nested_media.to_s)
+    assert_equal :'(orientation: landscape) and (min-width > 1024px)', nested_media
   end
 
   # W3C Spec Example: Mixed declarations order doesn't matter

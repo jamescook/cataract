@@ -8,7 +8,7 @@ $LOAD_PATH.unshift File.expand_path('../lib', __dir__)
 require 'cataract'
 
 # CSS Specificity Calculation Benchmark
-# Compares css_parser gem vs Cataract pure Ruby vs Cataract C extension
+# Compares Cataract pure Ruby vs Cataract C extension
 class SpecificityBenchmark < BenchmarkHarness
   def self.benchmark_name
     'specificity'
@@ -29,11 +29,7 @@ class SpecificityBenchmark < BenchmarkHarness
   end
 
   def sanity_checks
-    # Verify css_parser gem is available
-    require 'css_parser'
-
     # Verify both libraries work
-    raise 'css_parser sanity check failed' unless CssParser.calculate_specificity('div') == 1
     raise 'Cataract sanity check failed' unless Cataract.calculate_specificity('div') == 1
   end
 
@@ -51,7 +47,6 @@ class SpecificityBenchmark < BenchmarkHarness
 
     # Define implementations to test
     implementations = [
-      { name: 'css_parser gem', base_impl: :css_parser, env: { 'SPECIFICITY_CSS_PARSER' => '1' } },
       { name: 'Cataract pure Ruby', base_impl: :pure, env: { 'CATARACT_PURE' => '1' } },
       { name: 'Cataract C extension', base_impl: :native, env: { 'CATARACT_PURE' => nil } }
     ]

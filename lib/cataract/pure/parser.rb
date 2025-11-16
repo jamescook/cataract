@@ -11,7 +11,7 @@
 # Do NOT refactor to "clean Ruby" without benchmarking - you will make it slower.
 #
 # Example: RuboCop suggests using `.positive?` instead of `> 0`, but benchmarking
-# shows `> 0` is 1.26x faster (see benchmark_positive.rb). These micro-optimizations
+# shows `> 0` is 1.26x faster. These micro-optimizations
 # matter in a hot parsing loop.
 
 module Cataract
@@ -65,15 +65,25 @@ module Cataract
       true
     end
 
-    def initialize(css_string, parent_media_sym: nil, depth: 0)
+    def initialize(css_string, parser_options: {}, parent_media_sym: nil, depth: 0)
       @css = css_string.dup.freeze
       @pos = 0
       @len = @css.bytesize
       @parent_media_sym = parent_media_sym
 
+      # Parser options with defaults
+      @parser_options = {
+        selector_lists: true
+      }.merge(parser_options)
+
+      # Extract selector_lists option to ivar to avoid repeated hash lookups in hot path
+      @selector_lists_enabled = @parser_options[:selector_lists]
+
       # Parser state
       @rules = []                    # Flat array of Rule structs
       @_media_index = {}             # Symbol => Array of rule IDs
+      @_selector_lists = {}          # Hash: list_id => Array of rule IDs
+      @_next_selector_list_id = 0    # Counter for selector list IDs
       @imports = []                  # Array of ImportStatement structs
       @rule_id_counter = 0           # Next rule ID (0-indexed)
       @media_query_count = 0         # Safety limit
@@ -103,7 +113,9 @@ module Cataract
         # Must be a selector-based rule
         selector = parse_selector
 
-        next if selector.nil? || selector.empty?
+        if selector.nil? || selector.empty?
+          next
+        end
 
         # Find the block boundaries
         decl_start = @pos # Should be right after the {
@@ -159,22 +171,46 @@ module Cataract
           # Split comma-separated selectors into individual rules
           selectors = selector.split(',')
 
+          # Determine if we should track this as a selector list
+          # Check boolean first to potentially avoid size() call via short-circuit evaluation
+          list_id = nil
+          if @selector_lists_enabled && selectors.size > 1
+            list_id = @_next_selector_list_id
+            @_next_selector_list_id += 1
+            @_selector_lists[list_id] = []
+          end
+
           selectors.each do |individual_selector|
             individual_selector.strip!
             next if individual_selector.empty?
 
-            # Create Rule struct
+            rule_id = @rule_id_counter
+
+            # Dup declarations for each rule in a selector list to avoid shared state
+            # (principle of least surprise - modifying one rule shouldn't affect others)
+            # Must deep dup: both the array and the Declaration objects inside
+            rule_declarations = if list_id
+                                  declarations.map { |d| Declaration.new(d.property, d.value, d.important) }
+                                else
+                                  declarations
+                                end
+
+            # Create Rule struct (with selector_list_id as 7th parameter)
             rule = Rule.new(
-              @rule_id_counter,    # id
+              rule_id,             # id
               individual_selector, # selector
-              declarations,        # declarations
+              rule_declarations,   # declarations
               nil,                 # specificity (calculated lazily)
               nil,                 # parent_rule_id
-              nil                  # nesting_style
+              nil,                 # nesting_style
+              list_id              # selector_list_id
             )
 
             @rules << rule
             @rule_id_counter += 1
+
+            # Track in selector list if applicable
+            @_selector_lists[list_id] << rule_id if list_id
           end
         end
       end
@@ -182,6 +218,7 @@ module Cataract
       {
         rules: @rules,
         _media_index: @_media_index,
+        _selector_lists: @_selector_lists,
         imports: @imports,
         charset: @charset,
         _has_nesting: @_has_nesting
@@ -238,17 +275,28 @@ module Cataract
       true
     end
 
-    # Skip whitespace and comments
+    # Skip whitespace and comments until no more progress can be made
+    #
+    # Optimization: Using `begin...end until` instead of `loop + break` reduces VM overhead:
+    # - loop + break: 29 instructions with catch table for break/redo/next, uses throw/send
+    # - begin...end until: 24 instructions, simple jump-based loop, no catch table
+    # Benchmark shows 15-51% speedup depending on YJIT
     def skip_ws_and_comments
-      loop do
+      begin
         old_pos = @pos
         skip_whitespace
         skip_comment
-        break if @pos == old_pos # No progress made
-      end
+      end until @pos == old_pos # No progress made # rubocop:disable Lint/Loop
     end
 
     # Find matching closing brace
+    #
+    # Performance notes (benchmarked on bootstrap.css with 2,400 braces):
+    # - Using `return` instead of `break` avoids catch table overhead (~2% faster)
+    # - Checking RBRACE before LBRACE is faster because closing braces are
+    #   encountered more frequently when searching forward from an opening brace
+    # - Combined optimizations: baseline 666ms → optimized 652ms (2% improvement)
+    #
     # Translated from C: see ext/cataract/css_parser.c find_matching_brace
     def find_matching_brace(start_pos)
       depth = 1
@@ -256,11 +304,11 @@ module Cataract
 
       while pos < @len
         byte = @css.getbyte(pos)
-        if byte == BYTE_LBRACE
-          depth += 1
-        elsif byte == BYTE_RBRACE
+        if byte == BYTE_RBRACE
           depth -= 1
-          break if depth == 0 # Found matching brace, exit immediately
+          return pos if depth == 0
+        elsif byte == BYTE_LBRACE
+          depth += 1
         end
         pos += 1
       end
@@ -288,6 +336,7 @@ module Cataract
 
       # Trim whitespace from selector (in-place to avoid allocation)
       selector_text.strip!
+      selector_text
     end
 
     # Parse mixed block containing declarations AND nested selectors/at-rules
@@ -587,7 +636,7 @@ module Cataract
           end
 
           # Check for 'important' (9 chars)
-          if i >= 8 && value[(i - 8)..i] == 'important'
+          if i >= 8 && value[(i - 8), 9] == 'important'
             i -= 9
             # Skip whitespace before 'important'
             while i >= 0
@@ -644,16 +693,8 @@ module Cataract
 
         charset_value = byteslice_encoded(value_start, @pos - value_start)
         charset_value.strip!
-        # Remove quotes (byte-by-byte)
-        result = String.new
-        i = 0
-        len = charset_value.bytesize
-        while i < len
-          byte = charset_value.getbyte(i)
-          result << charset_value[i] unless byte == BYTE_DQUOTE || byte == BYTE_SQUOTE
-          i += 1
-        end
-        @charset = result
+        # Remove quotes
+        @charset = charset_value.delete('"\'')
 
         @pos += 1 if peek_byte == BYTE_SEMICOLON # consume semicolon
         return
@@ -702,10 +743,23 @@ module Cataract
         # Recursively parse block content (preserve parent media context)
         nested_parser = Parser.new(
           byteslice_encoded(block_start, block_end - block_start),
-          parent_media_sym: @parent_media_sym, depth: @depth + 1
+          parser_options: @parser_options,
+          parent_media_sym: @parent_media_sym,
+          depth: @depth + 1
         )
 
         nested_result = nested_parser.parse
+
+        # Merge nested selector_lists with offsetted IDs
+        list_id_offset = @_next_selector_list_id
+        if nested_result[:_selector_lists] && !nested_result[:_selector_lists].empty?
+          nested_result[:_selector_lists].each do |list_id, rule_ids|
+            new_list_id = list_id + list_id_offset
+            offsetted_rule_ids = rule_ids.map { |rid| rid + @rule_id_counter }
+            @_selector_lists[new_list_id] = offsetted_rule_ids
+          end
+          @_next_selector_list_id = list_id_offset + nested_result[:_selector_lists].size
+        end
 
         # Merge nested media_index into ours
         nested_result[:_media_index].each do |media, rule_ids|
@@ -717,6 +771,10 @@ module Cataract
         # Add nested rules to main rules array
         nested_result[:rules].each do |rule|
           rule.id = @rule_id_counter
+          # Update selector_list_id if applicable
+          if rule.is_a?(Rule) && rule.selector_list_id
+            rule.selector_list_id += list_id_offset
+          end
           @rule_id_counter += 1
           @rules << rule
         end
@@ -776,11 +834,23 @@ module Cataract
         # Parse the content with the combined media context
         nested_parser = Parser.new(
           byteslice_encoded(block_start, block_end - block_start),
+          parser_options: @parser_options,
           parent_media_sym: combined_media_sym,
           depth: @depth + 1
         )
 
         nested_result = nested_parser.parse
+
+        # Merge nested selector_lists with offsetted IDs
+        list_id_offset = @_next_selector_list_id
+        if nested_result[:_selector_lists] && !nested_result[:_selector_lists].empty?
+          nested_result[:_selector_lists].each do |list_id, rule_ids|
+            new_list_id = list_id + list_id_offset
+            offsetted_rule_ids = rule_ids.map { |rid| rid + @rule_id_counter }
+            @_selector_lists[new_list_id] = offsetted_rule_ids
+          end
+          @_next_selector_list_id = list_id_offset + nested_result[:_selector_lists].size
+        end
 
         # Merge nested media_index into ours (for nested @media)
         nested_result[:_media_index].each do |media, rule_ids|
@@ -792,6 +862,10 @@ module Cataract
         # Add nested rules to main rules array and update media_index
         nested_result[:rules].each do |rule|
           rule.id = @rule_id_counter
+          # Update selector_list_id if applicable
+          if rule.is_a?(Rule) && rule.selector_list_id
+            rule.selector_list_id += list_id_offset
+          end
 
           # Extract media types and add to each first (if different from full query)
           # We add these BEFORE the full query so that when iterating the media_index hash,
@@ -856,7 +930,11 @@ module Cataract
 
         # Parse keyframe blocks as rules (0%/from/to etc)
         # Create a nested parser context
-        nested_parser = Parser.new(byteslice_encoded(block_start, block_end - block_start), depth: @depth + 1)
+        nested_parser = Parser.new(
+          byteslice_encoded(block_start, block_end - block_start),
+          parser_options: @parser_options,
+          depth: @depth + 1
+        )
         nested_result = nested_parser.parse
         content = nested_result[:rules]
 
@@ -1096,7 +1174,7 @@ module Cataract
         result = String.new
         result << parent_selector
         result << ' '
-        result << nested_selector.byteslice(start_pos..-1)
+        result << nested_selector.byteslice(start_pos, nested_selector.bytesize - start_pos)
 
         [result, nesting_style]
       end
@@ -1120,7 +1198,8 @@ module Cataract
       # If child is a condition (contains ':'), wrap it in parentheses
       combined += if child_str.include?(':')
                     # Add parens if not already present
-                    if child_str.start_with?('(') && child_str.end_with?(')')
+                    len = child_str.bytesize
+                    if len > 1 && child_str.getbyte(0) == BYTE_LPAREN && child_str.getbyte(len - 1) == BYTE_RPAREN
                       child_str
                     else
                       "(#{child_str})"

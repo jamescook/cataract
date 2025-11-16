@@ -692,4 +692,229 @@ class TestFlattening < Minitest::Test
     assert_kind_of Cataract::AtRule, at_rule, 'Rule should be an AtRule'
     assert_equal '@keyframes fade', at_rule.selector
   end
+
+  # ============================================================================
+  # Selector list divergence tests
+  # ============================================================================
+
+  def test_selector_list_divergence_basic
+    # h1, h2, h3 start with same color, then h3 gets overridden
+    sheet = Cataract::Stylesheet.parse(<<~CSS)
+      h1, h2, h3 { color: red; }
+      h3 { color: blue; }
+    CSS
+
+    flattened = sheet.flatten
+
+    # Should have 3 rules after flattening
+    assert_equal 3, flattened.rules_count
+
+    h1_rule = flattened.rules.find { |r| r.selector == 'h1' }
+    h2_rule = flattened.rules.find { |r| r.selector == 'h2' }
+    h3_rule = flattened.rules.find { |r| r.selector == 'h3' }
+
+    assert h1_rule, 'Should have h1 rule'
+    assert h2_rule, 'Should have h2 rule'
+    assert h3_rule, 'Should have h3 rule'
+
+    # h1 and h2 should still have selector_list_id (same declarations)
+    assert_equal h1_rule.selector_list_id, h2_rule.selector_list_id,
+                 'h1 and h2 should share same selector_list_id'
+    refute_nil h1_rule.selector_list_id, 'h1 should have selector_list_id'
+
+    # h3 should have selector_list_id removed (diverged)
+    assert_nil h3_rule.selector_list_id,
+               'h3 should have selector_list_id removed after divergence'
+
+    # Verify declarations
+    assert_has_property({ color: 'red' }, h1_rule)
+    assert_has_property({ color: 'red' }, h2_rule)
+    assert_has_property({ color: 'blue' }, h3_rule)
+
+    # Verify serialization groups h1,h2 but keeps h3 separate
+    expected = <<~CSS
+      h1, h2 { color: red; }
+      h3 { color: blue; }
+    CSS
+
+    assert_equal expected, flattened.to_s
+  end
+
+  def test_selector_list_divergence_important
+    # Selector list diverges due to !important
+    sheet = Cataract::Stylesheet.parse(<<~CSS)
+      .a, .b, .c { color: red; }
+      .b { color: blue !important; }
+    CSS
+
+    flattened = sheet.flatten
+
+    a_rule = flattened.rules.find { |r| r.selector == '.a' }
+    b_rule = flattened.rules.find { |r| r.selector == '.b' }
+    c_rule = flattened.rules.find { |r| r.selector == '.c' }
+
+    # .a and .c should still share selector_list_id
+    assert_equal a_rule.selector_list_id, c_rule.selector_list_id,
+                 '.a and .c should still be grouped'
+    refute_nil a_rule.selector_list_id
+
+    # .b should be removed from selector list (diverged)
+    assert_nil b_rule.selector_list_id,
+               '.b should have selector_list_id removed after !important override'
+
+    assert_has_property({ color: 'red' }, a_rule)
+    assert_has_property({ color: 'blue !important' }, b_rule)
+    assert_has_property({ color: 'red' }, c_rule)
+
+    expected = <<~CSS
+      .a, .c { color: red; }
+      .b { color: blue !important; }
+    CSS
+
+    assert_equal expected, flattened.to_s
+  end
+
+  def test_selector_list_complete_divergence
+    # All selectors in list diverge completely
+    sheet = Cataract::Stylesheet.parse(<<~CSS)
+      .x, .y, .z { color: red; }
+      .x { color: blue; }
+      .y { color: green; }
+      .z { color: yellow; }
+    CSS
+
+    flattened = sheet.flatten
+
+    x_rule = flattened.rules.find { |r| r.selector == '.x' }
+    y_rule = flattened.rules.find { |r| r.selector == '.y' }
+    z_rule = flattened.rules.find { |r| r.selector == '.z' }
+
+    # All should have selector_list_id removed (complete divergence)
+    assert_nil x_rule.selector_list_id, '.x should have no selector_list_id'
+    assert_nil y_rule.selector_list_id, '.y should have no selector_list_id'
+    assert_nil z_rule.selector_list_id, '.z should have no selector_list_id'
+
+    assert_has_property({ color: 'blue' }, x_rule)
+    assert_has_property({ color: 'green' }, y_rule)
+    assert_has_property({ color: 'yellow' }, z_rule)
+
+    expected = <<~CSS
+      .x { color: blue; }
+      .y { color: green; }
+      .z { color: yellow; }
+    CSS
+
+    assert_equal expected, flattened.to_s
+  end
+
+  def test_selector_list_partial_divergence_multiple_properties
+    # Selector list with multiple properties, only one property diverges
+    sheet = Cataract::Stylesheet.parse(<<~CSS)
+      .a, .b { color: red; margin: 10px; }
+      .b { color: blue; }
+    CSS
+
+    flattened = sheet.flatten
+
+    a_rule = flattened.rules.find { |r| r.selector == '.a' }
+    b_rule = flattened.rules.find { |r| r.selector == '.b' }
+
+    # .b should be removed from selector list (declarations diverged)
+    assert_nil b_rule.selector_list_id,
+               '.b should be removed from selector list when any declaration diverges'
+
+    assert_has_property({ color: 'red' }, a_rule)
+    assert_has_property({ margin: '10px' }, a_rule)
+
+    assert_has_property({ color: 'blue' }, b_rule)
+    assert_has_property({ margin: '10px' }, b_rule)
+
+    expected = <<~CSS
+      .a { color: red; margin: 10px; }
+      .b { color: blue; margin: 10px; }
+    CSS
+
+    assert_equal expected, flattened.to_s
+  end
+
+  def test_selector_list_no_divergence_stays_grouped
+    # Selector list with no cascade changes should stay grouped
+    sheet = Cataract::Stylesheet.parse(<<~CSS)
+      h1, h2, h3 { color: red; font-size: 2em; }
+      p { color: blue; }
+    CSS
+
+    flattened = sheet.flatten
+
+    h1_rule = flattened.rules.find { |r| r.selector == 'h1' }
+    h2_rule = flattened.rules.find { |r| r.selector == 'h2' }
+    h3_rule = flattened.rules.find { |r| r.selector == 'h3' }
+
+    # All should still share selector_list_id (no divergence)
+    assert_equal h1_rule.selector_list_id, h2_rule.selector_list_id,
+                 'h1 and h2 should share selector_list_id'
+    assert_equal h2_rule.selector_list_id, h3_rule.selector_list_id,
+                 'h2 and h3 should share selector_list_id'
+    refute_nil h1_rule.selector_list_id, 'h1 should have selector_list_id'
+
+    expected = <<~CSS
+      h1, h2, h3 { color: red; font-size: 2em; }
+      p { color: blue; }
+    CSS
+
+    assert_equal expected, flattened.to_s
+  end
+
+  def test_flatten_ignores_selector_lists_when_feature_disabled
+    # When selector_lists is not enabled during parsing, flatten should not process selector lists
+    sheet = Cataract::Stylesheet.parse(<<~CSS, parser: { selector_lists: false })
+      h1, h2, h3 { color: red; }
+      h3 { color: blue; }
+    CSS
+
+    flattened = sheet.flatten
+
+    h1_rule = flattened.rules.find { |r| r.selector == 'h1' }
+    h2_rule = flattened.rules.find { |r| r.selector == 'h2' }
+    h3_rule = flattened.rules.find { |r| r.selector == 'h3' }
+
+    # All selector_list_ids should be nil since feature was disabled
+    assert_nil h1_rule.selector_list_id, 'h1 should not have selector_list_id when feature disabled'
+    assert_nil h2_rule.selector_list_id, 'h2 should not have selector_list_id when feature disabled'
+    assert_nil h3_rule.selector_list_id, 'h3 should not have selector_list_id when feature disabled'
+
+    # Serialization should output rules separately (no grouping)
+    expected = <<~CSS
+      h1 { color: red; }
+      h2 { color: red; }
+      h3 { color: blue; }
+    CSS
+
+    assert_equal expected, flattened.to_s
+  end
+
+  def test_flatten_does_not_wrap_output_in_media_all
+    # Flatten should set @media_index to empty hash, not wrap output in @media all
+    sheet = Cataract::Stylesheet.parse(<<~CSS)
+      h1 { color: red; }
+      .test { margin: 10px; }
+    CSS
+
+    flattened = sheet.flatten
+    output = flattened.to_s
+
+    # Should NOT contain @media wrapper
+    refute_match(/@media/, output, 'Flatten should not wrap output in @media all')
+
+    # Should contain the actual rules with correct properties
+    assert_has_selector('h1', flattened)
+    assert_has_property({ color: 'red' }, flattened.with_selector('h1').first)
+    assert_has_selector('.test', flattened)
+    assert_has_property({ margin: '10px' }, flattened.with_selector('.test').first)
+
+    # Verify @_media_index is empty hash
+    media_index = flattened.instance_variable_get(:@_media_index)
+
+    assert_empty(media_index, '@_media_index should be empty hash after flatten')
+  end
 end

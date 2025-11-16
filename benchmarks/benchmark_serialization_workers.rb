@@ -7,33 +7,6 @@ require_relative 'worker_helpers'
 # Load the local development version, not installed gem
 $LOAD_PATH.unshift File.expand_path('../lib', __dir__)
 
-# Worker benchmark: css_parser gem
-class SerializationCssParserBenchmark < BenchmarkHarness
-  include SerializationTests
-  include WorkerHelpers
-
-  def self.benchmark_name
-    'serialization_css_parser'
-  end
-
-  def self.description
-    'CSS serialization with css_parser gem'
-  end
-
-  def self.metadata
-    SerializationTests.metadata
-  end
-
-  def self.speedup_config
-    SerializationTests.speedup_config
-  end
-
-  def initialize
-    super
-    self.impl_type = determine_impl_type_with_yjit(:css_parser, SerializationTests)
-  end
-end
-
 # Worker benchmark: Cataract pure Ruby
 class SerializationCataractPureBenchmark < BenchmarkHarness
   include SerializationTests
@@ -90,16 +63,11 @@ end
 
 # CLI entry point - run the appropriate worker
 if __FILE__ == $PROGRAM_NAME
-  if ENV['SERIALIZATION_CSS_PARSER']
-    require 'css_parser'
-    SerializationCssParserBenchmark.run(skip_finalize: true)
-  else
-    require 'cataract'
+  require 'cataract'
 
-    if Cataract::IMPLEMENTATION == :ruby
-      SerializationCataractPureBenchmark.run(skip_finalize: true)
-    else
-      SerializationCataractNativeBenchmark.run(skip_finalize: true)
-    end
+  if Cataract::IMPLEMENTATION == :ruby
+    SerializationCataractPureBenchmark.run(skip_finalize: true)
+  else
+    SerializationCataractNativeBenchmark.run(skip_finalize: true)
   end
 end

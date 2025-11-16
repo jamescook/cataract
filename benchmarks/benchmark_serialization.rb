@@ -8,7 +8,7 @@ $LOAD_PATH.unshift File.expand_path('../lib', __dir__)
 require 'cataract'
 
 # CSS Serialization Performance Benchmark
-# Compares css_parser gem vs Cataract pure Ruby vs Cataract C extension
+# Compares Cataract pure Ruby vs Cataract C extension
 class SerializationBenchmark < BenchmarkHarness
   def self.benchmark_name
     'serialization'
@@ -33,9 +33,6 @@ class SerializationBenchmark < BenchmarkHarness
     bootstrap_path = File.expand_path('../test/fixtures/bootstrap.css', __dir__)
     raise "Bootstrap CSS fixture not found at #{bootstrap_path}" unless File.exist?(bootstrap_path)
 
-    # Verify css_parser gem is available
-    require 'css_parser'
-
     # Verify cataract works
     bootstrap_css = File.read(bootstrap_path)
     cataract_sheet = Cataract.parse_css(bootstrap_css)
@@ -57,7 +54,6 @@ class SerializationBenchmark < BenchmarkHarness
 
     # Define implementations to test
     implementations = [
-      { name: 'css_parser gem', base_impl: :css_parser, env: { 'SERIALIZATION_CSS_PARSER' => '1' } },
       { name: 'Cataract pure Ruby', base_impl: :pure, env: { 'CATARACT_PURE' => '1' } },
       { name: 'Cataract C extension', base_impl: :native, env: { 'CATARACT_PURE' => nil } }
     ]
@@ -183,24 +179,11 @@ class SerializationBenchmark < BenchmarkHarness
 
     puts "Input: Bootstrap CSS (#{bootstrap_css.length} bytes)"
 
-    # Parse with both libraries
+    # Parse and serialize
     cataract_sheet = Cataract.parse_css(bootstrap_css)
-    require 'css_parser'
-    css_parser = CssParser::Parser.new
-    css_parser.add_block!(bootstrap_css)
-
-    # Serialize
     cataract_output = cataract_sheet.to_s
-    css_parser_output = css_parser.to_s
 
     puts "Cataract output: #{cataract_output.length} bytes (#{cataract_sheet.size} rules)"
-    puts "css_parser output: #{css_parser_output.length} bytes"
-
-    # Basic sanity check - outputs should be similar in size
-    size_ratio = cataract_output.length.to_f / css_parser_output.length
-    unless size_ratio > 0.8 && size_ratio < 1.2
-      puts "⚠️  Output sizes differ significantly (ratio: #{size_ratio.round(2)})"
-    end
 
     # Check that output can be re-parsed
     begin

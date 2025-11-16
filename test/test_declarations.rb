@@ -249,8 +249,8 @@ class TestDeclarations < Minitest::Test
     # Should skip malformed declarations but keep valid ones
     valid_props = parent_rule.declarations.map(&:property)
 
-    assert_includes valid_props, 'color', 'Should parse valid color declaration'
-    assert_includes valid_props, 'margin', 'Should parse valid margin declaration'
+    assert_member valid_props, 'color', 'Should parse valid color declaration'
+    assert_member valid_props, 'margin', 'Should parse valid margin declaration'
     # Malformed ones should be skipped
     refute_includes valid_props, 'badprop', 'Should skip malformed badprop'
     refute_includes valid_props, 'anotherbad', 'Should skip malformed anotherbad'
@@ -276,9 +276,9 @@ class TestDeclarations < Minitest::Test
     # Should have valid declarations, skip malformed ones
     valid_props = at_rule.content.map(&:property)
 
-    assert_includes valid_props, 'font-family', 'Should parse valid font-family'
-    assert_includes valid_props, 'src', 'Should parse valid src'
-    assert_includes valid_props, 'font-weight', 'Should parse valid font-weight'
+    assert_member valid_props, 'font-family', 'Should parse valid font-family'
+    assert_member valid_props, 'src', 'Should parse valid src'
+    assert_member valid_props, 'font-weight', 'Should parse valid font-weight'
     # Malformed ones should be skipped
     refute_includes valid_props, 'badprop', 'Should skip malformed badprop'
     refute_includes valid_props, 'anotherbad', 'Should skip malformed anotherbad'

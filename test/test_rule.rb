@@ -132,7 +132,7 @@ class TestRule < Minitest::Test
     rules = Set.new
     rules << rule1
 
-    assert_includes rules, rule2, 'Set should recognize equivalent longhand rule'
+    assert_member rules, rule2, 'Set should recognize equivalent longhand rule'
     assert_equal 1, rules.size, 'Set should not add duplicate equivalent rule'
 
     # Adding the equivalent rule shouldn't change the size
@@ -218,5 +218,147 @@ class TestRule < Minitest::Test
 
     # Check if any rule matches (with shorthand awareness)
     assert sheet.rules.any? { |r| r == '.box { margin-top: 10px; margin-right: 10px; margin-bottom: 10px; margin-left: 10px; }' }
+  end
+
+  # ============================================================================
+  # Selector List ID Tests (Phase 1 of selector lists implementation)
+  # ============================================================================
+
+  def test_selector_list_id_field_exists
+    # Rule should accept selector_list_id as a parameter
+    decls = [Cataract::Declaration.new('color', 'red', false)]
+    rule = Cataract::Rule.make(
+      id: 0,
+      selector: '.foo',
+      declarations: decls,
+      specificity: 10,
+      parent_rule_id: nil,
+      nesting_style: nil,
+      selector_list_id: nil
+    )
+
+    assert_nil rule.selector_list_id, 'selector_list_id should default to nil'
+  end
+
+  def test_selector_list_id_can_be_set
+    decls = [Cataract::Declaration.new('color', 'red', false)]
+    rule = Cataract::Rule.make(
+      id: 0,
+      selector: '.foo',
+      declarations: decls,
+      specificity: 10,
+      selector_list_id: 42
+    )
+
+    assert_equal 42, rule.selector_list_id
+  end
+
+  def test_selector_list_id_does_not_affect_equality
+    # Two rules with different selector_list_id but same selector/declarations should be equal
+    decls = [Cataract::Declaration.new('color', 'red', false)]
+
+    rule1 = Cataract::Rule.make(
+      id: 0,
+      selector: '.foo',
+      declarations: decls,
+      specificity: 10,
+      selector_list_id: nil
+    )
+
+    rule2 = Cataract::Rule.make(
+      id: 0,
+      selector: '.foo',
+      declarations: decls,
+      specificity: 10,
+      selector_list_id: 42
+    )
+
+    rule3 = Cataract::Rule.make(
+      id: 0,
+      selector: '.foo',
+      declarations: decls,
+      specificity: 10,
+      selector_list_id: 99
+    )
+
+    assert_equal rule1, rule2, 'selector_list_id should not affect equality (nil vs 42)'
+    assert_equal rule2, rule3, 'selector_list_id should not affect equality (42 vs 99)'
+    assert_equal rule1, rule3, 'selector_list_id should not affect equality (nil vs 99)'
+  end
+
+  def test_selector_list_id_does_not_affect_hash
+    # Hash contract: equal objects must have same hash
+    # selector_list_id should not affect hash code
+    decls = [Cataract::Declaration.new('color', 'red', false)]
+
+    rule1 = Cataract::Rule.make(
+      id: 0,
+      selector: '.foo',
+      declarations: decls,
+      specificity: 10,
+      selector_list_id: nil
+    )
+
+    rule2 = Cataract::Rule.make(
+      id: 0,
+      selector: '.foo',
+      declarations: decls,
+      specificity: 10,
+      selector_list_id: 42
+    )
+
+    assert_equal rule1, rule2, 'Rules should be equal'
+    assert_equal rule1.hash, rule2.hash, 'Equal rules must have same hash regardless of selector_list_id'
+  end
+
+  def test_selector_list_id_works_in_set
+    require 'set'
+
+    decls = [Cataract::Declaration.new('color', 'red', false)]
+
+    rule1 = Cataract::Rule.make(
+      id: 0,
+      selector: '.foo',
+      declarations: decls,
+      specificity: 10,
+      selector_list_id: nil
+    )
+
+    rule2 = Cataract::Rule.make(
+      id: 0,
+      selector: '.foo',
+      declarations: decls,
+      specificity: 10,
+      selector_list_id: 42
+    )
+
+    rules = Set.new
+    rules << rule1
+    rules << rule2
+
+    # Should only have one rule since they're equal despite different selector_list_id
+    assert_equal 1, rules.size, 'Set should not add duplicate rules with different selector_list_id'
+  end
+
+  def test_selector_list_id_mutable
+    # selector_list_id should be mutable (for cleanup operations)
+    decls = [Cataract::Declaration.new('color', 'red', false)]
+    rule = Cataract::Rule.make(
+      id: 0,
+      selector: '.foo',
+      declarations: decls,
+      specificity: 10,
+      selector_list_id: 42
+    )
+
+    assert_equal 42, rule.selector_list_id
+
+    rule.selector_list_id = nil
+
+    assert_nil rule.selector_list_id
+
+    rule.selector_list_id = 99
+
+    assert_equal 99, rule.selector_list_id
   end
 end

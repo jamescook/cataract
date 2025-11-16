@@ -27,8 +27,8 @@
   "timestamp": "2025-10-30T16:01:43-05:00",
   "results": [
     {
-      "name": "css_parser gem: CSS1",
-      "implementation": "css_parser",
+      "name": "pure_without_yjit: CSS1",
+      "implementation": "pure_without_yjit",
       "central_tendency": 6253.617340248006,
       "ips": 6253.617340248006,
       "error": 63,
@@ -38,7 +38,7 @@
       "cycles": 587
     },
     {
-      "name": "cataract: CSS1",
+      "name": "native: CSS1",
       "implementation": "native",
       "central_tendency": 67860.26856079814,
       "ips": 67860.26856079814,
@@ -49,8 +49,8 @@
       "cycles": 6684
     },
     {
-      "name": "css_parser gem: CSS2",
-      "implementation": "css_parser",
+      "name": "pure_without_yjit: CSS2",
+      "implementation": "pure_without_yjit",
       "central_tendency": 3446.4007088523126,
       "ips": 3446.4007088523126,
       "error": 33,
@@ -60,7 +60,7 @@
       "cycles": 343
     },
     {
-      "name": "cataract: CSS2",
+      "name": "native: CSS2",
       "implementation": "native",
       "central_tendency": 44357.90385806872,
       "ips": 44357.90385806872,

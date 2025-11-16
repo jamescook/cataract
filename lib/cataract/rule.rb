@@ -24,16 +24,44 @@ module Cataract
   # @attr [Integer, nil] specificity CSS specificity value (calculated lazily)
   # @attr [Integer, nil] parent_rule_id Parent rule ID for nested rules
   # @attr [Integer, nil] nesting_style 0=implicit, 1=explicit, nil=not nested
+  # @attr [Integer, nil] selector_list_id ID linking rules from same selector list (e.g., "h1, h2")
   Rule = Struct.new(
     :id,
     :selector,
     :declarations,
     :specificity,
     :parent_rule_id,
-    :nesting_style
+    :nesting_style,
+    :selector_list_id
   )
 
   class Rule
+    # Factory method for creating Rules with keyword arguments (for tests/readability).
+    # C code and hot paths should use positional arguments directly via Rule.new.
+    #
+    # @param id [Integer] The rule's position in the stylesheet
+    # @param selector [String] CSS selector
+    # @param declarations [Array<Declaration>] Array of declarations
+    # @param specificity [Integer, nil] Specificity value (nil to calculate lazily)
+    # @param parent_rule_id [Integer, nil] Parent rule ID for nested rules
+    # @param nesting_style [Integer, nil] Nesting style (0=implicit, 1=explicit, nil=not nested)
+    # @param selector_list_id [Integer, nil] Selector list ID for grouping
+    # @return [Rule] New rule instance
+    #
+    # @example Create a rule with keyword arguments
+    #   Rule.make(
+    #     id: 0,
+    #     selector: '.foo',
+    #     declarations: [Declaration.new('color', 'red', false)],
+    #     specificity: 10,
+    #     parent_rule_id: nil,
+    #     nesting_style: nil,
+    #     selector_list_id: nil
+    #   )
+    def self.make(id:, selector:, declarations:, specificity: nil, parent_rule_id: nil, nesting_style: nil, selector_list_id: nil)
+      new(id, selector, declarations, specificity, parent_rule_id, nesting_style, selector_list_id)
+    end
+
     # Silence warning about method redefinition. We redefine below to lazily calculate
     # specificity
     undef_method :specificity if method_defined?(:specificity)

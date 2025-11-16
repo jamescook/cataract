@@ -4,6 +4,7 @@
 require 'json'
 require 'erb'
 require 'fileutils'
+require_relative '../benchmarks/speedup_calculator'
 
 # Generate BENCHMARKS.md from benchmark JSON results
 class BenchmarkDocGenerator
@@ -134,6 +135,64 @@ class BenchmarkDocGenerator
 
   def format_number(num)
     num.to_s.reverse.gsub(/(\d{3})(?=\d)/, '\\1,').reverse
+  end
+
+  # Calculate speedup using SpeedupCalculator (proper per-test-case averaging)
+  # @param data [Hash] Benchmark data with 'results' and 'metadata'
+  # @param baseline_matcher [Proc] Matcher for baseline results
+  # @param comparison_matcher [Proc] Matcher for comparison results
+  # @param test_case_key [Symbol] Key in test_cases to match test case IDs
+  # @return [Float, nil] Average speedup or nil if no matches
+  def calculate_speedup(data, baseline_matcher:, comparison_matcher:, test_case_key: nil)
+    return nil unless data && data['results'] && data['metadata']
+
+    test_cases = data['metadata']['test_cases'] || []
+
+    calculator = SpeedupCalculator.new(
+      results: data['results'],
+      test_cases: test_cases,
+      baseline_matcher: baseline_matcher,
+      comparison_matcher: comparison_matcher,
+      test_case_key: test_case_key
+    )
+
+    speedup_stats = calculator.calculate
+    speedup_stats ? speedup_stats['avg'] : nil
+  end
+
+  # Generate speedup table for a benchmark
+  # @param data [Hash] Benchmark data with 'results' and 'metadata'
+  # @param test_case_key [Symbol] Key in test_cases to match test case IDs
+  # @return [String] Markdown table rows for speedups
+  def speedup_rows(data, test_case_key:)
+    return '' unless data
+
+    rows = []
+
+    # Native vs Pure (no YJIT) - from pre-calculated metadata if available
+    if data['metadata'] && data['metadata']['speedups']
+      rows << "| Native vs Pure (no YJIT) | #{format_speedup(data['metadata']['speedups']['avg'])} (avg) |"
+    end
+
+    # Native vs Pure (YJIT)
+    native_vs_pure_yjit = calculate_speedup(
+      data,
+      baseline_matcher: SpeedupCalculator::Matchers.cataract_pure_with_yjit,
+      comparison_matcher: SpeedupCalculator::Matchers.cataract_native,
+      test_case_key: test_case_key
+    )
+    rows << "| Native vs Pure (YJIT) | #{format_speedup(native_vs_pure_yjit)} (avg) |" if native_vs_pure_yjit
+
+    # YJIT impact on Pure Ruby
+    yjit_impact = calculate_speedup(
+      data,
+      baseline_matcher: SpeedupCalculator::Matchers.cataract_pure_without_yjit,
+      comparison_matcher: SpeedupCalculator::Matchers.cataract_pure_with_yjit,
+      test_case_key: test_case_key
+    )
+    rows << "| YJIT impact on Pure Ruby | #{format_speedup(yjit_impact)} (avg) |" if yjit_impact
+
+    rows.join("\n")
   end
 
   # Access instance variables for ERB

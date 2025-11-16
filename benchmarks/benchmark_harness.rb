@@ -79,11 +79,11 @@ class BenchmarkHarness
     #     test_case_key: Symbol        # Key in test_cases metadata matching test_case_id
     #   }
     def speedup_config
-      # Default: compare css_parser (baseline) vs cataract (comparison)
+      # Default: compare cataract pure without YJIT (baseline) vs cataract native (comparison)
       # Match to test_cases by 'fixture' key
       {
-        baseline_matcher: SpeedupCalculator::Matchers.css_parser,
-        comparison_matcher: SpeedupCalculator::Matchers.cataract,
+        baseline_matcher: SpeedupCalculator::Matchers.cataract_pure_without_yjit,
+        comparison_matcher: SpeedupCalculator::Matchers.cataract_native,
         test_case_key: :fixture
       }
     end
@@ -93,6 +93,13 @@ class BenchmarkHarness
       instance = new
       setup
       instance.sanity_checks if instance.respond_to?(:sanity_checks, true)
+
+      # Warm up the VM before benchmarking for stable, reproducible results
+      # This runs a major GC, compacts the heap, promotes objects to old gen,
+      # and prepares YJIT/internal state for optimal performance
+      # https://docs.ruby-lang.org/en/master/Process.html#method-c-warmup
+      Process.warmup
+
       instance.call
       finalize(instance) unless skip_finalize
     rescue StandardError => e

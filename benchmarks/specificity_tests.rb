@@ -34,8 +34,7 @@ module SpecificityTests
         {
           'name' => ':not() Pseudo-class (CSS3)',
           'key' => 'not',
-          'selectors' => { '#s12:not(foo)' => 101, 'div:not(.active)' => 11, '.button:not([disabled])' => 20 },
-          'note' => "css_parser has a bug - doesn't parse :not() content"
+          'selectors' => { '#s12:not(foo)' => 101, 'div:not(.active)' => 11, '.button:not([disabled])' => 20 }
         },
         {
           'name' => 'Complex Real-world Selectors',
@@ -69,12 +68,6 @@ module SpecificityTests
 
   def sanity_checks
     case base_impl_type
-    when :css_parser
-      require 'css_parser'
-      # Verify css_parser calculations
-      raise 'css_parser simple selector failed' unless CssParser.calculate_specificity('div') == 1
-      raise 'css_parser class selector failed' unless CssParser.calculate_specificity('.class') == 10
-      raise 'css_parser id selector failed' unless CssParser.calculate_specificity('#id') == 100
     when :pure, :native
       # Verify Cataract calculations
       raise 'Cataract simple selector failed' unless Cataract.calculate_specificity('div') == 1
@@ -93,8 +86,6 @@ module SpecificityTests
 
   def implementation_label
     base_label = case base_impl_type
-                 when :css_parser
-                   'css_parser gem'
                  when :pure
                    'cataract pure'
                  when :native
@@ -130,13 +121,6 @@ module SpecificityTests
       x.config(time: 2, warmup: 1)
 
       case base_impl_type
-      when :css_parser
-        x.report("css_parser gem: #{key}") do
-          selectors.each_key do |selector|
-            CssParser.calculate_specificity(selector)
-          end
-        end
-
       when :pure
         x.report("cataract pure: #{key}") do
           selectors.each_key do |selector|
