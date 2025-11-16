@@ -693,16 +693,8 @@ module Cataract
 
         charset_value = byteslice_encoded(value_start, @pos - value_start)
         charset_value.strip!
-        # Remove quotes (byte-by-byte)
-        result = String.new
-        i = 0
-        len = charset_value.bytesize
-        while i < len
-          byte = charset_value.getbyte(i)
-          result << charset_value[i] unless byte == BYTE_DQUOTE || byte == BYTE_SQUOTE
-          i += 1
-        end
-        @charset = result
+        # Remove quotes
+        @charset = charset_value.delete('"\'')
 
         @pos += 1 if peek_byte == BYTE_SEMICOLON # consume semicolon
         return
