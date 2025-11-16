@@ -93,6 +93,13 @@ class BenchmarkHarness
       instance = new
       setup
       instance.sanity_checks if instance.respond_to?(:sanity_checks, true)
+
+      # Warm up the VM before benchmarking for stable, reproducible results
+      # This runs a major GC, compacts the heap, promotes objects to old gen,
+      # and prepares YJIT/internal state for optimal performance
+      # https://docs.ruby-lang.org/en/master/Process.html#method-c-warmup
+      Process.warmup
+
       instance.call
       finalize(instance) unless skip_finalize
     rescue StandardError => e
