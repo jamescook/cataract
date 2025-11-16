@@ -57,12 +57,6 @@ module SerializationTests
     raise "Bootstrap CSS fixture not found at #{bootstrap_path}" unless File.exist?(bootstrap_path)
 
     case base_impl_type
-    when :css_parser
-      require 'css_parser'
-      # Basic sanity check
-      parser = CssParser::Parser.new
-      parser.add_block!(bootstrap_css)
-      raise 'css_parser sanity check failed' if parser.to_s.empty?
     when :pure, :native
       # Verify parsing and serialization work
       cataract_sheet = Cataract.parse_css(bootstrap_css)
@@ -94,8 +88,6 @@ module SerializationTests
 
   def implementation_label
     base_label = case base_impl_type
-                 when :css_parser
-                   'css_parser gem'
                  when :pure
                    'cataract pure'
                  when :native
@@ -121,15 +113,6 @@ module SerializationTests
       x.config(time: 5, warmup: 2)
 
       case base_impl_type
-      when :css_parser
-        # Pre-parse CSS once (outside benchmark loop)
-        css_parser_parsed = CssParser::Parser.new
-        css_parser_parsed.add_block!(bootstrap_css)
-
-        x.report('css_parser gem: all') do
-          css_parser_parsed.to_s
-        end
-
       when :pure
         # Pre-parse CSS once
         cataract_parsed = Cataract.parse_css(bootstrap_css)
@@ -158,14 +141,6 @@ module SerializationTests
       x.config(time: 5, warmup: 2)
 
       case base_impl_type
-      when :css_parser
-        css_parser_for_filter = CssParser::Parser.new
-        css_parser_for_filter.add_block!(bootstrap_css)
-
-        x.report('css_parser gem: print') do
-          css_parser_for_filter.to_s(:print)
-        end
-
       when :pure
         # Use Stylesheet API for media filtering
         cataract_parser = Cataract::Stylesheet.new

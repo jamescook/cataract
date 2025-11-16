@@ -55,7 +55,7 @@ class TestBenchmarkDocGenerator < Minitest::Test
 
     # Check parsing section exists
     assert_includes content, '## CSS Parsing'
-    assert_includes content, 'css_parser'
+    assert_includes content, 'Pure (no YJIT)'
     assert_includes content, 'faster'
   end
 

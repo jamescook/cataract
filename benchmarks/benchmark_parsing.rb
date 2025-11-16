@@ -8,7 +8,7 @@ $LOAD_PATH.unshift File.expand_path('../lib', __dir__)
 require 'cataract'
 
 # CSS Parsing Performance Benchmark
-# Compares css_parser gem vs Cataract pure Ruby vs Cataract C extension
+# Compares Cataract pure Ruby vs Cataract C extension
 class ParsingBenchmark < BenchmarkHarness
   def self.benchmark_name
     'parsing'
@@ -37,9 +37,6 @@ class ParsingBenchmark < BenchmarkHarness
     raise "CSS fixture not found: #{css1_path}" unless File.exist?(css1_path)
     raise "CSS fixture not found: #{css2_path}" unless File.exist?(css2_path)
 
-    # Verify css_parser gem is available
-    require 'css_parser'
-
     # Verify cataract works
     parser = Cataract::Stylesheet.new
     parser.add_block('body { color: red; }')
@@ -60,7 +57,6 @@ class ParsingBenchmark < BenchmarkHarness
 
     # Define implementations to test
     implementations = [
-      { name: 'css_parser gem', base_impl: :css_parser, env: { 'PARSING_CSS_PARSER' => '1' } },
       { name: 'Cataract pure Ruby', base_impl: :pure, env: { 'CATARACT_PURE' => '1' } },
       { name: 'Cataract C extension', base_impl: :native, env: { 'CATARACT_PURE' => nil } }
     ]
@@ -94,9 +90,6 @@ class ParsingBenchmark < BenchmarkHarness
 
     # Combine results
     combine_worker_results
-
-    # Show correctness comparison
-    show_correctness_comparison
   end
 
   private
@@ -174,41 +167,6 @@ class ParsingBenchmark < BenchmarkHarness
     puts '✓ All parsing benchmarks complete'
     puts "Results saved to: #{combined_path}"
     puts '=' * 80
-  end
-
-  def show_correctness_comparison
-    puts "\n#{'=' * 80}"
-    puts 'CORRECTNESS VALIDATION'
-    puts '=' * 80
-
-    fixtures_dir = File.expand_path('../test/fixtures', __dir__)
-    css2 = File.read(File.join(fixtures_dir, 'css2_sample.css'))
-
-    # Test Cataract
-    parser = Cataract::Stylesheet.new
-    parser.add_block(css2)
-    cataract_rules = parser.rules_count
-    puts "Cataract found #{cataract_rules} rules"
-
-    # Test css_parser
-    require 'css_parser'
-    css_parser = CssParser::Parser.new(import: false, io_exceptions: false)
-    css_parser.add_block!(css2)
-    css_parser_rules = 0
-    css_parser.each_selector { css_parser_rules += 1 }
-    puts "css_parser found #{css_parser_rules} rules"
-
-    unless cataract_rules == css_parser_rules
-      puts '⚠️  Different number of rules parsed'
-      puts '    Note: css_parser has a known bug with ::after pseudo-elements'
-      puts '    (it concatenates them with previous rules instead of parsing separately)'
-    end
-
-    # Show sample output
-    puts "\nSample Cataract output:"
-    parser.select(&:selector?).first(5).each do |rule|
-      puts "  #{rule.selector}: #{rule.declarations} (spec: #{rule.specificity})"
-    end
   end
 end
 

@@ -79,11 +79,11 @@ class BenchmarkHarness
     #     test_case_key: Symbol        # Key in test_cases metadata matching test_case_id
     #   }
     def speedup_config
-      # Default: compare css_parser (baseline) vs cataract (comparison)
+      # Default: compare cataract pure without YJIT (baseline) vs cataract native (comparison)
       # Match to test_cases by 'fixture' key
       {
-        baseline_matcher: SpeedupCalculator::Matchers.css_parser,
-        comparison_matcher: SpeedupCalculator::Matchers.cataract,
+        baseline_matcher: SpeedupCalculator::Matchers.cataract_pure_without_yjit,
+        comparison_matcher: SpeedupCalculator::Matchers.cataract_native,
         test_case_key: :fixture
       }
     end

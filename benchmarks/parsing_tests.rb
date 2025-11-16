@@ -68,12 +68,6 @@ module ParsingTests
 
   def sanity_checks
     case base_impl_type
-    when :css_parser
-      require 'css_parser'
-      # Basic sanity check for css_parser
-      parser = CssParser::Parser.new(import: false, io_exceptions: false)
-      parser.add_block!(css1)
-      raise 'css_parser sanity check failed' if parser.to_s.empty?
     when :pure, :native
       # Verify fixtures parse correctly with Cataract
       parser = Cataract::Stylesheet.new
@@ -116,8 +110,6 @@ module ParsingTests
 
   def implementation_label
     base_label = case base_impl_type
-                 when :css_parser
-                   'css_parser gem'
                  when :pure
                    'cataract pure'
                  when :native
@@ -142,11 +134,6 @@ module ParsingTests
       x.config(time: 5, warmup: 2)
 
       case base_impl_type
-      when :css_parser
-        x.report('css_parser gem: small') do
-          parser = CssParser::Parser.new(import: false, io_exceptions: false)
-          parser.add_block!(css1)
-        end
       when :pure
         x.report('cataract pure: small') do
           parser = Cataract::Stylesheet.new
@@ -170,11 +157,6 @@ module ParsingTests
       x.config(time: 5, warmup: 2)
 
       case base_impl_type
-      when :css_parser
-        x.report('css_parser gem: medium with @media') do
-          parser = CssParser::Parser.new(import: false, io_exceptions: false)
-          parser.add_block!(css2)
-        end
       when :pure
         x.report('cataract pure: medium with @media') do
           parser = Cataract::Stylesheet.new
@@ -190,9 +172,6 @@ module ParsingTests
   end
 
   def run_selector_lists_benchmark
-    # Only test Cataract implementations (css_parser doesn't have this feature)
-    return if base_impl_type == :css_parser
-
     puts "\n#{'=' * 80}"
     puts "TEST: Selector lists (#{selector_lists_css.lines.count} lines, #{selector_lists_css.length} chars) - #{implementation_label}"
     puts '=' * 80

@@ -63,12 +63,6 @@ module FlatteningTests
 
   def sanity_checks
     case base_impl_type
-    when :css_parser
-      require 'css_parser'
-      # Basic sanity check for css_parser
-      parser = CssParser::Parser.new
-      parser.add_block!('.test { color: red; }')
-      raise 'css_parser sanity check failed' if parser.to_s.empty?
     when :pure, :native
       # Verify flattening works correctly with Cataract
       css = ".test { color: black; }\n.test { margin: 10px; }"
@@ -92,8 +86,6 @@ module FlatteningTests
 
   def implementation_label
     base_label = case base_impl_type
-                 when :css_parser
-                   'css_parser gem'
                  when :pure
                    'cataract pure'
                  when :native
@@ -121,19 +113,6 @@ module FlatteningTests
       x.config(time: 5, warmup: 2)
 
       case base_impl_type
-      when :css_parser
-        # css_parser gem
-        parser = CssParser::Parser.new
-        parser.add_block!(css)
-        rule_sets = []
-        parser.each_selector do |selector, declarations, _specificity|
-          rule_sets << CssParser::RuleSet.new(selectors: selector, block: declarations)
-        end
-
-        x.report("css_parser gem: #{key}") do
-          CssParser.merge(rule_sets)
-        end
-
       when :pure
         # Cataract pure Ruby
         cataract_rules = Cataract.parse_css(css)
