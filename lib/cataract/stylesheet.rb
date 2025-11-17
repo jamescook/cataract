@@ -66,6 +66,7 @@ module Cataract
       @_has_nesting = nil # Set by parser (nil or boolean)
       @_last_rule_id = nil # Tracks next rule ID for add_block
       @selectors = nil # Memoized cache of selectors
+      @_custom_properties = nil # Memoized cache of custom properties
     end
 
     # Initialize copy for proper deep duplication.
@@ -82,7 +83,7 @@ module Cataract
       @_selector_lists = source.instance_variable_get(:@_selector_lists).transform_values(&:dup)
       @_next_selector_list_id = source.instance_variable_get(:@_next_selector_list_id)
       @parser_options = source.instance_variable_get(:@parser_options).dup
-      @selectors = nil # Clear memoized cache
+      clear_memoized_caches
       @_hash = nil # Clear cached hash
     end
 
@@ -308,6 +309,46 @@ module Cataract
       @selectors ||= @rules.map(&:selector)
     end
 
+    # Get all custom property (CSS variable) definitions organized by media context.
+    #
+    # Returns a hash mapping media contexts to custom property hashes.
+    # Custom properties are CSS variables that start with -- (e.g., --primary-color).
+    # The :root key contains base-level properties (not inside any @media block).
+    # When the same custom property is defined multiple times within the same context,
+    # the last definition in source order is used.
+    #
+    # @param media [Symbol, Array<Symbol>, nil] Optional filter for specific media contexts
+    #   - nil (default) - Return all media contexts including :root
+    #   - :root - Return only base-level properties
+    #   - :print, :screen, etc. - Return only properties from specified media context(s)
+    #   - [:root, :print] - Return multiple contexts
+    #
+    # @return [Hash{Symbol => Hash{String => String}}] Media contexts mapped to custom properties
+    #
+    # @example All custom properties across all contexts
+    #   css = ':root { --color: red; } @media print { :root { --color: green; } }'
+    #   sheet = Cataract::Stylesheet.parse(css)
+    #   sheet.custom_properties #=> { :root => { '--color' => 'red' }, :print => { '--color' => 'green' } }
+    #
+    # @example Filter to specific media context
+    #   sheet.custom_properties(media: :print) #=> { :print => { '--color' => 'green' } }
+    #
+    # @example Filter to multiple contexts
+    #   sheet.custom_properties(media: [:root, :print]) #=> { :root => {...}, :print => {...} }
+    #
+    # @example Only base-level properties
+    #   css = ':root { --spacing: 8px; }'
+    #   sheet = Cataract::Stylesheet.parse(css)
+    #   sheet.custom_properties #=> { :root => { '--spacing' => '8px' } }
+    def custom_properties(media: nil)
+      @_custom_properties ||= build_custom_properties
+      return @_custom_properties if media.nil?
+
+      # Filter by media if requested
+      media_array = media.is_a?(Array) ? media : [media]
+      @_custom_properties.slice(*media_array)
+    end
+
     # Serialize to CSS string
     #
     # Converts the stylesheet to a CSS string. Optionally filters output
@@ -456,7 +497,7 @@ module Cataract
       @rules.clear
       @_media_index.clear
       @charset = nil
-      @selectors = nil # Clear memoized cache
+      clear_memoized_caches
       self
     end
 
@@ -617,8 +658,7 @@ module Cataract
       # Update rule IDs in remaining rules
       @rules.each_with_index { |rule, new_id| rule.id = new_id }
 
-      # Clear memoized cache
-      @selectors = nil
+      clear_memoized_caches
 
       self
     end
@@ -707,6 +747,8 @@ module Cataract
 
       # Track if we have any nesting (for serialization optimization)
       @_has_nesting = result[:_has_nesting]
+
+      clear_memoized_caches
 
       self
     end
@@ -847,8 +889,7 @@ module Cataract
       other_has_nesting = other.instance_variable_get(:@_has_nesting)
       @_has_nesting = true if other_has_nesting
 
-      # Clear memoized cache
-      @selectors = nil
+      clear_memoized_caches
 
       # Apply cascade in-place
       flatten!
@@ -1037,6 +1078,55 @@ module Cataract
       else
         specificity == rule.specificity
       end
+    end
+
+    # Clear memoized caches that can be lazily rebuilt.
+    #
+    # Call this method after any operation that modifies the stylesheet's rules
+    # (e.g., add_block, remove_rules, merge). These caches will automatically
+    # rebuild on next access.
+    #
+    # Clears:
+    # - @selectors: Memoized list of all selectors
+    # - @_custom_properties: Memoized custom properties organized by media context
+    #
+    # Should not add ivars here that don't rebuild themselves (i.e. @_media_index)
+    def clear_memoized_caches
+      @selectors = nil
+      @_custom_properties = nil
+    end
+
+    # Build custom properties hash organized by media context
+    #
+    # @return [Hash{Symbol => Hash{String => String}}] Media contexts mapped to custom properties
+    def build_custom_properties
+      props_by_media = {}
+
+      # Build reverse lookup: rule_id => media_type
+      rule_id_to_media = {}
+      @_media_index.each do |media_type, rule_ids|
+        rule_ids.each do |rule_id|
+          rule_id_to_media[rule_id] = media_type
+        end
+      end
+
+      # Collect custom properties from each rule
+      @rules.each do |rule|
+        next unless rule.selector? # Skip at-rules
+
+        # Determine media context (:root for base-level rules)
+        media_context = rule_id_to_media[rule.id] || :root
+
+        # Collect custom properties from this rule
+        rule.declarations.each do |decl|
+          next unless decl.custom_property?
+
+          props_by_media[media_context] ||= {}
+          props_by_media[media_context][decl.property] = decl.value
+        end
+      end
+
+      props_by_media
     end
 
     # Check if a rule has a declaration matching property and/or value

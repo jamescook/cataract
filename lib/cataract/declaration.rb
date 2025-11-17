@@ -15,4 +15,23 @@ module Cataract
   # @attr [String] value CSS property value
   # @attr [Boolean] important Whether the declaration has !important
   Declaration = Struct.new(:property, :value, :important) unless const_defined?(:Declaration)
+
+  class Declaration
+    # Check if this declaration is a custom property (CSS variable).
+    #
+    # Custom properties are properties that start with the "--" prefix.
+    #
+    # @return [Boolean] true if property is a custom property
+    #
+    # @example Custom property
+    #   decl = Cataract::Declaration.new('--color', 'red', false)
+    #   decl.custom_property? #=> true
+    #
+    # @example Regular property
+    #   decl = Cataract::Declaration.new('color', 'red', false)
+    #   decl.custom_property? #=> false
+    def custom_property?
+      property.start_with?('--')
+    end
+  end
 end
