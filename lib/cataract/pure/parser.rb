@@ -289,6 +289,86 @@ module Cataract
       end until @pos == old_pos # No progress made # rubocop:disable Lint/Loop
     end
 
+    # Parse a single CSS declaration (property: value)
+    #
+    # Performance-critical helper that parses one declaration.
+    # Shared by parse_mixed_block, parse_declarations, and parse_declarations_block.
+    #
+    # @param pos [Integer] Current position in CSS string
+    # @param end_pos [Integer] End position (boundary for parsing)
+    # @param parse_important [Boolean] Whether to parse !important flag (false for at-rules)
+    # @return [Array(Declaration|nil, Integer)] Tuple of [declaration, new_position]
+    def parse_single_declaration(pos, end_pos, parse_important)
+      # Parse property name (scan until ':')
+      prop_start = pos
+      while pos < end_pos && @css.getbyte(pos) != BYTE_COLON &&
+            @css.getbyte(pos) != BYTE_SEMICOLON && @css.getbyte(pos) != BYTE_RBRACE
+        pos += 1
+      end
+
+      # Skip if malformed (no colon found)
+      if pos >= end_pos || @css.getbyte(pos) != BYTE_COLON
+        # Error recovery: skip to next semicolon
+        while pos < end_pos && @css.getbyte(pos) != BYTE_SEMICOLON
+          pos += 1
+        end
+        pos += 1 if pos < end_pos && @css.getbyte(pos) == BYTE_SEMICOLON
+        return [nil, pos]
+      end
+
+      # Trim trailing whitespace from property
+      prop_end = pos
+      while prop_end > prop_start && whitespace?(@css.getbyte(prop_end - 1))
+        prop_end -= 1
+      end
+
+      # Extract and normalize property name
+      property = byteslice_encoded(prop_start, prop_end - prop_start)
+      # Custom properties (--foo) are case-sensitive and can contain Unicode
+      # Regular properties are ASCII-only and case-insensitive
+      unless property.bytesize >= 2 && property.getbyte(0) == BYTE_HYPHEN && property.getbyte(1) == BYTE_HYPHEN
+        property.force_encoding('US-ASCII')
+        property.downcase!
+      end
+
+      pos += 1 # Skip ':'
+
+      # Skip leading whitespace in value
+      while pos < end_pos && whitespace?(@css.getbyte(pos))
+        pos += 1
+      end
+
+      # Parse value (scan until ';' or '}')
+      val_start = pos
+      while pos < end_pos && @css.getbyte(pos) != BYTE_SEMICOLON && @css.getbyte(pos) != BYTE_RBRACE
+        pos += 1
+      end
+      val_end = pos
+
+      # Trim trailing whitespace from value
+      while val_end > val_start && whitespace?(@css.getbyte(val_end - 1))
+        val_end -= 1
+      end
+
+      value = byteslice_encoded(val_start, val_end - val_start)
+
+      # Parse !important flag if requested
+      important = false
+      if parse_important && value.end_with?('!important')
+        important = true
+        # Remove '!important' and trailing whitespace
+        value = value[0, value.length - 10].rstrip
+      end
+
+      # Skip semicolon if present
+      pos += 1 if pos < end_pos && @css.getbyte(pos) == BYTE_SEMICOLON
+
+      # Return nil if empty declaration
+      return [nil, pos] if prop_end <= prop_start || val_end <= val_start
+
+      [Declaration.new(property, value, important), pos]
+    end
+
     # Find matching closing brace
     #
     # Performance notes (benchmarked on bootstrap.css with 2,400 braces):
@@ -507,64 +587,9 @@ module Cataract
           next
         end
 
-        # This is a declaration - parse it
-        prop_start = pos
-        while pos < end_pos && @css.getbyte(pos) != BYTE_COLON &&
-              @css.getbyte(pos) != BYTE_SEMICOLON && @css.getbyte(pos) != BYTE_LBRACE
-          pos += 1
-        end
-
-        if pos >= end_pos || @css.getbyte(pos) != BYTE_COLON
-          # Malformed - skip to semicolon
-          while pos < end_pos && @css.getbyte(pos) != BYTE_SEMICOLON
-            pos += 1
-          end
-          pos += 1 if pos < end_pos
-          next
-        end
-
-        prop_end = pos
-        # Trim trailing whitespace
-        while prop_end > prop_start && whitespace?(@css.getbyte(prop_end - 1))
-          prop_end -= 1
-        end
-
-        property = byteslice_encoded(prop_start, prop_end - prop_start, encoding: 'US-ASCII')
-        property.downcase!
-
-        pos += 1 # Skip :
-
-        # Skip leading whitespace in value
-        while pos < end_pos && whitespace?(@css.getbyte(pos))
-          pos += 1
-        end
-
-        # Parse value (read until ';' or '}')
-        val_start = pos
-        while pos < end_pos && @css.getbyte(pos) != BYTE_SEMICOLON && @css.getbyte(pos) != BYTE_RBRACE
-          pos += 1
-        end
-        val_end = pos
-
-        # Trim trailing whitespace from value
-        while val_end > val_start && whitespace?(@css.getbyte(val_end - 1))
-          val_end -= 1
-        end
-
-        value = byteslice_encoded(val_start, val_end - val_start)
-
-        # Check for !important flag
-        important = false
-        if value.end_with?('!important')
-          important = true
-          # NOTE: Using rstrip here instead of manual byte loop since !important is rare (not hot path)
-          value = value[0, value.length - 10].rstrip # Remove '!important' and trailing whitespace
-        end
-
-        pos += 1 if pos < end_pos && @css.getbyte(pos) == BYTE_SEMICOLON
-
-        # Create declaration
-        declarations << Declaration.new(property, value, important) if prop_end > prop_start && val_end > val_start
+        # This is a declaration - parse it using shared helper
+        decl, pos = parse_single_declaration(pos, end_pos, true)
+        declarations << decl if decl
       end
 
       declarations
@@ -602,9 +627,16 @@ module Cataract
           next
         end
 
-        property = byteslice_encoded(property_start, @pos - property_start, encoding: 'US-ASCII')
+        # Extract property name - use UTF-8 encoding to support custom properties with Unicode
+        property = byteslice_encoded(property_start, @pos - property_start)
         property.strip!
-        property.downcase!
+        # Custom properties (--foo) are case-sensitive and can contain Unicode
+        # Regular properties are ASCII-only and case-insensitive
+        unless property.bytesize >= 2 && property.getbyte(0) == BYTE_HYPHEN && property.getbyte(1) == BYTE_HYPHEN
+          # Regular property: force ASCII encoding and downcase
+          property.force_encoding('US-ASCII')
+          property.downcase!
+        end
         @pos += 1 # skip ':'
 
         skip_ws_and_comments
@@ -1361,56 +1393,9 @@ module Cataract
         end
         break if pos >= end_pos
 
-        # Parse property name (read until ':')
-        prop_start = pos
-        while pos < end_pos && @css.getbyte(pos) != BYTE_COLON && @css.getbyte(pos) != BYTE_SEMICOLON && @css.getbyte(pos) != BYTE_RBRACE
-          pos += 1
-        end
-
-        # Skip if no colon found (malformed)
-        if pos >= end_pos || @css.getbyte(pos) != BYTE_COLON
-          # Try to recover by finding next semicolon
-          while pos < end_pos && @css.getbyte(pos) != BYTE_SEMICOLON
-            pos += 1
-          end
-          pos += 1 if pos < end_pos && @css.getbyte(pos) == BYTE_SEMICOLON
-          next
-        end
-
-        prop_end = pos
-        # Trim trailing whitespace from property
-        while prop_end > prop_start && whitespace?(@css.getbyte(prop_end - 1))
-          prop_end -= 1
-        end
-
-        property = byteslice_encoded(prop_start, prop_end - prop_start, encoding: 'US-ASCII')
-        property.downcase!
-
-        pos += 1 # Skip ':'
-
-        # Skip leading whitespace in value
-        while pos < end_pos && whitespace?(@css.getbyte(pos))
-          pos += 1
-        end
-
-        # Parse value (read until ';' or '}')
-        val_start = pos
-        while pos < end_pos && @css.getbyte(pos) != BYTE_SEMICOLON && @css.getbyte(pos) != BYTE_RBRACE
-          pos += 1
-        end
-        val_end = pos
-
-        # Trim trailing whitespace from value
-        while val_end > val_start && whitespace?(@css.getbyte(val_end - 1))
-          val_end -= 1
-        end
-
-        value = byteslice_encoded(val_start, val_end - val_start)
-
-        pos += 1 if pos < end_pos && @css.getbyte(pos) == BYTE_SEMICOLON
-
-        # Create Declaration struct (at-rules don't use !important)
-        declarations << Declaration.new(property, value, false)
+        # Parse declaration using shared helper (at-rules don't use !important)
+        decl, pos = parse_single_declaration(pos, end_pos, false)
+        declarations << decl if decl
       end
 
       declarations
