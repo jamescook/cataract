@@ -1,3 +1,14 @@
+## [Unreleased]
+
+- Feature: Selector list tracking - parser preserves comma-separated selector groupings (e.g., `h1, h2, h3`) through parse/flatten/serialize cycle
+- Feature: Intelligent selector list serialization - automatically detects divergence during cascade and groups only matching rules
+- Feature: Formatted CSS output with configurable line wrapping (`to_s(formatted: true, max_line_length: 80)`)
+- Feature: Custom property (CSS variable) support - `Stylesheet#custom_properties` returns custom properties organized by media context
+- Fix: Custom properties now preserve case-sensitivity per CSS spec (`--Color` vs `--color` are distinct)
+- Fix: Custom properties support UTF-8 encoding for Unicode characters
+- Fix: Property matching now supports prefix matching for vendor-prefixed properties
+- Performance: Flatten operation optimized with manual iteration for selector list grouping
+
 ## [0.2.1] - 2025-11-14
 
 - Fix serializer bug related to media queries
