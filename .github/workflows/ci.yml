@@ -32,7 +32,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .lint-passed
-          key: lint-${{ hashFiles('ext/**/*.c', 'ext/**/*.h', '.clang-tidy', 'Gemfile') }}
+          key: lint-${{ hashFiles('ext/**/*.c', 'ext/**/*.h', '.clang-tidy', 'Gemfile', '.github/workflows/*.yml', 'cataract.gemspec', 'Rakefile') }}
 
       - name: Install clang-tidy
         if: steps.lint-cache.outputs.cache-hit != 'true'
