@@ -20,17 +20,17 @@ Time to parse CSS into internal data structures
 
 | Test Case | Native | Pure (no YJIT) | Pure (YJIT) |
 |-----------|--------|----------------|-------------|
-| Small CSS (64 lines, 1.0KB) | 35.99K i/s | 3.51K i/s | 14.54K i/s |
-| Medium CSS with @media (139 lines, 1.6KB) | 36.65K i/s | 2.14K i/s | 9.56K i/s |
-| Selector lists (3500 lines, 62.5KB, 500 lists) | 441.4 i/s | 59.0 i/s | 218.1 i/s |
+| Small CSS (64 lines, 1.0KB) | 36.46K i/s | 3.46K i/s | 14.1K i/s |
+| Medium CSS with @media (139 lines, 1.6KB) | 37.11K i/s | 2.1K i/s | 9.26K i/s |
+| Selector lists (3500 lines, 62.5KB, 500 lists) | 447.6 i/s | 57.9 i/s | 212.5 i/s |
 
 ### Speedups
 
 | Comparison | Speedup |
 |------------|---------|
-| Native vs Pure (no YJIT) | 11.77x faster (avg) |
-| Native vs Pure (YJIT) | 2.77x faster (avg) |
-| YJIT impact on Pure Ruby | 4.18x faster (avg) |
+| Native vs Pure (no YJIT) | 12.14x faster (avg) |
+| Native vs Pure (YJIT) | 2.89x faster (avg) |
+| YJIT impact on Pure Ruby | 4.14x faster (avg) |
 
 ---
 

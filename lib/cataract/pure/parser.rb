@@ -14,7 +14,6 @@
 # shows `> 0` is 1.26x faster. These micro-optimizations
 # matter in a hot parsing loop.
 
-# TODO: Several duplicate parsing paths
 module Cataract
   # Pure Ruby CSS parser - char-by-char, NO REGEXP
   class Parser
