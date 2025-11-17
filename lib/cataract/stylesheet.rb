@@ -658,7 +658,6 @@ module Cataract
       # Update rule IDs in remaining rules
       @rules.each_with_index { |rule, new_id| rule.id = new_id }
 
-      # Clear memoized cache
       clear_memoized_caches
 
       self
@@ -749,7 +748,6 @@ module Cataract
       # Track if we have any nesting (for serialization optimization)
       @_has_nesting = result[:_has_nesting]
 
-      # Clear memoized caches
       clear_memoized_caches
 
       self
@@ -891,7 +889,6 @@ module Cataract
       other_has_nesting = other.instance_variable_get(:@_has_nesting)
       @_has_nesting = true if other_has_nesting
 
-      # Clear memoized cache
       clear_memoized_caches
 
       # Apply cascade in-place
@@ -1092,6 +1089,8 @@ module Cataract
     # Clears:
     # - @selectors: Memoized list of all selectors
     # - @_custom_properties: Memoized custom properties organized by media context
+    #
+    # Should not add ivars here that don't rebuild themselves (i.e. @_media_index)
     def clear_memoized_caches
       @selectors = nil
       @_custom_properties = nil
