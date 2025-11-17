@@ -502,9 +502,15 @@ static VALUE parse_declarations(const char *start, const char *end) {
                          val_len, MAX_PROPERTY_VALUE_LENGTH);
             }
 
-            // Create property string and lowercase it
-            VALUE property_raw = rb_usascii_str_new(prop_start, prop_len);
-            VALUE property = lowercase_property(property_raw);
+            // Create property string - use UTF-8 to support custom properties with Unicode
+            VALUE property = rb_utf8_str_new(prop_start, prop_len);
+            // Custom properties (--foo) are case-sensitive and can contain Unicode
+            // Regular properties are ASCII-only and case-insensitive
+            if (!(prop_len >= 2 && prop_start[0] == '-' && prop_start[1] == '-')) {
+                // Regular property: force ASCII encoding and lowercase
+                rb_enc_associate(property, rb_usascii_encoding());
+                property = lowercase_property(property);
+            }
             VALUE value = rb_utf8_str_new(val_start, val_len);
 
             // Create Declaration struct
@@ -857,8 +863,15 @@ static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char
                          val_len, MAX_PROPERTY_VALUE_LENGTH);
             }
 
-            VALUE property_raw = rb_usascii_str_new(prop_start, prop_len);
-            VALUE property = lowercase_property(property_raw);
+            // Create property string - use UTF-8 to support custom properties with Unicode
+            VALUE property = rb_utf8_str_new(prop_start, prop_len);
+            // Custom properties (--foo) are case-sensitive and can contain Unicode
+            // Regular properties are ASCII-only and case-insensitive
+            if (!(prop_len >= 2 && prop_start[0] == '-' && prop_start[1] == '-')) {
+                // Regular property: force ASCII encoding and lowercase
+                rb_enc_associate(property, rb_usascii_encoding());
+                property = lowercase_property(property);
+            }
             VALUE value = rb_utf8_str_new(val_start, val_len);
 
             VALUE decl = rb_struct_new(cDeclaration,

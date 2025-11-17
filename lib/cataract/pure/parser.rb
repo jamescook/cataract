@@ -14,6 +14,7 @@
 # shows `> 0` is 1.26x faster. These micro-optimizations
 # matter in a hot parsing loop.
 
+# TODO: Several duplicate parsing paths
 module Cataract
   # Pure Ruby CSS parser - char-by-char, NO REGEXP
   class Parser
@@ -529,8 +530,15 @@ module Cataract
           prop_end -= 1
         end
 
-        property = byteslice_encoded(prop_start, prop_end - prop_start, encoding: 'US-ASCII')
-        property.downcase!
+        # Extract property name - use UTF-8 encoding to support custom properties with Unicode
+        property = byteslice_encoded(prop_start, prop_end - prop_start)
+        # Custom properties (--foo) are case-sensitive and can contain Unicode
+        # Regular properties are ASCII-only and case-insensitive
+        unless property.bytesize >= 2 && property.getbyte(0) == BYTE_HYPHEN && property.getbyte(1) == BYTE_HYPHEN
+          # Regular property: force ASCII encoding and downcase
+          property.force_encoding('US-ASCII')
+          property.downcase!
+        end
 
         pos += 1 # Skip :
 
@@ -602,9 +610,16 @@ module Cataract
           next
         end
 
-        property = byteslice_encoded(property_start, @pos - property_start, encoding: 'US-ASCII')
+        # Extract property name - use UTF-8 encoding to support custom properties with Unicode
+        property = byteslice_encoded(property_start, @pos - property_start)
         property.strip!
-        property.downcase!
+        # Custom properties (--foo) are case-sensitive and can contain Unicode
+        # Regular properties are ASCII-only and case-insensitive
+        unless property.bytesize >= 2 && property.getbyte(0) == BYTE_HYPHEN && property.getbyte(1) == BYTE_HYPHEN
+          # Regular property: force ASCII encoding and downcase
+          property.force_encoding('US-ASCII')
+          property.downcase!
+        end
         @pos += 1 # skip ':'
 
         skip_ws_and_comments
@@ -1383,8 +1398,15 @@ module Cataract
           prop_end -= 1
         end
 
-        property = byteslice_encoded(prop_start, prop_end - prop_start, encoding: 'US-ASCII')
-        property.downcase!
+        # Extract property name - use UTF-8 encoding to support custom properties with Unicode
+        property = byteslice_encoded(prop_start, prop_end - prop_start)
+        # Custom properties (--foo) are case-sensitive and can contain Unicode
+        # Regular properties are ASCII-only and case-insensitive
+        unless property.bytesize >= 2 && property.getbyte(0) == BYTE_HYPHEN && property.getbyte(1) == BYTE_HYPHEN
+          # Regular property: force ASCII encoding and downcase
+          property.force_encoding('US-ASCII')
+          property.downcase!
+        end
 
         pos += 1 # Skip ':'
 
