@@ -1,4 +1,6 @@
-## [Unreleased]
+## [ Unreleased ]
+
+## [0.2.2 - 2025-11-18]
 
 - Feature: Selector list tracking - parser preserves comma-separated selector groupings (e.g., `h1, h2, h3`) through parse/flatten/serialize cycle
 - Feature: Intelligent selector list serialization - automatically detects divergence during cascade and groups only matching rules
