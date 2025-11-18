@@ -641,13 +641,30 @@ module Cataract
 
         skip_ws_and_comments
 
-        # Parse value (read until ';' or '}')
+        # Parse value (read until ';' or '}', but respect quoted strings)
         value_start = @pos
         important = false
+        in_quote = nil # nil, BYTE_SQUOTE, or BYTE_DQUOTE
 
         until eof?
           byte = peek_byte
-          break if byte == BYTE_SEMICOLON || byte == BYTE_RBRACE
+
+          if in_quote
+            # Inside quoted string - only exit on matching quote
+            if byte == in_quote
+              in_quote = nil
+            elsif byte == BYTE_BACKSLASH && @pos + 1 < @len
+              # Skip escaped character
+              @pos += 1
+            end
+          else
+            # Not in quote - check for terminators or quote start
+            break if byte == BYTE_SEMICOLON || byte == BYTE_RBRACE
+
+            if byte == BYTE_SQUOTE || byte == BYTE_DQUOTE
+              in_quote = byte
+            end
+          end
 
           @pos += 1
         end

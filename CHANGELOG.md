@@ -1,4 +1,5 @@
 ## [ Unreleased ]
+- Pure Parser: Bugs with url()
 
 ## [0.2.2 - 2025-11-18]
 
