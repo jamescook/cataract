@@ -20,7 +20,7 @@ module Cataract
       # @return [String] Fetched content
       # @raise [ImportError] If fetching fails
       def call(url, options)
-        uri = ImportResolver.normalize_url(url, options[:base_path])
+        uri = ImportResolver.normalize_url(url, base_path: options[:base_path], base_uri: options[:base_uri])
 
         case uri.scheme
         when 'file'
@@ -63,7 +63,8 @@ module Cataract
       extensions: ['css'],               # Only .css files
       timeout: 10,                       # 10 second timeout for fetches
       follow_redirects: true,            # Follow redirects
-      base_path: nil,                    # Base path for resolving relative imports
+      base_path: nil,                    # Base path for resolving relative file imports
+      base_uri: nil,                     # Base URI for resolving relative HTTP imports
       fetcher: nil                       # Custom fetcher (defaults to DefaultFetcher)
     }.freeze
 
@@ -160,18 +161,25 @@ module Cataract
 
     # Normalize URL - handle relative paths and missing schemes
     # Returns a URI object
-    def self.normalize_url(url, base_path = nil)
+    #
+    # @param url [String] URL to normalize
+    # @param base_path [String, nil] Base path for resolving relative file imports
+    # @param base_uri [String, nil] Base URI for resolving relative HTTP imports
+    def self.normalize_url(url, base_path: nil, base_uri: nil)
       # Try to parse as-is first
       uri = URI.parse(url)
 
-      # If no scheme, treat as relative file path
+      # If no scheme, treat as relative path
       if uri.scheme.nil?
-        # Convert to file:// URL
-        # Relative paths stay relative, absolute paths stay absolute
-        if url.start_with?('/')
+        # If we have a base_uri (HTTP/HTTPS), resolve against it
+        if base_uri
+          base = URI.parse(base_uri)
+          uri = base.merge(url)
+        elsif url.start_with?('/')
+          # Absolute file path
           uri = URI.parse("file://#{url}")
         else
-          # Relative path - make it absolute relative to base_path or current directory
+          # Relative file path - make it absolute relative to base_path or current directory
           absolute_path = if base_path
                             File.expand_path(url, base_path)
                           else
@@ -188,7 +196,7 @@ module Cataract
 
     # Validate URL against security options
     def self.validate_url(url, options)
-      uri = normalize_url(url, options[:base_path])
+      uri = normalize_url(url, base_path: options[:base_path], base_uri: options[:base_uri])
 
       # Check scheme
       unless options[:allowed_schemes].include?(uri.scheme)

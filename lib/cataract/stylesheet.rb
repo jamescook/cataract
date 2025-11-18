@@ -40,15 +40,27 @@ module Cataract
     #   - :allowed_schemes [Array<String>] URI schemes to allow (default: ['https'])
     #   - :extensions [Array<String>] File extensions to allow (default: ['css'])
     #   - :max_depth [Integer] Maximum import nesting (default: 5)
-    #   - :base_path [String] Base directory for relative imports
     # @option options [Boolean] :io_exceptions (true) Whether to raise exceptions
     #   on I/O errors (file not found, network errors, etc.)
+    # @option options [String] :base_uri (nil) Base URI for resolving relative URLs
+    #   and @import paths. Used for both URL conversion and import resolution.
+    # @option options [String] :base_dir (nil) Base directory for resolving local
+    #   file @import paths.
+    # @option options [Boolean] :absolute_paths (false) Convert relative URLs in
+    #   url() values to absolute URLs using base_uri.
+    # @option options [Proc] :uri_resolver (nil) Custom proc for resolving relative URIs.
+    #   Takes (base_uri, relative_uri) and returns absolute URI string.
+    #   Defaults to using Ruby's URI.parse(base).merge(relative).to_s
     # @option options [Hash] :parser ({}) Parser configuration options
     #   - :selector_lists [Boolean] (true) Track selector lists for W3C-compliant serialization
     def initialize(options = {})
       @options = {
         import: false,
         io_exceptions: true,
+        base_uri: nil,
+        base_dir: nil,
+        absolute_paths: false,
+        uri_resolver: nil,
         parser: {}
       }.merge(options)
 
@@ -668,8 +680,11 @@ module Cataract
     # @param css [String] CSS string to add
     # @param fix_braces [Boolean] Automatically close missing braces
     # @param media_types [Symbol, Array<Symbol>] Optional media query to wrap CSS in
+    # @param base_uri [String, nil] Override constructor's base_uri for this block
+    # @param base_dir [String, nil] Override constructor's base_dir for this block
+    # @param absolute_paths [Boolean, nil] Override constructor's absolute_paths for this block
     # @return [self] Returns self for method chaining
-    def add_block(css, fix_braces: false, media_types: nil)
+    def add_block(css, fix_braces: false, media_types: nil, base_uri: nil, base_dir: nil, absolute_paths: nil)
       css += ' }' if fix_braces && !css.strip.end_with?('}')
 
       # Convenience wrapper: wrap in @media if media_types specified
@@ -678,11 +693,24 @@ module Cataract
         css = "@media #{media_list} { #{css} }"
       end
 
+      # Determine effective options (per-call overrides or constructor defaults)
+      effective_base_uri = base_uri || @options[:base_uri]
+      effective_base_dir = base_dir || @options[:base_dir]
+      effective_absolute_paths = absolute_paths.nil? ? @options[:absolute_paths] : absolute_paths
+
       # Get current rule ID offset
       offset = @_last_rule_id || 0
 
+      # Build parser options with URL conversion settings
+      parse_options = @parser_options.dup
+      if effective_absolute_paths && effective_base_uri
+        parse_options[:base_uri] = effective_base_uri
+        parse_options[:absolute_paths] = true
+        parse_options[:uri_resolver] = @options[:uri_resolver]
+      end
+
       # Parse CSS first (this extracts @import statements into result[:imports])
-      result = Cataract._parse_css(css, @parser_options)
+      result = Cataract._parse_css(css, parse_options)
 
       # Merge selector_lists with offsetted IDs
       # Must do this BEFORE updating rule IDs so we can update rule.selector_list_id
@@ -738,7 +766,13 @@ module Cataract
             imported_urls = []
             depth = 0
           end
-          resolve_imports(new_imports, @options[:import], imported_urls: imported_urls, depth: depth)
+
+          # Build import options with base_uri/base_dir for URL resolution
+          import_opts = @options[:import].is_a?(Hash) ? @options[:import].dup : {}
+          import_opts[:base_uri] = effective_base_uri if effective_base_uri
+          import_opts[:base_path] = effective_base_dir if effective_base_dir
+
+          resolve_imports(new_imports, import_opts, imported_urls: imported_urls, depth: depth)
         end
       end
 
@@ -996,7 +1030,24 @@ module Cataract
         # Parse imported CSS recursively
         imported_urls_copy = imported_urls.dup
         imported_urls_copy << url
-        imported_sheet = Stylesheet.parse(imported_css, import: opts.merge(imported_urls: imported_urls_copy, depth: depth + 1))
+
+        # Determine the base URI for the imported file
+        # This becomes the new base for resolving relative URLs in the imported CSS
+        imported_base_uri = ImportResolver.normalize_url(url, base_path: opts[:base_path], base_uri: opts[:base_uri]).to_s
+
+        # Build parse options for imported CSS
+        parse_opts = {
+          import: opts.merge(imported_urls: imported_urls_copy, depth: depth + 1, base_uri: imported_base_uri)
+        }
+
+        # If URL conversion is enabled (base_uri present), enable it for imported files too
+        if opts[:base_uri]
+          parse_opts[:absolute_paths] = true
+          parse_opts[:base_uri] = imported_base_uri
+          parse_opts[:uri_resolver] = opts[:uri_resolver]
+        end
+
+        imported_sheet = Stylesheet.parse(imported_css, **parse_opts)
 
         # Wrap rules in @media if import had media query
         if media

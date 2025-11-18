@@ -73,11 +73,22 @@ module Cataract
 
       # Parser options with defaults
       @parser_options = {
-        selector_lists: true
+        selector_lists: true,
+        base_uri: nil,
+        absolute_paths: false,
+        uri_resolver: nil
       }.merge(parser_options)
 
-      # Extract selector_lists option to ivar to avoid repeated hash lookups in hot path
+      # Extract options to ivars to avoid repeated hash lookups in hot path
       @selector_lists_enabled = @parser_options[:selector_lists]
+      @base_uri = @parser_options[:base_uri]
+      @absolute_paths = @parser_options[:absolute_paths]
+
+      # Default URI resolver uses Ruby's URI stdlib
+      @uri_resolver = @parser_options[:uri_resolver] || lambda { |base, relative|
+        require 'uri'
+        URI.parse(base).merge(relative).to_s
+      }
 
       # Parser state
       @rules = []                    # Flat array of Rule structs
@@ -365,6 +376,9 @@ module Cataract
 
       # Return nil if empty declaration
       return [nil, pos] if prop_end <= prop_start || val_end <= val_start
+
+      # Convert relative URLs to absolute if enabled
+      value = convert_urls_in_value(value)
 
       [Declaration.new(property, value, important), pos]
     end
@@ -706,6 +720,9 @@ module Cataract
 
         # Skip semicolon if present
         @pos += 1 if peek_byte == BYTE_SEMICOLON
+
+        # Convert relative URLs to absolute if enabled
+        value = convert_urls_in_value(value)
 
         # Create Declaration struct
         declarations << Declaration.new(property, value, important)
@@ -1394,6 +1411,138 @@ module Cataract
         # Hit non-@import content, stop skipping
         break
       end
+    end
+
+    # Convert relative URLs in a value string to absolute URLs
+    # Called when @absolute_paths is enabled and @base_uri is set
+    #
+    # @param value [String] The declaration value to process
+    # @return [String] Value with relative URLs converted to absolute
+    def convert_urls_in_value(value)
+      return value unless @absolute_paths && @base_uri
+
+      result = +''
+      pos = 0
+      len = value.bytesize
+
+      while pos < len
+        # Look for 'url(' - case insensitive
+        byte = value.getbyte(pos)
+        if pos + 3 < len &&
+           (byte == BYTE_LOWER_U || byte == BYTE_UPPER_U) &&
+           (value.getbyte(pos + 1) == BYTE_LOWER_R || value.getbyte(pos + 1) == BYTE_UPPER_R) &&
+           (value.getbyte(pos + 2) == BYTE_LOWER_L || value.getbyte(pos + 2) == BYTE_UPPER_L) &&
+           value.getbyte(pos + 3) == BYTE_LPAREN
+
+          result << value.byteslice(pos, 4) # append 'url('
+          pos += 4
+
+          # Skip whitespace
+          while pos < len && (value.getbyte(pos) == BYTE_SPACE || value.getbyte(pos) == BYTE_TAB)
+            result << value.getbyte(pos).chr
+            pos += 1
+          end
+
+          # Check for quote
+          quote_char = nil
+          if pos < len && (value.getbyte(pos) == BYTE_SQUOTE || value.getbyte(pos) == BYTE_DQUOTE)
+            quote_char = value.getbyte(pos)
+            pos += 1
+          end
+
+          # Extract URL
+          url_start = pos
+          if quote_char
+            # Scan until matching quote
+            while pos < len && value.getbyte(pos) != quote_char
+              # Handle escape
+              pos += if value.getbyte(pos) == BYTE_BACKSLASH && pos + 1 < len
+                       2
+                     else
+                       1
+                     end
+            end
+          else
+            # Scan until ) or whitespace
+            while pos < len
+              b = value.getbyte(pos)
+              break if b == BYTE_RPAREN || b == BYTE_SPACE || b == BYTE_TAB
+
+              pos += 1
+            end
+          end
+
+          url_str = value.byteslice(url_start, pos - url_start)
+
+          # Check if URL needs resolution (is relative)
+          # Skip if: contains "://" OR starts with "data:"
+          needs_resolution = true
+          if url_str.empty?
+            needs_resolution = false
+          else
+            # Check for "://"
+            i = 0
+            url_len = url_str.bytesize
+            while i + 2 < url_len
+              if url_str.getbyte(i) == BYTE_COLON &&
+                 url_str.getbyte(i + 1) == BYTE_SLASH &&
+                 url_str.getbyte(i + 2) == BYTE_SLASH
+                needs_resolution = false
+                break
+              end
+              i += 1
+            end
+
+            # Check for "data:" prefix (case insensitive)
+            if needs_resolution && url_len >= 5
+              if (url_str.getbyte(0) == BYTE_LOWER_D || url_str.getbyte(0) == BYTE_UPPER_D) &&
+                 (url_str.getbyte(1) == BYTE_LOWER_A || url_str.getbyte(1) == BYTE_UPPER_A) &&
+                 (url_str.getbyte(2) == BYTE_LOWER_T || url_str.getbyte(2) == BYTE_UPPER_T) &&
+                 (url_str.getbyte(3) == BYTE_LOWER_A || url_str.getbyte(3) == BYTE_UPPER_A) &&
+                 url_str.getbyte(4) == BYTE_COLON
+                needs_resolution = false
+              end
+            end
+          end
+
+          if needs_resolution
+            # Resolve relative URL using the resolver proc
+            begin
+              resolved = @uri_resolver.call(@base_uri, url_str)
+              result << "'" << resolved << "'"
+            rescue StandardError
+              # If resolution fails, preserve original
+              if quote_char
+                result << quote_char.chr << url_str << quote_char.chr
+              else
+                result << url_str
+              end
+            end
+          elsif url_str.empty?
+            # Preserve original URL
+            result << "''"
+          elsif quote_char
+            result << quote_char.chr << url_str << quote_char.chr
+          else
+            result << url_str
+          end
+
+          # Skip past closing quote if present
+          pos += 1 if quote_char && pos < len && value.getbyte(pos) == quote_char
+
+          # Skip whitespace before )
+          while pos < len && (value.getbyte(pos) == BYTE_SPACE || value.getbyte(pos) == BYTE_TAB)
+            pos += 1
+          end
+
+          # The ) will be copied in the next iteration or at the end
+        else
+          result << byte.chr
+          pos += 1
+        end
+      end
+
+      result
     end
 
     # Parse a block of declarations given start/end positions
