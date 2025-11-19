@@ -26,6 +26,7 @@ module Cataract
 end
 
 require_relative 'version'
+require_relative 'constants'
 
 # Load struct definitions and supporting files
 # (These are also loaded by lib/cataract.rb, but we need them here for direct require)
@@ -99,10 +100,8 @@ module Cataract
 
   # NOTE: Copied from cataract.rb
   # Need to untangle this eventually
-  def self.parse_css(css, imports: false)
-    css = ImportResolver.resolve(css, imports) if imports
-
-    Stylesheet.parse(css)
+  def self.parse_css(css, **options)
+    Stylesheet.parse(css, **options)
   end
 
   # Flatten stylesheet rules according to CSS cascade rules

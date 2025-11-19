@@ -85,10 +85,7 @@ module Cataract
       @absolute_paths = @parser_options[:absolute_paths]
 
       # Default URI resolver uses Ruby's URI stdlib
-      @uri_resolver = @parser_options[:uri_resolver] || lambda { |base, relative|
-        require 'uri'
-        URI.parse(base).merge(relative).to_s
-      }
+      @uri_resolver = @parser_options[:uri_resolver] || Cataract::DEFAULT_URI_RESOLVER
 
       # Parser state
       @rules = []                    # Flat array of Rule structs

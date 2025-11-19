@@ -54,6 +54,9 @@ module Cataract
     # @option options [Hash] :parser ({}) Parser configuration options
     #   - :selector_lists [Boolean] (true) Track selector lists for W3C-compliant serialization
     def initialize(options = {})
+      # Support :imports as alias for :import (backwards compatibility)
+      options[:import] = options.delete(:imports) if options.key?(:imports) && !options.key?(:import)
+
       @options = {
         import: false,
         io_exceptions: true,
@@ -706,7 +709,7 @@ module Cataract
       if effective_absolute_paths && effective_base_uri
         parse_options[:base_uri] = effective_base_uri
         parse_options[:absolute_paths] = true
-        parse_options[:uri_resolver] = @options[:uri_resolver]
+        parse_options[:uri_resolver] = @options[:uri_resolver] || Cataract::DEFAULT_URI_RESOLVER
       end
 
       # Parse CSS first (this extracts @import statements into result[:imports])
