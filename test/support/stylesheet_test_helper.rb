@@ -290,6 +290,38 @@ module StylesheetTestHelper
     assert_includes collection, element, message
   end
 
+  # Assert that an element is NOT a member of a collection
+  #
+  # Use this for legitimate array/collection membership checks instead of refute_includes.
+  # IMPORTANT: This does NOT work with Strings, which is intentional to prevent regressions.
+  #
+  # This is the opposite of assert_member - see assert_member documentation for rationale.
+  #
+  # @param collection [Enumerable] Collection to check (Array, Set, etc.) - NOT a String
+  # @param element [Object] Element that should not be in collection
+  # @param message [String, nil] Optional failure message
+  #
+  # @example Correct usage - checking collection membership
+  #   refute_member([:screen, :print], :handheld)  # Is :handheld NOT in this array?
+  #   refute_member(stylesheet.selectors, '.unused')  # Is '.unused' NOT in array of selectors?
+  #
+  # @example Wrong usage - will raise an error
+  #   refute_member(parsed_css, 'body')  # WRONG - use refute_equal or domain-specific assertions
+  def refute_member(collection, element, message = nil)
+    unless collection.is_a?(Enumerable)
+      flunk "refute_member expects an Enumerable, got #{collection.class}. " \
+            'For strings, use refute_equal.'
+    end
+
+    if collection.is_a?(String)
+      flunk 'refute_member does not work with Strings. ' \
+            'Substring checks with refute_includes are too loose and can hide parser/serializer regressions. ' \
+            'Use refute_equal (exact match) or domain-specific assertions.'
+    end
+
+    refute_includes collection, element, message
+  end
+
   # Lifted from Rails
   def silence_warnings(&)
     with_warnings(nil, &)

@@ -620,23 +620,103 @@ struct flatten_selectors_context {
     int *rule_id_counter;
     long selector_index;
     long total_selectors;
+    VALUE old_to_new_id;  // Hash mapping old rule IDs to new merged rule IDs (for media index)
 };
+
+// Context for building rule_media_map
+struct build_rule_media_map_context {
+    VALUE rule_media_map;
+};
+
+// Callback for building rule_media_map from input media_index
+static int build_rule_media_map_callback(VALUE media_sym, VALUE rule_ids, VALUE arg) {
+    struct build_rule_media_map_context *ctx = (struct build_rule_media_map_context *)arg;
+
+    if (NIL_P(rule_ids) || TYPE(rule_ids) != T_ARRAY) {
+        return ST_CONTINUE;
+    }
+
+    long num_ids = RARRAY_LEN(rule_ids);
+    for (long i = 0; i < num_ids; i++) {
+        VALUE rule_id = RARRAY_AREF(rule_ids, i);
+        // Only set if not already set (rule can be in multiple media, take first)
+        if (NIL_P(rb_hash_aref(ctx->rule_media_map, rule_id))) {
+            rb_hash_aset(ctx->rule_media_map, rule_id, media_sym);
+        }
+    }
+
+    return ST_CONTINUE;
+}
+
+// Context for remapping media_index
+struct remap_media_context {
+    VALUE old_to_new_id;
+    VALUE new_media_index;
+};
+
+// Callback for remapping media_index entries
+static int remap_media_index_callback(VALUE media_sym, VALUE old_rule_ids, VALUE arg) {
+    struct remap_media_context *ctx = (struct remap_media_context *)arg;
+
+    if (NIL_P(old_rule_ids) || TYPE(old_rule_ids) != T_ARRAY) {
+        return ST_CONTINUE;
+    }
+
+    VALUE new_rule_ids = rb_ary_new();
+    long num_old_ids = RARRAY_LEN(old_rule_ids);
+
+    for (long i = 0; i < num_old_ids; i++) {
+        VALUE old_id = RARRAY_AREF(old_rule_ids, i);
+        VALUE new_id = rb_hash_aref(ctx->old_to_new_id, old_id);
+
+        // Only include if the rule still exists after merging and isn't already in the list
+        if (!NIL_P(new_id) && rb_ary_includes(new_rule_ids, new_id) == Qfalse) {
+            rb_ary_push(new_rule_ids, new_id);
+        }
+    }
+
+    // Only preserve media entry if there are still rules for it
+    if (RARRAY_LEN(new_rule_ids) > 0) {
+        rb_hash_aset(ctx->new_media_index, media_sym, new_rule_ids);
+    }
+
+    return ST_CONTINUE;
+}
 
 // Forward declaration
 static VALUE flatten_rules_for_selector(VALUE rules_array, VALUE rule_indices, VALUE selector, VALUE *out_selector_list_id);
 
 // Callback for rb_hash_foreach when merging selector groups
-static int flatten_selector_group_callback(VALUE selector, VALUE group_indices, VALUE arg) {
+static int flatten_selector_group_callback(VALUE group_key, VALUE group_indices, VALUE arg) {
     struct flatten_selectors_context *ctx = (struct flatten_selectors_context *)arg;
     ctx->selector_index++;
 
-    DEBUG_PRINTF("\n[Selector %ld/%ld] '%s' - %ld rules in group\n",
+    // Extract selector and media_context from group_key array [selector, media_context]
+    VALUE selector = RARRAY_AREF(group_key, 0);
+    VALUE media_context = RARRAY_AREF(group_key, 1);
+
+    DEBUG_PRINTF("\n[Selector %ld/%ld] '%s' (media=%s) - %ld rules in group\n",
                  ctx->selector_index, ctx->total_selectors,
-                 RSTRING_PTR(selector), RARRAY_LEN(group_indices));
+                 RSTRING_PTR(selector),
+                 NIL_P(media_context) ? "nil" : RSTRING_PTR(rb_sym_to_s(media_context)),
+                 RARRAY_LEN(group_indices));
 
     // Merge all rules in this selector group and preserve selector_list_id if all rules share same ID
     VALUE selector_list_id = Qnil;
     VALUE merged_decls = flatten_rules_for_selector(ctx->rules_array, group_indices, selector, &selector_list_id);
+
+    int new_rule_id = *ctx->rule_id_counter;
+
+    // Track old rule IDs to new rule ID mapping (only for rules in media queries)
+    if (!NIL_P(media_context)) {
+        long num_rules_in_group = RARRAY_LEN(group_indices);
+        for (long i = 0; i < num_rules_in_group; i++) {
+            long old_rule_idx = FIX2LONG(RARRAY_AREF(group_indices, i));
+            VALUE old_rule = RARRAY_AREF(ctx->rules_array, old_rule_idx);
+            VALUE old_rule_id = rb_struct_aref(old_rule, INT2FIX(RULE_ID));
+            rb_hash_aset(ctx->old_to_new_id, old_rule_id, INT2FIX(new_rule_id));
+        }
+    }
 
     // Create new rule with this selector and merged declarations
     VALUE new_rule = rb_struct_new(cRule,
@@ -1372,10 +1452,24 @@ VALUE cataract_flatten(VALUE self, VALUE input) {
         }
     }
 
-    // ALWAYS build selector groups - this is the core of flatten logic
-    // Group rules by selector: different selectors stay separate
-    // selector => [rule indices]
-    DEBUG_PRINTF("\n=== Building selector groups (has_nesting=%d) ===\n", has_nesting);
+    // Build rule_media_map: rule_id => media_symbol
+    // This is used to group rules by (selector, media) instead of just selector
+    VALUE input_media_index = Qnil;
+    VALUE rule_media_map = rb_hash_new();
+    if (rb_obj_is_kind_of(input, cStylesheet)) {
+        input_media_index = rb_ivar_get(input, id_ivar_media_index);
+        if (!NIL_P(input_media_index) && TYPE(input_media_index) == T_HASH) {
+            // Build reverse mapping: rule_id => media_symbol
+            struct build_rule_media_map_context build_ctx;
+            build_ctx.rule_media_map = rule_media_map;
+            rb_hash_foreach(input_media_index, build_rule_media_map_callback, (VALUE)&build_ctx);
+        }
+    }
+
+    // Group rules by (selector, media) instead of just selector
+    // Rules with same selector but different media contexts should NOT be merged
+    // selector_and_media_key => [rule indices]
+    DEBUG_PRINTF("\n=== Building selector+media groups (has_nesting=%d) ===\n", has_nesting);
     VALUE selector_groups = rb_hash_new();
     VALUE passthrough_rules = rb_ary_new(); // AtRules to pass through unchanged
 
@@ -1392,6 +1486,7 @@ VALUE cataract_flatten(VALUE self, VALUE input) {
 
         VALUE declarations = rb_struct_aref(rule, INT2FIX(RULE_DECLARATIONS));
         VALUE selector = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR));
+        VALUE rule_id_val = rb_struct_aref(rule, INT2FIX(RULE_ID));
 
         // Skip empty rules (no declarations)
         // This handles both empty containers and rules with no properties
@@ -1407,18 +1502,28 @@ VALUE cataract_flatten(VALUE self, VALUE input) {
         // Should output both .parent (color: red) and .parent .child (color: blue)
         // The nesting is already flattened during parsing, so they have different selectors.
 
-        DEBUG_PRINTF("  [Rule %ld] ADD: selector='%s', %ld declarations\n",
-                     i, RSTRING_PTR(selector), RARRAY_LEN(declarations));
+        // Get media context for this rule (nil if not in media query)
+        VALUE media_context = rb_hash_aref(rule_media_map, rule_id_val);
 
-        VALUE group = rb_hash_aref(selector_groups, selector);
+        // Build grouping key as [selector, media_context]
+        VALUE group_key = rb_ary_new3(2, selector, media_context);
+
+        DEBUG_PRINTF("  [Rule %ld] ADD: selector='%s', media=%s, %ld declarations\n",
+                     i, RSTRING_PTR(selector),
+                     NIL_P(media_context) ? "nil" : RSTRING_PTR(rb_sym_to_s(media_context)),
+                     RARRAY_LEN(declarations));
+
+        VALUE group = rb_hash_aref(selector_groups, group_key);
         if (NIL_P(group)) {
             group = rb_ary_new();
-            rb_hash_aset(selector_groups, selector, group);
-            DEBUG_PRINTF("    -> Created new selector group for '%s'\n", RSTRING_PTR(selector));
+            rb_hash_aset(selector_groups, group_key, group);
+            DEBUG_PRINTF("    -> Created new selector+media group for '%s' + %s\n",
+                        RSTRING_PTR(selector),
+                        NIL_P(media_context) ? "nil" : RSTRING_PTR(rb_sym_to_s(media_context)));
         }
         rb_ary_push(group, LONG2FIX(i));
     }
-    DEBUG_PRINTF("=== Total selector groups: %ld ===\n\n", RHASH_SIZE(selector_groups));
+    DEBUG_PRINTF("=== Total selector+media groups: %ld ===\n\n", RHASH_SIZE(selector_groups));
 
     // ALWAYS group by selector and keep them separate
     // Different selectors target different elements and must remain distinct
@@ -1456,12 +1561,14 @@ VALUE cataract_flatten(VALUE self, VALUE input) {
 
         // Iterate through each selector group using rb_hash_foreach
         // to avoid rb_funcall in hot path
+        VALUE old_to_new_id = rb_hash_new();  // Hash to track old rule IDs -> new merged rule IDs
         struct flatten_selectors_context merge_ctx;
         merge_ctx.merged_rules = merged_rules;
         merge_ctx.rules_array = rules_array;
         merge_ctx.rule_id_counter = &rule_id_counter;
         merge_ctx.selector_index = 0;
         merge_ctx.total_selectors = RHASH_SIZE(selector_groups);
+        merge_ctx.old_to_new_id = old_to_new_id;
 
         DEBUG_PRINTF("\n=== Processing %ld selector groups ===\n", merge_ctx.total_selectors);
 
@@ -1512,14 +1619,29 @@ VALUE cataract_flatten(VALUE self, VALUE input) {
             }
         }
 
-        // Set @media_index to empty hash (no media rules after flatten)
-        // NOTE: Setting to empty hash instead of { all: [ids] } to match pure Ruby behavior
-        // and avoid wrapping output in @media all during serialization
-        VALUE media_idx = rb_hash_new();
-        rb_ivar_set(merged_sheet, id_ivar_media_index, media_idx);
+        // Preserve media_index by remapping old rule IDs to new rule IDs
+        // This is important for @media rules and @import statements with media constraints
+        VALUE new_media_index = rb_hash_new();
+
+        if (!NIL_P(input_media_index) && TYPE(input_media_index) == T_HASH) {
+            struct remap_media_context remap_ctx;
+            remap_ctx.old_to_new_id = old_to_new_id;
+            remap_ctx.new_media_index = new_media_index;
+            rb_hash_foreach(input_media_index, remap_media_index_callback, (VALUE)&remap_ctx);
+        }
+
+        rb_ivar_set(merged_sheet, id_ivar_media_index, new_media_index);
 
         // Set @_selector_lists with divergence tracking
         rb_ivar_set(merged_sheet, rb_intern("@_selector_lists"), selector_lists);
+
+        // Protect intermediate VALUEs from being collected
+        RB_GC_GUARD(input_media_index);
+        RB_GC_GUARD(rule_media_map);
+        RB_GC_GUARD(selector_groups);
+        RB_GC_GUARD(passthrough_rules);
+        RB_GC_GUARD(old_to_new_id);
+        RB_GC_GUARD(new_media_index);
 
         return merged_sheet;
     }

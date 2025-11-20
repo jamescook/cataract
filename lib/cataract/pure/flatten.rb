@@ -164,17 +164,43 @@ module Cataract
 
       merged_rules = []
 
-      # Always group by selector and preserve original selectors
-      # (Nesting is flattened during parsing, so we just merge by resolved selector)
-      # NOTE: Using manual each instead of .group_by to avoid intermediate hash allocation.
-      # The concise form (.group_by) is ~10-25% slower depending on selector uniqueness.
-      by_selector = {}
-      regular_rules.each do |rule|
-        (by_selector[rule.selector] ||= []) << rule
+      # Build a helper to find media context for a rule
+      # Returns the media symbol for a rule, or nil if not in any media query
+      media_index = stylesheet.instance_variable_get(:@_media_index)
+      rule_media_map = {}
+      media_index.each do |media_sym, rule_ids|
+        rule_ids.each do |rule_id|
+          # A rule can be in multiple media queries, we take the first one
+          # (in practice, a rule should only be in one media query at this point)
+          rule_media_map[rule_id] ||= media_sym
+        end
       end
-      by_selector.each do |selector, rules|
-        merged_rule = flatten_rules_for_selector(selector, rules)
-        merged_rules << merged_rule if merged_rule
+
+      # Group by (selector, media) instead of just selector
+      # Rules with same selector but different media contexts should NOT be merged
+      # NOTE: Using manual each instead of .group_by to avoid intermediate hash allocation.
+      by_selector_and_media = {}
+      regular_rules.each do |rule|
+        media_context = rule_media_map[rule.id]
+        key = [rule.selector, media_context]
+        (by_selector_and_media[key] ||= []) << rule
+      end
+
+      # Track old rule ID to new merged rule index mapping (only for rules in media queries)
+      old_to_new_id = {}
+      by_selector_and_media.each do |(_selector, media_context), rules|
+        merged_rule = flatten_rules_for_selector(rules.first.selector, rules)
+        next unless merged_rule
+
+        # Only build mapping for rules that are in media queries
+        if media_context
+          new_index = merged_rules.length
+
+          rules.each do |old_rule|
+            old_to_new_id[old_rule.id] = new_index
+          end
+        end
+        merged_rules << merged_rule
       end
 
       # Recreate shorthands where possible
@@ -195,11 +221,28 @@ module Cataract
       # Add passthrough AtRules to output
       merged_rules.concat(at_rules)
 
+      # Preserve media_index by remapping old rule IDs to new rule IDs
+      # This is important for @media rules and @import statements with media constraints
+      # The old_to_new_id mapping was already built during the merge loop above
+      old_media_index = stylesheet.instance_variable_get(:@_media_index)
+      new_media_index = {}
+
+      # Remap media index entries using the old_to_new_id mapping
+      old_media_index.each do |media_sym, old_rule_ids|
+        new_rule_ids = []
+        old_rule_ids.each do |old_id|
+          new_id = old_to_new_id[old_id]
+          # Only include if the rule still exists after merging and isn't already in the list
+          new_rule_ids << new_id if new_id && !new_rule_ids.include?(new_id)
+        end
+        # Only preserve media entry if there are still rules for it
+        new_media_index[media_sym] = new_rule_ids unless new_rule_ids.empty?
+      end
+
       # Create result stylesheet
       if mutate
         stylesheet.instance_variable_set(:@rules, merged_rules)
-        # Clear media index (no media rules after merge flattens everything)
-        stylesheet.instance_variable_set(:@media_index, {})
+        stylesheet.instance_variable_set(:@_media_index, new_media_index)
         # Update selector lists with divergence tracking
         stylesheet.instance_variable_set(:@_selector_lists, selector_lists)
         stylesheet
@@ -207,7 +250,7 @@ module Cataract
         # Create new Stylesheet with merged rules
         result = Stylesheet.new
         result.instance_variable_set(:@rules, merged_rules)
-        result.instance_variable_set(:@media_index, {})
+        result.instance_variable_set(:@_media_index, new_media_index)
         result.instance_variable_set(:@charset, stylesheet.charset)
         result.instance_variable_set(:@_selector_lists, selector_lists)
         result
