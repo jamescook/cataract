@@ -10,6 +10,7 @@ gem 'rake', '~> 13.0'
 gem 'rake-compiler', '~> 1.0'
 
 # Development/benchmarking dependencies (not needed by gem users)
+gem 'addressable', '~> 2.8' # for custom URI resolver testing
 gem 'benchmark-ips', '~> 2.0'
 gem 'css_parser', '~> 1.0' # for benchmarking against
 gem 'minitest'

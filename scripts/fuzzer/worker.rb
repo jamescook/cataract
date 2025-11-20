@@ -71,16 +71,19 @@ loop do
 
   # Parse CSS (crash will kill subprocess)
   # Enable import resolution with in-memory fetcher to exercise that code path
+  # Enable URL conversion to exercise convert_urls_in_value code path
   begin
     # Silence warnings during parsing to avoid stderr buffer issues in subprocess
     old_verbose = $VERBOSE
     $VERBOSE = nil
     stylesheet = Cataract.parse_css(css,
-                                    imports: {
+                                    import: {
                                       fetcher: InMemoryImportFetcher,
                                       allowed_schemes: %w[http https file], # Allow any scheme
                                       max_depth: 5 # Limit recursion to avoid infinite loops in fuzzing
-                                    })
+                                    },
+                                    base_uri: 'http://example.com/css/main.css',
+                                    absolute_paths: true)
     $VERBOSE = old_verbose
     rules = stylesheet.rules.to_a
     flatten_tested = false
@@ -139,6 +142,12 @@ loop do
     $stdout.write("SIZE\n")
   rescue StandardError => e
     $VERBOSE = old_verbose if defined?(old_verbose)
+    # Always log errors to a file for debugging
+    File.open(File.join(__dir__, 'fuzz_errors.log'), 'a') do |f|
+      f.puts "[#{Time.now}] #{e.class}: #{e.message}"
+      f.puts e.backtrace.first(5).join("\n") if e.backtrace
+      f.puts '---'
+    end
     # Log errors to stderr if FUZZ_DEBUG is enabled
     if ENV['FUZZ_DEBUG'] == '1'
       $stderr.puts "[Worker Error] #{e.class}: #{e.message}"

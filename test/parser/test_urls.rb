@@ -121,6 +121,32 @@ class TestUrls < Minitest::Test
     assert_has_property({ color: 'red' }, rule)
   end
 
+  def test_semicolon_in_quoted_url_not_in_parens
+    # This tests the quote tracking specifically - the semicolon is inside quotes
+    # but outside the url() parens tracking. Paren depth alone won't save us here.
+    css = "body { background: url('data:image/png;base64,abc'); color: red; font-size: 12px }"
+    sheet = Cataract::Stylesheet.parse(css)
+
+    rule = sheet.rules.first
+
+    assert_equal 3, rule.declarations.size, "Expected 3 declarations, got #{rule.declarations.size}"
+    assert_has_property({ background: "url('data:image/png;base64,abc')" }, rule)
+    assert_has_property({ color: 'red' }, rule)
+    assert_has_property({ 'font-size': '12px' }, rule)
+  end
+
+  def test_escaped_quote_in_url
+    # Escaped quote inside url should not end the string
+    css = "body { background: url('it\\'s-fine;really'); color: blue }"
+    sheet = Cataract::Stylesheet.parse(css)
+
+    rule = sheet.rules.first
+
+    assert_equal 2, rule.declarations.size, 'Expected 2 declarations'
+    assert_has_property({ background: "url('it\\'s-fine;really')" }, rule)
+    assert_has_property({ color: 'blue' }, rule)
+  end
+
   # ============================================================================
   # Edge cases
   # ============================================================================

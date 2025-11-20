@@ -20,7 +20,7 @@ module Cataract
       # @return [String] Fetched content
       # @raise [ImportError] If fetching fails
       def call(url, options)
-        uri = ImportResolver.normalize_url(url, options[:base_path])
+        uri = ImportResolver.normalize_url(url, base_path: options[:base_path], base_uri: options[:base_uri])
 
         case uri.scheme
         when 'file'
@@ -56,6 +56,7 @@ module Cataract
         uri.open(open_uri_options, &:read)
       end
     end
+
     # Default options for safe import resolution
     SAFE_DEFAULTS = {
       max_depth: 5,                      # Prevent infinite recursion
@@ -63,80 +64,10 @@ module Cataract
       extensions: ['css'],               # Only .css files
       timeout: 10,                       # 10 second timeout for fetches
       follow_redirects: true,            # Follow redirects
-      base_path: nil,                    # Base path for resolving relative imports
+      base_path: nil,                    # Base path for resolving relative file imports
+      base_uri: nil,                     # Base URI for resolving relative HTTP imports
       fetcher: nil                       # Custom fetcher (defaults to DefaultFetcher)
     }.freeze
-
-    # Resolve @import statements in CSS
-    #
-    # @param css [String] CSS content with @import statements
-    # @param options [Hash] Import resolution options
-    #   @option options [#call] :fetcher Custom fetcher callable (receives url, options)
-    #   @option options [Integer] :max_depth Maximum import nesting depth
-    #   @option options [Array<String>] :allowed_schemes Allowed URL schemes
-    #   @option options [Array<String>] :extensions Allowed file extensions
-    #   @option options [Integer] :timeout HTTP request timeout in seconds
-    #   @option options [Boolean] :follow_redirects Follow HTTP redirects
-    #   @option options [String] :base_path Base path for relative imports
-    # @param depth [Integer] Current recursion depth (internal)
-    # @param imported_urls [Array] Array of already imported URLs to prevent circular references
-    # @return [String] CSS with imports inlined
-    def self.resolve(css, options = {}, depth: 0, imported_urls: [])
-      # Normalize options
-      opts = normalize_options(options)
-
-      # Get or create fetcher
-      fetcher = opts[:fetcher] || DefaultFetcher.new
-
-      # Check recursion depth
-      # depth starts at 0, max_depth is count of imports allowed
-      # depth 0: parsing main file (counts as import 1)
-      # depth 1: parsing first @import  (counts as import 2)
-      # depth 2: parsing nested @import (counts as import 3)
-      if depth > opts[:max_depth]
-        raise ImportError, "Import nesting too deep: exceeded maximum depth of #{opts[:max_depth]}"
-      end
-
-      # Find all @import statements at the top of the file
-      # Per CSS spec, @import must come before all rules except @charset
-      imports = extract_imports(css)
-
-      return css if imports.empty?
-
-      # Process each import
-      resolved_css = +'' # Mutable string
-      remaining_css = css
-
-      imports.each do |import_data|
-        url = import_data[:url]
-        media = import_data[:media]
-
-        # Validate URL
-        validate_url(url, opts)
-
-        # Check for circular references
-        raise ImportError, "Circular import detected: #{url}" if imported_urls.include?(url)
-
-        # Fetch imported CSS using the fetcher
-        imported_css = fetcher.call(url, opts)
-
-        # Recursively resolve imports in the imported CSS
-        imported_urls_copy = imported_urls.dup
-        imported_urls_copy << url
-        imported_css = resolve(imported_css, opts, depth: depth + 1, imported_urls: imported_urls_copy)
-
-        # Wrap in @media if import had media query
-        imported_css = "@media #{media} {\n#{imported_css}\n}" if media
-
-        resolved_css << imported_css << "\n"
-
-        # Remove this import from remaining CSS
-        remaining_css = remaining_css.sub(import_data[:full_match], '')
-      end
-
-      # Return resolved imports + remaining CSS
-      resolved_css + remaining_css
-    end
 
     # Normalize options with safe defaults
     def self.normalize_options(options)
@@ -151,27 +82,27 @@ module Cataract
       end
     end
 
-    # Extract @import statements from CSS
-    # Returns array of hashes: { url: "...", media: "...", full_match: "..." }
-    # Delegates to C implementation for performance
-    def self.extract_imports(css)
-      Cataract.extract_imports(css)
-    end
-
     # Normalize URL - handle relative paths and missing schemes
     # Returns a URI object
-    def self.normalize_url(url, base_path = nil)
+    #
+    # @param url [String] URL to normalize
+    # @param base_path [String, nil] Base path for resolving relative file imports
+    # @param base_uri [String, nil] Base URI for resolving relative HTTP imports
+    def self.normalize_url(url, base_path: nil, base_uri: nil)
       # Try to parse as-is first
       uri = URI.parse(url)
 
-      # If no scheme, treat as relative file path
+      # If no scheme, treat as relative path
       if uri.scheme.nil?
-        # Convert to file:// URL
-        # Relative paths stay relative, absolute paths stay absolute
-        if url.start_with?('/')
+        # If we have a base_uri (HTTP/HTTPS), resolve against it
+        if base_uri
+          base = URI.parse(base_uri)
+          uri = base.merge(url)
+        elsif url.start_with?('/')
+          # Absolute file path
           uri = URI.parse("file://#{url}")
         else
-          # Relative path - make it absolute relative to base_path or current directory
+          # Relative file path - make it absolute relative to base_path or current directory
           absolute_path = if base_path
                             File.expand_path(url, base_path)
                           else
@@ -188,7 +119,7 @@ module Cataract
 
     # Validate URL against security options
     def self.validate_url(url, options)
-      uri = normalize_url(url, options[:base_path])
+      uri = normalize_url(url, base_path: options[:base_path], base_uri: options[:base_uri])
 
       # Check scheme
       unless options[:allowed_schemes].include?(uri.scheme)
