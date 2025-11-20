@@ -26,6 +26,10 @@ typedef struct {
     int has_nesting;          // Set to 1 if any nested rules are created
     int selector_lists_enabled; // Parser option: track selector lists (1=enabled, 0=disabled)
     int depth;                // Current recursion depth (safety limit)
+    // URL conversion options
+    VALUE base_uri;           // Base URI for resolving relative URLs (Qnil if disabled)
+    VALUE uri_resolver;       // Proc to call for URL resolution (Qnil for default)
+    int absolute_paths;       // Whether to convert relative URLs to absolute
 } ParserContext;
 
 // Macro to skip CSS comments /* ... */
@@ -390,6 +394,171 @@ static void update_media_index(ParserContext *ctx, VALUE media_sym, int rule_id)
     RB_GC_GUARD(media_str);
 }
 
+// Helper struct for passing arguments to resolver callback
+typedef struct {
+    VALUE uri_resolver;
+    VALUE base_uri;
+    VALUE url_str;
+} ResolverArgs;
+
+// Callback for rb_protect to call the resolver proc
+static VALUE call_resolver(VALUE arg) {
+    ResolverArgs *args = (ResolverArgs *)arg;
+    return rb_funcall(args->uri_resolver, rb_intern("call"), 2, args->base_uri, args->url_str);
+}
+
+/*
+ * Convert relative URLs in a CSS value to absolute URLs
+ *
+ * Scans for url() patterns and resolves relative URLs using the resolver proc.
+ * Returns a new Ruby string with resolved URLs, or the original if no conversion needed.
+ */
+static VALUE convert_urls_in_value(VALUE value_str, VALUE base_uri, VALUE uri_resolver) {
+    const char *val = RSTRING_PTR(value_str);
+    long len = RSTRING_LEN(value_str);
+
+    // Quick check: does value contain 'url('?
+    const char *url_check = val;
+    int has_url = 0;
+    while (url_check < val + len - 3) {
+        if ((*url_check == 'u' || *url_check == 'U') &&
+            (*(url_check + 1) == 'r' || *(url_check + 1) == 'R') &&
+            (*(url_check + 2) == 'l' || *(url_check + 2) == 'L') &&
+            *(url_check + 3) == '(') {
+            has_url = 1;
+            break;
+        }
+        url_check++;
+    }
+    if (!has_url) return value_str;
+
+    // Build result string
+    VALUE result = rb_str_new("", 0);
+    const char *pos = val;
+
+    while (pos < val + len) {
+        // Look for 'url(' - case insensitive
+        if (pos + 3 < val + len &&
+            (*pos == 'u' || *pos == 'U') &&
+            (*(pos + 1) == 'r' || *(pos + 1) == 'R') &&
+            (*(pos + 2) == 'l' || *(pos + 2) == 'L') &&
+            *(pos + 3) == '(') {
+
+            // Append 'url('
+            rb_str_cat(result, "url(", 4);
+            pos += 4;
+
+            // Skip whitespace after (
+            while (pos < val + len && IS_WHITESPACE(*pos)) pos++;
+
+            // Determine quote character (if any)
+            char quote = 0;
+            if (pos < val + len && (*pos == '\'' || *pos == '"')) {
+                quote = *pos;
+                pos++;
+            }
+
+            // Find end of URL
+            const char *url_start = pos;
+            if (quote) {
+                // Quoted URL - find closing quote
+                while (pos < val + len && *pos != quote) {
+                    if (*pos == '\\' && pos + 1 < val + len) {
+                        pos += 2;  // Skip escaped char
+                    } else {
+                        pos++;
+                    }
+                }
+            } else {
+                // Unquoted URL - find ) or whitespace
+                while (pos < val + len && *pos != ')' && !IS_WHITESPACE(*pos)) {
+                    pos++;
+                }
+            }
+            const char *url_end = pos;
+
+            // Extract URL string
+            long url_len = url_end - url_start;
+            VALUE url_str = rb_str_new(url_start, url_len);
+
+            // Check if URL needs resolution (is relative)
+            int needs_resolution = 0;
+            if (url_len > 0) {
+                // Check for absolute URLs or data URIs that don't need resolution
+                const char *u = url_start;
+                if ((url_len >= 5 && strncmp(u, "data:", 5) == 0) ||
+                    (url_len >= 7 && strncmp(u, "http://", 7) == 0) ||
+                    (url_len >= 8 && strncmp(u, "https://", 8) == 0) ||
+                    (url_len >= 2 && strncmp(u, "//", 2) == 0) ||
+                    (url_len >= 1 && *u == '#')) {  // Fragment reference
+                    needs_resolution = 0;
+                } else {
+                    needs_resolution = 1;
+                }
+            }
+
+            if (needs_resolution) {
+                // Resolve using the resolver proc (always provided by Ruby side)
+                // Wrap in rb_protect to catch exceptions
+                ResolverArgs args = { uri_resolver, base_uri, url_str };
+                int state = 0;
+                VALUE resolved = rb_protect(call_resolver, (VALUE)&args, &state);
+
+                if (state) {
+                    // Exception occurred - preserve original URL
+                    rb_set_errinfo(Qnil);  // Clear exception
+                    if (quote) {
+                        rb_str_cat(result, &quote, 1);
+                        rb_str_append(result, url_str);
+                        rb_str_cat(result, &quote, 1);
+                    } else {
+                        rb_str_append(result, url_str);
+                    }
+                } else {
+                    // Output with single quotes (canonical format)
+                    rb_str_cat(result, "'", 1);
+                    rb_str_append(result, resolved);
+                    rb_str_cat(result, "'", 1);
+                }
+
+                RB_GC_GUARD(resolved);
+            } else {
+                // Keep original URL with original quoting
+                if (quote) {
+                    rb_str_cat(result, &quote, 1);
+                    rb_str_append(result, url_str);
+                    rb_str_cat(result, &quote, 1);
+                } else {
+                    rb_str_append(result, url_str);
+                }
+            }
+
+            RB_GC_GUARD(url_str);
+
+            // Skip closing quote if present
+            if (quote && pos < val + len && *pos == quote) {
+                pos++;
+            }
+
+            // Skip whitespace before )
+            while (pos < val + len && IS_WHITESPACE(*pos)) pos++;
+
+            // Skip closing )
+            if (pos < val + len && *pos == ')') {
+                rb_str_cat(result, ")", 1);
+                pos++;
+            }
+        } else {
+            // Regular character - append to result
+            rb_str_cat(result, pos, 1);
+            pos++;
+        }
+    }
+
+    RB_GC_GUARD(result);
+    return result;
+}
+
 /*
  * Parse declaration block into array of Declaration structs
  *
@@ -403,7 +572,7 @@ static void update_media_index(ParserContext *ctx, VALUE media_sym, int rule_id)
  *   - Values containing parentheses (e.g., url(...), rgba(...))
  *   - !important flag
  */
-static VALUE parse_declarations(const char *start, const char *end) {
+static VALUE parse_declarations(const char *start, const char *end, ParserContext *ctx) {
     VALUE declarations = rb_ary_new();
 
     const char *pos = start;
@@ -512,6 +681,11 @@ static VALUE parse_declarations(const char *start, const char *end) {
                 property = lowercase_property(property);
             }
             VALUE value = rb_utf8_str_new(val_start, val_len);
+
+            // Convert relative URLs to absolute if enabled
+            if (ctx && ctx->absolute_paths && !NIL_P(ctx->base_uri)) {
+                value = convert_urls_in_value(value, ctx->base_uri, ctx->uri_resolver);
+            }
 
             // Create Declaration struct
             VALUE decl = rb_struct_new(cDeclaration,
@@ -873,6 +1047,11 @@ static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char
                 property = lowercase_property(property);
             }
             VALUE value = rb_utf8_str_new(val_start, val_len);
+
+            // Convert relative URLs to absolute if enabled
+            if (ctx->absolute_paths && !NIL_P(ctx->base_uri)) {
+                value = convert_urls_in_value(value, ctx->base_uri, ctx->uri_resolver);
+            }
 
             VALUE decl = rb_struct_new(cDeclaration,
                 property,
@@ -1242,7 +1421,7 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                 p = decl_end;
 
                 // Parse declarations
-                VALUE declarations = parse_declarations(decl_start, decl_end);
+                VALUE declarations = parse_declarations(decl_start, decl_end, ctx);
 
                 // Get rule ID and increment
                 int rule_id = ctx->rule_id_counter++;
@@ -1299,7 +1478,7 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
 
                 if (!has_nesting) {
                     // FAST PATH: No nesting - parse as pure declarations
-                    VALUE declarations = parse_declarations(decl_start, p);
+                    VALUE declarations = parse_declarations(decl_start, p, ctx);
 
                     // Split on commas to handle multi-selector rules
                     // Example: ".a, .b, .c { color: red; }" creates 3 separate rules
@@ -1588,6 +1767,12 @@ VALUE parse_css_new_impl(VALUE css_string, VALUE parser_options, int rule_id_off
     VALUE selector_lists_opt = rb_hash_aref(parser_options, ID2SYM(rb_intern("selector_lists")));
     int selector_lists_enabled = (NIL_P(selector_lists_opt) || RTEST(selector_lists_opt)) ? 1 : 0;
 
+    // URL conversion options
+    VALUE base_uri = rb_hash_aref(parser_options, ID2SYM(rb_intern("base_uri")));
+    VALUE absolute_paths_opt = rb_hash_aref(parser_options, ID2SYM(rb_intern("absolute_paths")));
+    VALUE uri_resolver = rb_hash_aref(parser_options, ID2SYM(rb_intern("uri_resolver")));
+    int absolute_paths = RTEST(absolute_paths_opt) ? 1 : 0;
+
     const char *css = RSTRING_PTR(css_string);
     const char *pe = css + RSTRING_LEN(css_string);
     const char *p = css;
@@ -1631,6 +1816,10 @@ VALUE parse_css_new_impl(VALUE css_string, VALUE parser_options, int rule_id_off
     ctx.has_nesting = 0;  // Will be set to 1 if any nested rules are created
     ctx.selector_lists_enabled = selector_lists_enabled;
     ctx.depth = 0;  // Start at depth 0
+    // URL conversion options
+    ctx.base_uri = base_uri;
+    ctx.uri_resolver = uri_resolver;
+    ctx.absolute_paths = absolute_paths;
 
     // Parse CSS (top-level, no parent context)
     DEBUG_PRINTF("[PARSE] Starting parse_css_recursive from: %.80s\n", p);
@@ -1651,6 +1840,8 @@ VALUE parse_css_new_impl(VALUE css_string, VALUE parser_options, int rule_id_off
     RB_GC_GUARD(ctx.media_index);
     RB_GC_GUARD(ctx.selector_lists);
     RB_GC_GUARD(ctx.imports_array);
+    RB_GC_GUARD(ctx.base_uri);
+    RB_GC_GUARD(ctx.uri_resolver);
     RB_GC_GUARD(result);
 
     return result;

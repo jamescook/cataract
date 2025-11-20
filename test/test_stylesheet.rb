@@ -13,6 +13,18 @@ class TestStylesheet < Minitest::Test
     assert_instance_of Cataract::Stylesheet, sheet
   end
 
+  def test_parse_css_forwards_options_to_stylesheet
+    # Test that Cataract.parse_css forwards kwargs to Stylesheet constructor
+    css = "body { background: url('image.png') }"
+    sheet = Cataract.parse_css(css, base_uri: 'http://example.com/css/main.css', absolute_paths: true)
+
+    rule = sheet.rules.first
+    value = rule.declarations.first.value
+
+    # URL should be resolved to absolute
+    assert_equal "url('http://example.com/css/image.png')", value
+  end
+
   def test_parse_creates_flat_array_of_rules
     css = 'body { color: red; } div { margin: 10px; }'
     sheet = Cataract::Stylesheet.parse(css)

@@ -163,6 +163,36 @@ CORPUS = [
   '.test { color: oklab(99 99 99); }',
   '.test { color: lab(200% 999 999); }',
 
+  # URL conversion test cases - exercise convert_urls_in_value code path
+  "body { background: url('image.png') }",
+  'body { background: url(image.png) }',
+  'body { background: url("image.png") }',
+  "body { background: url('../images/bg.png') }",
+  "body { background: url('http://example.com/image.png') }",
+  "body { background: url('https://example.com/image.png') }",
+  "body { background: url('//example.com/image.png') }",
+  "body { background: url('data:image/png;base64,ABC123') }",
+  "body { background: url('#fragment') }",
+  "body { background-image: url('a.png'), url('b.png'), url('c.png') }",
+  ".icon { list-style-image: url('bullet.gif') }",
+  "@font-face { src: url('font.woff2') format('woff2'), url('font.woff') format('woff') }",
+  "body { background: url('path/with spaces/image.png') }",
+  "body { background: url('path?query=1&other=2#frag') }",
+  "body { background: url('') }",  # Empty URL
+  'body { background: url() }',    # No quotes, empty
+  "body { background: url('   ') }", # Only whitespace
+  'body { background: url(   image.png   ) }', # Whitespace around URL
+  # Malformed URLs for fuzzing
+  "body { background: url('unclosed }",
+  'body { background: url(unclosed }',
+  "body { background: url('data:image/png;base64,#{'A' * 10_000}') }", # Large data URI
+  "body { background: url('http://user:pass@example.com/image.png') }", # URL with userinfo
+  "body { background: url('http://localhost:3000/image.png') }", # URL with port
+  "body { background: url('file:///etc/passwd') }", # File URL
+  "body { background: url('\x00malicious\x00') }", # Null bytes in URL
+  "body { background: url('#{'../' * 50}image.png') }", # Directory traversal
+  "body { background: url('image.png'); color: url('notacolor') }", # URL in wrong property
+
   # Deep nesting - close to MAX_PARSE_DEPTH (10)
   # Depth 8 - mutations can push it over the limit
   '@supports (a) { @media (b) { @supports (c) { @layer d { @container (e) { @scope (f) { @media (g) { @supports (h) { body { margin: 0; } } } } } } } }',
@@ -381,6 +411,11 @@ def mutate(css)
     -> { css.gsub(/:[^;]+;/, ": #{'x' * rand(10_000)};") }, # Very long values
     -> { css.gsub(/calc\([^)]+\)/, "calc(#{'(' * rand(10)}1+2#{')' * rand(10)}") }, # Unbalanced calc()
     -> { css.gsub(/url\([^)]+\)/, "url(CORRUPT#{'X' * rand(100)})") }, # Corrupt URLs
+    -> { css.gsub('url(', 'url(url(url(') }, # Nested url() calls
+    -> { css.gsub(/url\([^)]*\)/, "url('#{'../' * rand(100)}image.png')") }, # Deep path traversal
+    -> { css.gsub(/url\([^)]*\)/, "url('\x00\xFF\xFE')") }, # Binary in URL
+    -> { css.gsub(/url\((['"])?/, 'url(') }, # Remove quotes from URLs
+    -> { css.gsub('url(', "url('") }, # Add unclosed quote to URLs
     -> { css.gsub(/rgba?\([^)]+\)/, "rgb(#{[rand(999), rand(999), rand(999)].join(',')})") }, # Invalid rgb values
 
     # Color mutation - corrupt color values to trigger parser/conversion crashes

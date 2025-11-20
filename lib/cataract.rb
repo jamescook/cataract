@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative 'cataract/version'
+require_relative 'cataract/constants'
 
 # Load struct definitions first (before C extension or pure Ruby)
 require_relative 'cataract/declaration'
@@ -73,14 +74,8 @@ module Cataract
     # @see Stylesheet#parse
     # @see Stylesheet.parse
     unless method_defined?(:parse_css)
-      def parse_css(css, imports: false)
-        # Pass import options to Stylesheet.parse
-        # The new flow: parse first (extract @import), then resolve them
-        if imports
-          Stylesheet.parse(css, import: imports)
-        else
-          Stylesheet.parse(css)
-        end
+      def parse_css(css, **options)
+        Stylesheet.parse(css, **options)
       end
     end
 
