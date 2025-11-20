@@ -482,7 +482,7 @@ static VALUE convert_urls_in_value(VALUE value_str, VALUE base_uri, VALUE uri_re
             VALUE url_str = rb_str_new(url_start, url_len);
 
             // Check if URL needs resolution (is relative)
-            int needs_resolution = 1;
+            int needs_resolution = 0;
             if (url_len > 0) {
                 // Check for absolute URLs or data URIs that don't need resolution
                 const char *u = url_start;
@@ -492,6 +492,8 @@ static VALUE convert_urls_in_value(VALUE value_str, VALUE base_uri, VALUE uri_re
                     (url_len >= 2 && strncmp(u, "//", 2) == 0) ||
                     (url_len >= 1 && *u == '#')) {  // Fragment reference
                     needs_resolution = 0;
+                } else {
+                    needs_resolution = 1;
                 }
             }
 
