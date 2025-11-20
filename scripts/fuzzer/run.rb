@@ -143,6 +143,10 @@ CORPUS = [
   "@media (min-resolution: 2dppx) { .retina { background-image: url('hi-res.png'); } }",
   "@media (-webkit-min-device-pixel-ratio: 2) { .webkit { content: 'vendor'; } }",
 
+  # Multiple media queries with same selector - tests flatten grouping by (selector, media)
+  '@media screen { div { margin: 10px; } } @media print { div { margin: 0; } }',
+  '@media screen { body { color: blue; } body { background: white; } } @media print { body { color: black; } }',
+
   # Color conversion test cases - try to trigger segfaults
   '.test { color: #ff0000; }',
   '.test { color: rgb(255, 0, 0); }',

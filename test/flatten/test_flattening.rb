@@ -917,4 +917,117 @@ class TestFlattening < Minitest::Test
 
     assert_empty(media_index, '@_media_index should be empty hash after flatten')
   end
+
+  def test_import_with_media_constraint_preserves_media_after_flatten
+    # Create a temporary CSS file to import
+    import_file = File.join(Dir.tmpdir, 'test_import_print.css')
+    File.write(import_file, 'body { background: red; }')
+
+    begin
+      css = "@import \"#{import_file}\" print;\nbody { color: blue; }"
+
+      sheet = Cataract::Stylesheet.parse(css, import: { allowed_schemes: ['file'], extensions: ['css'] })
+
+      # Before flatten, check media index
+      media_index_before = sheet.instance_variable_get(:@_media_index)
+      print_rules_before = media_index_before[:print] || []
+
+      refute_empty(print_rules_before, 'Should have print media rules before flatten')
+
+      # After flatten
+      flattened = sheet.flatten
+      media_index_after = flattened.instance_variable_get(:@_media_index)
+      print_rules_after = media_index_after[:print] || []
+
+      # Media constraint should be preserved after flatten
+      refute_empty(print_rules_after, 'Should preserve print media rules after flatten')
+
+      # The body rule with background:red should be in print media only
+      body_rules = flattened.rules.select { |r| r.selector == 'body' }
+      red_rule = body_rules.find { |r| r.declarations.any? { |d| d.property == 'background' && d.value == 'red' } }
+      blue_rule = body_rules.find { |r| r.declarations.any? { |d| d.property == 'color' && d.value == 'blue' } }
+
+      assert(red_rule, 'Should have body rule with background:red')
+      assert(blue_rule, 'Should have body rule with color:blue')
+
+      # red_rule should be in print media
+      assert_rule_in_media(red_rule, :print, flattened)
+      # blue_rule should NOT be in print media (it's a base rule)
+      refute_member(print_rules_after, blue_rule.id, 'Color:blue rule should not be in print media')
+    ensure
+      FileUtils.rm_f(import_file)
+    end
+  end
+
+  def test_flatten_preserves_media_queries
+    css = <<~CSS
+      body { color: blue; }
+      @media print {
+        body { color: red; }
+      }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css)
+
+    # Before flatten - should have media index
+    assert_matches_media(:print, sheet)
+
+    # After flatten
+    flattened = sheet.flatten
+
+    # Media queries should be preserved after flatten
+    assert_matches_media(:print, flattened)
+
+    # Verify the print rule exists and has correct property
+    assert_has_selector('body', flattened, media: :print)
+    print_rule = flattened.with_media(:print).with_selector('body').first
+
+    assert_has_property({ color: 'red' }, print_rule)
+  end
+
+  def test_flatten_preserves_multiple_media_queries
+    css = <<~CSS
+      @media screen {
+        div { margin: 10px; }
+      }
+      @media print {
+        div { margin: 0; }
+      }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css)
+    flattened = sheet.flatten
+
+    # Both media queries should be preserved
+    assert_matches_media(:screen, flattened)
+    assert_matches_media(:print, flattened)
+
+    # Verify rules exist in correct media contexts
+    assert_has_selector('div', flattened, media: :screen)
+    assert_has_selector('div', flattened, media: :print)
+  end
+
+  def test_flatten_merges_rules_within_same_media_query
+    css = <<~CSS
+      @media print {
+        body { color: red; }
+        body { background: white; }
+      }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css)
+    flattened = sheet.flatten
+
+    # Should have one merged rule for body in print media
+    assert_has_selector('body', flattened, media: :print, count: 1)
+
+    # Both declarations should be present
+    merged_rule = flattened.with_media(:print).with_selector('body').first
+
+    assert_has_property({ color: 'red' }, merged_rule)
+    assert_has_property({ background: 'white' }, merged_rule)
+
+    # Media constraint should still be present
+    assert_rule_in_media(merged_rule, :print, flattened)
+  end
 end
