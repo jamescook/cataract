@@ -56,6 +56,7 @@ module Cataract
         uri.open(open_uri_options, &:read)
       end
     end
+
     # Default options for safe import resolution
     SAFE_DEFAULTS = {
       max_depth: 5,                      # Prevent infinite recursion
@@ -68,77 +69,6 @@ module Cataract
       fetcher: nil                       # Custom fetcher (defaults to DefaultFetcher)
     }.freeze
 
-    # Resolve @import statements in CSS
-    #
-    # @param css [String] CSS content with @import statements
-    # @param options [Hash] Import resolution options
-    #   @option options [#call] :fetcher Custom fetcher callable (receives url, options)
-    #   @option options [Integer] :max_depth Maximum import nesting depth
-    #   @option options [Array<String>] :allowed_schemes Allowed URL schemes
-    #   @option options [Array<String>] :extensions Allowed file extensions
-    #   @option options [Integer] :timeout HTTP request timeout in seconds
-    #   @option options [Boolean] :follow_redirects Follow HTTP redirects
-    #   @option options [String] :base_path Base path for relative imports
-    # @param depth [Integer] Current recursion depth (internal)
-    # @param imported_urls [Array] Array of already imported URLs to prevent circular references
-    # @return [String] CSS with imports inlined
-    def self.resolve(css, options = {}, depth: 0, imported_urls: [])
-      # Normalize options
-      opts = normalize_options(options)
-
-      # Get or create fetcher
-      fetcher = opts[:fetcher] || DefaultFetcher.new
-
-      # Check recursion depth
-      # depth starts at 0, max_depth is count of imports allowed
-      # depth 0: parsing main file (counts as import 1)
-      # depth 1: parsing first @import  (counts as import 2)
-      # depth 2: parsing nested @import (counts as import 3)
-      if depth > opts[:max_depth]
-        raise ImportError, "Import nesting too deep: exceeded maximum depth of #{opts[:max_depth]}"
-      end
-
-      # Find all @import statements at the top of the file
-      # Per CSS spec, @import must come before all rules except @charset
-      imports = extract_imports(css)
-
-      return css if imports.empty?
-
-      # Process each import
-      resolved_css = +'' # Mutable string
-      remaining_css = css
-
-      imports.each do |import_data|
-        url = import_data[:url]
-        media = import_data[:media]
-
-        # Validate URL
-        validate_url(url, opts)
-
-        # Check for circular references
-        raise ImportError, "Circular import detected: #{url}" if imported_urls.include?(url)
-
-        # Fetch imported CSS using the fetcher
-        imported_css = fetcher.call(url, opts)
-
-        # Recursively resolve imports in the imported CSS
-        imported_urls_copy = imported_urls.dup
-        imported_urls_copy << url
-        imported_css = resolve(imported_css, opts, depth: depth + 1, imported_urls: imported_urls_copy)
-
-        # Wrap in @media if import had media query
-        imported_css = "@media #{media} {\n#{imported_css}\n}" if media
-
-        resolved_css << imported_css << "\n"
-
-        # Remove this import from remaining CSS
-        remaining_css = remaining_css.sub(import_data[:full_match], '')
-      end
-
-      # Return resolved imports + remaining CSS
-      resolved_css + remaining_css
-    end
-
     # Normalize options with safe defaults
     def self.normalize_options(options)
       if options == true
@@ -150,13 +80,6 @@ module Cataract
       else
         raise ArgumentError, 'imports option must be true or a Hash'
       end
-    end
-
-    # Extract @import statements from CSS
-    # Returns array of hashes: { url: "...", media: "...", full_match: "..." }
-    # Delegates to C implementation for performance
-    def self.extract_imports(css)
-      Cataract.extract_imports(css)
     end
 
     # Normalize URL - handle relative paths and missing schemes
