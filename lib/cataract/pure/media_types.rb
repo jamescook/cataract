@@ -54,7 +54,7 @@ module Cataract
         word = query[word_start...i]
 
         # Check if this is a media feature (followed by ':')
-        is_media_feature = (i < len && query.getbyte(i) == BYTE_COLON)
+        is_media_feature = i < len && query.getbyte(i) == BYTE_COLON
 
         # Check if it's a keyword (and, or, not, only)
         is_keyword = kwords.include?(word)

@@ -62,7 +62,7 @@ end
 require_relative 'pure/byte_constants'
 require_relative 'pure/helpers'
 require_relative 'pure/specificity'
-require_relative 'pure/imports'
+require_relative 'pure/media_types'
 require_relative 'pure/serializer'
 require_relative 'pure/parser'
 require_relative 'pure/flatten'
