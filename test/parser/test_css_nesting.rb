@@ -1065,10 +1065,16 @@ class TestCssNesting < Minitest::Test
     assert_has_property({ 'grid-auto-flow': 'column' }, foo_media)
 
     # Check media query is set correctly
-    media_sym = sheet.instance_variable_get(:@_media_index).find { |_, ids| ids.include?(foo_media.id) }&.first
+    # Media queries with only conditions (no type) are indexed under :all
+    media_sym = sheet.media_index.find { |_, ids| ids.include?(foo_media.id) }&.first
 
     assert media_sym, 'Should have media query for foo_media rule'
-    assert_equal :'(orientation: landscape)', media_sym
+    assert_equal :all, media_sym
+
+    # Check the actual MediaQuery object has the conditions
+    mq = sheet.media_queries[foo_media.media_query_id]
+    assert_equal :all, mq.type
+    assert_equal '(orientation: landscape)', mq.conditions
   end
 
   # W3C Spec Example: Nested @media queries
@@ -1108,13 +1114,22 @@ class TestCssNesting < Minitest::Test
     assert_has_property({ 'max-inline-size': '1024px' }, foo_nested)
 
     # Check media queries
-    media_index = sheet.instance_variable_get(:@_media_index)
+    # Media queries with only conditions (no type) are indexed under :all
+    media_index = sheet.media_index
     landscape_media = media_index.find { |_, ids| ids.include?(foo_landscape.id) }&.first
     nested_media = media_index.find { |_, ids| ids.include?(foo_nested.id) }&.first
 
-    assert_equal :'(orientation: landscape)', landscape_media
+    assert_equal :all, landscape_media
+    # Combined media query should also be indexed under :all
+    assert_equal :all, nested_media
+
+    # Check the actual MediaQuery objects have the correct conditions
+    landscape_mq = sheet.media_queries[foo_landscape.media_query_id]
+    assert_equal '(orientation: landscape)', landscape_mq.conditions
+
+    nested_mq = sheet.media_queries[foo_nested.media_query_id]
     # Combined media query should be: (orientation: landscape) and (min-width > 1024px)
-    assert_equal :'(orientation: landscape) and (min-width > 1024px)', nested_media
+    assert_equal '(orientation: landscape) and (min-width > 1024px)', nested_mq.conditions
   end
 
   # W3C Spec Example: Mixed declarations order doesn't matter

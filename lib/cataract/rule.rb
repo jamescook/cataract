@@ -25,6 +25,7 @@ module Cataract
   # @attr [Integer, nil] parent_rule_id Parent rule ID for nested rules
   # @attr [Integer, nil] nesting_style 0=implicit, 1=explicit, nil=not nested
   # @attr [Integer, nil] selector_list_id ID linking rules from same selector list (e.g., "h1, h2")
+  # @attr [Integer, nil] media_query_id ID of the MediaQuery this rule belongs to (nil if not in media query)
   Rule = Struct.new(
     :id,
     :selector,
@@ -32,7 +33,8 @@ module Cataract
     :specificity,
     :parent_rule_id,
     :nesting_style,
-    :selector_list_id
+    :selector_list_id,
+    :media_query_id
   )
 
   class Rule
@@ -46,6 +48,7 @@ module Cataract
     # @param parent_rule_id [Integer, nil] Parent rule ID for nested rules
     # @param nesting_style [Integer, nil] Nesting style (0=implicit, 1=explicit, nil=not nested)
     # @param selector_list_id [Integer, nil] Selector list ID for grouping
+    # @param media_query_id [Integer, nil] MediaQuery ID for rules in media queries
     # @return [Rule] New rule instance
     #
     # @example Create a rule with keyword arguments
@@ -56,10 +59,11 @@ module Cataract
     #     specificity: 10,
     #     parent_rule_id: nil,
     #     nesting_style: nil,
-    #     selector_list_id: nil
+    #     selector_list_id: nil,
+    #     media_query_id: nil
     #   )
-    def self.make(id:, selector:, declarations:, specificity: nil, parent_rule_id: nil, nesting_style: nil, selector_list_id: nil)
-      new(id, selector, declarations, specificity, parent_rule_id, nesting_style, selector_list_id)
+    def self.make(id:, selector:, declarations:, specificity: nil, parent_rule_id: nil, nesting_style: nil, selector_list_id: nil, media_query_id: nil)
+      new(id, selector, declarations, specificity, parent_rule_id, nesting_style, selector_list_id, media_query_id)
     end
 
     # Silence warning about method redefinition. We redefine below to lazily calculate

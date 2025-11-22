@@ -131,10 +131,8 @@ module Cataract
 
       # Get base rules set
       rules = if @filters[:base_only]
-                # Get rules not in any media query
-                media_index = @stylesheet.instance_variable_get(:@_media_index)
-                media_rule_ids = media_index.values.flatten.uniq
-                @stylesheet.rules.select.with_index { |_rule, idx| !media_rule_ids.include?(idx) }
+                # Get rules not in any media query (media_query_id is nil)
+                @stylesheet.rules.select { |r| r.is_a?(Rule) && r.media_query_id.nil? }
               elsif @filters[:media]
                 media_array = Array(@filters[:media])
 
@@ -142,9 +140,14 @@ module Cataract
                 if media_array.include?(:all)
                   @stylesheet.rules
                 else
-                  media_index = @stylesheet.instance_variable_get(:@_media_index)
-                  rule_ids = media_array.flat_map { |m| media_index[m] || [] }.uniq
-                  rule_ids.map { |id| @stylesheet.rules[id] }
+                  # Use media_index for efficient lookup (it handles compound media queries)
+                  matching_rule_ids = Set.new
+                  media_array.each do |media_sym|
+                    rule_ids = @stylesheet.media_index[media_sym]
+                    matching_rule_ids.merge(rule_ids) if rule_ids
+                  end
+                  # Filter rules by ID
+                  @stylesheet.rules.select { |r| matching_rule_ids.include?(r.id) }
                 end
               else
                 @stylesheet.rules

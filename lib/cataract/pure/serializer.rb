@@ -4,6 +4,34 @@
 # NO REGEXP ALLOWED - char-by-char parsing only
 
 module Cataract
+  # Helper: Build media query string from MediaQuery object or list
+  # @param media_query [MediaQuery] The MediaQuery object
+  # @param media_query_list_id [Integer, nil] Optional list ID if this is part of a comma-separated list
+  # @param media_query_lists [Hash] Hash mapping list_id => array of MediaQuery IDs
+  # @param media_queries [Array] Array of all MediaQuery objects
+  # @return [String] Serialized media query string (e.g., "screen", "screen, print", "screen and (min-width: 768px)")
+  def self.build_media_query_string(media_query, media_query_list_id, media_query_lists, media_queries)
+    if media_query_list_id
+      # Comma-separated list
+      mq_ids = media_query_lists[media_query_list_id]
+      mq_ids.map do |mq_id|
+        mq = media_queries[mq_id]
+        if mq.conditions
+          mq.type == :all ? mq.conditions : "#{mq.type} and #{mq.conditions}"
+        else
+          mq.type.to_s
+        end
+      end.join(', ')
+    else
+      # Single query
+      if media_query.conditions
+        media_query.type == :all ? media_query.conditions : "#{media_query.type} and #{media_query.conditions}"
+      else
+        media_query.type.to_s
+      end
+    end
+  end
+
   # Serialize stylesheet to compact CSS string
   #
   # @param rules [Array<Rule>] Array of rules
@@ -11,8 +39,10 @@ module Cataract
   # @param charset [String, nil] @charset value
   # @param has_nesting [Boolean] Whether any nested rules exist
   # @param selector_lists [Hash] Selector list ID => array of rule IDs (for grouping)
+  # @param media_queries [Array<MediaQuery>] Array of MediaQuery objects (optional, for proper serialization)
+  # @param media_query_lists [Hash] List ID => array of MediaQuery IDs (optional, for comma-separated queries)
   # @return [String] Compact CSS string
-  def self._stylesheet_to_s(rules, media_index, charset, has_nesting, selector_lists = {})
+  def self._stylesheet_to_s(rules, media_index, charset, has_nesting, selector_lists = {}, media_queries = [], media_query_lists = {})
     result = +''
 
     # Add @charset if present
@@ -22,7 +52,7 @@ module Cataract
 
     # Fast path: no nesting - use simple algorithm
     unless has_nesting
-      return stylesheet_to_s_original(rules, media_index, result, selector_lists)
+      return stylesheet_to_s_original(rules, media_index, result, selector_lists, media_queries, media_query_lists)
     end
 
     # Build parent-child relationships
@@ -43,36 +73,60 @@ module Cataract
       end
     end
 
+    # Build reverse map: media_query_id => list_id
+    mq_id_to_list_id = {}
+    media_query_lists.each do |list_id, mq_ids|
+      mq_ids.each { |mq_id| mq_id_to_list_id[mq_id] = list_id }
+    end
+
     # Serialize top-level rules only (those without parent_rule_id)
-    current_media = nil
+    current_media_query_list_id = nil
+    current_media_query = nil
     in_media_block = false
 
     rules.each do |rule|
       # Skip rules that have a parent (they'll be serialized as nested)
       next if rule.parent_rule_id
 
-      rule_media = rule_to_media[rule.id]
+      rule_media_query_id = rule.is_a?(Rule) ? rule.media_query_id : nil
+      rule_media_query = rule_media_query_id ? media_queries[rule_media_query_id] : nil
+      rule_media_query_list_id = rule_media_query_id ? mq_id_to_list_id[rule_media_query_id] : nil
 
-      if rule_media.nil?
+      if rule_media_query.nil?
         # Close any open media block
         if in_media_block
           result << "}\n"
           in_media_block = false
-          current_media = nil
+          current_media_query = nil
+          current_media_query_list_id = nil
         end
       else
-        # Media query
-        if current_media.nil? || current_media != rule_media
+        # Check if we need to open a new media block
+        # For lists: compare list_id
+        # For single queries: compare by content (type + conditions)
+        needs_new_block = if rule_media_query_list_id
+                           current_media_query_list_id != rule_media_query_list_id
+                         else
+                           !current_media_query ||
+                           current_media_query.type != rule_media_query.type ||
+                           current_media_query.conditions != rule_media_query.conditions
+                         end
+
+        if needs_new_block
           if in_media_block
             result << "}\n"
           end
-          current_media = rule_media
-          result << "@media #{current_media} {\n"
+          current_media_query = rule_media_query
+          current_media_query_list_id = rule_media_query_list_id
+
+          # Serialize the media query (or list)
+          media_query_string = build_media_query_string(rule_media_query, rule_media_query_list_id, media_query_lists, media_queries)
+          result << "@media #{media_query_string} {\n"
           in_media_block = true
         end
       end
 
-      serialize_rule_with_nesting(result, rule, rule_children, rule_to_media)
+      serialize_rule_with_nesting(result, rule, rule_children, rule_to_media, media_queries)
     end
 
     if in_media_block
@@ -83,12 +137,14 @@ module Cataract
   end
 
   # Helper: serialize rules without nesting support (compact format)
-  def self.stylesheet_to_s_original(rules, media_index, result, selector_lists)
+  def self.stylesheet_to_s_original(rules, media_index, result, selector_lists, media_queries = [], media_query_lists = {})
     _serialize_stylesheet_with_grouping(
       rules: rules,
       media_index: media_index,
       result: result,
       selector_lists: selector_lists,
+      media_queries: media_queries,
+      media_query_lists: media_query_lists,
       opening_brace: ' { ',
       closing_brace: " }\n",
       media_indent: '',
@@ -99,7 +155,7 @@ module Cataract
   end
 
   # Helper: serialize a rule with its nested children
-  def self.serialize_rule_with_nesting(result, rule, rule_children, rule_to_media)
+  def self.serialize_rule_with_nesting(result, rule, rule_children, rule_to_media, media_queries)
     # Start selector
     result << "#{rule.selector} { "
 
@@ -125,10 +181,15 @@ module Cataract
       nested_selector = reconstruct_nested_selector(rule.selector, child.selector, child.nesting_style)
 
       # Check if this child has @media nesting (parent_rule_id present but nesting_style is nil)
-      if child.nesting_style.nil? && rule_to_media[child.id]
+      if child.nesting_style.nil? && child.media_query_id && media_queries[child.media_query_id]
         # This is a nested @media rule
-        media_sym = rule_to_media[child.id]
-        result << "@media #{media_sym} { "
+        mq = media_queries[child.media_query_id]
+        media_query_string = if mq.conditions
+                               mq.type == :all ? mq.conditions : "#{mq.type} and #{mq.conditions}"
+                             else
+                               mq.type.to_s
+                             end
+        result << "@media #{media_query_string} { "
         serialize_declarations(result, child.declarations)
 
         # Recursively serialize any children of this @media rule
@@ -247,7 +308,9 @@ module Cataract
     media_indent:,       # '' (compact) vs '  ' (formatted)
     decl_indent_base:,   # nil (compact) vs '  ' (formatted base rules)
     decl_indent_media:,  # nil (compact) vs '    ' (formatted media rules)
-    add_blank_lines:     # false (compact) vs true (formatted)
+    add_blank_lines:,    # false (compact) vs true (formatted)
+    media_queries: [],   # Array of MediaQuery objects
+    media_query_lists: {} # Hash: list_id => array of MediaQuery IDs
   )
     grouping_enabled = selector_lists && !selector_lists.empty?
 
@@ -259,11 +322,18 @@ module Cataract
       end
     end
 
+    # Build reverse map: media_query_id => list_id
+    mq_id_to_list_id = {}
+    media_query_lists.each do |list_id, mq_ids|
+      mq_ids.each { |mq_id| mq_id_to_list_id[mq_id] = list_id }
+    end
+
     # Track processed rules to avoid duplicates when grouping
     processed_rule_ids = {}
 
     # Iterate through rules in insertion order, grouping consecutive media queries
-    current_media = nil
+    current_media_query_list_id = nil
+    current_media_query = nil
     in_media_block = false
     rule_index = 0
 
@@ -271,15 +341,19 @@ module Cataract
       # Skip if already processed (when grouped)
       next if processed_rule_ids[rule.id]
 
+      rule_media_query_id = rule.is_a?(Rule) ? rule.media_query_id : nil
+      rule_media_query = rule_media_query_id ? media_queries[rule_media_query_id] : nil
+      rule_media_query_list_id = rule_media_query_id ? mq_id_to_list_id[rule_media_query_id] : nil
       rule_media = rule_to_media[rule.id]
       is_first_rule = (rule_index == 0)
 
-      if rule_media.nil?
+      if rule_media_query.nil?
         # Not in any media query - close any open media block first
         if in_media_block
           result << "}\n"
           in_media_block = false
-          current_media = nil
+          current_media_query = nil
+          current_media_query_list_id = nil
         end
 
         # Add blank line prefix for non-first rules (formatted only)
@@ -315,7 +389,17 @@ module Cataract
         end
       else
         # This rule is in a media query
-        if current_media.nil? || current_media != rule_media
+        # For lists: compare list_id
+        # For single queries: compare by content (type + conditions)
+        needs_new_block = if rule_media_query_list_id
+                           current_media_query_list_id != rule_media_query_list_id
+                         else
+                           !current_media_query ||
+                           current_media_query.type != rule_media_query.type ||
+                           current_media_query.conditions != rule_media_query.conditions
+                         end
+
+        if needs_new_block
           # Close previous media block if open
           if in_media_block
             result << "}\n"
@@ -325,8 +409,12 @@ module Cataract
           result << "\n" if add_blank_lines && !is_first_rule
 
           # Open new media block
-          current_media = rule_media
-          result << "@media #{current_media} {\n"
+          current_media_query = rule_media_query
+          current_media_query_list_id = rule_media_query_list_id
+
+          # Serialize the media query (or list)
+          media_query_string = build_media_query_string(rule_media_query, rule_media_query_list_id, media_query_lists, media_queries)
+          result << "@media #{media_query_string} {\n"
           in_media_block = true
         end
 
@@ -458,8 +546,10 @@ module Cataract
   # @param charset [String, nil] @charset value
   # @param has_nesting [Boolean] Whether any nested rules exist
   # @param selector_lists [Hash] Selector list ID => array of rule IDs (for grouping)
+  # @param media_queries [Array<MediaQuery>] Array of MediaQuery objects (optional, for proper serialization)
+  # @param media_query_lists [Hash] List ID => array of MediaQuery IDs (optional, for comma-separated queries)
   # @return [String] Formatted CSS string
-  def self._stylesheet_to_formatted_s(rules, media_index, charset, has_nesting, selector_lists = {})
+  def self._stylesheet_to_formatted_s(rules, media_index, charset, has_nesting, selector_lists = {}, media_queries = [], media_query_lists = {})
     result = +''
 
     # Add @charset if present
@@ -469,7 +559,7 @@ module Cataract
 
     # Fast path: no nesting - use simple algorithm
     unless has_nesting
-      return stylesheet_to_formatted_s_original(rules, media_index, result, selector_lists)
+      return stylesheet_to_formatted_s_original(rules, media_index, result, selector_lists, media_queries, media_query_lists)
     end
 
     # Build parent-child relationships
@@ -490,39 +580,62 @@ module Cataract
       end
     end
 
+    # Build reverse map: media_query_id => list_id
+    mq_id_to_list_id = {}
+    media_query_lists.each do |list_id, mq_ids|
+      mq_ids.each { |mq_id| mq_id_to_list_id[mq_id] = list_id }
+    end
+
     # Serialize top-level rules only
-    current_media = nil
+    current_media_query_list_id = nil
+    current_media_query = nil
     in_media_block = false
 
     rules.each do |rule|
       next if rule.parent_rule_id
 
-      rule_media = rule_to_media[rule.id]
+      rule_media_query_id = rule.is_a?(Rule) ? rule.media_query_id : nil
+      rule_media_query = rule_media_query_id ? media_queries[rule_media_query_id] : nil
+      rule_media_query_list_id = rule_media_query_id ? mq_id_to_list_id[rule_media_query_id] : nil
 
-      if rule_media.nil?
+      if rule_media_query.nil?
         if in_media_block
           result << "}\n"
           in_media_block = false
-          current_media = nil
+          current_media_query = nil
+          current_media_query_list_id = nil
         end
 
         # Add blank line before base rule if we just closed a media block (ends with "}\n")
         result << "\n" if result.length > 1 && result.getbyte(-1) == BYTE_NEWLINE && result.getbyte(-2) == BYTE_RBRACE
 
-        serialize_rule_with_nesting_formatted(result, rule, rule_children, rule_to_media, '')
+        serialize_rule_with_nesting_formatted(result, rule, rule_children, rule_to_media, '', media_queries)
       else
-        if current_media.nil? || current_media != rule_media
+        # For lists: compare list_id
+        # For single queries: compare by content (type + conditions)
+        needs_new_block = if rule_media_query_list_id
+                           current_media_query_list_id != rule_media_query_list_id
+                         else
+                           !current_media_query ||
+                           current_media_query.type != rule_media_query.type ||
+                           current_media_query.conditions != rule_media_query.conditions
+                         end
+
+        if needs_new_block
           if in_media_block
             result << "}\n"
           elsif result.length > 0
             result << "\n"
           end
-          current_media = rule_media
-          result << "@media #{current_media} {\n"
+          current_media_query = rule_media_query
+          current_media_query_list_id = rule_media_query_list_id
+          # Serialize the media query (or list)
+          media_query_string = build_media_query_string(rule_media_query, rule_media_query_list_id, media_query_lists, media_queries)
+          result << "@media #{media_query_string} {\n"
           in_media_block = true
         end
 
-        serialize_rule_with_nesting_formatted(result, rule, rule_children, rule_to_media, '  ')
+        serialize_rule_with_nesting_formatted(result, rule, rule_children, rule_to_media, '  ', media_queries)
       end
     end
 
@@ -534,12 +647,14 @@ module Cataract
   end
 
   # Helper: formatted serialization without nesting support
-  def self.stylesheet_to_formatted_s_original(rules, media_index, result, selector_lists)
+  def self.stylesheet_to_formatted_s_original(rules, media_index, result, selector_lists, media_queries = [], media_query_lists = {})
     _serialize_stylesheet_with_grouping(
       rules: rules,
       media_index: media_index,
       result: result,
       selector_lists: selector_lists,
+      media_queries: media_queries,
+      media_query_lists: media_query_lists,
       opening_brace: " {\n",
       closing_brace: "}\n",
       media_indent: '  ',
@@ -550,7 +665,7 @@ module Cataract
   end
 
   # Helper: serialize a rule with nested children (formatted)
-  def self.serialize_rule_with_nesting_formatted(result, rule, rule_children, rule_to_media, indent)
+  def self.serialize_rule_with_nesting_formatted(result, rule, rule_children, rule_to_media, indent, media_queries)
     # Selector line with opening brace
     result << indent
     result << rule.selector
@@ -568,11 +683,16 @@ module Cataract
     children.each do |child|
       nested_selector = reconstruct_nested_selector(rule.selector, child.selector, child.nesting_style)
 
-      if child.nesting_style.nil? && rule_to_media[child.id]
+      if child.nesting_style.nil? && child.media_query_id && media_queries[child.media_query_id]
         # Nested @media
-        media_sym = rule_to_media[child.id]
+        mq = media_queries[child.media_query_id]
+        media_query_string = if mq.conditions
+                               mq.type == :all ? mq.conditions : "#{mq.type} and #{mq.conditions}"
+                             else
+                               mq.type.to_s
+                             end
         result << indent
-        result << "  @media #{media_sym} {\n"
+        result << "  @media #{media_query_string} {\n"
 
         unless child.declarations.empty?
           serialize_declarations_formatted(result, child.declarations, "#{indent}    ")

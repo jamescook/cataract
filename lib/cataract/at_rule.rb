@@ -28,7 +28,8 @@ module Cataract
   # @attr [String] selector The at-rule identifier (e.g., "@keyframes fade", "@font-face")
   # @attr [Array<Rule>, Array<Declaration>] content Nested rules or declarations
   # @attr [nil] specificity Always nil for at-rules (they don't have CSS specificity)
-  AtRule = Struct.new(:id, :selector, :content, :specificity) unless const_defined?(:AtRule)
+  # @attr [Integer, nil] media_query_id ID of MediaQuery if inside @media block, nil otherwise
+  AtRule = Struct.new(:id, :selector, :content, :specificity, :media_query_id) unless const_defined?(:AtRule)
 
   class AtRule
     # Check if this is a selector-based rule (vs an at-rule like @keyframes).

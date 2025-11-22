@@ -332,7 +332,7 @@ body { color: red; }"
 
       # Main file should preserve charset from import
       # (Note: per CSS spec, only first @charset is used)
-      assert_equal 'UTF-8', sheet.instance_variable_get(:@charset)
+      assert_equal 'UTF-8', sheet.charset
     end
   end
 
@@ -1091,7 +1091,7 @@ body { color: red; }"
       import = sheet.imports[0]
 
       assert_equal "file://#{File.join(dir, 'mobile.css')}", import.url
-      assert_equal :'screen and (max-width: 768px)', import.media
+      assert_equal 'screen and (max-width: 768px)', import.media
       assert import.resolved
     end
   end

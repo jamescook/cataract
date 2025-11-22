@@ -164,36 +164,24 @@ module Cataract
 
       merged_rules = []
 
-      # Build a helper to find media context for a rule
-      # Returns the media symbol for a rule, or nil if not in any media query
-      media_index = stylesheet.instance_variable_get(:@_media_index)
-      rule_media_map = {}
-      media_index.each do |media_sym, rule_ids|
-        rule_ids.each do |rule_id|
-          # A rule can be in multiple media queries, we take the first one
-          # (in practice, a rule should only be in one media query at this point)
-          rule_media_map[rule_id] ||= media_sym
-        end
-      end
-
-      # Group by (selector, media) instead of just selector
+      # Group by (selector, media_query_id) instead of just selector
       # Rules with same selector but different media contexts should NOT be merged
       # NOTE: Using manual each instead of .group_by to avoid intermediate hash allocation.
       by_selector_and_media = {}
       regular_rules.each do |rule|
-        media_context = rule_media_map[rule.id]
-        key = [rule.selector, media_context]
+        media_query_id = rule.media_query_id
+        key = [rule.selector, media_query_id]
         (by_selector_and_media[key] ||= []) << rule
       end
 
       # Track old rule ID to new merged rule index mapping (only for rules in media queries)
       old_to_new_id = {}
-      by_selector_and_media.each do |(_selector, media_context), rules|
+      by_selector_and_media.each do |(_selector, media_query_id), rules|
         merged_rule = flatten_rules_for_selector(rules.first.selector, rules)
         next unless merged_rule
 
         # Only build mapping for rules that are in media queries
-        if media_context
+        if media_query_id
           new_index = merged_rules.length
 
           rules.each do |old_rule|
@@ -221,28 +209,50 @@ module Cataract
       # Add passthrough AtRules to output
       merged_rules.concat(at_rules)
 
-      # Preserve media_index by remapping old rule IDs to new rule IDs
-      # This is important for @media rules and @import statements with media constraints
-      # The old_to_new_id mapping was already built during the merge loop above
-      old_media_index = stylesheet.instance_variable_get(:@_media_index)
+      # Rebuild media_index from rules' media_query_id
+      # This ensures media_index is consistent with the MediaQuery objects
+      media_queries = stylesheet.instance_variable_get(:@media_queries)
+      media_query_lists = stylesheet.instance_variable_get(:@_media_query_lists)
       new_media_index = {}
 
-      # Remap media index entries using the old_to_new_id mapping
-      old_media_index.each do |media_sym, old_rule_ids|
-        new_rule_ids = []
-        old_rule_ids.each do |old_id|
-          new_id = old_to_new_id[old_id]
-          # Only include if the rule still exists after merging and isn't already in the list
-          new_rule_ids << new_id if new_id && !new_rule_ids.include?(new_id)
+      # Build reverse map: media_query_id => list_id (one-time cost)
+      mq_id_to_list_id = {}
+      media_query_lists.each do |list_id, mq_ids|
+        mq_ids.each { |mq_id| mq_id_to_list_id[mq_id] = list_id }
+      end
+
+      merged_rules.each do |rule|
+        next unless rule.is_a?(Rule) && rule.media_query_id
+
+        # Check if this rule's media_query_id is part of a list
+        list_id = mq_id_to_list_id[rule.media_query_id]
+
+        if list_id
+          # This rule is in a compound media query (e.g., "@media screen, print")
+          # Index it under ALL media types in the list
+          mq_ids = media_query_lists[list_id]
+          mq_ids.each do |mq_id|
+            mq = media_queries[mq_id]
+            next unless mq
+            media_type = mq.type
+            new_media_index[media_type] ||= []
+            new_media_index[media_type] << rule.id unless new_media_index[media_type].include?(rule.id)
+          end
+        else
+          # Single media query - just index under its type
+          mq = media_queries[rule.media_query_id]
+          next unless mq
+          media_type = mq.type
+          new_media_index[media_type] ||= []
+          new_media_index[media_type] << rule.id unless new_media_index[media_type].include?(rule.id)
         end
-        # Only preserve media entry if there are still rules for it
-        new_media_index[media_sym] = new_rule_ids unless new_rule_ids.empty?
       end
 
       # Create result stylesheet
       if mutate
         stylesheet.instance_variable_set(:@rules, merged_rules)
-        stylesheet.instance_variable_set(:@_media_index, new_media_index)
+        stylesheet.instance_variable_set(:@media_index, new_media_index)
+        # @media_queries and @_media_query_lists stay the same - preserved from input
         # Update selector lists with divergence tracking
         stylesheet.instance_variable_set(:@_selector_lists, selector_lists)
         stylesheet
@@ -250,7 +260,9 @@ module Cataract
         # Create new Stylesheet with merged rules
         result = Stylesheet.new
         result.instance_variable_set(:@rules, merged_rules)
-        result.instance_variable_set(:@_media_index, new_media_index)
+        result.instance_variable_set(:@media_index, new_media_index)
+        result.instance_variable_set(:@media_queries, media_queries)
+        result.instance_variable_set(:@_media_query_lists, media_query_lists)
         result.instance_variable_set(:@charset, stylesheet.charset)
         result.instance_variable_set(:@_selector_lists, selector_lists)
         result
@@ -337,6 +349,9 @@ module Cataract
       selector_list_ids.uniq!
       selector_list_id = selector_list_ids.size == 1 ? selector_list_ids.first : nil
 
+      # All rules being merged have the same media_query_id (they were grouped by it)
+      media_query_id = rules.first.media_query_id
+
       # Create merged rule
       Rule.new(
         0, # ID will be updated later
@@ -345,7 +360,8 @@ module Cataract
         rules.first.specificity, # Use first rule's specificity
         nil,  # No parent after flattening
         nil,  # No nesting style after flattening
-        selector_list_id # Preserve if all rules share same ID
+        selector_list_id, # Preserve if all rules share same ID
+        media_query_id  # Preserve media context
       )
     end
 

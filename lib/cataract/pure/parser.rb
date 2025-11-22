@@ -65,11 +65,12 @@ module Cataract
       true
     end
 
-    def initialize(css_string, parser_options: {}, parent_media_sym: nil, depth: 0)
+    def initialize(css_string, parser_options: {}, parent_media_sym: nil, parent_media_query_id: nil, depth: 0)
       @css = css_string.dup.freeze
       @pos = 0
       @len = @css.bytesize
       @parent_media_sym = parent_media_sym
+      @parent_media_query_id = parent_media_query_id
 
       # Parser options with defaults
       @parser_options = {
@@ -89,9 +90,13 @@ module Cataract
 
       # Parser state
       @rules = []                    # Flat array of Rule structs
-      @_media_index = {}             # Symbol => Array of rule IDs
+      @media_queries = []            # Array of MediaQuery objects
+      @media_query_id_counter = 0    # Next MediaQuery ID (0-indexed)
+      @media_index = {}              # Symbol => Array of rule IDs (for backwards compat/caching)
       @_selector_lists = {}          # Hash: list_id => Array of rule IDs
       @_next_selector_list_id = 0    # Counter for selector list IDs
+      @_media_query_lists = {}       # Hash: list_id => Array of MediaQuery IDs (for "screen, print")
+      @_next_media_query_list_id = 0 # Counter for media query list IDs
       @imports = []                  # Array of ImportStatement structs
       @rule_id_counter = 0           # Next rule ID (0-indexed)
       @media_query_count = 0         # Safety limit
@@ -150,7 +155,7 @@ module Cataract
             # Parse mixed block (declarations + nested selectors)
             @depth += 1
             parent_declarations = parse_mixed_block(decl_start, decl_end,
-                                                    individual_selector, current_rule_id, @parent_media_sym)
+                                                    individual_selector, current_rule_id, @parent_media_sym, @parent_media_query_id)
             @depth -= 1
 
             # Create parent rule and replace placeholder
@@ -164,8 +169,6 @@ module Cataract
             )
 
             @rules[parent_position] = rule
-            @_media_index[@parent_media_sym] ||= [] if @parent_media_sym
-            @_media_index[@parent_media_sym] << current_rule_id if @parent_media_sym
           end
 
           # Move position past the closing brace
@@ -225,8 +228,10 @@ module Cataract
 
       {
         rules: @rules,
-        _media_index: @_media_index,
+        _media_index: @media_index,
+        media_queries: @media_queries,
         _selector_lists: @_selector_lists,
+        _media_query_lists: @_media_query_lists,
         imports: @imports,
         charset: @charset,
         _has_nesting: @_has_nesting
@@ -433,7 +438,7 @@ module Cataract
     # Parse mixed block containing declarations AND nested selectors/at-rules
     # Translated from C: see ext/cataract/css_parser.c parse_mixed_block
     # Returns: Array of declarations (only the declarations, not nested rules)
-    def parse_mixed_block(start_pos, end_pos, parent_selector, parent_rule_id, parent_media_sym)
+    def parse_mixed_block(start_pos, end_pos, parent_selector, parent_rule_id, parent_media_sym, parent_media_query_id = nil)
       # Check recursion depth to prevent stack overflow
       if @depth > MAX_PARSE_DEPTH
         raise DepthError, "CSS nesting too deep: exceeded maximum depth of #{MAX_PARSE_DEPTH}"
@@ -500,14 +505,52 @@ module Cataract
           # Combine media queries: parent + child
           combined_media_sym = combine_media_queries(parent_media_sym, media_sym)
 
+          # Create MediaQuery object for this nested @media
+          # If we're already in a media query context, combine with parent
+          nested_media_query_id = if parent_media_query_id
+            # Combine with parent MediaQuery
+            parent_mq = @media_queries[parent_media_query_id]
+            if parent_mq.nil?
+              # Parent media query ID is invalid, just use the child
+              media_type, media_conditions = parse_media_query_parts(media_query_str)
+              nested_media_query = Cataract::MediaQuery.new(@media_query_id_counter, media_type, media_conditions)
+              @media_queries << nested_media_query
+              mq_id = @media_query_id_counter
+              @media_query_id_counter += 1
+              mq_id
+            else
+              # Reconstruct parent media query text from type and conditions
+              parent_text = if parent_mq.conditions
+                              parent_mq.type == :all ? parent_mq.conditions : "#{parent_mq.type} and #{parent_mq.conditions}"
+                            else
+                              parent_mq.type.to_s
+                            end
+              combined_text = "#{parent_text} and #{media_query_str}"
+              combined_type, combined_conditions = parse_media_query_parts(combined_text)
+              combined_mq = Cataract::MediaQuery.new(@media_query_id_counter, combined_type, combined_conditions)
+              @media_queries << combined_mq
+              combined_id = @media_query_id_counter
+              @media_query_id_counter += 1
+              combined_id
+            end
+          else
+            # No parent context, just use the child media query
+            media_type, media_conditions = parse_media_query_parts(media_query_str)
+            nested_media_query = Cataract::MediaQuery.new(@media_query_id_counter, media_type, media_conditions)
+            @media_queries << nested_media_query
+            mq_id = @media_query_id_counter
+            @media_query_id_counter += 1
+            mq_id
+          end
+
           # Create rule ID for this media rule
           media_rule_id = @rule_id_counter
           @rule_id_counter += 1
 
-          # Parse mixed block recursively
+          # Parse mixed block recursively with the nested media query ID as context
           @depth += 1
           media_declarations = parse_mixed_block(media_block_start, media_block_end,
-                                                 parent_selector, media_rule_id, combined_media_sym)
+                                                 parent_selector, media_rule_id, combined_media_sym, nested_media_query_id)
           @depth -= 1
 
           # Create rule with parent selector and declarations, associated with combined media query
@@ -517,16 +560,15 @@ module Cataract
             media_declarations,
             nil,  # specificity
             parent_rule_id,
-            nil   # nesting_style (nil for @media nesting)
+            nil,  # nesting_style (nil for @media nesting)
+            nil,  # selector_list_id
+            nested_media_query_id  # media_query_id
           )
 
           # Mark that we have nesting
           @_has_nesting = true unless parent_rule_id.nil?
 
           @rules << rule
-          @_media_index[combined_media_sym] ||= []
-          @_media_index[combined_media_sym] << media_rule_id
-
           next
         end
 
@@ -574,7 +616,7 @@ module Cataract
             # Recursively parse nested block
             @depth += 1
             nested_declarations = parse_mixed_block(nested_block_start, nested_block_end,
-                                                    resolved_selector, rule_id, parent_media_sym)
+                                                    resolved_selector, rule_id, parent_media_sym, parent_media_query_id)
             @depth -= 1
 
             # Create rule for nested selector
@@ -591,8 +633,6 @@ module Cataract
             @_has_nesting = true unless parent_rule_id.nil?
 
             @rules << rule
-            @_media_index[parent_media_sym] ||= [] if parent_media_sym
-            @_media_index[parent_media_sym] << rule_id if parent_media_sym
           end
 
           next
@@ -824,12 +864,8 @@ module Cataract
           @_next_selector_list_id = list_id_offset + nested_result[:_selector_lists].size
         end
 
-        # Merge nested media_index into ours
-        nested_result[:_media_index].each do |media, rule_ids|
-          @_media_index[media] ||= []
-          # Use each + << instead of concat + map (1.20x faster for small arrays)
-          rule_ids.each { |rid| @_media_index[media] << (@rule_id_counter + rid) }
-        end
+        # Note: We no longer build media_index during parse
+        # It will be built from MediaQuery objects after import resolution
 
         # Add nested rules to main rules array
         nested_result[:rules].each do |rule|
@@ -872,11 +908,63 @@ module Cataract
         child_media_string.strip!
         child_media_sym = child_media_string.to_sym
 
+        # Split comma-separated media queries (e.g., "screen, print" -> ["screen", "print"])
+        # Per W3C spec, comma acts as logical OR - each query is independent
+        media_query_strings = child_media_string.split(',').map(&:strip)
+
+        # Create MediaQuery objects for each query in the list
+        media_query_ids = []
+        media_query_strings.each do |query_string|
+          media_type, media_conditions = parse_media_query_parts(query_string)
+          media_query = Cataract::MediaQuery.new(@media_query_id_counter, media_type, media_conditions)
+          @media_queries << media_query
+          media_query_ids << @media_query_id_counter
+          @media_query_id_counter += 1
+        end
+
+        # If multiple queries, track them as a list for serialization
+        media_query_list_id = nil
+        if media_query_ids.size > 1
+          media_query_list_id = @_next_media_query_list_id
+          @_media_query_lists[media_query_list_id] = media_query_ids
+          @_next_media_query_list_id += 1
+        end
+
+        # Use first query ID as the primary one for rules in this block
+        current_media_query_id = media_query_ids.first
+
         # Combine with parent media context
         combined_media_sym = combine_media_queries(@parent_media_sym, child_media_sym)
 
+        # Determine parent media query ID for nested context
+        # If we're already in a media query, we need to combine them
+        combined_media_query_id = if @parent_media_query_id
+          # Create a combined MediaQuery for nested @media
+          parent_mq = @media_queries[@parent_media_query_id]
+          if parent_mq.nil?
+            # Parent media query ID is invalid, just use current
+            current_media_query_id
+          else
+            # Reconstruct parent media query text from type and conditions
+            parent_text = if parent_mq.conditions
+                            parent_mq.type == :all ? parent_mq.conditions : "#{parent_mq.type} and #{parent_mq.conditions}"
+                          else
+                            parent_mq.type.to_s
+                          end
+            combined_text = "#{parent_text} and #{child_media_string}"
+            combined_type, combined_conditions = parse_media_query_parts(combined_text)
+            combined_mq = Cataract::MediaQuery.new(@media_query_id_counter, combined_type, combined_conditions)
+            @media_queries << combined_mq
+            combined_id = @media_query_id_counter
+            @media_query_id_counter += 1
+            combined_id
+          end
+        else
+          current_media_query_id
+        end
+
         # Check media query limit
-        unless @_media_index.key?(combined_media_sym)
+        unless @media_index.key?(combined_media_sym)
           @media_query_count += 1
           if @media_query_count > MAX_MEDIA_QUERIES
             raise SizeError, "Too many media queries: exceeded maximum of #{MAX_MEDIA_QUERIES}"
@@ -895,6 +983,8 @@ module Cataract
         end
 
         # Parse the content with the combined media context
+        # Note: We don't pass parent_media_query_id because MediaQuery IDs are local to each parser
+        # The nested parser will create its own MediaQueries, which we'll merge with offsetted IDs
         nested_parser = Parser.new(
           byteslice_encoded(block_start, block_end - block_start),
           parser_options: @parser_options,
@@ -915,14 +1005,33 @@ module Cataract
           @_next_selector_list_id = list_id_offset + nested_result[:_selector_lists].size
         end
 
-        # Merge nested media_index into ours (for nested @media)
-        nested_result[:_media_index].each do |media, rule_ids|
-          @_media_index[media] ||= []
-          # Use each + << instead of concat + map (1.20x faster for small arrays)
-          rule_ids.each { |rid| @_media_index[media] << (@rule_id_counter + rid) }
+        # Merge nested MediaQuery objects with offsetted IDs
+        mq_id_offset = @media_query_id_counter
+        if nested_result[:media_queries] && !nested_result[:media_queries].empty?
+          nested_result[:media_queries].each do |mq|
+            # Create new MediaQuery with offsetted ID
+            new_mq = Cataract::MediaQuery.new(mq.id + mq_id_offset, mq.type, mq.conditions)
+            @media_queries << new_mq
+          end
+          @media_query_id_counter += nested_result[:media_queries].size
         end
 
-        # Add nested rules to main rules array and update media_index
+        # Merge nested media_query_lists with offsetted IDs
+        if nested_result[:_media_query_lists] && !nested_result[:_media_query_lists].empty?
+          nested_result[:_media_query_lists].each do |list_id, mq_ids|
+            # Offset the list_id and media_query_ids
+            new_list_id = list_id + @_next_media_query_list_id
+            offsetted_mq_ids = mq_ids.map { |mq_id| mq_id + mq_id_offset }
+            @_media_query_lists[new_list_id] = offsetted_mq_ids
+          end
+          @_next_media_query_list_id += nested_result[:_media_query_lists].size
+        end
+
+        # Merge nested media_index into ours (for nested @media)
+        # Note: We no longer build media_index during parse
+        # It will be built from MediaQuery objects after import resolution
+
+        # Add nested rules to main rules array
         nested_result[:rules].each do |rule|
           rule.id = @rule_id_counter
           # Update selector_list_id if applicable
@@ -930,21 +1039,39 @@ module Cataract
             rule.selector_list_id += list_id_offset
           end
 
-          # Extract media types and add to each first (if different from full query)
-          # We add these BEFORE the full query so that when iterating the media_index hash,
-          # the full query comes last and takes precedence during serialization
-          media_types = Cataract.parse_media_types(combined_media_sym)
-          media_types.each do |media_type|
-            # Only add if different from combined_media_sym to avoid duplication
-            if media_type != combined_media_sym
-              @_media_index[media_type] ||= []
-              @_media_index[media_type] << @rule_id_counter
+          # Update media_query_id if applicable (both Rule and AtRule can have media_query_id)
+          if rule.media_query_id
+            # Nested parser assigned a media_query_id - need to combine with our context
+            nested_mq_id = rule.media_query_id + mq_id_offset
+            nested_mq = @media_queries[nested_mq_id]
+
+            # Combine nested media query with our media context
+            if nested_mq && combined_media_query_id
+              outer_mq = @media_queries[combined_media_query_id]
+              if outer_mq
+                # Build combined query string
+                outer_text = outer_mq.conditions ? (outer_mq.type == :all ? outer_mq.conditions : "#{outer_mq.type} and #{outer_mq.conditions}") : outer_mq.type.to_s
+                nested_text = nested_mq.conditions ? (nested_mq.type == :all ? nested_mq.conditions : "#{nested_mq.type} and #{nested_mq.conditions}") : nested_mq.type.to_s
+                combined_text = "#{outer_text} and #{nested_text}"
+                combined_type, combined_conditions = parse_media_query_parts(combined_text)
+                combined_mq = Cataract::MediaQuery.new(@media_query_id_counter, combined_type, combined_conditions)
+                @media_queries << combined_mq
+                rule.media_query_id = @media_query_id_counter
+                @media_query_id_counter += 1
+              else
+                rule.media_query_id = nested_mq_id
+              end
+            else
+              rule.media_query_id = nested_mq_id
             end
+          else
+            # Assign the combined media_query_id if no media_query_id set
+            # (applies to both Rule and AtRule)
+            rule.media_query_id = combined_media_query_id if rule.respond_to?(:media_query_id=)
           end
 
-          # Add to full query symbol (after media types for insertion order)
-          @_media_index[combined_media_sym] ||= []
-          @_media_index[combined_media_sym] << @rule_id_counter
+          # Note: We no longer build media_index during parse
+          # It will be built from MediaQuery objects after import resolution
 
           @rule_id_counter += 1
           @rules << rule
@@ -1011,7 +1138,7 @@ module Cataract
         @rule_id_counter += 1
 
         # Create AtRule with nested rules
-        at_rule = AtRule.new(rule_id, selector, content, nil)
+        at_rule = AtRule.new(rule_id, selector, content, nil, @parent_media_query_id)
         @rules << at_rule
 
         return
@@ -1055,7 +1182,7 @@ module Cataract
         @rule_id_counter += 1
 
         # Create AtRule with declarations
-        at_rule = AtRule.new(rule_id, selector, content, nil)
+        at_rule = AtRule.new(rule_id, selector, content, nil, @parent_media_query_id)
         @rules << at_rule
 
         return
@@ -1339,7 +1466,8 @@ module Cataract
       skip_ws_and_comments
 
       # Check for optional media query (everything until semicolon)
-      media = nil
+      media_string = nil
+      media_query_id = nil
       if !eof? && peek_byte != BYTE_SEMICOLON
         media_start = @pos
 
@@ -1356,7 +1484,55 @@ module Cataract
         end
 
         if media_end > media_start
-          media = byteslice_encoded(media_start, media_end - media_start).to_sym
+          media_string = byteslice_encoded(media_start, media_end - media_start)
+
+          # Split comma-separated media queries (e.g., "screen, handheld" -> ["screen", "handheld"])
+          media_query_strings = media_string.split(',').map(&:strip)
+
+          # Create MediaQuery objects for each query in the list
+          media_query_ids = []
+          media_query_strings.each do |query_string|
+            media_type, media_conditions = parse_media_query_parts(query_string)
+
+            # If we have a parent import's media context, combine them
+            parent_import_type = @parser_options[:parent_import_media_type]
+            parent_import_conditions = @parser_options[:parent_import_media_conditions]
+
+            if parent_import_type
+              # Combine: parent's type is the effective type
+              # Conditions are combined with "and"
+              combined_type = parent_import_type
+              combined_conditions = if parent_import_conditions && media_conditions
+                                      "#{parent_import_conditions} and #{media_conditions}"
+                                    elsif parent_import_conditions
+                                      "#{parent_import_conditions} and #{media_type}#{media_conditions ? ' and ' + media_conditions : ''}"
+                                    elsif media_conditions
+                                      media_type == :all ? media_conditions : "#{media_type} and #{media_conditions}"
+                                    else
+                                      media_type == parent_import_type ? nil : media_type.to_s
+                                    end
+
+              media_type = combined_type
+              media_conditions = combined_conditions
+            end
+
+            # Create MediaQuery object
+            media_query = Cataract::MediaQuery.new(@media_query_id_counter, media_type, media_conditions)
+            @media_queries << media_query
+            media_query_ids << @media_query_id_counter
+            @media_query_id_counter += 1
+          end
+
+          # Use the first media query ID for the import statement
+          # (The list is tracked separately for serialization)
+          media_query_id = media_query_ids.first
+
+          # If multiple queries, track them as a list for serialization
+          if media_query_ids.size > 1
+            media_query_list_id = @_next_media_query_list_id
+            @_media_query_lists[media_query_list_id] = media_query_ids
+            @_next_media_query_list_id += 1
+          end
         end
       end
 
@@ -1364,7 +1540,7 @@ module Cataract
       @pos += 1 if peek_byte == BYTE_SEMICOLON
 
       # Create ImportStatement (resolved: false by default)
-      import_stmt = ImportStatement.new(@rule_id_counter, url, media, false)
+      import_stmt = ImportStatement.new(@rule_id_counter, url, media_string, media_query_id, false)
       @imports << import_stmt
       @rule_id_counter += 1
     end
@@ -1562,6 +1738,179 @@ module Cataract
       end
 
       declarations
+    end
+
+    # Parse media query string into type and conditions
+    #
+    # @param query [String] Media query string (e.g., "screen", "screen and (min-width: 768px)")
+    # @return [Array<Symbol, String|nil>] [type, conditions] where type is Symbol, conditions is String or nil
+    #
+    # @example
+    #   parse_media_query_parts("screen") #=> [:screen, nil]
+    #   parse_media_query_parts("screen and (min-width: 768px)") #=> [:screen, "(min-width: 768px)"]
+    #   parse_media_query_parts("(min-width: 500px)") #=> [:all, "(min-width: 500px)"]
+    def parse_media_query_parts(query)
+      i = 0
+      len = query.bytesize
+
+      # Skip leading whitespace
+      while i < len && whitespace?(query.getbyte(i))
+        i += 1
+      end
+
+      return [:all, nil] if i >= len
+
+      # Check if starts with '(' - media feature without type (defaults to :all)
+      if query.getbyte(i) == BYTE_LPAREN
+        return [:all, query.byteslice(i, len - i)]
+      end
+
+      # Find first media type word
+      word_start = i
+      while i < len
+        byte = query.getbyte(i)
+        break if whitespace?(byte) || byte == BYTE_LPAREN
+        i += 1
+      end
+
+      type = query.byteslice(word_start, i - word_start).to_sym
+
+      # Skip whitespace after type
+      while i < len && whitespace?(query.getbyte(i))
+        i += 1
+      end
+
+      # Check if there's more (conditions)
+      if i >= len
+        return [type, nil]
+      end
+
+      # Look for " and " keyword (case-insensitive)
+      # We need to find "and" as a separate word
+      and_pos = nil
+      check_i = i
+      while check_i < len - 2
+        # Check for 'and' (a=97/65, n=110/78, d=100/68)
+        byte0 = query.getbyte(check_i)
+        byte1 = query.getbyte(check_i + 1)
+        byte2 = query.getbyte(check_i + 2)
+
+        if (byte0 == BYTE_LOWER_A || byte0 == BYTE_UPPER_A) &&
+           (byte1 == BYTE_LOWER_N || byte1 == BYTE_UPPER_N) &&
+           (byte2 == BYTE_LOWER_D || byte2 == BYTE_UPPER_D)
+          # Make sure it's a word boundary (whitespace before and after)
+          before_ok = check_i == 0 || whitespace?(query.getbyte(check_i - 1))
+          after_ok = check_i + 3 >= len || whitespace?(query.getbyte(check_i + 3))
+          if before_ok && after_ok
+            and_pos = check_i
+            break
+          end
+        end
+        check_i += 1
+      end
+
+      if and_pos
+        # Skip past "and " to get conditions
+        conditions_start = and_pos + 3 # skip "and"
+        while conditions_start < len && whitespace?(query.getbyte(conditions_start))
+          conditions_start += 1
+        end
+        conditions = query.byteslice(conditions_start, len - conditions_start)
+        [type, conditions]
+      else
+        # No "and" found - rest is conditions (unusual but possible)
+        [type, query.byteslice(i, len - i)]
+      end
+    end
+
+    # Parse media query symbol into array of media types
+    #
+    # @param media_query_sym [Symbol] Media query as symbol (e.g., :screen, :"print, screen")
+    # @return [Array<Symbol>] Array of individual media types
+    #
+    # @example
+    #   parse_media_types(:screen) #=> [:screen]
+    #   parse_media_types(:"print, screen") #=> [:print, :screen]
+    def parse_media_types(media_query_sym)
+      query = media_query_sym.to_s
+      types = []
+
+      i = 0
+      len = query.length
+
+      kwords = %w[and or not only]
+
+      while i < len
+        # Skip whitespace
+        while i < len && whitespace?(query.getbyte(i))
+          i += 1
+        end
+        break if i >= len
+
+        # Check for opening paren - skip conditions like "(min-width: 768px)"
+        if query.getbyte(i) == BYTE_LPAREN
+          # Skip to matching closing paren
+          paren_depth = 1
+          i += 1
+          while i < len && paren_depth > 0
+            byte = query.getbyte(i)
+            if byte == BYTE_LPAREN
+              paren_depth += 1
+            elsif byte == BYTE_RPAREN
+              paren_depth -= 1
+            end
+            i += 1
+          end
+          next
+        end
+
+        # Find end of word (media type or keyword)
+        word_start = i
+        byte = query.getbyte(i)
+        while i < len && !whitespace?(byte) && byte != BYTE_COMMA && byte != BYTE_LPAREN && byte != BYTE_COLON
+          i += 1
+          byte = query.getbyte(i) if i < len
+        end
+
+        if i > word_start
+          word = query[word_start...i]
+
+          # Check if this is a media feature (followed by ':')
+          is_media_feature = i < len && query.getbyte(i) == BYTE_COLON
+
+          # Check if it's a keyword (and, or, not, only)
+          is_keyword = kwords.include?(word)
+
+          if !is_keyword && !is_media_feature
+            # This is a media type - add it as symbol
+            types << word.to_sym
+          end
+        end
+
+        # Skip to comma or end
+        while i < len && query.getbyte(i) != BYTE_COMMA
+          if query.getbyte(i) == BYTE_LPAREN
+            # Skip condition
+            paren_depth = 1
+            i += 1
+            while i < len && paren_depth > 0
+              byte = query.getbyte(i)
+              if byte == BYTE_LPAREN
+                paren_depth += 1
+              elsif byte == BYTE_RPAREN
+                paren_depth -= 1
+              end
+              i += 1
+            end
+          else
+            i += 1
+          end
+        end
+
+        i += 1 if i < len && query.getbyte(i) == BYTE_COMMA # Skip comma
+      end
+
+      types
     end
   end
 end

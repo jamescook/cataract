@@ -178,7 +178,7 @@ class TestRemoveRules < Minitest::Test
     @sheet.add_block('@media screen { .header { color: blue; } }')
 
     assert_equal 1, @sheet.rules_count
-    assert_includes @sheet.media_queries, :screen
+    assert @sheet.media_queries.any? { |mq| mq.type == :screen }, 'Should have screen media query'
 
     # Remove the only rule in the screen group
     @sheet.remove_rules!('.header { }', media_types: :screen)
@@ -245,13 +245,13 @@ class TestRemoveRules < Minitest::Test
     CSS
 
     # Before removal: IDs should be [0, 1, 2]
-    assert_equal [0, 1, 2], @sheet.instance_variable_get(:@_media_index)[:screen]
+    assert_equal [0, 1, 2], @sheet.media_index[:screen]
 
     # Remove .rule-2 (ID 1)
     @sheet.remove_rules!('.rule-2 { }', media_types: :screen)
 
     # After removal: IDs should be [0, 1] (decremented)
-    assert_equal [0, 1], @sheet.instance_variable_get(:@_media_index)[:screen]
+    assert_equal [0, 1], @sheet.media_index[:screen]
 
     # Check rules are correct
     assert_equal '.rule-1', @sheet.rules[0].selector
@@ -386,7 +386,7 @@ class TestRemoveRules < Minitest::Test
   private
 
   def in_media_query?(rule)
-    media_index = @sheet.instance_variable_get(:@_media_index)
+    media_index = @sheet.media_index
     media_index.values.flatten.include?(rule.id)
   end
 end

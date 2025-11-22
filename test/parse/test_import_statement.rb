@@ -42,7 +42,7 @@ class TestImportStatement < Minitest::Test
 
     assert_kind_of Cataract::ImportStatement, import
     assert_equal 'mobile.css', import.url
-    assert_equal :'screen and (max-width: 768px)', import.media
+    assert_equal 'screen and (max-width: 768px)', import.media
   end
 
   def test_import_statement_with_simple_media_type
@@ -56,7 +56,7 @@ class TestImportStatement < Minitest::Test
 
     assert_kind_of Cataract::ImportStatement, import
     assert_equal 'print.css', import.url
-    assert_equal :print, import.media
+    assert_equal 'print', import.media
   end
 
   def test_multiple_imports_at_top
@@ -83,13 +83,13 @@ class TestImportStatement < Minitest::Test
 
     assert_kind_of Cataract::ImportStatement, import2
     assert_equal 'theme.css', import2.url
-    assert_equal :screen, import2.media
+    assert_equal 'screen', import2.media
 
     import3 = sheet.imports[2]
 
     assert_kind_of Cataract::ImportStatement, import3
     assert_equal 'print.css', import3.url
-    assert_equal :print, import3.media
+    assert_equal 'print', import3.media
 
     rule = sheet[0]
 
@@ -193,18 +193,18 @@ class TestImportStatement < Minitest::Test
 
   def test_import_statement_equality
     # Two imports with same url and media are equal
-    import1 = Cataract::ImportStatement.new(0, 'styles.css', nil, false)
-    import2 = Cataract::ImportStatement.new(99, 'styles.css', nil, true)
+    import1 = Cataract::ImportStatement.make(id: 0, url: 'styles.css')
+    import2 = Cataract::ImportStatement.make(id: 99, url: 'styles.css', resolved: true)
 
     assert_equal import1, import2, 'Imports with same url/media should be equal regardless of id/resolved'
 
     # Different URL means not equal
-    import3 = Cataract::ImportStatement.new(0, 'other.css', nil, false)
+    import3 = Cataract::ImportStatement.make(id: 0, url: 'other.css')
 
     refute_equal import1, import3
 
     # Different media means not equal
-    import4 = Cataract::ImportStatement.new(0, 'styles.css', :print, false)
+    import4 = Cataract::ImportStatement.make(id: 0, url: 'styles.css', media: 'print')
 
     refute_equal import1, import4
 
@@ -215,9 +215,9 @@ class TestImportStatement < Minitest::Test
 
   def test_import_statement_hash_contract
     # Hash contract: objects that are equal must have equal hashes
-    import1 = Cataract::ImportStatement.new(0, 'styles.css', :screen, false)
-    import2 = Cataract::ImportStatement.new(99, 'styles.css', :screen, true)
-    import3 = Cataract::ImportStatement.new(0, 'other.css', :screen, false)
+    import1 = Cataract::ImportStatement.make(id: 0, url: 'styles.css', media: 'screen')
+    import2 = Cataract::ImportStatement.make(id: 99, url: 'styles.css', media: 'screen', resolved: true)
+    import3 = Cataract::ImportStatement.make(id: 0, url: 'other.css', media: 'screen')
 
     # Equal objects must have equal hashes
     assert_equal import1, import2
@@ -231,9 +231,9 @@ class TestImportStatement < Minitest::Test
 
   def test_import_statement_as_hash_key
     # Test that ImportStatements work properly as hash keys
-    import1 = Cataract::ImportStatement.new(0, 'styles.css', nil, false)
-    import2 = Cataract::ImportStatement.new(99, 'styles.css', nil, true) # Same url/media, different id
-    import3 = Cataract::ImportStatement.new(1, 'other.css', nil, false)
+    import1 = Cataract::ImportStatement.make(id: 0, url: 'styles.css')
+    import2 = Cataract::ImportStatement.make(id: 99, url: 'styles.css', resolved: true) # Same url/media, different id
+    import3 = Cataract::ImportStatement.make(id: 1, url: 'other.css')
 
     hash = {}
     hash[import1] = 'value1'
@@ -251,9 +251,9 @@ class TestImportStatement < Minitest::Test
     # Test that ImportStatements work in Sets (requires proper hash/eql?)
     require 'set'
 
-    import1 = Cataract::ImportStatement.new(0, 'styles.css', :screen, false)
-    import2 = Cataract::ImportStatement.new(99, 'styles.css', :screen, true) # Equal to import1
-    import3 = Cataract::ImportStatement.new(1, 'other.css', :screen, false)
+    import1 = Cataract::ImportStatement.make(id: 0, url: 'styles.css', media: 'screen')
+    import2 = Cataract::ImportStatement.make(id: 99, url: 'styles.css', media: 'screen', resolved: true) # Equal to import1
+    import3 = Cataract::ImportStatement.make(id: 1, url: 'other.css', media: 'screen')
 
     set = Set.new
     set.add(import1)
@@ -269,10 +269,10 @@ class TestImportStatement < Minitest::Test
 
   def test_import_statement_array_uniq
     # Test that Array#uniq works with ImportStatements
-    import1 = Cataract::ImportStatement.new(0, 'styles.css', nil, false)
-    import2 = Cataract::ImportStatement.new(1, 'styles.css', nil, false) # Equal to import1
-    import3 = Cataract::ImportStatement.new(2, 'other.css', nil, false)
-    import4 = Cataract::ImportStatement.new(3, 'styles.css', nil, false) # Equal to import1
+    import1 = Cataract::ImportStatement.make(id: 0, url: 'styles.css')
+    import2 = Cataract::ImportStatement.make(id: 1, url: 'styles.css') # Equal to import1
+    import3 = Cataract::ImportStatement.make(id: 2, url: 'other.css')
+    import4 = Cataract::ImportStatement.make(id: 3, url: 'styles.css') # Equal to import1
 
     arr = [import1, import2, import3, import4]
     unique = arr.uniq

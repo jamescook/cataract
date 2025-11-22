@@ -913,7 +913,7 @@ class TestFlattening < Minitest::Test
     assert_has_property({ margin: '10px' }, flattened.with_selector('.test').first)
 
     # Verify @_media_index is empty hash
-    media_index = flattened.instance_variable_get(:@_media_index)
+    media_index = flattened.media_index
 
     assert_empty(media_index, '@_media_index should be empty hash after flatten')
   end
@@ -929,14 +929,14 @@ class TestFlattening < Minitest::Test
       sheet = Cataract::Stylesheet.parse(css, import: { allowed_schemes: ['file'], extensions: ['css'] })
 
       # Before flatten, check media index
-      media_index_before = sheet.instance_variable_get(:@_media_index)
+      media_index_before = sheet.media_index
       print_rules_before = media_index_before[:print] || []
 
       refute_empty(print_rules_before, 'Should have print media rules before flatten')
 
       # After flatten
       flattened = sheet.flatten
-      media_index_after = flattened.instance_variable_get(:@_media_index)
+      media_index_after = flattened.media_index
       print_rules_after = media_index_after[:print] || []
 
       # Media constraint should be preserved after flatten
@@ -1029,5 +1029,69 @@ class TestFlattening < Minitest::Test
 
     # Media constraint should still be present
     assert_rule_in_media(merged_rule, :print, flattened)
+  end
+
+  def test_import_with_multiple_media_and_same_selector_keeps_rules_separate
+    # Create import files matching the problematic scenario
+    import_file = File.join(Dir.tmpdir, 'import.css')
+    File.write(import_file, '.hide { display: none; }')
+
+    noimport_file = File.join(Dir.tmpdir, 'noimport.css')
+    File.write(noimport_file, 'body { background: red !important; }')
+
+    begin
+      # CSS with imports BEFORE rules (per CSS spec)
+      css = <<~CSS
+        @import "#{import_file}" screen, handheld;
+        @import "#{noimport_file}" print;
+        body {
+          color: #fff;
+          background-color: #9EBF00;
+        }
+      CSS
+
+      sheet = Cataract::Stylesheet.parse(css, import: { allowed_schemes: ['file'], extensions: ['css'] })
+      flattened = sheet.flatten
+
+      # MOST IMPORTANT: Verify flattened result is semantically correct per W3C spec
+      # There should be TWO separate body rules:
+      # 1. One for print media with background:red !important (from noimport.css)
+      # 2. One for base/all media with color:#fff and background-color:#9EBF00
+
+      body_rules = flattened.rules.select { |r| r.selector == 'body' }
+      assert_equal(2, body_rules.length, 'Should have 2 separate body rules: one for print, one for base')
+
+      # Find the print media body rule
+      media_index = flattened.media_index
+      print_rule_ids = media_index[:print] || []
+      refute_empty(print_rule_ids, 'Should have print media rules')
+
+      print_body_rule = body_rules.find { |r| print_rule_ids.include?(r.id) }
+      assert(print_body_rule, 'Should have body rule in print media')
+      assert_has_property({ background: 'red !important' }, print_body_rule)
+
+      # Find the base body rule (NOT in print media)
+      base_body_rule = body_rules.find { |r| !print_rule_ids.include?(r.id) }
+      assert(base_body_rule, 'Should have body rule NOT in print media')
+      assert_has_property({ color: '#fff' }, base_body_rule)
+      assert_has_property({ 'background-color': '#9EBF00' }, base_body_rule)
+
+      # THEN verify media index is correct
+      # The print rule should ONLY be in print media
+      assert_rule_in_media(print_body_rule, :print, flattened)
+
+      # The base rule should NOT be in print media
+      refute_member(print_rule_ids, base_body_rule.id, 'Base body rule should NOT be in print media')
+
+      # Verify screen,handheld media for .hide rule
+      # The rule should be indexed under both :screen and :handheld
+      hide_rule = flattened.rules.find { |r| r.selector == '.hide' }
+      assert(hide_rule, 'Should have .hide rule')
+      assert_rule_in_media(hide_rule, :screen, flattened)
+      assert_rule_in_media(hide_rule, :handheld, flattened)
+    ensure
+      FileUtils.rm_f(import_file)
+      FileUtils.rm_f(noimport_file)
+    end
   end
 end

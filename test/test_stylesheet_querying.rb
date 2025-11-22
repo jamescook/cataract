@@ -46,9 +46,11 @@ class TestStylesheetQuerying < Minitest::Test
     sheet = Cataract::Stylesheet.parse(css)
     media_queries = sheet.media_queries
 
-    assert_equal 2, media_queries.length
-    assert_member media_queries, :screen
-    assert_member media_queries, :print
+    # Should have unique media types
+    media_types = media_queries.map(&:type).uniq
+    assert_equal 2, media_types.length
+    assert_member media_types, :screen
+    assert_member media_types, :print
   end
 
   def test_each_selector_basic
