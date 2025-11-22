@@ -75,13 +75,8 @@ class TestStylesheetQuerying < Minitest::Test
     # Should have 2 rules total
     assert_equal 2, sheet.size
 
-    # Query with combined media should return nested rule
-    combined_media = :'screen and (min-width: 500px)'
-
-    assert_matches_media combined_media, sheet
-    assert_selectors_match ['.nested'], sheet, media: combined_media
-
-    # Query with just :screen should return nested rule (it's in screen index too)
+    # Nested media queries are indexed by their outermost type (:screen)
+    # Query with :screen should return nested rule
     assert_matches_media :screen, sheet
     assert_selectors_match ['.nested'], sheet, media: :screen
 

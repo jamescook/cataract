@@ -60,11 +60,7 @@ module Cataract
               next unless mq
               media_type = mq.type
               @media_index[media_type] ||= []
-              @media_index[media_type] << rule.id unless @media_index[media_type].include?(rule.id)
-
-              # Also index by full query string for backwards compatibility
-              @media_index[mq.to_s.to_sym] ||= []
-              @media_index[mq.to_s.to_sym] << rule.id unless @media_index[mq.to_s.to_sym].include?(rule.id)
+              @media_index[media_type] << rule.id
             end
           else
             # Single media query - index under its type
@@ -72,13 +68,12 @@ module Cataract
             next unless mq
             media_type = mq.type
             @media_index[media_type] ||= []
-            @media_index[media_type] << rule.id unless @media_index[media_type].include?(rule.id)
-
-            # Also index by full query string for backwards compatibility
-            @media_index[mq.to_s.to_sym] ||= []
-            @media_index[mq.to_s.to_sym] << rule.id unless @media_index[mq.to_s.to_sym].include?(rule.id)
+            @media_index[media_type] << rule.id
           end
         end
+
+        # Deduplicate arrays once at the end
+        @media_index.each_value(&:uniq!)
       end
 
       @media_index

@@ -236,10 +236,8 @@ class TestAtRules < Minitest::Test
 
     assert_equal 'body', rule.selector
     # Should combine media queries: screen AND (min-width: 500px)
-    # Check that this rule is accessible via the combined media query
-    combined_media = :'screen and (min-width: 500px)'
-
-    assert_equal [rule], @sheet.with_media(combined_media)
+    # Rules are indexed by their outermost media type (:screen)
+    assert_equal [rule], @sheet.with_media(:screen)
   end
 
   def test_nested_media_complex

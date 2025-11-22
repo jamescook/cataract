@@ -236,7 +236,7 @@ module Cataract
             next unless mq
             media_type = mq.type
             new_media_index[media_type] ||= []
-            new_media_index[media_type] << rule.id unless new_media_index[media_type].include?(rule.id)
+            new_media_index[media_type] << rule.id
           end
         else
           # Single media query - just index under its type
@@ -244,9 +244,12 @@ module Cataract
           next unless mq
           media_type = mq.type
           new_media_index[media_type] ||= []
-          new_media_index[media_type] << rule.id unless new_media_index[media_type].include?(rule.id)
+          new_media_index[media_type] << rule.id
         end
       end
+
+      # Deduplicate arrays once at the end
+      new_media_index.each_value(&:uniq!)
 
       # Create result stylesheet
       if mutate

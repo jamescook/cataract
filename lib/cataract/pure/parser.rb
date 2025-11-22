@@ -519,14 +519,9 @@ module Cataract
               @media_query_id_counter += 1
               mq_id
             else
-              # Reconstruct parent media query text from type and conditions
-              parent_text = if parent_mq.conditions
-                              parent_mq.type == :all ? parent_mq.conditions : "#{parent_mq.type} and #{parent_mq.conditions}"
-                            else
-                              parent_mq.type.to_s
-                            end
-              combined_text = "#{parent_text} and #{media_query_str}"
-              combined_type, combined_conditions = parse_media_query_parts(combined_text)
+              # Combine parent media query with child
+              child_type, child_conditions = parse_media_query_parts(media_query_str)
+              combined_type, combined_conditions = combine_media_query_parts(parent_mq, child_type, child_conditions)
               combined_mq = Cataract::MediaQuery.new(@media_query_id_counter, combined_type, combined_conditions)
               @media_queries << combined_mq
               combined_id = @media_query_id_counter
@@ -945,14 +940,9 @@ module Cataract
             # Parent media query ID is invalid, just use current
             current_media_query_id
           else
-            # Reconstruct parent media query text from type and conditions
-            parent_text = if parent_mq.conditions
-                            parent_mq.type == :all ? parent_mq.conditions : "#{parent_mq.type} and #{parent_mq.conditions}"
-                          else
-                            parent_mq.type.to_s
-                          end
-            combined_text = "#{parent_text} and #{child_media_string}"
-            combined_type, combined_conditions = parse_media_query_parts(combined_text)
+            # Combine parent media query with child
+            child_type, child_conditions = parse_media_query_parts(child_media_string)
+            combined_type, combined_conditions = combine_media_query_parts(parent_mq, child_type, child_conditions)
             combined_mq = Cataract::MediaQuery.new(@media_query_id_counter, combined_type, combined_conditions)
             @media_queries << combined_mq
             combined_id = @media_query_id_counter
@@ -1049,11 +1039,8 @@ module Cataract
             if nested_mq && combined_media_query_id
               outer_mq = @media_queries[combined_media_query_id]
               if outer_mq
-                # Build combined query string
-                outer_text = outer_mq.conditions ? (outer_mq.type == :all ? outer_mq.conditions : "#{outer_mq.type} and #{outer_mq.conditions}") : outer_mq.type.to_s
-                nested_text = nested_mq.conditions ? (nested_mq.type == :all ? nested_mq.conditions : "#{nested_mq.type} and #{nested_mq.conditions}") : nested_mq.type.to_s
-                combined_text = "#{outer_text} and #{nested_text}"
-                combined_type, combined_conditions = parse_media_query_parts(combined_text)
+                # Combine media queries directly without string building
+                combined_type, combined_conditions = combine_media_query_parts(outer_mq, nested_mq.type, nested_mq.conditions)
                 combined_mq = Cataract::MediaQuery.new(@media_query_id_counter, combined_type, combined_conditions)
                 @media_queries << combined_mq
                 rule.media_query_id = @media_query_id_counter
@@ -1738,6 +1725,33 @@ module Cataract
       end
 
       declarations
+    end
+
+    # Combine parent and child media query parts directly without string building
+    #
+    # @param parent_mq [MediaQuery] Parent media query object
+    # @param child_type [Symbol] Child media type (e.g., :screen, :all)
+    # @param child_conditions [String|nil] Child conditions (e.g., "(min-width: 500px)")
+    # @return [Array<Symbol, String|nil>] [combined_type, combined_conditions]
+    #
+    # @example
+    #   combine_media_query_parts(screen_mq, :all, "(min-width: 500px)") #=> [:screen, "... and (min-width: 500px)"]
+    def combine_media_query_parts(parent_mq, child_type, child_conditions)
+      # Type: parent's type wins (outermost type)
+      combined_type = parent_mq.type
+
+      # Conditions: combine parent and child conditions
+      combined_conditions = if parent_mq.conditions && child_conditions
+                              "#{parent_mq.conditions} and #{child_conditions}"
+                            elsif parent_mq.conditions
+                              parent_mq.conditions
+                            elsif child_conditions
+                              child_conditions
+                            else
+                              nil
+                            end
+
+      [combined_type, combined_conditions]
     end
 
     # Parse media query string into type and conditions
