@@ -1192,4 +1192,43 @@ body { color: red; }"
       assert_equal (0...sheet.rules.length).to_a, rule_ids.sort, 'Rule IDs should be sequential'
     end
   end
+
+  def test_import_with_nested_media_conditions_combining
+    # Handle combining parent and child media conditions in nested imports
+    Dir.mktmpdir do |dir|
+      # Scenario 1: Parent has conditions, child has conditions (line 1482)
+      # @import "file.css" screen and (min-width: 500px)
+      # where file.css has: @import "nested.css" (max-width: 1000px)
+      File.write(File.join(dir, 'nested1.css'), '.nested { color: blue; }')
+      File.write(File.join(dir, 'child1.css'), "@import url('file://#{File.join(dir, 'nested1.css')}') (max-width: 1000px); .child { color: green; }")
+
+      css1 = "@import url('file://#{File.join(dir, 'child1.css')}') screen and (min-width: 500px);"
+      sheet1 = Cataract.parse_css(css1, import: { allowed_schemes: ['file'], extensions: ['css'] })
+
+      assert_has_selector '.nested', sheet1
+      assert_has_selector '.child', sheet1
+
+      # Scenario 2: Parent has conditions, child has no conditions (line 1484)
+      # @import "file.css" screen and (min-width: 500px)
+      # where file.css has: @import "nested.css" print
+      File.write(File.join(dir, 'nested2.css'), '.nested2 { color: red; }')
+      File.write(File.join(dir, 'child2.css'), "@import url('file://#{File.join(dir, 'nested2.css')}') print;")
+
+      css2 = "@import url('file://#{File.join(dir, 'child2.css')}') screen and (min-width: 500px);"
+      sheet2 = Cataract.parse_css(css2, import: { allowed_schemes: ['file'], extensions: ['css'] })
+
+      assert_has_selector '.nested2', sheet2
+
+      # Scenario 3: Parent type != child type, neither has conditions (line 1488)
+      # @import "file.css" screen
+      # where file.css has: @import "nested.css" print
+      File.write(File.join(dir, 'nested3.css'), '.nested3 { color: yellow; }')
+      File.write(File.join(dir, 'child3.css'), "@import url('file://#{File.join(dir, 'nested3.css')}') print;")
+
+      css3 = "@import url('file://#{File.join(dir, 'child3.css')}') screen;"
+      sheet3 = Cataract.parse_css(css3, import: { allowed_schemes: ['file'], extensions: ['css'] })
+
+      assert_has_selector '.nested3', sheet3
+    end
+  end
 end

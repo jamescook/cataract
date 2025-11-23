@@ -1521,47 +1521,6 @@ module Cataract
       @_rule_id_counter += 1
     end
 
-    # Skip @import statements at the beginning of CSS (DEPRECATED - now parsed)
-    # Per CSS spec, @import must come before all rules (except @charset)
-    def skip_imports
-      until eof?
-        # Skip whitespace
-        while !eof? && whitespace?(peek_byte)
-          @_pos += 1
-        end
-        break if eof?
-
-        # Skip comments
-        if @_pos + 1 < @_len && @_css.getbyte(@_pos) == BYTE_SLASH && @_css.getbyte(@_pos + 1) == BYTE_STAR
-          @_pos += 2
-          while @_pos + 1 < @_len
-            if @_css.getbyte(@_pos) == BYTE_STAR && @_css.getbyte(@_pos + 1) == BYTE_SLASH
-              @_pos += 2
-              break
-            end
-            @_pos += 1
-          end
-          next
-        end
-
-        # Check for @import (case-insensitive byte comparison)
-        if @_pos + 7 <= @_len && @_css.getbyte(@_pos) == BYTE_AT && match_ascii_ci?(@_css, @_pos + 1, 'import')
-          # Check that it's followed by whitespace or quote
-          if @_pos + 7 >= @_len || whitespace?(@_css.getbyte(@_pos + 7)) || @_css.getbyte(@_pos + 7) == BYTE_SQUOTE || @_css.getbyte(@_pos + 7) == BYTE_DQUOTE
-            # Skip to semicolon
-            while !eof? && peek_byte != BYTE_SEMICOLON
-              @_pos += 1
-            end
-            @_pos += 1 unless eof? # Skip semicolon
-            next
-          end
-        end
-
-        # Hit non-@import content, stop skipping
-        break
-      end
-    end
-
     # Convert relative URLs in a value string to absolute URLs
     # Called when @_absolute_paths is enabled and @_base_uri is set
     #
