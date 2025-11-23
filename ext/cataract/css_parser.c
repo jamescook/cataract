@@ -19,8 +19,12 @@ typedef struct {
     VALUE media_index;        // Hash: Symbol => Array of rule IDs
     VALUE selector_lists;     // Hash: list_id => Array of rule IDs
     VALUE imports_array;      // Array of ImportStatement structs
+    VALUE media_queries;      // Array of MediaQuery structs
+    VALUE media_query_lists;  // Hash: list_id => Array of MediaQuery IDs
     int rule_id_counter;      // Next rule ID (0-indexed)
     int next_selector_list_id; // Next selector list ID (0-indexed)
+    int media_query_id_counter; // Next MediaQuery ID (0-indexed)
+    int next_media_query_list_id; // Next media query list ID (0-indexed)
     int media_query_count;    // Safety limit for media queries
     st_table *media_cache;    // Parse-time cache: string => parsed media types
     int has_nesting;          // Set to 1 if any nested rules are created
@@ -388,7 +392,18 @@ static void update_media_index(ParserContext *ctx, VALUE media_sym, int rule_id)
     }
 
     // Add to full query symbol (after media types for insertion order)
-    add_to_media_index(ctx->media_index, media_sym, rule_id);
+    // BUT: skip if it contains a comma (comma-separated list like "screen, print")
+    // because we already added each individual type above
+    int has_comma = 0;
+    for (long i = 0; i < query_len; i++) {
+        if (query[i] == ',') {
+            has_comma = 1;
+            break;
+        }
+    }
+    if (!has_comma) {
+        add_to_media_index(ctx->media_index, media_sym, rule_id);
+    }
 
     // Guard media_str since we extracted C pointer and called extract_media_types (which allocates)
     RB_GC_GUARD(media_str);
@@ -705,7 +720,7 @@ static VALUE parse_declarations(const char *start, const char *end, ParserContex
 
 // Forward declarations
 static void parse_css_recursive(ParserContext *ctx, const char *css, const char *pe,
-                                 VALUE parent_media_sym, VALUE parent_selector, VALUE parent_rule_id);
+                                 VALUE parent_media_sym, VALUE parent_selector, VALUE parent_rule_id, int parent_media_query_id);
 static VALUE combine_media_queries(VALUE parent, VALUE child);
 
 /*
@@ -804,7 +819,7 @@ static VALUE intern_media_query_safe(ParserContext *ctx, const char *query_str, 
  * Returns: Array of declarations (only the declarations, not nested rules)
  */
 static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char *end,
-                                VALUE parent_selector, VALUE parent_rule_id, VALUE parent_media_sym) {
+                                VALUE parent_selector, VALUE parent_rule_id, VALUE parent_media_sym, int parent_media_query_id) {
     // Check recursion depth to prevent stack overflow
     if (ctx->depth > MAX_PARSE_DEPTH) {
         rb_raise(eDepthError,
@@ -835,11 +850,47 @@ static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char
             }
             if (media_query_end >= end) break;
 
-            // Extract media query
+            // Extract media query string
             const char *media_query_start = media_start;
             const char *media_query_end_trimmed = media_query_end;
             trim_trailing(media_query_start, &media_query_end_trimmed);
-            VALUE media_sym = intern_media_query_safe(ctx, media_query_start, media_query_end_trimmed - media_query_start);
+
+            // Parse media query and create MediaQuery object
+            const char *mq_ptr = media_query_start;
+            VALUE media_type;
+            VALUE media_conditions = Qnil;
+
+            if (*mq_ptr == '(') {
+                // Starts with '(' - just conditions, type defaults to :all
+                media_type = ID2SYM(rb_intern("all"));
+                media_conditions = rb_utf8_str_new(mq_ptr, media_query_end_trimmed - mq_ptr);
+            } else {
+                // Extract media type (first word)
+                const char *type_start = mq_ptr;
+                while (mq_ptr < media_query_end_trimmed && !IS_WHITESPACE(*mq_ptr) && *mq_ptr != '(') mq_ptr++;
+                VALUE type_str = rb_utf8_str_new(type_start, mq_ptr - type_start);
+                media_type = ID2SYM(rb_intern_str(type_str));
+
+                // Skip "and" keyword if present
+                while (mq_ptr < media_query_end_trimmed && IS_WHITESPACE(*mq_ptr)) mq_ptr++;
+                if (mq_ptr + 3 <= media_query_end_trimmed && strncmp(mq_ptr, "and", 3) == 0) {
+                    mq_ptr += 3;
+                    while (mq_ptr < media_query_end_trimmed && IS_WHITESPACE(*mq_ptr)) mq_ptr++;
+                }
+                if (mq_ptr < media_query_end_trimmed) {
+                    media_conditions = rb_utf8_str_new(mq_ptr, media_query_end_trimmed - mq_ptr);
+                }
+            }
+
+            // Create MediaQuery object
+            VALUE media_query = rb_struct_new(cMediaQuery,
+                INT2FIX(ctx->media_query_id_counter),
+                media_type,
+                media_conditions
+            );
+            rb_ary_push(ctx->media_queries, media_query);
+            int nested_media_query_id = ctx->media_query_id_counter;
+            ctx->media_query_id_counter++;
 
             p = media_query_end + 1;  // Skip {
 
@@ -850,8 +901,46 @@ static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char
 
             if (p < end) p++;  // Skip }
 
-            // Combine media queries: parent + child
-            VALUE combined_media_sym = combine_media_queries(parent_media_sym, media_sym);
+            // Handle combining media queries when parent has media too
+            int combined_media_query_id = nested_media_query_id;
+            if (parent_media_query_id >= 0) {
+                // Get parent MediaQuery
+                VALUE parent_mq = rb_ary_entry(ctx->media_queries, parent_media_query_id);
+                VALUE parent_type = rb_struct_aref(parent_mq, INT2FIX(1)); // type field
+                VALUE parent_conditions = rb_struct_aref(parent_mq, INT2FIX(2)); // conditions field
+
+                // Combine: parent conditions + " and " + child conditions
+                VALUE combined_conditions;
+                if (!NIL_P(parent_conditions) && !NIL_P(media_conditions)) {
+                    combined_conditions = rb_str_new_cstr("");
+                    rb_str_append(combined_conditions, parent_conditions);
+                    rb_str_cat2(combined_conditions, " and ");
+                    rb_str_append(combined_conditions, media_conditions);
+                } else if (!NIL_P(parent_conditions)) {
+                    combined_conditions = parent_conditions;
+                } else {
+                    combined_conditions = media_conditions;
+                }
+
+                // Determine combined type (if parent is :all, use child type; if child is :all, use parent type; if both have types, use parent type)
+                VALUE combined_type;
+                ID all_id = rb_intern("all");
+                if (SYM2ID(parent_type) == all_id) {
+                    combined_type = media_type;
+                } else {
+                    combined_type = parent_type;
+                }
+
+                // Create combined MediaQuery
+                VALUE combined_mq = rb_struct_new(cMediaQuery,
+                    INT2FIX(ctx->media_query_id_counter),
+                    combined_type,
+                    combined_conditions
+                );
+                rb_ary_push(ctx->media_queries, combined_mq);
+                combined_media_query_id = ctx->media_query_id_counter;
+                ctx->media_query_id_counter++;
+            }
 
             // Parse the block with parse_mixed_block to support further nesting
             // Create a rule ID for this media rule
@@ -864,10 +953,11 @@ static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char
             // Parse mixed block (may contain declarations and/or nested @media)
             ctx->depth++;
             VALUE media_declarations = parse_mixed_block(ctx, media_block_start, media_block_end,
-                                                        parent_selector, INT2FIX(media_rule_id), combined_media_sym);
+                                                        parent_selector, INT2FIX(media_rule_id), Qnil, combined_media_query_id);
             ctx->depth--;
 
             // Create rule with the parent selector and declarations, associated with combined media query
+            VALUE media_query_id_val = INT2FIX(combined_media_query_id);
             VALUE rule = rb_struct_new(cRule,
                 INT2FIX(media_rule_id),
                 parent_selector,
@@ -875,7 +965,8 @@ static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char
                 Qnil,  // specificity
                 parent_rule_id,  // Link to parent for nested @media serialization
                 Qnil,  // nesting_style (nil for @media nesting)
-                Qnil   // selector_list_id
+                Qnil,  // selector_list_id
+                media_query_id_val  // media_query_id from parent context
             );
 
             // Mark that we have nesting (only set once)
@@ -885,7 +976,13 @@ static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char
 
             // Replace placeholder with actual rule
             rb_ary_store(ctx->rules_array, parent_pos, rule);
-            update_media_index(ctx, combined_media_sym, media_rule_id);
+
+            // Update media_index using the MediaQuery's type symbol
+            VALUE combined_mq = rb_ary_entry(ctx->media_queries, combined_media_query_id);
+            if (!NIL_P(combined_mq)) {
+                VALUE mq_type = rb_struct_aref(combined_mq, INT2FIX(1)); // type field
+                update_media_index(ctx, mq_type, media_rule_id);
+            }
 
             continue;
         }
@@ -947,10 +1044,11 @@ static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char
                         // Recursively parse nested block
                         ctx->depth++;
                         VALUE nested_declarations = parse_mixed_block(ctx, nested_block_start, nested_block_end,
-                                                                     resolved_selector, INT2FIX(rule_id), parent_media_sym);
+                                                                     resolved_selector, INT2FIX(rule_id), parent_media_sym, parent_media_query_id);
                         ctx->depth--;
 
                         // Create rule for nested selector
+                        VALUE media_query_id_val = (parent_media_query_id >= 0) ? INT2FIX(parent_media_query_id) : Qnil;
                         VALUE rule = rb_struct_new(cRule,
                             INT2FIX(rule_id),
                             resolved_selector,
@@ -958,7 +1056,8 @@ static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char
                             Qnil,  // specificity
                             parent_rule_id,
                             nesting_style,
-                            Qnil   // selector_list_id
+                            Qnil,  // selector_list_id
+                            media_query_id_val  // media_query_id from parent context
                         );
 
                         // Mark that we have nesting (only set once)
@@ -1135,6 +1234,7 @@ static void parse_import_statement(ParserContext *ctx, const char **p_ptr, const
 
     // Check for optional media query (everything until semicolon)
     VALUE media = Qnil;
+    VALUE media_query_id_val = Qnil;
     if (p < pe && *p != ';') {
         const char *media_start = p;
 
@@ -1149,8 +1249,73 @@ static void parse_import_statement(ParserContext *ctx, const char **p_ptr, const
         }
 
         if (media_end > media_start) {
-            VALUE media_str = rb_utf8_str_new(media_start, media_end - media_start);
-            media = ID2SYM(rb_intern_str(media_str));
+            // media field should be a String, not a Symbol
+            media = rb_utf8_str_new(media_start, media_end - media_start);
+
+            // Split comma-separated media queries (same as @media blocks)
+            VALUE media_query_ids = rb_ary_new();
+
+            const char *query_start = media_start;
+            for (const char *p_comma = media_start; p_comma <= media_end; p_comma++) {
+                if (p_comma == media_end || *p_comma == ',') {
+                    const char *query_end = p_comma;
+
+                    // Trim whitespace from this query
+                    while (query_start < query_end && IS_WHITESPACE(*query_start)) query_start++;
+                    while (query_end > query_start && IS_WHITESPACE(*(query_end - 1))) query_end--;
+
+                    if (query_start < query_end) {
+                        // Parse this individual media query
+                        const char *mq_ptr = query_start;
+                        VALUE media_type;
+                        VALUE media_conditions = Qnil;
+
+                        if (*mq_ptr == '(') {
+                            // Starts with '(' - just conditions, type defaults to :all
+                            media_type = ID2SYM(rb_intern("all"));
+                            media_conditions = rb_utf8_str_new(mq_ptr, query_end - mq_ptr);
+                        } else {
+                            // Extract media type (first word)
+                            const char *type_start = mq_ptr;
+                            while (mq_ptr < query_end && !IS_WHITESPACE(*mq_ptr) && *mq_ptr != '(') mq_ptr++;
+                            VALUE type_str = rb_utf8_str_new(type_start, mq_ptr - type_start);
+                            media_type = ID2SYM(rb_intern_str(type_str));
+
+                            // Skip whitespace
+                            while (mq_ptr < query_end && IS_WHITESPACE(*mq_ptr)) mq_ptr++;
+
+                            // Check if there are conditions (rest of string)
+                            if (mq_ptr < query_end) {
+                                media_conditions = rb_utf8_str_new(mq_ptr, query_end - mq_ptr);
+                            }
+                        }
+
+                        // Create MediaQuery struct
+                        VALUE media_query = rb_struct_new(cMediaQuery,
+                            INT2FIX(ctx->media_query_id_counter),
+                            media_type,
+                            media_conditions
+                        );
+
+                        rb_ary_push(ctx->media_queries, media_query);
+                        rb_ary_push(media_query_ids, INT2FIX(ctx->media_query_id_counter));
+                        ctx->media_query_id_counter++;
+                    }
+
+                    // Move to start of next query
+                    query_start = p_comma + 1;
+                }
+            }
+
+            // If multiple queries, track them as a list
+            if (RARRAY_LEN(media_query_ids) > 1) {
+                int media_query_list_id = ctx->next_media_query_list_id;
+                rb_hash_aset(ctx->media_query_lists, INT2FIX(media_query_list_id), media_query_ids);
+                ctx->next_media_query_list_id++;
+            }
+
+            // Use first query ID for the import statement
+            media_query_id_val = rb_ary_entry(media_query_ids, 0);
         }
     }
 
@@ -1162,12 +1327,13 @@ static void parse_import_statement(ParserContext *ctx, const char **p_ptr, const
         INT2FIX(ctx->rule_id_counter),
         url,
         media,
+        media_query_id_val,
         Qfalse);
 
     DEBUG_PRINTF("[IMPORT_STMT] Created import: id=%d, url=%s, media=%s\n",
                  ctx->rule_id_counter,
                  RSTRING_PTR(url),
-                 NIL_P(media) ? "nil" : RSTRING_PTR(rb_sym2str(media)));
+                 NIL_P(media) ? "nil" : RSTRING_PTR(media));
 
     rb_ary_push(ctx->imports_array, import_stmt);
     ctx->rule_id_counter++;
@@ -1187,7 +1353,7 @@ static void parse_import_statement(ParserContext *ctx, const char **p_ptr, const
  * parent_rule_id:   Parent rule ID (Fixnum) for nested rules (or Qnil for top-level)
  */
 static void parse_css_recursive(ParserContext *ctx, const char *css, const char *pe,
-                                 VALUE parent_media_sym, VALUE parent_selector, VALUE parent_rule_id) {
+                                 VALUE parent_media_sym, VALUE parent_selector, VALUE parent_rule_id, int parent_media_query_id) {
     // Check recursion depth to prevent stack overflow
     if (ctx->depth > MAX_PARSE_DEPTH) {
         rb_raise(eDepthError,
@@ -1253,10 +1419,111 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                 continue;  // Malformed
             }
 
-            // Intern media query
-            VALUE child_media_sym = intern_media_query_safe(ctx, mq_start, mq_end - mq_start);
+            // Split comma-separated media queries (e.g., "screen, print" -> ["screen", "print"])
+            // Per W3C spec, comma acts as logical OR - each query is independent
+            VALUE media_query_ids = rb_ary_new();
 
-            // Combine with parent
+            const char *query_start = mq_start;
+            for (const char *p_comma = mq_start; p_comma <= mq_end; p_comma++) {
+                if (p_comma == mq_end || *p_comma == ',') {
+                    const char *query_end = p_comma;
+
+                    // Trim whitespace from this query
+                    while (query_start < query_end && IS_WHITESPACE(*query_start)) query_start++;
+                    while (query_end > query_start && IS_WHITESPACE(*(query_end - 1))) query_end--;
+
+                    if (query_start < query_end) {
+                        // Parse this individual media query
+                        const char *mq_ptr = query_start;
+                        VALUE media_type;
+                        VALUE media_conditions = Qnil;
+
+                        if (*mq_ptr == '(') {
+                            // Starts with '(' - just conditions, type defaults to :all
+                            media_type = ID2SYM(rb_intern("all"));
+                            media_conditions = rb_utf8_str_new(mq_ptr, query_end - mq_ptr);
+                        } else {
+                            // Extract media type (first word, stopping at whitespace, comma, or '(')
+                            const char *type_start = mq_ptr;
+                            while (mq_ptr < query_end && !IS_WHITESPACE(*mq_ptr) && *mq_ptr != '(') mq_ptr++;
+                            VALUE type_str = rb_utf8_str_new(type_start, mq_ptr - type_start);
+                            media_type = ID2SYM(rb_intern_str(type_str));
+
+                            // Skip whitespace and "and" keyword if present
+                            while (mq_ptr < query_end && IS_WHITESPACE(*mq_ptr)) mq_ptr++;
+                            if (mq_ptr + 3 <= query_end && strncmp(mq_ptr, "and", 3) == 0) {
+                                mq_ptr += 3;
+                                while (mq_ptr < query_end && IS_WHITESPACE(*mq_ptr)) mq_ptr++;
+                            }
+
+                            // Rest is conditions
+                            if (mq_ptr < query_end) {
+                                media_conditions = rb_utf8_str_new(mq_ptr, query_end - mq_ptr);
+                            }
+                        }
+
+                        // Create MediaQuery object for this query
+                        VALUE media_query = rb_struct_new(cMediaQuery,
+                            INT2FIX(ctx->media_query_id_counter),
+                            media_type,
+                            media_conditions
+                        );
+                        rb_ary_push(ctx->media_queries, media_query);
+                        rb_ary_push(media_query_ids, INT2FIX(ctx->media_query_id_counter));
+                        ctx->media_query_id_counter++;
+                    }
+
+                    // Move to start of next query
+                    query_start = p_comma + 1;
+                }
+            }
+
+            // If multiple queries, track them as a list for serialization
+            int media_query_list_id = -1;
+            if (RARRAY_LEN(media_query_ids) > 1) {
+                media_query_list_id = ctx->next_media_query_list_id;
+                rb_hash_aset(ctx->media_query_lists, INT2FIX(media_query_list_id), media_query_ids);
+                ctx->next_media_query_list_id++;
+            }
+
+            // Use first query ID as the primary one for rules in this block
+            int current_media_query_id = FIX2INT(rb_ary_entry(media_query_ids, 0));
+
+            // Handle nested @media by combining with parent
+            if (parent_media_query_id >= 0) {
+                VALUE parent_mq = rb_ary_entry(ctx->media_queries, parent_media_query_id);
+                VALUE parent_type = rb_struct_aref(parent_mq, INT2FIX(1)); // type field
+                VALUE parent_conditions = rb_struct_aref(parent_mq, INT2FIX(2)); // conditions field
+
+                // Get child media query (first one in the list)
+                VALUE child_mq = rb_ary_entry(ctx->media_queries, current_media_query_id);
+                VALUE child_type = rb_struct_aref(child_mq, INT2FIX(1)); // type field
+                VALUE child_conditions = rb_struct_aref(child_mq, INT2FIX(2)); // conditions field
+
+                // Combined type is parent's type (outermost wins)
+                VALUE combined_type = parent_type;
+                VALUE combined_conditions;
+
+                if (!NIL_P(parent_conditions) && !NIL_P(child_conditions)) {
+                    combined_conditions = rb_sprintf("%"PRIsVALUE" and %"PRIsVALUE, parent_conditions, child_conditions);
+                } else if (!NIL_P(parent_conditions)) {
+                    combined_conditions = parent_conditions;
+                } else {
+                    combined_conditions = child_conditions;
+                }
+
+                VALUE combined_mq = rb_struct_new(cMediaQuery,
+                    INT2FIX(ctx->media_query_id_counter),
+                    combined_type,
+                    combined_conditions
+                );
+                rb_ary_push(ctx->media_queries, combined_mq);
+                current_media_query_id = ctx->media_query_id_counter;
+                ctx->media_query_id_counter++;
+            }
+
+            // For backwards compat, also create symbol (will be removed later)
+            VALUE child_media_sym = intern_media_query_safe(ctx, mq_start, mq_end - mq_start);
             VALUE combined_media_sym = combine_media_queries(parent_media_sym, child_media_sym);
 
             p++;  // Skip opening {
@@ -1266,9 +1533,9 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
             const char *block_end = find_matching_brace(p, pe);
             p = block_end;
 
-            // Recursively parse @media block with combined media context
+            // Recursively parse @media block with new media query context
             ctx->depth++;
-            parse_css_recursive(ctx, block_start, block_end, combined_media_sym, NO_PARENT_SELECTOR, NO_PARENT_RULE_ID);
+            parse_css_recursive(ctx, block_start, block_end, combined_media_sym, NO_PARENT_SELECTOR, NO_PARENT_RULE_ID, current_media_query_id);
             ctx->depth--;
 
             if (p < pe && *p == '}') p++;
@@ -1314,7 +1581,7 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
 
                 // Recursively parse block content (preserve parent media context)
                 ctx->depth++;
-                parse_css_recursive(ctx, block_start, block_end, parent_media_sym, parent_selector, parent_rule_id);
+                parse_css_recursive(ctx, block_start, block_end, parent_media_sym, parent_selector, parent_rule_id, parent_media_query_id);
                 ctx->depth--;
 
                 if (p < pe && *p == '}') p++;
@@ -1365,7 +1632,7 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                     .selector_lists_enabled = ctx->selector_lists_enabled,
                     .depth = 0
                 };
-                parse_css_recursive(&nested_ctx, block_start, block_end, NO_PARENT_MEDIA, NO_PARENT_SELECTOR, NO_PARENT_RULE_ID);
+                parse_css_recursive(&nested_ctx, block_start, block_end, NO_PARENT_MEDIA, NO_PARENT_SELECTOR, NO_PARENT_RULE_ID, NO_MEDIA_QUERY_ID);
 
                 // Get rule ID and increment
                 int rule_id = ctx->rule_id_counter++;
@@ -1375,7 +1642,9 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                     INT2FIX(rule_id),
                     selector,
                     nested_ctx.rules_array,  // Array of Rule (keyframe blocks)
-                    Qnil);
+                    Qnil,  // specificity
+                    Qnil   // media_query_id
+                );
 
                 // Add to rules array
                 rb_ary_push(ctx->rules_array, at_rule);
@@ -1431,7 +1700,9 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                     INT2FIX(rule_id),
                     selector,
                     declarations,  // Array of Declaration
-                    Qnil);
+                    Qnil,  // specificity
+                    Qnil   // media_query_id
+                );
 
                 // Add to rules array
                 rb_ary_push(ctx->rules_array, at_rule);
@@ -1569,6 +1840,7 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                                 }
 
                                 // Create Rule
+                                VALUE media_query_id_val = (parent_media_query_id >= 0) ? INT2FIX(parent_media_query_id) : Qnil;
                                 VALUE rule = rb_struct_new(cRule,
                                     INT2FIX(rule_id),
                                     resolved_selector,
@@ -1576,7 +1848,8 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                                     Qnil,  // specificity
                                     parent_id_val,
                                     nesting_style_val,
-                                    selector_list_id_val
+                                    selector_list_id_val,
+                                    media_query_id_val  // media_query_id from parent context
                                 );
 
                                 // Track rule in selector list if applicable
@@ -1678,7 +1951,7 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                                 // Nested rules will be added AFTER the placeholder
                                 ctx->depth++;
                                 VALUE parent_declarations = parse_mixed_block(ctx, decl_start, p,
-                                                                             resolved_current, INT2FIX(current_rule_id), parent_media_sym);
+                                                                             resolved_current, INT2FIX(current_rule_id), parent_media_sym, parent_media_query_id);
                                 ctx->depth--;
 
                                 // Determine selector_list_id value
@@ -1686,6 +1959,7 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
 
                                 // Create parent rule and replace placeholder
                                 // Always create the rule (even if empty) to avoid edge cases
+                                VALUE media_query_id_val = (parent_media_query_id >= 0) ? INT2FIX(parent_media_query_id) : Qnil;
                                 VALUE rule = rb_struct_new(cRule,
                                     INT2FIX(current_rule_id),
                                     resolved_current,
@@ -1693,7 +1967,8 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                                     Qnil,  // specificity
                                     current_parent_id,
                                     current_nesting_style,
-                                    selector_list_id_val
+                                    selector_list_id_val,
+                                    media_query_id_val  // media_query_id from parent context
                                 );
 
                                 // Track rule in selector list if applicable
@@ -1809,8 +2084,12 @@ VALUE parse_css_new_impl(VALUE css_string, VALUE parser_options, int rule_id_off
     ctx.media_index = rb_hash_new();
     ctx.selector_lists = rb_hash_new();
     ctx.imports_array = rb_ary_new();
+    ctx.media_queries = rb_ary_new();
+    ctx.media_query_lists = rb_hash_new();
     ctx.rule_id_counter = rule_id_offset;  // Start from offset
     ctx.next_selector_list_id = 0;  // Start from 0
+    ctx.media_query_id_counter = 0;  // Start from 0
+    ctx.next_media_query_list_id = 0;  // Start from 0
     ctx.media_query_count = 0;
     ctx.media_cache = NULL;  // Removed - no perf benefit
     ctx.has_nesting = 0;  // Will be set to 1 if any nested rules are created
@@ -1823,13 +2102,15 @@ VALUE parse_css_new_impl(VALUE css_string, VALUE parser_options, int rule_id_off
 
     // Parse CSS (top-level, no parent context)
     DEBUG_PRINTF("[PARSE] Starting parse_css_recursive from: %.80s\n", p);
-    parse_css_recursive(&ctx, p, pe, NO_PARENT_MEDIA, NO_PARENT_SELECTOR, NO_PARENT_RULE_ID);
+    parse_css_recursive(&ctx, p, pe, NO_PARENT_MEDIA, NO_PARENT_SELECTOR, NO_PARENT_RULE_ID, NO_MEDIA_QUERY_ID);
 
     // Build result hash
     VALUE result = rb_hash_new();
     rb_hash_aset(result, ID2SYM(rb_intern("rules")), ctx.rules_array);
     rb_hash_aset(result, ID2SYM(rb_intern("_media_index")), ctx.media_index);
+    rb_hash_aset(result, ID2SYM(rb_intern("media_queries")), ctx.media_queries);
     rb_hash_aset(result, ID2SYM(rb_intern("_selector_lists")), ctx.selector_lists);
+    rb_hash_aset(result, ID2SYM(rb_intern("_media_query_lists")), ctx.media_query_lists);
     rb_hash_aset(result, ID2SYM(rb_intern("imports")), ctx.imports_array);
     rb_hash_aset(result, ID2SYM(rb_intern("charset")), charset);
     rb_hash_aset(result, ID2SYM(rb_intern("last_rule_id")), INT2FIX(ctx.rule_id_counter));
@@ -1838,7 +2119,9 @@ VALUE parse_css_new_impl(VALUE css_string, VALUE parser_options, int rule_id_off
     RB_GC_GUARD(charset);
     RB_GC_GUARD(ctx.rules_array);
     RB_GC_GUARD(ctx.media_index);
+    RB_GC_GUARD(ctx.media_queries);
     RB_GC_GUARD(ctx.selector_lists);
+    RB_GC_GUARD(ctx.media_query_lists);
     RB_GC_GUARD(ctx.imports_array);
     RB_GC_GUARD(ctx.base_uri);
     RB_GC_GUARD(ctx.uri_resolver);

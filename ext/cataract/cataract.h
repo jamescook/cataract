@@ -13,6 +13,7 @@ extern VALUE cDeclaration;
 extern VALUE cAtRule;
 extern VALUE cStylesheet;
 extern VALUE cImportStatement;
+extern VALUE cMediaQuery;
 
 // Error class references
 extern VALUE eCataractError;
@@ -23,7 +24,7 @@ extern VALUE eSizeError;
 // Struct field indices
 // ============================================================================
 
-// Rule struct field indices (id, selector, declarations, specificity, parent_rule_id, nesting_style, selector_list_id)
+// Rule struct field indices (id, selector, declarations, specificity, parent_rule_id, nesting_style, selector_list_id, media_query_id)
 #define RULE_ID 0
 #define RULE_SELECTOR 1
 #define RULE_DECLARATIONS 2
@@ -31,6 +32,7 @@ extern VALUE eSizeError;
 #define RULE_PARENT_RULE_ID 4
 #define RULE_NESTING_STYLE 5
 #define RULE_SELECTOR_LIST_ID 6
+#define RULE_MEDIA_QUERY_ID 7
 
 // Nesting style constants
 #define NESTING_STYLE_IMPLICIT 0  // .parent { .child { } } - no &
@@ -41,6 +43,7 @@ extern VALUE eSizeError;
 #define NO_PARENT_MEDIA Qnil
 #define NO_PARENT_SELECTOR Qnil
 #define NO_PARENT_RULE_ID Qnil
+#define NO_MEDIA_QUERY_ID -1
 
 // Declaration struct field indices (property, value, important)
 #define DECL_PROPERTY 0

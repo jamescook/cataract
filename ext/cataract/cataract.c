@@ -8,11 +8,83 @@ VALUE cDeclaration;
 VALUE cAtRule;
 VALUE cStylesheet;
 VALUE cImportStatement;
+VALUE cMediaQuery;
 
 // Error class definitions (shared with main extension)
 VALUE eCataractError;
 VALUE eDepthError;
 VALUE eSizeError;
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/*
+ * Build media query text from MediaQuery struct
+ * Implements the logic from MediaQuery#text in Ruby
+ */
+static void append_media_query_text(VALUE result, VALUE media_query) {
+    DEBUG_PRINTF("[APPEND_MQ] Called with media_query=%s (class: %s)\n",
+                RSTRING_PTR(rb_inspect(media_query)),
+                rb_obj_classname(media_query));
+    VALUE media_type = rb_struct_aref(media_query, INT2FIX(1)); // type field
+    VALUE media_conditions = rb_struct_aref(media_query, INT2FIX(2)); // conditions field
+
+    if (!NIL_P(media_conditions)) {
+        // Has conditions
+        ID all_id = rb_intern("all");
+        if (SYM2ID(media_type) == all_id) {
+            // Type is :all - just output conditions (don't say "all and ...")
+            rb_str_append(result, media_conditions);
+        } else {
+            // Output "type and conditions"
+            rb_str_append(result, rb_sym2str(media_type));
+            rb_str_cat2(result, " and ");
+            rb_str_append(result, media_conditions);
+        }
+    } else {
+        // No conditions - just output type
+        rb_str_append(result, rb_sym2str(media_type));
+    }
+}
+
+// Build media query string from MediaQuery object, handling comma-separated lists
+// Matches pure Ruby's build_media_query_string method
+// @param result [String] String to append to
+// @param media_query_id [VALUE] The media query ID from the rule (Fixnum)
+// @param mq_id_to_list_id [Hash] Reverse map: media_query_id => list_id
+// @param media_query_lists [Hash] Hash mapping list_id => array of MediaQuery IDs
+// @param media_queries [Array] Array of all MediaQuery objects
+static void append_media_query_string(VALUE result, VALUE media_query_id, VALUE mq_id_to_list_id, VALUE media_query_lists, VALUE media_queries) {
+    // Check if this media_query_id is part of a comma-separated list
+    VALUE list_id = rb_hash_aref(mq_id_to_list_id, media_query_id);
+
+    if (!NIL_P(list_id)) {
+        // Part of a list - serialize all media queries in the list with commas
+        VALUE mq_ids = rb_hash_aref(media_query_lists, list_id);
+        if (!NIL_P(mq_ids) && TYPE(mq_ids) == T_ARRAY) {
+            long list_len = RARRAY_LEN(mq_ids);
+            for (long i = 0; i < list_len; i++) {
+                if (i > 0) {
+                    rb_str_cat2(result, ", ");
+                }
+                VALUE mq_id = rb_ary_entry(mq_ids, i);
+                int mq_id_int = FIX2INT(mq_id);
+                VALUE mq = rb_ary_entry(media_queries, mq_id_int);
+                if (!NIL_P(mq)) {
+                    append_media_query_text(result, mq);
+                }
+            }
+        }
+    } else {
+        // Single media query - just append it
+        int mq_id_int = FIX2INT(media_query_id);
+        VALUE mq = rb_ary_entry(media_queries, mq_id_int);
+        if (!NIL_P(mq)) {
+            append_media_query_text(result, mq);
+        }
+    }
+}
 
 // ============================================================================
 // Stubbed Implementation - Phase 1
@@ -344,7 +416,8 @@ static int build_rule_map_callback(VALUE media_sym, VALUE rule_ids, VALUE arg) {
 // All formatting behavior controlled by format_opts struct to avoid mode flags and if/else branches
 static VALUE serialize_stylesheet_with_grouping(
     VALUE rules_array,
-    VALUE media_index,
+    VALUE media_queries,
+    VALUE media_query_lists,
     VALUE result,
     VALUE selector_lists,
     const struct format_opts *opts
@@ -354,10 +427,44 @@ static VALUE serialize_stylesheet_with_grouping(
     // Check if selector list grouping is enabled (non-empty hash)
     int grouping_enabled = (!NIL_P(selector_lists) && TYPE(selector_lists) == T_HASH && RHASH_SIZE(selector_lists) > 0);
 
-    // Build a map from rule_id to media query symbol using rb_hash_foreach
+    // Build reverse map: media_query_id => list_id
+    // This allows us to detect when multiple rules share a comma-separated media query list
+    VALUE mq_id_to_list_id = rb_hash_new();
+    if (!NIL_P(media_query_lists) && TYPE(media_query_lists) == T_HASH) {
+        // Iterate through media_query_lists hash
+        VALUE list_ids = rb_funcall(media_query_lists, rb_intern("keys"), 0);
+        long num_lists = RARRAY_LEN(list_ids);
+        for (long i = 0; i < num_lists; i++) {
+            VALUE list_id = rb_ary_entry(list_ids, i);
+            VALUE mq_ids = rb_hash_aref(media_query_lists, list_id);
+            if (!NIL_P(mq_ids) && TYPE(mq_ids) == T_ARRAY) {
+                long num_mq_ids = RARRAY_LEN(mq_ids);
+                for (long j = 0; j < num_mq_ids; j++) {
+                    VALUE mq_id = rb_ary_entry(mq_ids, j);
+                    rb_hash_aset(mq_id_to_list_id, mq_id, list_id);
+                }
+            }
+        }
+    }
+
+    // Build rule_to_media map from media_query_id fields
+    // Map: rule_id => MediaQuery object
     VALUE rule_to_media = rb_hash_new();
-    struct build_rule_map_ctx map_ctx = { rule_to_media };
-    rb_hash_foreach(media_index, build_rule_map_callback, (VALUE)&map_ctx);
+    for (long i = 0; i < total_rules; i++) {
+        VALUE rule = rb_ary_entry(rules_array, i);
+        // Only process Rule objects, not AtRules (AtRule has 5 fields, can't access RULE_MEDIA_QUERY_ID at index 7)
+        if (!rb_obj_is_kind_of(rule, cAtRule)) {
+            VALUE media_query_id = rb_struct_aref(rule, INT2FIX(RULE_MEDIA_QUERY_ID));
+            if (!NIL_P(media_query_id)) {
+                VALUE rule_id = rb_struct_aref(rule, INT2FIX(RULE_ID));
+                int mq_id = FIX2INT(media_query_id);
+                VALUE media_query = rb_ary_entry(media_queries, mq_id);
+                if (!NIL_P(media_query)) {
+                    rb_hash_aset(rule_to_media, rule_id, media_query);
+                }
+            }
+        }
+    }
 
     // Track processed rules to avoid duplicates when grouping
     VALUE processed_rule_ids = rb_hash_new();
@@ -497,7 +604,13 @@ static VALUE serialize_stylesheet_with_grouping(
                 // Open new media block
                 current_media = rule_media;
                 rb_str_cat2(result, "@media ");
-                rb_str_append(result, rb_sym2str(rule_media));
+
+                // Get media_query_id from rule and serialize (handles comma-separated lists)
+                VALUE media_query_id = rb_struct_aref(rule, INT2FIX(RULE_MEDIA_QUERY_ID));
+                if (!NIL_P(media_query_id)) {
+                    append_media_query_string(result, media_query_id, mq_id_to_list_id, media_query_lists, media_queries);
+                }
+
                 rb_str_cat2(result, " {\n");
                 in_media_block = 1;
             }
@@ -590,9 +703,9 @@ static VALUE serialize_stylesheet_with_grouping(
 }
 
 // Original stylesheet serialization (no nesting support) - compact format
-static VALUE stylesheet_to_s_original(VALUE rules_array, VALUE media_index, VALUE charset, VALUE selector_lists) {
+static VALUE stylesheet_to_s_original(VALUE rules_array, VALUE media_queries, VALUE media_query_lists, VALUE charset, VALUE selector_lists) {
     Check_Type(rules_array, T_ARRAY);
-    Check_Type(media_index, T_HASH);
+    Check_Type(media_queries, T_ARRAY);
 
     VALUE result = rb_str_new_cstr("");
 
@@ -613,7 +726,7 @@ static VALUE stylesheet_to_s_original(VALUE rules_array, VALUE media_index, VALU
         .add_blank_lines = 0
     };
 
-    return serialize_stylesheet_with_grouping(rules_array, media_index, result, selector_lists, &opts);
+    return serialize_stylesheet_with_grouping(rules_array, media_queries, media_query_lists, result, selector_lists, &opts);
 }
 
 // Forward declarations
@@ -733,7 +846,7 @@ static void serialize_children_only(VALUE result, VALUE rules_array, long rule_i
                 if (formatted) {
                     rb_str_append(result, indent_str);
                     rb_str_cat2(result, "@media ");
-                    rb_str_append(result, rb_sym2str(child_media));
+                    append_media_query_text(result, child_media);
                     rb_str_cat2(result, " {\n");
 
                     VALUE child_declarations = rb_struct_aref(child, INT2FIX(RULE_DECLARATIONS));
@@ -752,7 +865,7 @@ static void serialize_children_only(VALUE result, VALUE rules_array, long rule_i
                     rb_str_cat2(result, "}\n");
                 } else {
                     rb_str_cat2(result, " @media ");
-                    rb_str_append(result, rb_sym2str(child_media));
+                    append_media_query_text(result, child_media);
                     rb_str_cat2(result, " { ");
 
                     VALUE child_declarations = rb_struct_aref(child, INT2FIX(RULE_DECLARATIONS));
@@ -826,17 +939,30 @@ static void serialize_rule_with_children(VALUE result, VALUE rules_array, long r
 }
 
 // New stylesheet serialization entry point - checks for nesting and delegates
-static VALUE stylesheet_to_s_new(VALUE self, VALUE rules_array, VALUE media_index, VALUE charset, VALUE has_nesting, VALUE selector_lists) {
+static VALUE stylesheet_to_s_new(VALUE self, VALUE rules_array, VALUE media_index, VALUE charset, VALUE has_nesting, VALUE selector_lists, VALUE media_queries, VALUE media_query_lists) {
+    DEBUG_PRINTF("[STYLESHEET_TO_S] Called with:\n");
+    DEBUG_PRINTF("  rules_array length: %ld\n", RARRAY_LEN(rules_array));
+    DEBUG_PRINTF("  media_queries type: %s, length: %ld\n",
+                rb_obj_classname(media_queries),
+                TYPE(media_queries) == T_ARRAY ? RARRAY_LEN(media_queries) : -1);
+    DEBUG_PRINTF("  media_queries inspect: %s\n", RSTRING_PTR(rb_inspect(media_queries)));
+    DEBUG_PRINTF("  media_query_lists class: %s\n", rb_obj_classname(media_query_lists));
+    DEBUG_PRINTF("  selector_lists class: %s\n", rb_obj_classname(selector_lists));
+
+    DEBUG_PRINTF("[STYLESHEET_TO_S] About to Check_Type\n");
     Check_Type(rules_array, T_ARRAY);
     Check_Type(media_index, T_HASH);
+    DEBUG_PRINTF("[STYLESHEET_TO_S] Check_Type passed\n");
     // TODO: Phase 2 - use selector_lists for grouping
     (void)selector_lists; // Suppress unused parameter warning
 
     // Fast path: if no nesting, use original implementation (zero overhead)
     if (!RTEST(has_nesting)) {
-        return stylesheet_to_s_original(rules_array, media_index, charset, selector_lists);
+        DEBUG_PRINTF("[STYLESHEET_TO_S] Taking fast path (no nesting)\n");
+        return stylesheet_to_s_original(rules_array, media_queries, media_query_lists, charset, selector_lists);
     }
 
+    DEBUG_PRINTF("[STYLESHEET_TO_S] Taking slow path (has nesting)\n");
     // SLOW PATH: Has nesting - use lookahead approach
     long total_rules = RARRAY_LEN(rules_array);
     VALUE result = rb_str_new_cstr("");
@@ -848,11 +974,35 @@ static VALUE stylesheet_to_s_new(VALUE self, VALUE rules_array, VALUE media_inde
         rb_str_cat2(result, "\";\n");
     }
 
-    // Build rule_to_media map
+    // Build rule_to_media map from media_query_id fields
+    // Map: rule_id => MediaQuery object (we'll call .text method for serialization)
     VALUE rule_to_media = rb_hash_new();
-    struct build_rule_map_ctx map_ctx = { rule_to_media };
-    rb_hash_foreach(media_index, build_rule_map_callback, (VALUE)&map_ctx);
+    DEBUG_PRINTF("[BUILD_MAP] media_queries array length: %ld\n", RARRAY_LEN(media_queries));
+    for (long i = 0; i < total_rules; i++) {
+        VALUE rule = rb_ary_entry(rules_array, i);
+        // Only process Rule objects, not AtRules (AtRule has 5 fields, can't access RULE_MEDIA_QUERY_ID at index 7)
+        if (!rb_obj_is_kind_of(rule, cAtRule)) {
+            VALUE media_query_id = rb_struct_aref(rule, INT2FIX(RULE_MEDIA_QUERY_ID));
+            if (!NIL_P(media_query_id)) {
+                VALUE rule_id = rb_struct_aref(rule, INT2FIX(RULE_ID));
+                // Get MediaQuery object from media_queries array
+                int mq_id = FIX2INT(media_query_id);
+                DEBUG_PRINTF("[BUILD_MAP] Rule %ld (id=%ld) has media_query_id=%d\n", i, FIX2LONG(rule_id), mq_id);
+                VALUE media_query = rb_ary_entry(media_queries, mq_id);
+                DEBUG_PRINTF("[BUILD_MAP]   media_query from array: %s (class: %s)\n",
+                            RSTRING_PTR(rb_inspect(media_query)),
+                            rb_obj_classname(media_query));
+                if (!NIL_P(media_query)) {
+                    // Store the MediaQuery object itself
+                    rb_hash_aset(rule_to_media, rule_id, media_query);
+                    DEBUG_PRINTF("[BUILD_MAP]   Stored in map: rule_id=%ld => %s\n",
+                                FIX2LONG(rule_id), RSTRING_PTR(rb_inspect(media_query)));
+                }
+            }
+        }
+    }
 
+    DEBUG_PRINTF("[STYLESHEET_TO_S] Built rule_to_media map, now building parent_to_children\n");
     // Build parent_to_children map (parent_rule_id -> array of child indices)
     // This allows O(1) lookup of children when serializing each parent
     VALUE parent_to_children = rb_hash_new();
@@ -899,6 +1049,10 @@ static VALUE stylesheet_to_s_new(VALUE self, VALUE rules_array, VALUE media_inde
         // Get media for this rule
         VALUE rule_id = rb_struct_aref(rule, INT2FIX(RULE_ID));
         VALUE rule_media = rb_hash_aref(rule_to_media, rule_id);
+        DEBUG_PRINTF("[SERIALIZE]   rule_id=%ld, rule_media=%s (class: %s)\n",
+                    FIX2LONG(rule_id),
+                    RSTRING_PTR(rb_inspect(rule_media)),
+                    NIL_P(rule_media) ? "NilClass" : rb_obj_classname(rule_media));
 
         // Handle media block transitions
         if (NIL_P(rule_media)) {
@@ -918,7 +1072,7 @@ static VALUE stylesheet_to_s_new(VALUE self, VALUE rules_array, VALUE media_inde
                 // Open new media block
                 current_media = rule_media;
                 rb_str_cat2(result, "@media ");
-                rb_str_append(result, rb_sym2str(rule_media));
+                append_media_query_text(result, rule_media);
                 rb_str_cat2(result, " {\n");
                 in_media_block = 1;
             }
@@ -949,7 +1103,10 @@ static VALUE stylesheet_to_s_new(VALUE self, VALUE rules_array, VALUE media_inde
 }
 
 // Original formatted serialization (no nesting support)
-static VALUE stylesheet_to_formatted_s_original(VALUE rules_array, VALUE media_index, VALUE charset, VALUE selector_lists) {
+static VALUE stylesheet_to_formatted_s_original(VALUE rules_array, VALUE media_queries, VALUE media_query_lists, VALUE charset, VALUE selector_lists) {
+    Check_Type(rules_array, T_ARRAY);
+    Check_Type(media_queries, T_ARRAY);
+
     VALUE result = rb_str_new_cstr("");
 
     // Add charset if present
@@ -969,17 +1126,17 @@ static VALUE stylesheet_to_formatted_s_original(VALUE rules_array, VALUE media_i
         .add_blank_lines = 1
     };
 
-    return serialize_stylesheet_with_grouping(rules_array, media_index, result, selector_lists, &opts);
+    return serialize_stylesheet_with_grouping(rules_array, media_queries, media_query_lists, result, selector_lists, &opts);
 }
 
 // Formatted version with indentation and newlines (with nesting support)
-static VALUE stylesheet_to_formatted_s_new(VALUE self, VALUE rules_array, VALUE media_index, VALUE charset, VALUE has_nesting, VALUE selector_lists) {
+static VALUE stylesheet_to_formatted_s_new(VALUE self, VALUE rules_array, VALUE media_index, VALUE charset, VALUE has_nesting, VALUE selector_lists, VALUE media_queries, VALUE media_query_lists) {
     Check_Type(rules_array, T_ARRAY);
     Check_Type(media_index, T_HASH);
 
     // Fast path: if no nesting, use original implementation (zero overhead)
     if (!RTEST(has_nesting)) {
-        return stylesheet_to_formatted_s_original(rules_array, media_index, charset, selector_lists);
+        return stylesheet_to_formatted_s_original(rules_array, media_queries, media_query_lists, charset, selector_lists);
     }
 
     // SLOW PATH: Has nesting - use parameterized serialization with formatted=1
@@ -993,10 +1150,23 @@ static VALUE stylesheet_to_formatted_s_new(VALUE self, VALUE rules_array, VALUE 
         rb_str_cat2(result, "\";\n");
     }
 
-    // Build rule_to_media map
+    // Build rule_to_media map from media_query_id fields
     VALUE rule_to_media = rb_hash_new();
-    struct build_rule_map_ctx map_ctx = { rule_to_media };
-    rb_hash_foreach(media_index, build_rule_map_callback, (VALUE)&map_ctx);
+    for (long i = 0; i < total_rules; i++) {
+        VALUE rule = rb_ary_entry(rules_array, i);
+        // Only process Rule objects, not AtRules (AtRule has 5 fields, can't access RULE_MEDIA_QUERY_ID at index 7)
+        if (!rb_obj_is_kind_of(rule, cAtRule)) {
+            VALUE media_query_id = rb_struct_aref(rule, INT2FIX(RULE_MEDIA_QUERY_ID));
+            if (!NIL_P(media_query_id)) {
+                VALUE rule_id = rb_struct_aref(rule, INT2FIX(RULE_ID));
+                int mq_id = FIX2INT(media_query_id);
+                VALUE media_query = rb_ary_entry(media_queries, mq_id);
+                if (!NIL_P(media_query)) {
+                    rb_hash_aset(rule_to_media, rule_id, media_query);
+                }
+            }
+        }
+    }
 
     // Build parent_to_children map (parent_rule_id -> array of child indices)
     VALUE parent_to_children = rb_hash_new();
@@ -1056,7 +1226,7 @@ static VALUE stylesheet_to_formatted_s_new(VALUE self, VALUE rules_array, VALUE 
                 // Open new media block
                 current_media = rule_media;
                 rb_str_cat2(result, "@media ");
-                rb_str_append(result, rb_sym2str(rule_media));
+                append_media_query_text(result, rule_media);
                 rb_str_cat2(result, " {\n");
                 in_media_block = 1;
             }
@@ -1338,6 +1508,12 @@ void Init_native_extension(void) {
         rb_raise(rb_eLoadError, "Cataract::ImportStatement not defined. Do not require 'cataract/native_extension' directly, use require 'cataract'");
     }
 
+    if (rb_const_defined(mCataract, rb_intern("MediaQuery"))) {
+        cMediaQuery = rb_const_get(mCataract, rb_intern("MediaQuery"));
+    } else {
+        rb_raise(rb_eLoadError, "Cataract::MediaQuery not defined. Do not require 'cataract/native_extension' directly, use require 'cataract'");
+    }
+
     // Define Declarations class and add to_s method
     VALUE cDeclarations = rb_define_class_under(mCataract, "Declarations", rb_cObject);
     rb_define_method(cDeclarations, "to_s", new_declarations_to_s_method, 0);
@@ -1347,8 +1523,8 @@ void Init_native_extension(void) {
 
     // Define module functions
     rb_define_module_function(mCataract, "_parse_css", parse_css_new, -1);
-    rb_define_module_function(mCataract, "_stylesheet_to_s", stylesheet_to_s_new, 5);
-    rb_define_module_function(mCataract, "_stylesheet_to_formatted_s", stylesheet_to_formatted_s_new, 5);
+    rb_define_module_function(mCataract, "_stylesheet_to_s", stylesheet_to_s_new, 7);
+    rb_define_module_function(mCataract, "_stylesheet_to_formatted_s", stylesheet_to_formatted_s_new, 7);
     rb_define_module_function(mCataract, "parse_media_types", parse_media_types, 1);
     rb_define_module_function(mCataract, "parse_declarations", new_parse_declarations, 1);
     rb_define_module_function(mCataract, "flatten", cataract_flatten, 1);

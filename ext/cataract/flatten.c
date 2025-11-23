@@ -698,7 +698,7 @@ static int flatten_selector_group_callback(VALUE group_key, VALUE group_indices,
     DEBUG_PRINTF("\n[Selector %ld/%ld] '%s' (media=%s) - %ld rules in group\n",
                  ctx->selector_index, ctx->total_selectors,
                  RSTRING_PTR(selector),
-                 NIL_P(media_context) ? "nil" : RSTRING_PTR(rb_sym_to_s(media_context)),
+                 NIL_P(media_context) ? "nil" : RSTRING_PTR(rb_inspect(media_context)),
                  RARRAY_LEN(group_indices));
 
     // Merge all rules in this selector group and preserve selector_list_id if all rules share same ID
@@ -706,6 +706,14 @@ static int flatten_selector_group_callback(VALUE group_key, VALUE group_indices,
     VALUE merged_decls = flatten_rules_for_selector(ctx->rules_array, group_indices, selector, &selector_list_id);
 
     int new_rule_id = *ctx->rule_id_counter;
+
+    // Extract media_query_id from first rule in group (all should have same media_query_id)
+    VALUE media_query_id = Qnil;
+    if (RARRAY_LEN(group_indices) > 0) {
+        long first_rule_idx = FIX2LONG(RARRAY_AREF(group_indices, 0));
+        VALUE first_rule = RARRAY_AREF(ctx->rules_array, first_rule_idx);
+        media_query_id = rb_struct_aref(first_rule, INT2FIX(RULE_MEDIA_QUERY_ID));
+    }
 
     // Track old rule IDs to new rule ID mapping (only for rules in media queries)
     if (!NIL_P(media_context)) {
@@ -726,7 +734,8 @@ static int flatten_selector_group_callback(VALUE group_key, VALUE group_indices,
         Qnil,  // specificity
         Qnil,  // parent_rule_id
         Qnil,  // nesting_style
-        selector_list_id  // Preserve selector_list_id if all rules in group share same ID
+        selector_list_id,  // Preserve selector_list_id if all rules in group share same ID
+        media_query_id  // Preserve media_query_id from source rules
     );
     rb_ary_push(ctx->merged_rules, new_rule);
 
@@ -1452,17 +1461,25 @@ VALUE cataract_flatten(VALUE self, VALUE input) {
         }
     }
 
-    // Build rule_media_map: rule_id => media_symbol
+    // Build rule_media_map: rule_id => media_query_id
     // This is used to group rules by (selector, media) instead of just selector
     VALUE input_media_index = Qnil;
     VALUE rule_media_map = rb_hash_new();
     if (rb_obj_is_kind_of(input, cStylesheet)) {
         input_media_index = rb_ivar_get(input, id_ivar_media_index);
-        if (!NIL_P(input_media_index) && TYPE(input_media_index) == T_HASH) {
-            // Build reverse mapping: rule_id => media_symbol
-            struct build_rule_media_map_context build_ctx;
-            build_ctx.rule_media_map = rule_media_map;
-            rb_hash_foreach(input_media_index, build_rule_media_map_callback, (VALUE)&build_ctx);
+
+        // Build map from rules' media_query_id field
+        // Only process Rule objects, not AtRules (AtRules don't have media_query_id field at same offset)
+        for (long i = 0; i < num_rules; i++) {
+            VALUE rule = rb_ary_entry(rules_array, i);
+            if (!rb_obj_is_kind_of(rule, cAtRule)) {
+                VALUE media_query_id = rb_struct_aref(rule, INT2FIX(RULE_MEDIA_QUERY_ID));
+                if (!NIL_P(media_query_id)) {
+                    VALUE rule_id = rb_struct_aref(rule, INT2FIX(RULE_ID));
+                    // Store media_query_id as the grouping key
+                    rb_hash_aset(rule_media_map, rule_id, media_query_id);
+                }
+            }
         }
     }
 
@@ -1510,7 +1527,7 @@ VALUE cataract_flatten(VALUE self, VALUE input) {
 
         DEBUG_PRINTF("  [Rule %ld] ADD: selector='%s', media=%s, %ld declarations\n",
                      i, RSTRING_PTR(selector),
-                     NIL_P(media_context) ? "nil" : RSTRING_PTR(rb_sym_to_s(media_context)),
+                     NIL_P(media_context) ? "nil" : RSTRING_PTR(rb_inspect(media_context)),
                      RARRAY_LEN(declarations));
 
         VALUE group = rb_hash_aref(selector_groups, group_key);
@@ -1519,7 +1536,7 @@ VALUE cataract_flatten(VALUE self, VALUE input) {
             rb_hash_aset(selector_groups, group_key, group);
             DEBUG_PRINTF("    -> Created new selector+media group for '%s' + %s\n",
                         RSTRING_PTR(selector),
-                        NIL_P(media_context) ? "nil" : RSTRING_PTR(rb_sym_to_s(media_context)));
+                        NIL_P(media_context) ? "nil" : RSTRING_PTR(rb_inspect(media_context)));
         }
         rb_ary_push(group, LONG2FIX(i));
     }
@@ -1548,6 +1565,14 @@ VALUE cataract_flatten(VALUE self, VALUE input) {
         // Set empty @media_index (no media rules after flatten)
         VALUE media_idx = rb_hash_new();
         rb_ivar_set(passthrough_sheet, id_ivar_media_index, media_idx);
+
+        // Copy @media_queries and @_media_query_lists from input
+        if (rb_obj_is_kind_of(input, cStylesheet)) {
+            VALUE media_queries = rb_ivar_get(input, rb_intern("@media_queries"));
+            VALUE media_query_lists = rb_ivar_get(input, rb_intern("@_media_query_lists"));
+            rb_ivar_set(passthrough_sheet, rb_intern("@media_queries"), media_queries);
+            rb_ivar_set(passthrough_sheet, rb_intern("@_media_query_lists"), media_query_lists);
+        }
 
         return passthrough_sheet;
     }
@@ -1631,6 +1656,14 @@ VALUE cataract_flatten(VALUE self, VALUE input) {
         }
 
         rb_ivar_set(merged_sheet, id_ivar_media_index, new_media_index);
+
+        // Copy @media_queries and @_media_query_lists from input (these don't change during flatten)
+        if (rb_obj_is_kind_of(input, cStylesheet)) {
+            VALUE media_queries = rb_ivar_get(input, rb_intern("@media_queries"));
+            VALUE media_query_lists = rb_ivar_get(input, rb_intern("@_media_query_lists"));
+            rb_ivar_set(merged_sheet, rb_intern("@media_queries"), media_queries);
+            rb_ivar_set(merged_sheet, rb_intern("@_media_query_lists"), media_query_lists);
+        }
 
         // Set @_selector_lists with divergence tracking
         rb_ivar_set(merged_sheet, rb_intern("@_selector_lists"), selector_lists);
@@ -2108,7 +2141,8 @@ VALUE cataract_flatten(VALUE self, VALUE input) {
         Qnil,                     // specificity (not applicable)
         Qnil,                     // parent_rule_id (not nested)
         Qnil,                     // nesting_style (not nested)
-        Qnil                      // selector_list_id
+        Qnil,                     // selector_list_id
+        Qnil                      // media_query_id
     );
 
     // Set @rules array with single merged rule (use cached ID)
