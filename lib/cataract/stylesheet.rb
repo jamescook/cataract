@@ -710,7 +710,7 @@ module Cataract
 
       # Clean up unused MediaQuery objects (those not referenced by any rule)
       used_mq_ids = @rules.filter_map { |r| r.media_query_id if r.is_a?(Rule) }.to_set
-      @media_queries.reject! { |mq| !used_mq_ids.include?(mq.id) }
+      @media_queries.select! { |mq| used_mq_ids.include?(mq.id) }
 
       # Update rule IDs in remaining rules
       @rules.each_with_index { |rule, new_id| rule.id = new_id }
@@ -1142,7 +1142,8 @@ module Cataract
 
         # Build parse options for imported CSS
         parse_opts = {
-          import: opts.merge(imported_urls: imported_urls_copy, depth: depth + 1, base_uri: imported_base_uri)
+          import: opts.merge(imported_urls: imported_urls_copy, depth: depth + 1, base_uri: imported_base_uri),
+          parser: @parser_options.dup # Inherit parent's parser options (including selector_lists)
         }
 
         # If URL conversion is enabled (base_uri present), enable it for imported files too
@@ -1155,7 +1156,6 @@ module Cataract
         # Pass parent import's media query context to parser so nested imports can combine
         if import_media_query_id
           parent_mq = @media_queries[import_media_query_id]
-          parse_opts[:parser] ||= {}
           parse_opts[:parser][:parent_import_media_type] = parent_mq.type
           parse_opts[:parser][:parent_import_media_conditions] = parent_mq.conditions
         end
@@ -1175,7 +1175,6 @@ module Cataract
               # Example: @import "mobile.css" screen; where mobile.css has @media (max-width: 768px)
               # Result: screen and (max-width: 768px)
               existing_mq = imported_sheet.media_queries[rule.media_query_id]
-              combined_text = "#{import_mq.text} and #{existing_mq.text}"
 
               # Parse combined media query to extract type and conditions
               # The type is always the import's type (leftmost)
@@ -1220,6 +1219,28 @@ module Cataract
           end
         end
 
+        # Merge selector_lists with offsetted IDs
+        list_id_offset = @_next_selector_list_id
+        imported_selector_lists = imported_sheet.instance_variable_get(:@_selector_lists)
+        if imported_selector_lists && !imported_selector_lists.empty?
+          imported_selector_lists.each do |list_id, rule_ids|
+            new_list_id = list_id + list_id_offset
+            @_selector_lists[new_list_id] = rule_ids.dup
+          end
+          @_next_selector_list_id = list_id_offset + imported_selector_lists.size
+        end
+
+        # Merge media_query_lists with offsetted IDs
+        mq_list_id_offset = @_next_media_query_list_id
+        imported_mq_lists = imported_sheet.instance_variable_get(:@_media_query_lists)
+        if imported_mq_lists && !imported_mq_lists.empty?
+          imported_mq_lists.each do |list_id, mq_ids|
+            new_list_id = list_id + mq_list_id_offset
+            @_media_query_lists[new_list_id] = mq_ids.dup
+          end
+          @_next_media_query_list_id = mq_list_id_offset + imported_mq_lists.size
+        end
+
         # Merge charset (first one wins per CSS spec)
         @charset ||= imported_sheet.instance_variable_get(:@charset)
 
@@ -1231,8 +1252,20 @@ module Cataract
       # This is O(n) and very fast (~1ms for 30k rules)
       # Only needed if we actually resolved imports
       if imports.length > 0
-        @rules.each_with_index do |rule, idx|
-          rule.id = idx if rule.is_a?(Rule) || rule.is_a?(ImportStatement)
+        # Single-pass renumbering: build old->new mapping while renumbering
+        old_to_new_id = {}
+        @rules.each_with_index do |rule, new_idx|
+          if rule.is_a?(Rule) || rule.is_a?(ImportStatement)
+            old_to_new_id[rule.id] = new_idx
+            rule.id = new_idx
+          end
+        end
+
+        # Update rule IDs in selector_lists (only if we have any)
+        unless @_selector_lists.empty?
+          @_selector_lists.each do |list_id, rule_ids|
+            @_selector_lists[list_id] = rule_ids.map { |old_id| old_to_new_id[old_id] }
+          end
         end
 
         # Update @_last_rule_id to reflect final count
