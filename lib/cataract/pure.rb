@@ -138,8 +138,8 @@ module Cataract
   # @param decl [Declaration] Declaration to expand
   # @return [Array<Declaration>] Array of expanded longhand declarations
   # @api private
-  def self._expand_shorthand(decl)
-    Flatten._expand_shorthand(decl)
+  def self.expand_shorthand(decl)
+    Flatten.expand_shorthand(decl)
   end
 
   # Add stub method to Stylesheet for pure Ruby implementation

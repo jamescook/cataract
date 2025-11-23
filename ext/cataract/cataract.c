@@ -1466,7 +1466,7 @@ void Init_native_extension(void) {
     rb_define_module_function(mCataract, "flatten", cataract_flatten, 1);
     rb_define_module_function(mCataract, "merge", cataract_flatten, 1); // Deprecated alias for backwards compatibility
     rb_define_module_function(mCataract, "calculate_specificity", calculate_specificity, 1);
-    rb_define_module_function(mCataract, "_expand_shorthand", cataract_expand_shorthand, 1);
+    rb_define_module_function(mCataract, "expand_shorthand", cataract_expand_shorthand, 1);
 
     // Initialize flatten constants (cached property strings)
     init_flatten_constants();

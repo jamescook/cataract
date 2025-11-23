@@ -116,7 +116,7 @@ module Cataract
     BORDER_ALL = (BORDER_WIDTHS + BORDER_STYLES + BORDER_COLORS).freeze
 
     # Shorthand property lookup (Hash is faster than Array#include? or Set)
-    # Used for fast-path check to avoid calling _expand_shorthand for non-shorthands
+    # Used for fast-path check to avoid calling expand_shorthand for non-shorthands
     SHORTHAND_PROPERTIES = {
       'margin' => true,
       'padding' => true,
@@ -172,13 +172,13 @@ module Cataract
       # Expand shorthands in regular rules only (AtRules don't have declarations)
       # NOTE: Using manual each + concat instead of .flat_map for performance.
       # The concise form (.flat_map) is ~5-10% slower depending on number of shorthands to expand.
-      # NOTE: Fast-path check for shorthands (Hash lookup) avoids calling _expand_shorthand
+      # NOTE: Fast-path check for shorthands (Hash lookup) avoids calling expand_shorthand
       # for declarations that are not shorthands (~20% faster than calling method unconditionally).
       regular_rules.each do |rule|
         expanded = []
         rule.declarations.each do |decl|
           if SHORTHAND_PROPERTIES[decl.property]
-            expanded.concat(_expand_shorthand(decl))
+            expanded.concat(expand_shorthand(decl))
           else
             expanded << decl
           end
@@ -409,7 +409,7 @@ module Cataract
     # @param decl [Declaration] Declaration to expand
     # @return [Array<Declaration>] Array of expanded longhand declarations
     # @api private
-    def self._expand_shorthand(decl)
+    def self.expand_shorthand(decl)
       case decl.property
       when 'margin'
         expand_margin(decl)
@@ -1324,5 +1324,17 @@ module Cataract
           d1.important == d2.important
       end
     end
+
+    # Mark all methods except flatten and expand_shorthand as private
+    private_class_method :flatten_rules_for_selector, :calculate_specificity,
+                         :expand_margin, :expand_padding, :parse_four_sides, :split_on_whitespace,
+                         :expand_border, :expand_border_side, :expand_border_width, :expand_border_style,
+                         :expand_border_color, :parse_border_value, :is_border_width?, :is_border_style?,
+                         :expand_font, :is_font_size?, :is_font_style?, :is_font_variant?, :is_font_weight?,
+                         :expand_background, :starts_with_url?, :is_position_value?, :expand_list_style,
+                         :recreate_shorthands!, :recreate_margin!, :recreate_padding!, :check_all_same?,
+                         :recreate_border!, :recreate_border_width!, :recreate_border_style!, :recreate_border_color!,
+                         :optimize_four_sides, :recreate_font!, :recreate_background!, :recreate_list_style!,
+                         :update_selector_lists_for_divergence!, :declarations_equal?
   end
 end

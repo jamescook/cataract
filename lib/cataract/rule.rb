@@ -215,7 +215,7 @@ module Cataract
     # rubocop:disable Naming/MemoizedInstanceVariableName
     def expanded_declarations
       @_expanded_declarations ||= begin
-        expanded = declarations.flat_map { |decl| Cataract._expand_shorthand(decl) }
+        expanded = declarations.flat_map { |decl| Cataract.expand_shorthand(decl) }
         expanded.sort_by! { |d| [d.property, d.value, d.important ? 1 : 0] }
         expanded
       end
