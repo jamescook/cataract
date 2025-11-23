@@ -41,14 +41,13 @@ module Cataract
   # Serialize stylesheet to compact CSS string
   #
   # @param rules [Array<Rule>] Array of rules
-  # @param media_index [Hash] Media query symbol => array of rule IDs
   # @param charset [String, nil] @charset value
   # @param has_nesting [Boolean] Whether any nested rules exist
   # @param selector_lists [Hash] Selector list ID => array of rule IDs (for grouping)
   # @param media_queries [Array<MediaQuery>] Array of MediaQuery objects (optional, for proper serialization)
   # @param media_query_lists [Hash] List ID => array of MediaQuery IDs (optional, for comma-separated queries)
   # @return [String] Compact CSS string
-  def self.stylesheet_to_s(rules, media_index, charset, has_nesting, selector_lists = {}, media_queries = [], media_query_lists = {})
+  def self.stylesheet_to_s(rules, charset, has_nesting, selector_lists = {}, media_queries = [], media_query_lists = {})
     result = +''
 
     # Add @charset if present
@@ -58,7 +57,7 @@ module Cataract
 
     # Fast path: no nesting - use simple algorithm
     unless has_nesting
-      return _stylesheet_to_s_without_nesting(rules, media_index, result, selector_lists, media_queries, media_query_lists)
+      return _stylesheet_to_s_without_nesting(rules, result, selector_lists, media_queries, media_query_lists)
     end
 
     # Build parent-child relationships
@@ -135,10 +134,9 @@ module Cataract
   end
 
   # Helper: serialize rules without nesting support (compact format)
-  def self._stylesheet_to_s_without_nesting(rules, media_index, result, selector_lists, media_queries = [], media_query_lists = {})
+  def self._stylesheet_to_s_without_nesting(rules, result, selector_lists, media_queries = [], media_query_lists = {})
     _serialize_stylesheet_with_grouping(
       rules: rules,
-      media_index: media_index,
       result: result,
       selector_lists: selector_lists,
       media_queries: media_queries,
@@ -298,7 +296,6 @@ module Cataract
   # All formatting behavior controlled by kwargs to avoid mode flags and if/else branches
   def self._serialize_stylesheet_with_grouping(
     rules:,
-    media_index:,
     result:,
     selector_lists:,
     opening_brace:,      # ' { ' (compact) vs " {\n" (formatted)
@@ -529,14 +526,13 @@ module Cataract
   # Serialize stylesheet to formatted CSS string (with indentation)
   #
   # @param rules [Array<Rule>] Array of rules
-  # @param media_index [Hash] Media query symbol => array of rule IDs
   # @param charset [String, nil] @charset value
   # @param has_nesting [Boolean] Whether any nested rules exist
   # @param selector_lists [Hash] Selector list ID => array of rule IDs (for grouping)
   # @param media_queries [Array<MediaQuery>] Array of MediaQuery objects (optional, for proper serialization)
   # @param media_query_lists [Hash] List ID => array of MediaQuery IDs (optional, for comma-separated queries)
   # @return [String] Formatted CSS string
-  def self.stylesheet_to_formatted_s(rules, media_index, charset, has_nesting, selector_lists = {}, media_queries = [], media_query_lists = {})
+  def self.stylesheet_to_formatted_s(rules, charset, has_nesting, selector_lists = {}, media_queries = [], media_query_lists = {})
     result = +''
 
     # Add @charset if present
@@ -546,7 +542,7 @@ module Cataract
 
     # Fast path: no nesting - use simple algorithm
     unless has_nesting
-      return _stylesheet_to_formatted_s_without_nesting(rules, media_index, result, selector_lists, media_queries, media_query_lists)
+      return _stylesheet_to_formatted_s_without_nesting(rules, result, selector_lists, media_queries, media_query_lists)
     end
 
     # Build parent-child relationships
@@ -626,10 +622,9 @@ module Cataract
   end
 
   # Helper: formatted serialization without nesting support
-  def self._stylesheet_to_formatted_s_without_nesting(rules, media_index, result, selector_lists, media_queries = [], media_query_lists = {})
+  def self._stylesheet_to_formatted_s_without_nesting(rules, result, selector_lists, media_queries = [], media_query_lists = {})
     _serialize_stylesheet_with_grouping(
       rules: rules,
-      media_index: media_index,
       result: result,
       selector_lists: selector_lists,
       media_queries: media_queries,

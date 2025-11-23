@@ -9,7 +9,7 @@ namespace :profile do
     begin
       require 'stackprof'
     rescue LoadError
-      abort("stackprof gem not found. Install with: gem install stackprof")
+      abort('stackprof gem not found. Install with: gem install stackprof')
     end
 
     # Ensure we're using pure Ruby implementation
@@ -51,14 +51,14 @@ namespace :profile do
     File.write(json_output, JSON.generate(profile))
 
     puts
-    puts "Profile complete!"
+    puts 'Profile complete!'
     puts "JSON output: #{json_output}"
     puts
-    puts "View in speedscope:"
-    puts "  1. Visit https://www.speedscope.app/"
+    puts 'View in speedscope:'
+    puts '  1. Visit https://www.speedscope.app/'
     puts "  2. Drag and drop: #{json_output}"
     puts
-    puts "Or use stackprof CLI:"
+    puts 'Or use stackprof CLI:'
     puts "  stackprof #{json_output} --text"
     puts "  stackprof #{json_output} --method 'Cataract'"
   end
@@ -83,11 +83,11 @@ namespace :profile do
     FileUtils.mkdir_p(output_dir)
     json_output = File.join(output_dir, 'stackprof-flatten.json')
 
-    puts "Profiling pure Ruby flatten with bootstrap.css"
-    puts "=" * 80
+    puts 'Profiling pure Ruby flatten with bootstrap.css'
+    puts '=' * 80
     puts "Fixture: #{fixture_path}"
     puts "Output:  #{json_output}"
-    puts "=" * 80
+    puts '=' * 80
 
     # Load the CSS content
     css_content = File.read(fixture_path)
@@ -116,14 +116,14 @@ namespace :profile do
     File.write(json_output, JSON.generate(profile))
 
     puts
-    puts "Profile complete!"
+    puts 'Profile complete!'
     puts "JSON output: #{json_output}"
     puts
-    puts "View in speedscope:"
-    puts "  1. Visit https://www.speedscope.app/"
+    puts 'View in speedscope:'
+    puts '  1. Visit https://www.speedscope.app/'
     puts "  2. Drag and drop: #{json_output}"
     puts
-    puts "Or use stackprof CLI:"
+    puts 'Or use stackprof CLI:'
     puts "  stackprof #{json_output} --text"
     puts "  stackprof #{json_output} --method 'Cataract'"
   end
@@ -151,11 +151,11 @@ namespace :profile do
     FileUtils.mkdir_p(output_dir)
     json_output = File.join(output_dir, 'stackprof-serialization.json')
 
-    puts "Profiling pure Ruby serialization with bootstrap.css"
-    puts "=" * 80
+    puts 'Profiling pure Ruby serialization with bootstrap.css'
+    puts '=' * 80
     puts "Fixture: #{fixture_path}"
     puts "Output:  #{json_output}"
-    puts "=" * 80
+    puts '=' * 80
 
     # Load the CSS content
     css_content = File.read(fixture_path)
@@ -184,14 +184,14 @@ namespace :profile do
     File.write(json_output, JSON.generate(profile))
 
     puts
-    puts "Profile complete!"
+    puts 'Profile complete!'
     puts "JSON output: #{json_output}"
     puts
-    puts "View in speedscope:"
-    puts "  1. Visit https://www.speedscope.app/"
+    puts 'View in speedscope:'
+    puts '  1. Visit https://www.speedscope.app/'
     puts "  2. Drag and drop: #{json_output}"
     puts
-    puts "Or use stackprof CLI:"
+    puts 'Or use stackprof CLI:'
     puts "  stackprof #{json_output} --text"
     puts "  stackprof #{json_output} --method 'Cataract'"
   end
@@ -200,11 +200,11 @@ end
 desc 'Profile pure Ruby parser, flatten, and serialization (outputs JSON for speedscope)'
 task profile: ['profile:parsing', 'profile:flatten', 'profile:serialization'] do
   puts
-  puts "=" * 80
-  puts "All profiles complete!"
-  puts "Artifacts in: tmp/profile/"
-  puts "  - stackprof-parsing.json"
-  puts "  - stackprof-flatten.json"
-  puts "  - stackprof-serialization.json"
-  puts "=" * 80
+  puts '=' * 80
+  puts 'All profiles complete!'
+  puts 'Artifacts in: tmp/profile/'
+  puts '  - stackprof-parsing.json'
+  puts '  - stackprof-flatten.json'
+  puts '  - stackprof-serialization.json'
+  puts '=' * 80
 end

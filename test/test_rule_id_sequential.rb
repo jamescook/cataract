@@ -254,13 +254,13 @@ class TestRuleIdSequential < Minitest::Test
     child = rules_by_selector['.grandparent .parent .child']
 
     assert_nil grandparent.parent_rule_id,
-               ".grandparent should have no parent (top-level)"
+               '.grandparent should have no parent (top-level)'
 
     assert_equal grandparent.id, parent.parent_rule_id,
-                 ".grandparent .parent should have .grandparent as parent"
+                 '.grandparent .parent should have .grandparent as parent'
 
     assert_equal parent.id, child.parent_rule_id,
-                 ".grandparent .parent .child should have .grandparent .parent as parent"
+                 '.grandparent .parent .child should have .grandparent .parent as parent'
 
     # Verify @media nested selector relationship
     # There are TWO .root rules: one top-level, one inside @media
@@ -269,13 +269,13 @@ class TestRuleIdSequential < Minitest::Test
     nested_in_media = rules_by_selector['.root .nested-in-media']
 
     assert_nil root_top_level.parent_rule_id,
-               ".root (top-level) should have no parent"
+               '.root (top-level) should have no parent'
 
     assert_equal root_top_level.id, root_in_media.parent_rule_id,
-                 ".root (in @media) should have .root (top-level) as parent"
+                 '.root (in @media) should have .root (top-level) as parent'
 
     assert_equal root_in_media.id, nested_in_media.parent_rule_id,
-                 ".root .nested-in-media should have .root (in @media) as parent"
+                 '.root .nested-in-media should have .root (in @media) as parent'
   end
 
   def test_bootstrap_fixture_is_sequential
@@ -308,8 +308,8 @@ class TestRuleIdSequential < Minitest::Test
     stylesheet.rules.each_with_index do |rule, index|
       assert_equal index, rule.id,
                    "Rule at index #{index} has id=#{rule.id} (expected #{index}). " \
-                   "Rules must be sequential: rules[i].id == i. " \
-                   "This invariant is required for O(1) array access in serialization."
+                   'Rules must be sequential: rules[i].id == i. ' \
+                   'This invariant is required for O(1) array access in serialization.'
     end
   end
 
@@ -334,7 +334,7 @@ class TestRuleIdSequential < Minitest::Test
       # Verify parent comes before child (parent_id < child_id)
       assert parent_id < rule.id,
              "Rule '#{rule.selector}' (id=#{rule.id}) has parent_rule_id=#{parent_id} " \
-             "but parent should come before child in the array"
+             'but parent should come before child in the array'
     end
   end
 end

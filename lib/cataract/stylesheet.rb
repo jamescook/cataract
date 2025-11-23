@@ -452,7 +452,7 @@ module Cataract
 
       # If :all is present, return everything (no filtering)
       if which_media_array.include?(:all)
-        Cataract.stylesheet_to_s(@rules, media_index, @charset, @_has_nesting || false, @_selector_lists, @media_queries, @_media_query_lists)
+        Cataract.stylesheet_to_s(@rules, @charset, @_has_nesting || false, @_selector_lists, @media_queries, @_media_query_lists)
       else
         # Collect all rule IDs that match the requested media types
         matching_rule_ids = []
@@ -467,16 +467,8 @@ module Cataract
         # Build filtered rules array (keep original IDs, no recreation needed)
         filtered_rules = matching_rule_ids.sort.map! { |rule_id| @rules[rule_id] }
 
-        # Build filtered media_index (keep original IDs, just filter to included rules)
-        filtered_media_index = {}
-        which_media_array.each do |media_sym|
-          if mi[media_sym]
-            filtered_media_index[media_sym] = mi[media_sym] & matching_rule_ids
-          end
-        end
-
         # Serialize with filtered data
-        Cataract.stylesheet_to_s(filtered_rules, filtered_media_index, @charset, @_has_nesting || false, @_selector_lists, @media_queries, @_media_query_lists)
+        Cataract.stylesheet_to_s(filtered_rules, @charset, @_has_nesting || false, @_selector_lists, @media_queries, @_media_query_lists)
       end
     end
     alias to_css to_s
@@ -509,7 +501,7 @@ module Cataract
 
       # If :all is present, return everything (no filtering)
       if which_media_array.include?(:all)
-        Cataract.stylesheet_to_formatted_s(@rules, media_index, @charset, @_has_nesting || false, @_selector_lists, @media_queries, @_media_query_lists)
+        Cataract.stylesheet_to_formatted_s(@rules, @charset, @_has_nesting || false, @_selector_lists, @media_queries, @_media_query_lists)
       else
         # Collect all rule IDs that match the requested media types
         matching_rule_ids = []
@@ -532,16 +524,8 @@ module Cataract
         # Build filtered rules array (keep original IDs, no recreation needed)
         filtered_rules = matching_rule_ids.sort.map! { |rule_id| @rules[rule_id] }
 
-        # Build filtered media_index (keep original IDs, just filter to included rules)
-        filtered_media_index = {}
-        which_media_array.each do |media_sym|
-          if mi[media_sym]
-            filtered_media_index[media_sym] = mi[media_sym] & matching_rule_ids
-          end
-        end
-
         # Serialize with filtered data
-        Cataract.stylesheet_to_formatted_s(filtered_rules, filtered_media_index, @charset, @_has_nesting || false, @_selector_lists, @media_queries, @_media_query_lists)
+        Cataract.stylesheet_to_formatted_s(filtered_rules, @charset, @_has_nesting || false, @_selector_lists, @media_queries, @_media_query_lists)
       end
     end
 

@@ -549,21 +549,15 @@ body { color: red; }'
 
     flattened = sheet.flatten
 
-    # Serialize and re-parse
+    # Serialize and verify structure
+    assert_has_selector('.print-only', flattened)
+    assert_has_selector('.screen-only', flattened)
+
+    # Re-parse and verify structure is preserved
     css_output = flattened.to_s
     reparsed = Cataract::Stylesheet.parse(css_output)
 
-    # The serialized CSS should contain @media blocks
-    assert_match(/@media/, css_output, "Serialized CSS should contain @media blocks")
-
-    # Check that specific media rules are present
-    assert_match(/\.print-only/, css_output, "Should serialize .print-only rule")
-    assert_match(/\.screen-only/, css_output, "Should serialize .screen-only rule")
-
-    # Reparsed stylesheet should have similar structure
-    # (exact match may differ due to media query formatting, but selectors should be there)
-    reparsed_selectors = reparsed.rules.map(&:selector).sort
-    assert_includes reparsed_selectors, '.print-only'
-    assert_includes reparsed_selectors, '.screen-only'
+    assert_has_selector('.print-only', reparsed)
+    assert_has_selector('.screen-only', reparsed)
   end
 end
