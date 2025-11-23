@@ -42,7 +42,7 @@ namespace :profile do
     # Lower interval = higher sampling rate = more detailed profile
     profile = StackProf.run(mode: :wall, raw: true, interval: 100) do
       # Parse multiple times to get better signal
-      10.times do
+      100.times do
         Cataract.parse_css(css_content)
       end
     end
@@ -107,7 +107,7 @@ namespace :profile do
     # Lower interval = higher sampling rate = more detailed profile
     profile = StackProf.run(mode: :wall, raw: true, interval: 100) do
       # Flatten multiple times to get better signal
-      10.times do
+      100.times do
         Cataract.flatten(stylesheet.dup)
       end
     end
@@ -175,8 +175,8 @@ namespace :profile do
     # Lower interval = higher sampling rate = more detailed profile
     profile = StackProf.run(mode: :wall, raw: true, interval: 100) do
       # Serialize multiple times to get better signal
-      10.times do
-        stylesheet.to_s
+      100.times do
+        stylesheet.dup.to_s
       end
     end
 
