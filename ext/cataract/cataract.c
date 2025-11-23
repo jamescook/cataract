@@ -669,7 +669,7 @@ static VALUE serialize_stylesheet_with_grouping(
 }
 
 // Original stylesheet serialization (no nesting support) - compact format
-static VALUE stylesheet_to_s_original(VALUE rules_array, VALUE media_queries, VALUE media_query_lists, VALUE charset, VALUE selector_lists) {
+static VALUE stylesheet_to_s_without_nesting(VALUE rules_array, VALUE media_queries, VALUE media_query_lists, VALUE charset, VALUE selector_lists) {
     Check_Type(rules_array, T_ARRAY);
     Check_Type(media_queries, T_ARRAY);
 
@@ -907,7 +907,7 @@ static void serialize_rule_with_children(VALUE result, VALUE rules_array, long r
 }
 
 // New stylesheet serialization entry point - checks for nesting and delegates
-static VALUE stylesheet_to_s_new(VALUE self, VALUE rules_array, VALUE media_index, VALUE charset, VALUE has_nesting, VALUE selector_lists, VALUE media_queries, VALUE media_query_lists) {
+static VALUE stylesheet_to_s(VALUE self, VALUE rules_array, VALUE media_index, VALUE charset, VALUE has_nesting, VALUE selector_lists, VALUE media_queries, VALUE media_query_lists) {
     DEBUG_PRINTF("[STYLESHEET_TO_S] Called with:\n");
     DEBUG_PRINTF("  rules_array length: %ld\n", RARRAY_LEN(rules_array));
     DEBUG_PRINTF("  media_queries type: %s, length: %ld\n",
@@ -930,7 +930,7 @@ static VALUE stylesheet_to_s_new(VALUE self, VALUE rules_array, VALUE media_inde
     // Fast path: if no nesting, use original implementation (zero overhead)
     if (!RTEST(has_nesting)) {
         DEBUG_PRINTF("[STYLESHEET_TO_S] Taking fast path (no nesting)\n");
-        return stylesheet_to_s_original(rules_array, media_queries, media_query_lists, charset, selector_lists);
+        return stylesheet_to_s_without_nesting(rules_array, media_queries, media_query_lists, charset, selector_lists);
     }
 
     DEBUG_PRINTF("[STYLESHEET_TO_S] Taking slow path (has nesting)\n");
@@ -1046,7 +1046,7 @@ static VALUE stylesheet_to_s_new(VALUE self, VALUE rules_array, VALUE media_inde
 }
 
 // Original formatted serialization (no nesting support)
-static VALUE stylesheet_to_formatted_s_original(VALUE rules_array, VALUE media_queries, VALUE media_query_lists, VALUE charset, VALUE selector_lists) {
+static VALUE stylesheet_to_formatted_s_without_nesting(VALUE rules_array, VALUE media_queries, VALUE media_query_lists, VALUE charset, VALUE selector_lists) {
     Check_Type(rules_array, T_ARRAY);
     Check_Type(media_queries, T_ARRAY);
 
@@ -1073,7 +1073,7 @@ static VALUE stylesheet_to_formatted_s_original(VALUE rules_array, VALUE media_q
 }
 
 // Formatted version with indentation and newlines (with nesting support)
-static VALUE stylesheet_to_formatted_s_new(VALUE self, VALUE rules_array, VALUE media_index, VALUE charset, VALUE has_nesting, VALUE selector_lists, VALUE media_queries, VALUE media_query_lists) {
+static VALUE stylesheet_to_formatted_s(VALUE self, VALUE rules_array, VALUE media_index, VALUE charset, VALUE has_nesting, VALUE selector_lists, VALUE media_queries, VALUE media_query_lists) {
     Check_Type(rules_array, T_ARRAY);
     Check_Type(media_index, T_HASH);
     Check_Type(media_queries, T_ARRAY);
@@ -1082,7 +1082,7 @@ static VALUE stylesheet_to_formatted_s_new(VALUE self, VALUE rules_array, VALUE 
 
     // Fast path: if no nesting, use original implementation (zero overhead)
     if (!RTEST(has_nesting)) {
-        return stylesheet_to_formatted_s_original(rules_array, media_queries, media_query_lists, charset, selector_lists);
+        return stylesheet_to_formatted_s_without_nesting(rules_array, media_queries, media_query_lists, charset, selector_lists);
     }
 
     // SLOW PATH: Has nesting - use parameterized serialization with formatted=1
@@ -1459,8 +1459,8 @@ void Init_native_extension(void) {
 
     // Define module functions
     rb_define_module_function(mCataract, "_parse_css", parse_css_new, -1);
-    rb_define_module_function(mCataract, "stylesheet_to_s", stylesheet_to_s_new, 7);
-    rb_define_module_function(mCataract, "stylesheet_to_formatted_s", stylesheet_to_formatted_s_new, 7);
+    rb_define_module_function(mCataract, "stylesheet_to_s", stylesheet_to_s, 7);
+    rb_define_module_function(mCataract, "stylesheet_to_formatted_s", stylesheet_to_formatted_s, 7);
     rb_define_module_function(mCataract, "parse_media_types", parse_media_types, 1);
     rb_define_module_function(mCataract, "parse_declarations", new_parse_declarations, 1);
     rb_define_module_function(mCataract, "flatten", cataract_flatten, 1);

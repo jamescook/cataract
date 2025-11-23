@@ -58,7 +58,7 @@ module Cataract
 
     # Fast path: no nesting - use simple algorithm
     unless has_nesting
-      return _stylesheet_to_s_original(rules, media_index, result, selector_lists, media_queries, media_query_lists)
+      return _stylesheet_to_s_without_nesting(rules, media_index, result, selector_lists, media_queries, media_query_lists)
     end
 
     # Build parent-child relationships
@@ -135,7 +135,7 @@ module Cataract
   end
 
   # Helper: serialize rules without nesting support (compact format)
-  def self._stylesheet_to_s_original(rules, media_index, result, selector_lists, media_queries = [], media_query_lists = {})
+  def self._stylesheet_to_s_without_nesting(rules, media_index, result, selector_lists, media_queries = [], media_query_lists = {})
     _serialize_stylesheet_with_grouping(
       rules: rules,
       media_index: media_index,
@@ -546,7 +546,7 @@ module Cataract
 
     # Fast path: no nesting - use simple algorithm
     unless has_nesting
-      return _stylesheet_to_formatted_s_original(rules, media_index, result, selector_lists, media_queries, media_query_lists)
+      return _stylesheet_to_formatted_s_without_nesting(rules, media_index, result, selector_lists, media_queries, media_query_lists)
     end
 
     # Build parent-child relationships
@@ -626,7 +626,7 @@ module Cataract
   end
 
   # Helper: formatted serialization without nesting support
-  def self._stylesheet_to_formatted_s_original(rules, media_index, result, selector_lists, media_queries = [], media_query_lists = {})
+  def self._stylesheet_to_formatted_s_without_nesting(rules, media_index, result, selector_lists, media_queries = [], media_query_lists = {})
     _serialize_stylesheet_with_grouping(
       rules: rules,
       media_index: media_index,
@@ -793,9 +793,9 @@ module Cataract
   end
 
   # Mark helper methods as private (public APIs: stylesheet_to_s, stylesheet_to_formatted_s)
-  private_class_method :_build_media_query_string, :_stylesheet_to_s_original, :_serialize_rule_with_nesting,
+  private_class_method :_build_media_query_string, :_stylesheet_to_s_without_nesting, :_serialize_rule_with_nesting,
                        :_reconstruct_nested_selector, :_find_groupable_selectors, :_declarations_equal?,
                        :_serialize_rule, :_serialize_declarations, :_serialize_declarations_formatted,
-                       :_serialize_at_rule, :_stylesheet_to_formatted_s_original, :_serialize_rule_with_nesting_formatted,
+                       :_serialize_at_rule, :_stylesheet_to_formatted_s_without_nesting, :_serialize_rule_with_nesting_formatted,
                        :_serialize_rule_formatted, :_serialize_at_rule_formatted
 end
