@@ -931,27 +931,11 @@ module Cataract
         # Combine with parent media context
         combined_media_sym = combine_media_queries(@parent_media_sym, child_media_sym)
 
-        # Determine parent media query ID for nested context
-        # If we're already in a media query, we need to combine them
-        combined_media_query_id = if @parent_media_query_id
-          # Create a combined MediaQuery for nested @media
-          parent_mq = @media_queries[@parent_media_query_id]
-          if parent_mq.nil?
-            # Parent media query ID is invalid, just use current
-            current_media_query_id
-          else
-            # Combine parent media query with child
-            child_type, child_conditions = parse_media_query_parts(child_media_string)
-            combined_type, combined_conditions = combine_media_query_parts(parent_mq, child_type, child_conditions)
-            combined_mq = Cataract::MediaQuery.new(@media_query_id_counter, combined_type, combined_conditions)
-            @media_queries << combined_mq
-            combined_id = @media_query_id_counter
-            @media_query_id_counter += 1
-            combined_id
-          end
-        else
-          current_media_query_id
-        end
+        # NOTE: @parent_media_query_id is always nil here because top-level @media blocks
+        # create separate parsers without passing parent_media_query_id (see nested_parser creation below).
+        # MediaQuery combining for nested @media happens in parse_mixed_block instead.
+        # So this is just an alias to current_media_query_id.
+        combined_media_query_id = current_media_query_id
 
         # Check media query limit
         unless @media_index.key?(combined_media_sym)

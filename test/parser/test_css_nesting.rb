@@ -720,6 +720,58 @@ class TestCssNesting < Minitest::Test
     assert_equal expected, output
   end
 
+  def test_nested_media_within_css_nesting_combines_media_queries
+    # Test that @media nested inside a CSS nesting block properly combines MediaQuery objects
+    # This exercises the parse_mixed_block path where parent_media_query_id is passed
+    css = <<~CSS
+      .parent {
+        @media screen {
+          @media (min-width: 500px) {
+            color: red;
+          }
+        }
+      }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css)
+
+    # Find the rule with the color declaration (the innermost nested @media rule)
+    rule_with_color = sheet.rules.find { |r| r.declarations.any? { |d| d.property == 'color' } }
+    refute_nil rule_with_color, "Should have a rule with color declaration"
+    assert_equal '.parent', rule_with_color.selector
+
+    # Verify the combined MediaQuery was created (screen + min-width condition)
+    refute_nil rule_with_color.media_query_id
+    mq = sheet.media_queries[rule_with_color.media_query_id]
+    refute_nil mq
+    assert_equal :screen, mq.type
+    assert_equal '(min-width: 500px)', mq.conditions
+  end
+
+  def test_nested_media_with_both_parent_and_child_conditions_in_css_nesting
+    # Test combining when BOTH parent and child @media have conditions inside CSS nesting
+    css = <<~CSS
+      .widget {
+        @media screen and (orientation: landscape) {
+          @media (min-width > 1024px) {
+            font-size: 20px;
+          }
+        }
+      }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css)
+
+    # Find the rule with the font-size declaration
+    rule_with_font = sheet.rules.find { |r| r.declarations.any? { |d| d.property == 'font-size' } }
+    refute_nil rule_with_font, "Should have a rule with font-size declaration"
+
+    # Verify combined MediaQuery has both conditions joined by " and "
+    mq = sheet.media_queries[rule_with_font.media_query_id]
+    assert_equal :screen, mq.type
+    assert_equal '(orientation: landscape) and (min-width > 1024px)', mq.conditions
+  end
+
   # Test recursion depth limit (MAX_PARSE_DEPTH = 10)
   def test_depth_error_on_deep_nesting
     # Build CSS with 10 nested & .x blocks (depth 11: .a at 1, then 10 nested = exceeds limit)
