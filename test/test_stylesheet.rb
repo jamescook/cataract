@@ -531,4 +531,39 @@ body { color: red; }'
     assert_equal 1, result.rules.size, '+ should apply cascade'
     assert result.rules[0].has_property?('color', 'blue'), 'Last rule should win'
   end
+
+  # ============================================================================
+  # Serialization with media queries
+  # ============================================================================
+
+  def test_serialization_preserves_media_queries_after_flatten
+    # Tests that serialization preserves media query structure after flattening
+    # a stylesheet with recursive imports
+
+    fixtures_dir = File.join(__dir__, 'fixtures')
+    sheet = Cataract::Stylesheet.load_file(
+      'recursive_import_base.css',
+      fixtures_dir,
+      import: { allowed_schemes: ['file'], extensions: ['css'] }
+    )
+
+    flattened = sheet.flatten
+
+    # Serialize and re-parse
+    css_output = flattened.to_s
+    reparsed = Cataract::Stylesheet.parse(css_output)
+
+    # The serialized CSS should contain @media blocks
+    assert_match(/@media/, css_output, "Serialized CSS should contain @media blocks")
+
+    # Check that specific media rules are present
+    assert_match(/\.print-only/, css_output, "Should serialize .print-only rule")
+    assert_match(/\.screen-only/, css_output, "Should serialize .screen-only rule")
+
+    # Reparsed stylesheet should have similar structure
+    # (exact match may differ due to media query formatting, but selectors should be there)
+    reparsed_selectors = reparsed.rules.map(&:selector).sort
+    assert_includes reparsed_selectors, '.print-only'
+    assert_includes reparsed_selectors, '.screen-only'
+  end
 end

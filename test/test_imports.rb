@@ -1095,4 +1095,50 @@ body { color: red; }"
       assert import.resolved
     end
   end
+
+  # ============================================================================
+  # Recursive imports with media conditions
+  # ============================================================================
+
+  def test_recursive_imports_with_media_conditions
+    # Tests that recursive imports with media conditions work correctly:
+    # - base.css imports level1_screen.css with "screen" media
+    # - base.css imports level1_print.css with "print" media
+    # - level1_screen.css imports level2_mobile.css with "(max-width: 768px)" media
+    # All imports should be resolved and rules should have correct media_query_id
+
+    fixtures_dir = File.join(__dir__, 'fixtures')
+    sheet = Cataract::Stylesheet.load_file(
+      'recursive_import_base.css',
+      fixtures_dir,
+      import: { allowed_schemes: ['file'], extensions: ['css'] }
+    )
+
+    # After resolving all imports, we should have:
+    # - Rules from level2_mobile.css (imported with "screen and (max-width: 768px)")
+    # - Rules from level1_screen.css (imported with "screen")
+    # - Rules from level1_print.css (imported with "print")
+    # - Rules from base.css (no media)
+
+    # Total rules:
+    # level2_mobile: .mobile-menu, body => 2 rules
+    # level1_screen: .screen-only, .screen-large => 2 rules
+    # level1_print: .print-only, body => 2 rules
+    # base: body => 1 rule
+    # Total: 7 rules
+
+    assert_equal 7, sheet.rules.length, "Should have 7 total rules after recursive import resolution"
+
+    # Check that rules have correct selectors
+    selectors = sheet.rules.map(&:selector).sort
+    expected_selectors = ['.mobile-menu', '.print-only', '.screen-large', '.screen-only', 'body', 'body', 'body'].sort
+    assert_equal expected_selectors, selectors
+
+    # Check that all rule IDs are unique (no duplicates)
+    rule_ids = sheet.rules.map(&:id)
+    assert_equal rule_ids.uniq.length, rule_ids.length, "All rule IDs should be unique"
+
+    # Check that rule IDs are sequential from 0
+    assert_equal (0...sheet.rules.length).to_a, rule_ids.sort
+  end
 end

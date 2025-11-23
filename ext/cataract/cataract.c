@@ -371,11 +371,6 @@ static void serialize_rule_formatted(VALUE result, VALUE rule, const char *inden
     }
 }
 
-// Context for building rule_to_media map
-struct build_rule_map_ctx {
-    VALUE rule_to_media;
-};
-
 // Context for building mq_id_to_list_id reverse map
 struct build_mq_reverse_map_ctx {
     VALUE mq_id_to_list_id;
@@ -407,32 +402,6 @@ struct format_opts {
     const char *decl_indent_media;  // NULL (compact) vs "    " (formatted media rules)
     int add_blank_lines;            // 0 (compact) vs 1 (formatted)
 };
-
-// Callback to build reverse map from rule_id to media_sym
-static int build_rule_map_callback(VALUE media_sym, VALUE rule_ids, VALUE arg) {
-    struct build_rule_map_ctx *ctx = (struct build_rule_map_ctx *)arg;
-
-    Check_Type(rule_ids, T_ARRAY);
-    long ids_len = RARRAY_LEN(rule_ids);
-
-    for (long i = 0; i < ids_len; i++) {
-        VALUE id = rb_ary_entry(rule_ids, i);
-        VALUE existing = rb_hash_aref(ctx->rule_to_media, id);
-
-        if (NIL_P(existing)) {
-            rb_hash_aset(ctx->rule_to_media, id, media_sym);
-        } else {
-            // Keep the longer/more specific media query
-            VALUE existing_str = rb_sym2str(existing);
-            VALUE new_str = rb_sym2str(media_sym);
-            if (RSTRING_LEN(new_str) > RSTRING_LEN(existing_str)) {
-                rb_hash_aset(ctx->rule_to_media, id, media_sym);
-            }
-        }
-    }
-
-    return ST_CONTINUE;
-}
 
 // Private shared implementation for stylesheet serialization with optional selector list grouping
 // All formatting behavior controlled by format_opts struct to avoid mode flags and if/else branches
