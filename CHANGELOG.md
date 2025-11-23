@@ -1,5 +1,15 @@
 ## [ Unreleased ]
 
+## [0.2.4 - 2025-11-23]
+- MediaQuery first-class objects: Refactored media queries from simple symbols to proper structs with id, type, and conditions, enabling accurate
+serialization and proper handling of complex queries like @media screen and (min-width: 768px)
+- Fixed import resolution: Import statements now properly merge selector lists and media query lists from imported stylesheets with correct ID offsetting,
+ preventing data loss
+- Sequential rule ID invariant: Parser now ensures rules[i].id == i via placeholder strategy, enabling O(1) array access instead of O(N) lookups during
+serialization
+- Improved nested media handling: Nested media queries in imports now combine correctly (e.g., @import "file.css" screen where file contains @media
+  (min-width: 768px))
+
 ## [0.2.3 - 2025-11-18]
 - Pure Parser: Bugs with url()
 
