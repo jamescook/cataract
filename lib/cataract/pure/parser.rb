@@ -70,7 +70,7 @@ module Cataract
       @_len = @_css.bytesize
       @_parent_media_sym = parent_media_sym
       @_parent_media_query_id = parent_media_query_id
-      @_depth = depth                # Current recursion depth (passed from parent parser)
+      @_depth = depth # Current recursion depth (passed from parent parser)
 
       # Private: Parser options with defaults
       @_parser_options = {
@@ -518,8 +518,8 @@ module Cataract
                                     end
 
                                     # Combine parent media query with child
-                                    child_type, child_conditions = parse_media_query_parts(media_query_str)
-                                    combined_type, combined_conditions = combine_media_query_parts(parent_mq, child_type, child_conditions)
+                                    _child_type, child_conditions = parse_media_query_parts(media_query_str)
+                                    combined_type, combined_conditions = combine_media_query_parts(parent_mq, child_conditions)
                                     combined_mq = Cataract::MediaQuery.new(@_media_query_id_counter, combined_type, combined_conditions)
                                     @media_queries << combined_mq
                                     combined_id = @_media_query_id_counter
@@ -925,10 +925,8 @@ module Cataract
         end
 
         # If multiple queries, track them as a list for serialization
-        media_query_list_id = nil
         if media_query_ids.size > 1
-          media_query_list_id = @_next_media_query_list_id
-          @_media_query_lists[media_query_list_id] = media_query_ids
+          @_media_query_lists[@_next_media_query_list_id] = media_query_ids
           @_next_media_query_list_id += 1
         end
 
@@ -1031,7 +1029,7 @@ module Cataract
               outer_mq = @media_queries[combined_media_query_id]
               if outer_mq
                 # Combine media queries directly without string building
-                combined_type, combined_conditions = combine_media_query_parts(outer_mq, nested_mq.type, nested_mq.conditions)
+                combined_type, combined_conditions = combine_media_query_parts(outer_mq, nested_mq.conditions)
                 combined_mq = Cataract::MediaQuery.new(@_media_query_id_counter, combined_type, combined_conditions)
                 @media_queries << combined_mq
                 rule.media_query_id = @_media_query_id_counter
@@ -1042,10 +1040,10 @@ module Cataract
             else
               rule.media_query_id = nested_mq_id
             end
-          else
+          elsif rule.respond_to?(:media_query_id=)
             # Assign the combined media_query_id if no media_query_id set
             # (applies to both Rule and AtRule)
-            rule.media_query_id = combined_media_query_id if rule.respond_to?(:media_query_id=)
+            rule.media_query_id = combined_media_query_id
           end
 
           # NOTE: We no longer build media_index during parse
@@ -1191,7 +1189,7 @@ module Cataract
 
       # Create Rule with declarations
       rule = Rule.new(
-        @_rule_id_counter,    # id
+        @_rule_id_counter, # id
         selector,            # selector (e.g., "@property --main-color")
         declarations,        # declarations
         nil,                 # specificity
@@ -1421,10 +1419,10 @@ module Cataract
       # Find closing quote (handle escaped quotes)
       while !eof? && peek_byte != quote_char
         @_pos += if peek_byte == BYTE_BACKSLASH && @_pos + 1 < @_len
-                  2 # Skip escaped character
-                else
-                  1
-                end
+                   2 # Skip escaped character
+                 else
+                   1
+                 end
       end
 
       if eof?
@@ -1483,7 +1481,7 @@ module Cataract
               combined_conditions = if parent_import_conditions && media_conditions
                                       "#{parent_import_conditions} and #{media_conditions}"
                                     elsif parent_import_conditions
-                                      "#{parent_import_conditions} and #{media_type}#{media_conditions ? ' and ' + media_conditions : ''}"
+                                      "#{parent_import_conditions} and #{media_type}#{" and #{media_conditions}" if media_conditions}"
                                     elsif media_conditions
                                       media_type == :all ? media_conditions : "#{media_type} and #{media_conditions}"
                                     else
@@ -1720,14 +1718,15 @@ module Cataract
 
     # Combine parent and child media query parts directly without string building
     #
+    # The parent's type takes precedence (child type is ignored per CSS spec).
+    #
     # @param parent_mq [MediaQuery] Parent media query object
-    # @param child_type [Symbol] Child media type (e.g., :screen, :all)
     # @param child_conditions [String|nil] Child conditions (e.g., "(min-width: 500px)")
     # @return [Array<Symbol, String|nil>] [combined_type, combined_conditions]
     #
     # @example
-    #   combine_media_query_parts(screen_mq, :all, "(min-width: 500px)") #=> [:screen, "... and (min-width: 500px)"]
-    def combine_media_query_parts(parent_mq, child_type, child_conditions)
+    #   combine_media_query_parts(screen_mq, "(min-width: 500px)") #=> [:screen, "... and (min-width: 500px)"]
+    def combine_media_query_parts(parent_mq, child_conditions)
       # Type: parent's type wins (outermost type)
       combined_type = parent_mq.type
 
@@ -1738,8 +1737,6 @@ module Cataract
                               parent_mq.conditions
                             elsif child_conditions
                               child_conditions
-                            else
-                              nil
                             end
 
       [combined_type, combined_conditions]

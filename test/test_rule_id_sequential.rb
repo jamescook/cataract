@@ -332,9 +332,8 @@ class TestRuleIdSequential < Minitest::Test
                  "but rules[#{parent_id}] is nil"
 
       # Verify parent comes before child (parent_id < child_id)
-      assert parent_id < rule.id,
-             "Rule '#{rule.selector}' (id=#{rule.id}) has parent_rule_id=#{parent_id} " \
-             'but parent should come before child in the array'
+      assert_operator parent_id, :<, rule.id, "Rule '#{rule.selector}' (id=#{rule.id}) has parent_rule_id=#{parent_id} " \
+                                              'but parent should come before child in the array'
     end
   end
 end

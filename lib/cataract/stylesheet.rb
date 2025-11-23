@@ -1058,11 +1058,11 @@ module Cataract
       old_to_new_mq_id = {}
       kept_mqs = []
       result.instance_variable_get(:@media_queries).each do |mq|
-        if used_mq_ids.include?(mq.id)
-          old_to_new_mq_id[mq.id] = kept_mqs.size
-          mq.id = kept_mqs.size
-          kept_mqs << mq
-        end
+        next unless used_mq_ids.include?(mq.id)
+
+        old_to_new_mq_id[mq.id] = kept_mqs.size
+        mq.id = kept_mqs.size
+        kept_mqs << mq
       end
 
       # Replace media_queries array with kept ones
@@ -1076,7 +1076,7 @@ module Cataract
       end
 
       # Update media_query_lists with new IDs
-      result.instance_variable_get(:@_media_query_lists).each do |list_id, mq_ids|
+      result.instance_variable_get(:@_media_query_lists).each_value do |mq_ids|
         mq_ids.map! { |mq_id| old_to_new_mq_id[mq_id] }.compact!
       end
 
@@ -1251,29 +1251,29 @@ module Cataract
       # Renumber all rule IDs to be sequential in document order
       # This is O(n) and very fast (~1ms for 30k rules)
       # Only needed if we actually resolved imports
-      if imports.length > 0
-        # Single-pass renumbering: build old->new mapping while renumbering
-        old_to_new_id = {}
-        @rules.each_with_index do |rule, new_idx|
-          if rule.is_a?(Rule) || rule.is_a?(ImportStatement)
-            old_to_new_id[rule.id] = new_idx
-            rule.id = new_idx
-          end
+      return unless imports.length > 0
+
+      # Single-pass renumbering: build old->new mapping while renumbering
+      old_to_new_id = {}
+      @rules.each_with_index do |rule, new_idx|
+        if rule.is_a?(Rule) || rule.is_a?(ImportStatement)
+          old_to_new_id[rule.id] = new_idx
+          rule.id = new_idx
         end
-
-        # Update rule IDs in selector_lists (only if we have any)
-        unless @_selector_lists.empty?
-          @_selector_lists.each do |list_id, rule_ids|
-            @_selector_lists[list_id] = rule_ids.map { |old_id| old_to_new_id[old_id] }
-          end
-        end
-
-        # Update @_last_rule_id to reflect final count
-        @_last_rule_id = @rules.length
-
-        # Clear media_index so it gets rebuilt lazily when accessed
-        @media_index = {}
       end
+
+      # Update rule IDs in selector_lists (only if we have any)
+      unless @_selector_lists.empty?
+        @_selector_lists.each do |list_id, rule_ids|
+          @_selector_lists[list_id] = rule_ids.map { |old_id| old_to_new_id[old_id] }
+        end
+      end
+
+      # Update @_last_rule_id to reflect final count
+      @_last_rule_id = @rules.length
+
+      # Clear media_index so it gets rebuilt lazily when accessed
+      @media_index = {}
     end
 
     # Check if a rule matches any of the requested media queries

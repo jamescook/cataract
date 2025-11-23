@@ -1059,6 +1059,7 @@ class TestFlattening < Minitest::Test
       # 2. One for base/all media with color:#fff and background-color:#9EBF00
 
       body_rules = flattened.rules.select { |r| r.selector == 'body' }
+
       assert_equal(2, body_rules.length, 'Should have 2 separate body rules: one for print, one for base')
 
       # Find the print media body rule

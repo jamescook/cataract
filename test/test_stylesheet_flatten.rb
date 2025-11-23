@@ -108,18 +108,18 @@ class TestStylesheetFlatten < Minitest::Test
     print_rules = flattened.with_media(:print).to_a
     print_selectors = print_rules.map(&:selector)
 
-    assert_includes print_selectors, '.print-only', 'Print media should include .print-only'
+    assert_member print_selectors, '.print-only', 'Print media should include .print-only'
 
     # Rules with .screen-only should only appear in screen media
     screen_rules = flattened.with_media(:screen).to_a
     screen_selectors = screen_rules.map(&:selector)
 
-    assert_includes screen_selectors, '.screen-only', 'Screen media should include .screen-only'
+    assert_member screen_selectors, '.screen-only', 'Screen media should include .screen-only'
 
     # Base body rule should be queryable without media filter
     all_rules = flattened.to_a
 
-    assert_includes all_rules.map(&:selector), 'body', 'Should have body rules'
+    assert_member all_rules.map(&:selector), 'body', 'Should have body rules'
   end
 
   def test_rule_ids_are_sequential_after_flatten
