@@ -1231,4 +1231,61 @@ body { color: red; }"
       assert_has_selector '.nested3', sheet3
     end
   end
+
+  def test_multiple_add_block_with_different_import_media_types
+    # Bug: When calling add_block() multiple times with @import statements that have
+    # different media constraints, the second import's rules were getting assigned
+    # the wrong media_query_id (they got the media type from the FIRST import instead of their own).
+    Dir.mktmpdir do |dir|
+      file1 = File.join(dir, 'file1.css')
+      file2 = File.join(dir, 'file2.css')
+
+      File.write(file1, 'body { background: red; }')
+      File.write(file2, '.hide { display: none; }')
+
+      sheet = Cataract::Stylesheet.new(import: {
+                                         allowed_schemes: ['file'],
+                                         extensions: ['css'],
+                                         max_depth: 5
+                                       })
+
+      # First import with print media
+      sheet.add_block("@import \"#{file1}\" print;", base_dir: dir)
+
+      # Second import with screen, handheld media
+      sheet.add_block("@import \"#{file2}\" screen, handheld;", base_dir: dir)
+
+      flattened = sheet.flatten
+
+      # Verify media queries were created correctly
+      assert_equal 3, flattened.media_queries.length, 'Should have 3 media queries: print, screen, handheld'
+      assert_equal :print, flattened.media_queries[0].type
+      assert_equal :screen, flattened.media_queries[1].type
+      assert_equal :handheld, flattened.media_queries[2].type
+
+      # Find the rules
+      body_rule = flattened.rules.find { |r| r.is_a?(Cataract::Rule) && r.selector == 'body' }
+      hide_rule = flattened.rules.find { |r| r.is_a?(Cataract::Rule) && r.selector == '.hide' }
+
+      assert body_rule, 'Should have body rule'
+      assert hide_rule, 'Should have .hide rule'
+
+      # The critical test: body should be in print, .hide should be in screen/handheld
+      media_index = flattened.media_index
+
+      assert_member body_rule.id, media_index[:print],
+                    'body rule should be in print media'
+      refute_member body_rule.id, media_index[:screen] || [],
+                    'body rule should NOT be in screen media'
+      refute_member body_rule.id, media_index[:handheld] || [],
+                    'body rule should NOT be in handheld media'
+
+      assert_member hide_rule.id, media_index[:screen],
+                    '.hide rule should be in screen media'
+      assert_member hide_rule.id, media_index[:handheld],
+                    '.hide rule should be in handheld media'
+      refute_member hide_rule.id, media_index[:print] || [],
+                    '.hide rule should NOT be in print media'
+    end
+  end
 end
