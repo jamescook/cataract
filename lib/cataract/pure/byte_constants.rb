@@ -53,6 +53,7 @@ module Cataract
   BYTE_LOWER_L    = 108 # 'l'
   BYTE_LOWER_D    = 100 # 'd'
   BYTE_LOWER_T    = 116 # 't'
+  BYTE_LOWER_N    = 110 # 'n'
 
   # Specific uppercase letters (for case-insensitive matching)
   BYTE_UPPER_U    = 85  # 'U'
@@ -60,6 +61,7 @@ module Cataract
   BYTE_UPPER_L    = 76  # 'L'
   BYTE_UPPER_D    = 68  # 'D'
   BYTE_UPPER_T    = 84  # 'T'
+  BYTE_UPPER_N    = 78  # 'N'
 
   # Letter ranges (a-z, A-Z)
   BYTE_LOWER_A   = 97  # 'a'

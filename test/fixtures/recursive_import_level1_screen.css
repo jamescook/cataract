@@ -1,0 +1,12 @@
+/* Level 1: Screen media, imports another file with media condition */
+@import "recursive_import_level2_mobile.css" (max-width: 768px);
+
+.screen-only {
+  display: block;
+}
+
+@media (min-width: 1024px) {
+  .screen-large {
+    font-size: 18px;
+  }
+}

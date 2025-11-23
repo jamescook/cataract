@@ -556,4 +556,109 @@ class TestSelectorLists < Minitest::Test
     # Rules should have selector_list_id
     refute_nil sheet.rules.first.selector_list_id
   end
+
+  def test_selector_lists_inside_media_query
+    # This test covers the uncovered code path at parser.rb:976-985
+    # which handles merging nested selector_lists when parsing @media blocks
+    css = <<~CSS
+      @media screen {
+        h1, h2, h3 { font-size: 24px; }
+        .btn-primary, .btn-secondary { padding: 10px; }
+      }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css)
+
+    # Should have 5 rules (3 from h1,h2,h3 + 2 from btn-primary,btn-secondary)
+    assert_equal 5, sheet.rules.length
+
+    # Verify all rules are in screen media
+    sheet.rules.each do |rule|
+      refute_nil rule.media_query_id, "Rule #{rule.selector} should have media_query_id"
+      mq = sheet.media_queries[rule.media_query_id]
+
+      assert_equal :screen, mq.type
+    end
+
+    # Verify selector_lists were tracked
+    selector_lists = sheet.instance_variable_get(:@_selector_lists)
+
+    refute_empty selector_lists, 'Should have tracked selector lists inside @media'
+
+    # Should have 2 selector lists (one for h1,h2,h3 and one for buttons)
+    assert_equal 2, selector_lists.size
+
+    # Verify each list has correct number of rule IDs
+    selector_lists.each_value do |rule_ids|
+      assert_operator rule_ids.size, :>=, 2, 'Each selector list should have at least 2 rules'
+    end
+
+    # Verify all rules have sequential IDs
+    rule_ids = sheet.rules.map(&:id)
+
+    assert_equal (0...sheet.rules.length).to_a, rule_ids.sort, 'Rule IDs should be sequential'
+  end
+
+  def test_selector_lists_inside_supports
+    # This test covers the uncovered code path at parser.rb:858-867
+    # which handles merging nested selector_lists when parsing @supports/@layer/@container/@scope blocks
+    css = <<~CSS
+      @supports (display: grid) {
+        h1, h2, h3 { display: grid; }
+        .card, .panel { grid-template-columns: 1fr; }
+      }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css)
+
+    # Should have 5 rules (3 from h1,h2,h3 + 2 from card,panel)
+    assert_equal 5, sheet.rules.length
+
+    # Verify selectors
+    assert_has_selector 'h1', sheet
+    assert_has_selector 'h2', sheet
+    assert_has_selector 'h3', sheet
+    assert_has_selector '.card', sheet
+    assert_has_selector '.panel', sheet
+
+    # Verify selector_lists were tracked
+    selector_lists = sheet.instance_variable_get(:@_selector_lists)
+
+    refute_empty selector_lists, 'Should have tracked selector lists inside @supports'
+
+    # Should have 2 selector lists
+    assert_equal 2, selector_lists.size
+
+    # Verify each list has correct number of rule IDs
+    selector_lists.each_value do |rule_ids|
+      assert_operator rule_ids.size, :>=, 2, 'Each selector list should have at least 2 rules'
+    end
+  end
+
+  def test_media_query_lists_inside_nested_media
+    # This test covers the uncovered code path at parser.rb:999-1006
+    # which handles merging nested media_query_lists (comma-separated media queries)
+    # when parsing nested @media blocks
+    css = <<~CSS
+      @media screen {
+        @media print, projection {
+          .foo { color: red; }
+        }
+      }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css)
+
+    # Should have 1 rule
+    assert_equal 1, sheet.rules.length
+    assert_has_selector '.foo', sheet
+
+    # Verify media_query_lists were tracked
+    media_query_lists = sheet.instance_variable_get(:@_media_query_lists)
+
+    refute_empty media_query_lists, 'Should have tracked media_query_lists for nested comma-separated @media'
+
+    # Should have at least 1 media query list
+    assert_operator media_query_lists.size, :>=, 1
+  end
 end

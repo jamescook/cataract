@@ -7,6 +7,7 @@ require_relative 'cataract/constants'
 require_relative 'cataract/declaration'
 require_relative 'cataract/rule'
 require_relative 'cataract/at_rule'
+require_relative 'cataract/media_query'
 require_relative 'cataract/import_statement'
 
 # Load pure Ruby or C extension based on ENV var

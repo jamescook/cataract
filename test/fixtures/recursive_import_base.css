@@ -1,0 +1,8 @@
+/* Base stylesheet with recursive imports and media queries */
+@import "recursive_import_level1_screen.css" screen;
+@import "recursive_import_level1_print.css" print;
+
+body {
+  color: black;
+  background: white;
+}

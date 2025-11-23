@@ -29,15 +29,13 @@ module Cataract
 
     AT_RULE_TYPES = %w[supports layer container scope].freeze
 
-    attr_reader :css, :pos, :len
-
     # Extract substring and force specified encoding
     # Per CSS spec, charset detection happens at byte-stream level before parsing.
     # All parsing operations treat content as UTF-8 (spec requires fallback to UTF-8).
     # This prevents ArgumentError on broken/invalid encodings when calling string methods.
     # Optional encoding parameter (default: 'UTF-8', use 'US-ASCII' for property names)
     def byteslice_encoded(start, length, encoding: 'UTF-8')
-      @css.byteslice(start, length).force_encoding(encoding)
+      @_css.byteslice(start, length).force_encoding(encoding)
     end
 
     # Helper: Case-insensitive ASCII byte comparison
@@ -65,39 +63,47 @@ module Cataract
       true
     end
 
-    def initialize(css_string, parser_options: {}, parent_media_sym: nil, depth: 0)
-      @css = css_string.dup.freeze
-      @pos = 0
-      @len = @css.bytesize
-      @parent_media_sym = parent_media_sym
+    def initialize(css_string, parser_options: {}, parent_media_sym: nil, parent_media_query_id: nil, depth: 0)
+      # Private: Internal parsing state
+      @_css = css_string.dup.freeze
+      @_pos = 0
+      @_len = @_css.bytesize
+      @_parent_media_sym = parent_media_sym
+      @_parent_media_query_id = parent_media_query_id
+      @_depth = depth # Current recursion depth (passed from parent parser)
 
-      # Parser options with defaults
-      @parser_options = {
+      # Private: Parser options with defaults
+      @_parser_options = {
         selector_lists: true,
         base_uri: nil,
         absolute_paths: false,
         uri_resolver: nil
       }.merge(parser_options)
 
-      # Extract options to ivars to avoid repeated hash lookups in hot path
-      @selector_lists_enabled = @parser_options[:selector_lists]
-      @base_uri = @parser_options[:base_uri]
-      @absolute_paths = @parser_options[:absolute_paths]
+      # Private: Extract options to ivars to avoid repeated hash lookups in hot path
+      @_selector_lists_enabled = @_parser_options[:selector_lists]
+      @_base_uri = @_parser_options[:base_uri]
+      @_absolute_paths = @_parser_options[:absolute_paths]
+      @_uri_resolver = @_parser_options[:uri_resolver] || Cataract::DEFAULT_URI_RESOLVER
 
-      # Default URI resolver uses Ruby's URI stdlib
-      @uri_resolver = @parser_options[:uri_resolver] || Cataract::DEFAULT_URI_RESOLVER
-
-      # Parser state
-      @rules = []                    # Flat array of Rule structs
-      @_media_index = {}             # Symbol => Array of rule IDs
-      @_selector_lists = {}          # Hash: list_id => Array of rule IDs
+      # Private: Internal counters
+      @_media_query_id_counter = 0   # Next MediaQuery ID (0-indexed)
       @_next_selector_list_id = 0    # Counter for selector list IDs
+      @_next_media_query_list_id = 0 # Counter for media query list IDs
+      @_rule_id_counter = 0          # Next rule ID (0-indexed)
+      @_media_query_count = 0        # Safety limit
+
+      # Public: Parser results (returned in parse result hash)
+      @rules = []                    # Flat array of Rule structs
+      @media_queries = []            # Array of MediaQuery objects
+      @media_index = {}              # Symbol => Array of rule IDs (for backwards compat/caching)
       @imports = []                  # Array of ImportStatement structs
-      @rule_id_counter = 0           # Next rule ID (0-indexed)
-      @media_query_count = 0         # Safety limit
-      @_has_nesting = false          # Set to true if any nested rules found
-      @depth = depth                 # Current recursion depth (passed from parent parser)
       @charset = nil                 # @charset declaration
+
+      # Semi-private: Internal state exposed with _ prefix in result
+      @_selector_lists = {}          # Hash: list_id => Array of rule IDs
+      @_media_query_lists = {}       # Hash: list_id => Array of MediaQuery IDs (for "screen, print")
+      @_has_nesting = false          # Set to true if any nested rules found
     end
 
     def parse
@@ -126,7 +132,7 @@ module Cataract
         end
 
         # Find the block boundaries
-        decl_start = @pos # Should be right after the {
+        decl_start = @_pos # Should be right after the {
         decl_end = find_matching_brace(decl_start)
 
         # Check if block has nested selectors
@@ -140,18 +146,18 @@ module Cataract
             next if individual_selector.empty?
 
             # Get rule ID for this selector
-            current_rule_id = @rule_id_counter
-            @rule_id_counter += 1
+            current_rule_id = @_rule_id_counter
+            @_rule_id_counter += 1
 
             # Reserve parent's position in rules array (ensures parent comes before nested)
             parent_position = @rules.length
             @rules << nil # Placeholder
 
             # Parse mixed block (declarations + nested selectors)
-            @depth += 1
+            @_depth += 1
             parent_declarations = parse_mixed_block(decl_start, decl_end,
-                                                    individual_selector, current_rule_id, @parent_media_sym)
-            @depth -= 1
+                                                    individual_selector, current_rule_id, @_parent_media_sym, @_parent_media_query_id)
+            @_depth -= 1
 
             # Create parent rule and replace placeholder
             rule = Rule.new(
@@ -164,16 +170,14 @@ module Cataract
             )
 
             @rules[parent_position] = rule
-            @_media_index[@parent_media_sym] ||= [] if @parent_media_sym
-            @_media_index[@parent_media_sym] << current_rule_id if @parent_media_sym
           end
 
           # Move position past the closing brace
-          @pos = decl_end
-          @pos += 1 if @pos < @len && @css.getbyte(@pos) == BYTE_RBRACE
+          @_pos = decl_end
+          @_pos += 1 if @_pos < @_len && @_css.getbyte(@_pos) == BYTE_RBRACE
         else
           # NON-NESTED PATH: Parse declarations only
-          @pos = decl_start # Reset to start of block
+          @_pos = decl_start # Reset to start of block
           declarations = parse_declarations
 
           # Split comma-separated selectors into individual rules
@@ -182,7 +186,7 @@ module Cataract
           # Determine if we should track this as a selector list
           # Check boolean first to potentially avoid size() call via short-circuit evaluation
           list_id = nil
-          if @selector_lists_enabled && selectors.size > 1
+          if @_selector_lists_enabled && selectors.size > 1
             list_id = @_next_selector_list_id
             @_next_selector_list_id += 1
             @_selector_lists[list_id] = []
@@ -192,7 +196,7 @@ module Cataract
             individual_selector.strip!
             next if individual_selector.empty?
 
-            rule_id = @rule_id_counter
+            rule_id = @_rule_id_counter
 
             # Dup declarations for each rule in a selector list to avoid shared state
             # (principle of least surprise - modifying one rule shouldn't affect others)
@@ -215,7 +219,7 @@ module Cataract
             )
 
             @rules << rule
-            @rule_id_counter += 1
+            @_rule_id_counter += 1
 
             # Track in selector list if applicable
             @_selector_lists[list_id] << rule_id if list_id
@@ -225,8 +229,10 @@ module Cataract
 
       {
         rules: @rules,
-        _media_index: @_media_index,
+        _media_index: @media_index,
+        media_queries: @media_queries,
         _selector_lists: @_selector_lists,
+        _media_query_lists: @_media_query_lists,
         imports: @imports,
         charset: @charset,
         _has_nesting: @_has_nesting
@@ -237,7 +243,7 @@ module Cataract
 
     # Check if we're at end of input
     def eof?
-      @pos >= @len
+      @_pos >= @_len
     end
 
     # Peek current byte without advancing
@@ -245,7 +251,7 @@ module Cataract
     def peek_byte
       return nil if eof?
 
-      @css.getbyte(@pos)
+      @_css.getbyte(@_pos)
     end
 
     # Delegate to module-level helper methods (now work with bytes)
@@ -266,19 +272,19 @@ module Cataract
     end
 
     def skip_whitespace
-      @pos += 1 while !eof? && whitespace?(peek_byte)
+      @_pos += 1 while !eof? && whitespace?(peek_byte)
     end
 
     def skip_comment # rubocop:disable Naming/PredicateMethod
-      return false unless peek_byte == BYTE_SLASH && @css.getbyte(@pos + 1) == BYTE_STAR
+      return false unless peek_byte == BYTE_SLASH && @_css.getbyte(@_pos + 1) == BYTE_STAR
 
-      @pos += 2 # Skip /*
-      while @pos + 1 < @len
-        if @css.getbyte(@pos) == BYTE_STAR && @css.getbyte(@pos + 1) == BYTE_SLASH
-          @pos += 2 # Skip */
+      @_pos += 2 # Skip /*
+      while @_pos + 1 < @_len
+        if @_css.getbyte(@_pos) == BYTE_STAR && @_css.getbyte(@_pos + 1) == BYTE_SLASH
+          @_pos += 2 # Skip */
           return true
         end
-        @pos += 1
+        @_pos += 1
       end
       true
     end
@@ -291,10 +297,10 @@ module Cataract
     # Benchmark shows 15-51% speedup depending on YJIT
     def skip_ws_and_comments
       begin
-        old_pos = @pos
+        old_pos = @_pos
         skip_whitespace
         skip_comment
-      end until @pos == old_pos # No progress made # rubocop:disable Lint/Loop
+      end until @_pos == old_pos # No progress made # rubocop:disable Lint/Loop
     end
 
     # Parse a single CSS declaration (property: value)
@@ -309,24 +315,24 @@ module Cataract
     def parse_single_declaration(pos, end_pos, parse_important)
       # Parse property name (scan until ':')
       prop_start = pos
-      while pos < end_pos && @css.getbyte(pos) != BYTE_COLON &&
-            @css.getbyte(pos) != BYTE_SEMICOLON && @css.getbyte(pos) != BYTE_RBRACE
+      while pos < end_pos && @_css.getbyte(pos) != BYTE_COLON &&
+            @_css.getbyte(pos) != BYTE_SEMICOLON && @_css.getbyte(pos) != BYTE_RBRACE
         pos += 1
       end
 
       # Skip if malformed (no colon found)
-      if pos >= end_pos || @css.getbyte(pos) != BYTE_COLON
+      if pos >= end_pos || @_css.getbyte(pos) != BYTE_COLON
         # Error recovery: skip to next semicolon
-        while pos < end_pos && @css.getbyte(pos) != BYTE_SEMICOLON
+        while pos < end_pos && @_css.getbyte(pos) != BYTE_SEMICOLON
           pos += 1
         end
-        pos += 1 if pos < end_pos && @css.getbyte(pos) == BYTE_SEMICOLON
+        pos += 1 if pos < end_pos && @_css.getbyte(pos) == BYTE_SEMICOLON
         return [nil, pos]
       end
 
       # Trim trailing whitespace from property
       prop_end = pos
-      while prop_end > prop_start && whitespace?(@css.getbyte(prop_end - 1))
+      while prop_end > prop_start && whitespace?(@_css.getbyte(prop_end - 1))
         prop_end -= 1
       end
 
@@ -342,19 +348,19 @@ module Cataract
       pos += 1 # Skip ':'
 
       # Skip leading whitespace in value
-      while pos < end_pos && whitespace?(@css.getbyte(pos))
+      while pos < end_pos && whitespace?(@_css.getbyte(pos))
         pos += 1
       end
 
       # Parse value (scan until ';' or '}')
       val_start = pos
-      while pos < end_pos && @css.getbyte(pos) != BYTE_SEMICOLON && @css.getbyte(pos) != BYTE_RBRACE
+      while pos < end_pos && @_css.getbyte(pos) != BYTE_SEMICOLON && @_css.getbyte(pos) != BYTE_RBRACE
         pos += 1
       end
       val_end = pos
 
       # Trim trailing whitespace from value
-      while val_end > val_start && whitespace?(@css.getbyte(val_end - 1))
+      while val_end > val_start && whitespace?(@_css.getbyte(val_end - 1))
         val_end -= 1
       end
 
@@ -369,7 +375,7 @@ module Cataract
       end
 
       # Skip semicolon if present
-      pos += 1 if pos < end_pos && @css.getbyte(pos) == BYTE_SEMICOLON
+      pos += 1 if pos < end_pos && @_css.getbyte(pos) == BYTE_SEMICOLON
 
       # Return nil if empty declaration
       return [nil, pos] if prop_end <= prop_start || val_end <= val_start
@@ -393,8 +399,8 @@ module Cataract
       depth = 1
       pos = start_pos
 
-      while pos < @len
-        byte = @css.getbyte(pos)
+      while pos < @_len
+        byte = @_css.getbyte(pos)
         if byte == BYTE_RBRACE
           depth -= 1
           return pos if depth == 0
@@ -409,21 +415,21 @@ module Cataract
 
     # Parse selector (read until '{')
     def parse_selector
-      start_pos = @pos
+      start_pos = @_pos
 
       # Read until we find '{'
       until eof? || peek_byte == BYTE_LBRACE # Flip to save a 'opt_not' instruction: while !eof? && peek_byte != BYTE_LBRACE
-        @pos += 1
+        @_pos += 1
       end
 
       # If we hit EOF without finding '{', return nil
       return nil if eof?
 
       # Extract selector text
-      selector_text = byteslice_encoded(start_pos, @pos - start_pos)
+      selector_text = byteslice_encoded(start_pos, @_pos - start_pos)
 
       # Skip the '{'
-      @pos += 1 if peek_byte == BYTE_LBRACE
+      @_pos += 1 if peek_byte == BYTE_LBRACE
 
       # Trim whitespace from selector (in-place to avoid allocation)
       selector_text.strip!
@@ -433,9 +439,9 @@ module Cataract
     # Parse mixed block containing declarations AND nested selectors/at-rules
     # Translated from C: see ext/cataract/css_parser.c parse_mixed_block
     # Returns: Array of declarations (only the declarations, not nested rules)
-    def parse_mixed_block(start_pos, end_pos, parent_selector, parent_rule_id, parent_media_sym)
+    def parse_mixed_block(start_pos, end_pos, parent_selector, parent_rule_id, parent_media_sym, parent_media_query_id = nil)
       # Check recursion depth to prevent stack overflow
-      if @depth > MAX_PARSE_DEPTH
+      if @_depth > MAX_PARSE_DEPTH
         raise DepthError, "CSS nesting too deep: exceeded maximum depth of #{MAX_PARSE_DEPTH}"
       end
 
@@ -444,16 +450,16 @@ module Cataract
 
       while pos < end_pos
         # Skip whitespace and comments
-        while pos < end_pos && whitespace?(@css.getbyte(pos))
+        while pos < end_pos && whitespace?(@_css.getbyte(pos))
           pos += 1
         end
         break if pos >= end_pos
 
         # Skip comments
-        if pos + 1 < end_pos && @css.getbyte(pos) == BYTE_SLASH && @css.getbyte(pos + 1) == BYTE_STAR
+        if pos + 1 < end_pos && @_css.getbyte(pos) == BYTE_SLASH && @_css.getbyte(pos + 1) == BYTE_STAR
           pos += 2
           while pos + 1 < end_pos
-            if @css.getbyte(pos) == BYTE_STAR && @css.getbyte(pos + 1) == BYTE_SLASH
+            if @_css.getbyte(pos) == BYTE_STAR && @_css.getbyte(pos + 1) == BYTE_SLASH
               pos += 2
               break
             end
@@ -463,25 +469,25 @@ module Cataract
         end
 
         # Check if this is a nested @media query
-        if @css.getbyte(pos) == BYTE_AT && pos + 6 < end_pos &&
+        if @_css.getbyte(pos) == BYTE_AT && pos + 6 < end_pos &&
            byteslice_encoded(pos, 6) == '@media' &&
-           (pos + 6 >= end_pos || whitespace?(@css.getbyte(pos + 6)))
+           (pos + 6 >= end_pos || whitespace?(@_css.getbyte(pos + 6)))
           # Nested @media - parse with parent selector as context
           media_start = pos + 6
-          while media_start < end_pos && whitespace?(@css.getbyte(media_start))
+          while media_start < end_pos && whitespace?(@_css.getbyte(media_start))
             media_start += 1
           end
 
           # Find opening brace
           media_query_end = media_start
-          while media_query_end < end_pos && @css.getbyte(media_query_end) != BYTE_LBRACE
+          while media_query_end < end_pos && @_css.getbyte(media_query_end) != BYTE_LBRACE
             media_query_end += 1
           end
           break if media_query_end >= end_pos
 
           # Extract media query (trim trailing whitespace)
           media_query_end_trimmed = media_query_end
-          while media_query_end_trimmed > media_start && whitespace?(@css.getbyte(media_query_end_trimmed - 1))
+          while media_query_end_trimmed > media_start && whitespace?(@_css.getbyte(media_query_end_trimmed - 1))
             media_query_end_trimmed -= 1
           end
           media_query_str = byteslice_encoded(media_start, media_query_end_trimmed - media_start)
@@ -500,15 +506,48 @@ module Cataract
           # Combine media queries: parent + child
           combined_media_sym = combine_media_queries(parent_media_sym, media_sym)
 
-          # Create rule ID for this media rule
-          media_rule_id = @rule_id_counter
-          @rule_id_counter += 1
+          # Create MediaQuery object for this nested @media
+          # If we're already in a media query context, combine with parent
+          nested_media_query_id = if parent_media_query_id
+                                    # Combine with parent MediaQuery
+                                    parent_mq = @media_queries[parent_media_query_id]
 
-          # Parse mixed block recursively
-          @depth += 1
+                                    # This should never happen - parent_media_query_id should always be valid
+                                    if parent_mq.nil?
+                                      raise ParserError, "Invalid parent_media_query_id: #{parent_media_query_id} (not found in @media_queries)"
+                                    end
+
+                                    # Combine parent media query with child
+                                    _child_type, child_conditions = parse_media_query_parts(media_query_str)
+                                    combined_type, combined_conditions = combine_media_query_parts(parent_mq, child_conditions)
+                                    combined_mq = Cataract::MediaQuery.new(@_media_query_id_counter, combined_type, combined_conditions)
+                                    @media_queries << combined_mq
+                                    combined_id = @_media_query_id_counter
+                                    @_media_query_id_counter += 1
+                                    combined_id
+                                  else
+                                    # No parent context, just use the child media query
+                                    media_type, media_conditions = parse_media_query_parts(media_query_str)
+                                    nested_media_query = Cataract::MediaQuery.new(@_media_query_id_counter, media_type, media_conditions)
+                                    @media_queries << nested_media_query
+                                    mq_id = @_media_query_id_counter
+                                    @_media_query_id_counter += 1
+                                    mq_id
+                                  end
+
+          # Create rule ID for this media rule
+          media_rule_id = @_rule_id_counter
+          @_rule_id_counter += 1
+
+          # Reserve position in rules array (ensures sequential IDs match array indices)
+          rule_position = @rules.length
+          @rules << nil # Placeholder
+
+          # Parse mixed block recursively with the nested media query ID as context
+          @_depth += 1
           media_declarations = parse_mixed_block(media_block_start, media_block_end,
-                                                 parent_selector, media_rule_id, combined_media_sym)
-          @depth -= 1
+                                                 parent_selector, media_rule_id, combined_media_sym, nested_media_query_id)
+          @_depth -= 1
 
           # Create rule with parent selector and declarations, associated with combined media query
           rule = Rule.new(
@@ -517,34 +556,34 @@ module Cataract
             media_declarations,
             nil,  # specificity
             parent_rule_id,
-            nil   # nesting_style (nil for @media nesting)
+            nil,  # nesting_style (nil for @media nesting)
+            nil,  # selector_list_id
+            nested_media_query_id # media_query_id
           )
 
           # Mark that we have nesting
           @_has_nesting = true unless parent_rule_id.nil?
 
-          @rules << rule
-          @_media_index[combined_media_sym] ||= []
-          @_media_index[combined_media_sym] << media_rule_id
-
+          # Replace placeholder with actual rule
+          @rules[rule_position] = rule
           next
         end
 
         # Check if this is a nested selector
-        byte = @css.getbyte(pos)
+        byte = @_css.getbyte(pos)
         if byte == BYTE_AMPERSAND || byte == BYTE_DOT || byte == BYTE_HASH ||
            byte == BYTE_LBRACKET || byte == BYTE_COLON || byte == BYTE_ASTERISK ||
            byte == BYTE_GT || byte == BYTE_PLUS || byte == BYTE_TILDE || byte == BYTE_AT
           # Find the opening brace
           nested_sel_start = pos
-          while pos < end_pos && @css.getbyte(pos) != BYTE_LBRACE
+          while pos < end_pos && @_css.getbyte(pos) != BYTE_LBRACE
             pos += 1
           end
           break if pos >= end_pos
 
           nested_sel_end = pos
           # Trim trailing whitespace
-          while nested_sel_end > nested_sel_start && whitespace?(@css.getbyte(nested_sel_end - 1))
+          while nested_sel_end > nested_sel_start && whitespace?(@_css.getbyte(nested_sel_end - 1))
             nested_sel_end -= 1
           end
 
@@ -568,14 +607,18 @@ module Cataract
             resolved_selector, nesting_style = resolve_nested_selector(parent_selector, seg)
 
             # Get rule ID
-            rule_id = @rule_id_counter
-            @rule_id_counter += 1
+            rule_id = @_rule_id_counter
+            @_rule_id_counter += 1
+
+            # Reserve position in rules array (ensures sequential IDs match array indices)
+            rule_position = @rules.length
+            @rules << nil # Placeholder
 
             # Recursively parse nested block
-            @depth += 1
+            @_depth += 1
             nested_declarations = parse_mixed_block(nested_block_start, nested_block_end,
-                                                    resolved_selector, rule_id, parent_media_sym)
-            @depth -= 1
+                                                    resolved_selector, rule_id, parent_media_sym, parent_media_query_id)
+            @_depth -= 1
 
             # Create rule for nested selector
             rule = Rule.new(
@@ -590,9 +633,8 @@ module Cataract
             # Mark that we have nesting
             @_has_nesting = true unless parent_rule_id.nil?
 
-            @rules << rule
-            @_media_index[parent_media_sym] ||= [] if parent_media_sym
-            @_media_index[parent_media_sym] << rule_id if parent_media_sym
+            # Replace placeholder with actual rule
+            @rules[rule_position] = rule
           end
 
           next
@@ -618,17 +660,17 @@ module Cataract
 
         # Check for closing brace
         if peek_byte == BYTE_RBRACE
-          @pos += 1 # consume '}'
+          @_pos += 1 # consume '}'
           break
         end
 
         # Parse property name (read until ':')
-        property_start = @pos
+        property_start = @_pos
         until eof?
           byte = peek_byte
           break if byte == BYTE_COLON || byte == BYTE_SEMICOLON || byte == BYTE_RBRACE
 
-          @pos += 1
+          @_pos += 1
         end
 
         # Skip if no colon found (malformed)
@@ -639,7 +681,7 @@ module Cataract
         end
 
         # Extract property name - use UTF-8 encoding to support custom properties with Unicode
-        property = byteslice_encoded(property_start, @pos - property_start)
+        property = byteslice_encoded(property_start, @_pos - property_start)
         property.strip!
         # Custom properties (--foo) are case-sensitive and can contain Unicode
         # Regular properties are ASCII-only and case-insensitive
@@ -648,12 +690,12 @@ module Cataract
           property.force_encoding('US-ASCII')
           property.downcase!
         end
-        @pos += 1 # skip ':'
+        @_pos += 1 # skip ':'
 
         skip_ws_and_comments
 
         # Parse value (read until ';' or '}', but respect quoted strings)
-        value_start = @pos
+        value_start = @_pos
         important = false
         in_quote = nil # nil, BYTE_SQUOTE, or BYTE_DQUOTE
 
@@ -664,9 +706,9 @@ module Cataract
             # Inside quoted string - only exit on matching quote
             if byte == in_quote
               in_quote = nil
-            elsif byte == BYTE_BACKSLASH && @pos + 1 < @len
+            elsif byte == BYTE_BACKSLASH && @_pos + 1 < @_len
               # Skip escaped character
-              @pos += 1
+              @_pos += 1
             end
           else
             # Not in quote - check for terminators or quote start
@@ -677,10 +719,10 @@ module Cataract
             end
           end
 
-          @pos += 1
+          @_pos += 1
         end
 
-        value = byteslice_encoded(value_start, @pos - value_start)
+        value = byteslice_encoded(value_start, @_pos - value_start)
         value.strip!
 
         # Check for !important (byte-by-byte, no regexp)
@@ -716,7 +758,7 @@ module Cataract
         end
 
         # Skip semicolon if present
-        @pos += 1 if peek_byte == BYTE_SEMICOLON
+        @_pos += 1 if peek_byte == BYTE_SEMICOLON
 
         # Convert relative URLs to absolute if enabled
         value = convert_urls_in_value(value)
@@ -731,35 +773,35 @@ module Cataract
     # Parse at-rule (@media, @supports, @charset, @keyframes, @font-face, etc)
     # Translated from C: see ext/cataract/css_parser.c lines 962-1128
     def parse_at_rule
-      at_rule_start = @pos # Points to '@'
-      @pos += 1 # skip '@'
+      at_rule_start = @_pos # Points to '@'
+      @_pos += 1 # skip '@'
 
       # Find end of at-rule name (stop at whitespace or opening brace)
-      name_start = @pos
+      name_start = @_pos
       until eof?
         byte = peek_byte
         break if whitespace?(byte) || byte == BYTE_LBRACE
 
-        @pos += 1
+        @_pos += 1
       end
 
-      at_rule_name = byteslice_encoded(name_start, @pos - name_start)
+      at_rule_name = byteslice_encoded(name_start, @_pos - name_start)
 
       # Handle @charset specially - it's just @charset "value";
       if at_rule_name == 'charset'
         skip_ws_and_comments
         # Read until semicolon
-        value_start = @pos
+        value_start = @_pos
         while !eof? && peek_byte != BYTE_SEMICOLON
-          @pos += 1
+          @_pos += 1
         end
 
-        charset_value = byteslice_encoded(value_start, @pos - value_start)
+        charset_value = byteslice_encoded(value_start, @_pos - value_start)
         charset_value.strip!
         # Remove quotes
         @charset = charset_value.delete('"\'')
 
-        @pos += 1 if peek_byte == BYTE_SEMICOLON # consume semicolon
+        @_pos += 1 if peek_byte == BYTE_SEMICOLON # consume semicolon
         return
       end
 
@@ -770,9 +812,9 @@ module Cataract
           warn 'CSS @import ignored: @import must appear before all rules (found import after rules)'
           # Skip to semicolon
           while !eof? && peek_byte != BYTE_SEMICOLON
-            @pos += 1
+            @_pos += 1
           end
-          @pos += 1 if peek_byte == BYTE_SEMICOLON
+          @_pos += 1 if peek_byte == BYTE_SEMICOLON
           return
         end
 
@@ -787,28 +829,28 @@ module Cataract
 
         # Skip to opening brace
         while !eof? && peek_byte != BYTE_LBRACE
-          @pos += 1
+          @_pos += 1
         end
 
         return if eof? || peek_byte != BYTE_LBRACE
 
-        @pos += 1 # skip '{'
+        @_pos += 1 # skip '{'
 
         # Find matching closing brace
-        block_start = @pos
-        block_end = find_matching_brace(@pos)
+        block_start = @_pos
+        block_end = find_matching_brace(@_pos)
 
         # Check depth before recursing
-        if @depth + 1 > MAX_PARSE_DEPTH
+        if @_depth + 1 > MAX_PARSE_DEPTH
           raise DepthError, "CSS nesting too deep: exceeded maximum depth of #{MAX_PARSE_DEPTH}"
         end
 
         # Recursively parse block content (preserve parent media context)
         nested_parser = Parser.new(
           byteslice_encoded(block_start, block_end - block_start),
-          parser_options: @parser_options,
-          parent_media_sym: @parent_media_sym,
-          depth: @depth + 1
+          parser_options: @_parser_options,
+          parent_media_sym: @_parent_media_sym,
+          depth: @_depth + 1
         )
 
         nested_result = nested_parser.parse
@@ -818,33 +860,29 @@ module Cataract
         if nested_result[:_selector_lists] && !nested_result[:_selector_lists].empty?
           nested_result[:_selector_lists].each do |list_id, rule_ids|
             new_list_id = list_id + list_id_offset
-            offsetted_rule_ids = rule_ids.map { |rid| rid + @rule_id_counter }
+            offsetted_rule_ids = rule_ids.map { |rid| rid + @_rule_id_counter }
             @_selector_lists[new_list_id] = offsetted_rule_ids
           end
           @_next_selector_list_id = list_id_offset + nested_result[:_selector_lists].size
         end
 
-        # Merge nested media_index into ours
-        nested_result[:_media_index].each do |media, rule_ids|
-          @_media_index[media] ||= []
-          # Use each + << instead of concat + map (1.20x faster for small arrays)
-          rule_ids.each { |rid| @_media_index[media] << (@rule_id_counter + rid) }
-        end
+        # NOTE: We no longer build media_index during parse
+        # It will be built from MediaQuery objects after import resolution
 
         # Add nested rules to main rules array
         nested_result[:rules].each do |rule|
-          rule.id = @rule_id_counter
+          rule.id = @_rule_id_counter
           # Update selector_list_id if applicable
           if rule.is_a?(Rule) && rule.selector_list_id
             rule.selector_list_id += list_id_offset
           end
-          @rule_id_counter += 1
+          @_rule_id_counter += 1
           @rules << rule
         end
 
         # Move position past the closing brace
-        @pos = block_end
-        @pos += 1 if @pos < @len && @css.getbyte(@pos) == BYTE_RBRACE
+        @_pos = block_end
+        @_pos += 1 if @_pos < @_len && @_css.getbyte(@_pos) == BYTE_RBRACE
 
         return
       end
@@ -854,16 +892,16 @@ module Cataract
         skip_ws_and_comments
 
         # Find media query (up to opening brace)
-        mq_start = @pos
+        mq_start = @_pos
         while !eof? && peek_byte != BYTE_LBRACE
-          @pos += 1
+          @_pos += 1
         end
 
         return if eof? || peek_byte != BYTE_LBRACE
 
-        mq_end = @pos
+        mq_end = @_pos
         # Trim trailing whitespace
-        while mq_end > mq_start && whitespace?(@css.getbyte(mq_end - 1))
+        while mq_end > mq_start && whitespace?(@_css.getbyte(mq_end - 1))
           mq_end -= 1
         end
 
@@ -872,34 +910,65 @@ module Cataract
         child_media_string.strip!
         child_media_sym = child_media_string.to_sym
 
+        # Split comma-separated media queries (e.g., "screen, print" -> ["screen", "print"])
+        # Per W3C spec, comma acts as logical OR - each query is independent
+        media_query_strings = child_media_string.split(',').map(&:strip)
+
+        # Create MediaQuery objects for each query in the list
+        media_query_ids = []
+        media_query_strings.each do |query_string|
+          media_type, media_conditions = parse_media_query_parts(query_string)
+          media_query = Cataract::MediaQuery.new(@_media_query_id_counter, media_type, media_conditions)
+          @media_queries << media_query
+          media_query_ids << @_media_query_id_counter
+          @_media_query_id_counter += 1
+        end
+
+        # If multiple queries, track them as a list for serialization
+        if media_query_ids.size > 1
+          @_media_query_lists[@_next_media_query_list_id] = media_query_ids
+          @_next_media_query_list_id += 1
+        end
+
+        # Use first query ID as the primary one for rules in this block
+        current_media_query_id = media_query_ids.first
+
         # Combine with parent media context
-        combined_media_sym = combine_media_queries(@parent_media_sym, child_media_sym)
+        combined_media_sym = combine_media_queries(@_parent_media_sym, child_media_sym)
+
+        # NOTE: @_parent_media_query_id is always nil here because top-level @media blocks
+        # create separate parsers without passing parent_media_query_id (see nested_parser creation below).
+        # MediaQuery combining for nested @media happens in parse_mixed_block instead.
+        # So this is just an alias to current_media_query_id.
+        combined_media_query_id = current_media_query_id
 
         # Check media query limit
-        unless @_media_index.key?(combined_media_sym)
-          @media_query_count += 1
-          if @media_query_count > MAX_MEDIA_QUERIES
+        unless @media_index.key?(combined_media_sym)
+          @_media_query_count += 1
+          if @_media_query_count > MAX_MEDIA_QUERIES
             raise SizeError, "Too many media queries: exceeded maximum of #{MAX_MEDIA_QUERIES}"
           end
         end
 
-        @pos += 1 # skip '{'
+        @_pos += 1 # skip '{'
 
         # Find matching closing brace
-        block_start = @pos
-        block_end = find_matching_brace(@pos)
+        block_start = @_pos
+        block_end = find_matching_brace(@_pos)
 
         # Check depth before recursing
-        if @depth + 1 > MAX_PARSE_DEPTH
+        if @_depth + 1 > MAX_PARSE_DEPTH
           raise DepthError, "CSS nesting too deep: exceeded maximum depth of #{MAX_PARSE_DEPTH}"
         end
 
         # Parse the content with the combined media context
+        # Note: We don't pass parent_media_query_id because MediaQuery IDs are local to each parser
+        # The nested parser will create its own MediaQueries, which we'll merge with offsetted IDs
         nested_parser = Parser.new(
           byteslice_encoded(block_start, block_end - block_start),
-          parser_options: @parser_options,
+          parser_options: @_parser_options,
           parent_media_sym: combined_media_sym,
-          depth: @depth + 1
+          depth: @_depth + 1
         )
 
         nested_result = nested_parser.parse
@@ -909,50 +978,84 @@ module Cataract
         if nested_result[:_selector_lists] && !nested_result[:_selector_lists].empty?
           nested_result[:_selector_lists].each do |list_id, rule_ids|
             new_list_id = list_id + list_id_offset
-            offsetted_rule_ids = rule_ids.map { |rid| rid + @rule_id_counter }
+            offsetted_rule_ids = rule_ids.map { |rid| rid + @_rule_id_counter }
             @_selector_lists[new_list_id] = offsetted_rule_ids
           end
           @_next_selector_list_id = list_id_offset + nested_result[:_selector_lists].size
         end
 
-        # Merge nested media_index into ours (for nested @media)
-        nested_result[:_media_index].each do |media, rule_ids|
-          @_media_index[media] ||= []
-          # Use each + << instead of concat + map (1.20x faster for small arrays)
-          rule_ids.each { |rid| @_media_index[media] << (@rule_id_counter + rid) }
+        # Merge nested MediaQuery objects with offsetted IDs
+        mq_id_offset = @_media_query_id_counter
+        if nested_result[:media_queries] && !nested_result[:media_queries].empty?
+          nested_result[:media_queries].each do |mq|
+            # Create new MediaQuery with offsetted ID
+            new_mq = Cataract::MediaQuery.new(mq.id + mq_id_offset, mq.type, mq.conditions)
+            @media_queries << new_mq
+          end
+          @_media_query_id_counter += nested_result[:media_queries].size
         end
 
-        # Add nested rules to main rules array and update media_index
+        # Merge nested media_query_lists with offsetted IDs
+        if nested_result[:_media_query_lists] && !nested_result[:_media_query_lists].empty?
+          nested_result[:_media_query_lists].each do |list_id, mq_ids|
+            # Offset the list_id and media_query_ids
+            new_list_id = list_id + @_next_media_query_list_id
+            offsetted_mq_ids = mq_ids.map { |mq_id| mq_id + mq_id_offset }
+            @_media_query_lists[new_list_id] = offsetted_mq_ids
+          end
+          @_next_media_query_list_id += nested_result[:_media_query_lists].size
+        end
+
+        # Merge nested media_index into ours (for nested @media)
+        # Note: We no longer build media_index during parse
+        # It will be built from MediaQuery objects after import resolution
+
+        # Add nested rules to main rules array
         nested_result[:rules].each do |rule|
-          rule.id = @rule_id_counter
+          rule.id = @_rule_id_counter
           # Update selector_list_id if applicable
           if rule.is_a?(Rule) && rule.selector_list_id
             rule.selector_list_id += list_id_offset
           end
 
-          # Extract media types and add to each first (if different from full query)
-          # We add these BEFORE the full query so that when iterating the media_index hash,
-          # the full query comes last and takes precedence during serialization
-          media_types = Cataract.parse_media_types(combined_media_sym)
-          media_types.each do |media_type|
-            # Only add if different from combined_media_sym to avoid duplication
-            if media_type != combined_media_sym
-              @_media_index[media_type] ||= []
-              @_media_index[media_type] << @rule_id_counter
+          # Update media_query_id if applicable (both Rule and AtRule can have media_query_id)
+          if rule.media_query_id
+            # Nested parser assigned a media_query_id - need to combine with our context
+            nested_mq_id = rule.media_query_id + mq_id_offset
+            nested_mq = @media_queries[nested_mq_id]
+
+            # Combine nested media query with our media context
+            if nested_mq && combined_media_query_id
+              outer_mq = @media_queries[combined_media_query_id]
+              if outer_mq
+                # Combine media queries directly without string building
+                combined_type, combined_conditions = combine_media_query_parts(outer_mq, nested_mq.conditions)
+                combined_mq = Cataract::MediaQuery.new(@_media_query_id_counter, combined_type, combined_conditions)
+                @media_queries << combined_mq
+                rule.media_query_id = @_media_query_id_counter
+                @_media_query_id_counter += 1
+              else
+                rule.media_query_id = nested_mq_id
+              end
+            else
+              rule.media_query_id = nested_mq_id
             end
+          elsif rule.respond_to?(:media_query_id=)
+            # Assign the combined media_query_id if no media_query_id set
+            # (applies to both Rule and AtRule)
+            rule.media_query_id = combined_media_query_id
           end
 
-          # Add to full query symbol (after media types for insertion order)
-          @_media_index[combined_media_sym] ||= []
-          @_media_index[combined_media_sym] << @rule_id_counter
+          # NOTE: We no longer build media_index during parse
+          # It will be built from MediaQuery objects after import resolution
 
-          @rule_id_counter += 1
+          @_rule_id_counter += 1
           @rules << rule
         end
 
         # Move position past the closing brace
-        @pos = block_end
-        @pos += 1 if @pos < @len && @css.getbyte(@pos) == BYTE_RBRACE
+        @_pos = block_end
+        @_pos += 1 if @_pos < @_len && @_css.getbyte(@_pos) == BYTE_RBRACE
 
         return
       end
@@ -968,26 +1071,26 @@ module Cataract
 
         # Skip to opening brace
         while !eof? && peek_byte != BYTE_LBRACE
-          @pos += 1
+          @_pos += 1
         end
 
         return if eof? || peek_byte != BYTE_LBRACE
 
-        selector_end = @pos
+        selector_end = @_pos
         # Trim trailing whitespace
-        while selector_end > selector_start && whitespace?(@css.getbyte(selector_end - 1))
+        while selector_end > selector_start && whitespace?(@_css.getbyte(selector_end - 1))
           selector_end -= 1
         end
         selector = byteslice_encoded(selector_start, selector_end - selector_start)
 
-        @pos += 1 # skip '{'
+        @_pos += 1 # skip '{'
 
         # Find matching closing brace
-        block_start = @pos
-        block_end = find_matching_brace(@pos)
+        block_start = @_pos
+        block_end = find_matching_brace(@_pos)
 
         # Check depth before recursing
-        if @depth + 1 > MAX_PARSE_DEPTH
+        if @_depth + 1 > MAX_PARSE_DEPTH
           raise DepthError, "CSS nesting too deep: exceeded maximum depth of #{MAX_PARSE_DEPTH}"
         end
 
@@ -995,23 +1098,23 @@ module Cataract
         # Create a nested parser context
         nested_parser = Parser.new(
           byteslice_encoded(block_start, block_end - block_start),
-          parser_options: @parser_options,
-          depth: @depth + 1
+          parser_options: @_parser_options,
+          depth: @_depth + 1
         )
         nested_result = nested_parser.parse
         content = nested_result[:rules]
 
         # Move position past the closing brace
-        @pos = block_end
+        @_pos = block_end
         # The closing brace should be at block_end
-        @pos += 1 if @pos < @len && @css.getbyte(@pos) == BYTE_RBRACE
+        @_pos += 1 if @_pos < @_len && @_css.getbyte(@_pos) == BYTE_RBRACE
 
         # Get rule ID and increment
-        rule_id = @rule_id_counter
-        @rule_id_counter += 1
+        rule_id = @_rule_id_counter
+        @_rule_id_counter += 1
 
         # Create AtRule with nested rules
-        at_rule = AtRule.new(rule_id, selector, content, nil)
+        at_rule = AtRule.new(rule_id, selector, content, nil, @_parent_media_query_id)
         @rules << at_rule
 
         return
@@ -1024,38 +1127,38 @@ module Cataract
 
         # Skip to opening brace
         while !eof? && peek_byte != BYTE_LBRACE
-          @pos += 1
+          @_pos += 1
         end
 
         return if eof? || peek_byte != BYTE_LBRACE
 
-        selector_end = @pos
+        selector_end = @_pos
         # Trim trailing whitespace
-        while selector_end > selector_start && whitespace?(@css.getbyte(selector_end - 1))
+        while selector_end > selector_start && whitespace?(@_css.getbyte(selector_end - 1))
           selector_end -= 1
         end
         selector = byteslice_encoded(selector_start, selector_end - selector_start)
 
-        @pos += 1 # skip '{'
+        @_pos += 1 # skip '{'
 
         # Find matching closing brace
-        decl_start = @pos
-        decl_end = find_matching_brace(@pos)
+        decl_start = @_pos
+        decl_end = find_matching_brace(@_pos)
 
         # Parse declarations
         content = parse_declarations_block(decl_start, decl_end)
 
         # Move position past the closing brace
-        @pos = decl_end
+        @_pos = decl_end
         # The closing brace should be at decl_end
-        @pos += 1 if @pos < @len && @css.getbyte(@pos) == BYTE_RBRACE
+        @_pos += 1 if @_pos < @_len && @_css.getbyte(@_pos) == BYTE_RBRACE
 
         # Get rule ID and increment
-        rule_id = @rule_id_counter
-        @rule_id_counter += 1
+        rule_id = @_rule_id_counter
+        @_rule_id_counter += 1
 
         # Create AtRule with declarations
-        at_rule = AtRule.new(rule_id, selector, content, nil)
+        at_rule = AtRule.new(rule_id, selector, content, nil, @_parent_media_query_id)
         @rules << at_rule
 
         return
@@ -1067,26 +1170,26 @@ module Cataract
 
       # Skip to opening brace
       until eof? || peek_byte == BYTE_LBRACE # Save a not_opt instruction: while !eof? && peek_byte != BYTE_LBRACE
-        @pos += 1
+        @_pos += 1
       end
 
       return if eof? || peek_byte != BYTE_LBRACE
 
-      selector_end = @pos
+      selector_end = @_pos
       # Trim trailing whitespace
-      while selector_end > selector_start && whitespace?(@css.getbyte(selector_end - 1))
+      while selector_end > selector_start && whitespace?(@_css.getbyte(selector_end - 1))
         selector_end -= 1
       end
       selector = byteslice_encoded(selector_start, selector_end - selector_start)
 
-      @pos += 1 # skip '{'
+      @_pos += 1 # skip '{'
 
       # Parse declarations
       declarations = parse_declarations
 
       # Create Rule with declarations
       rule = Rule.new(
-        @rule_id_counter,    # id
+        @_rule_id_counter, # id
         selector,            # selector (e.g., "@property --main-color")
         declarations,        # declarations
         nil,                 # specificity
@@ -1095,7 +1198,7 @@ module Cataract
       )
 
       @rules << rule
-      @rule_id_counter += 1
+      @_rule_id_counter += 1
     end
 
     # Check if block contains nested selectors vs just declarations
@@ -1105,16 +1208,16 @@ module Cataract
 
       while pos < end_pos
         # Skip whitespace
-        while pos < end_pos && whitespace?(@css.getbyte(pos))
+        while pos < end_pos && whitespace?(@_css.getbyte(pos))
           pos += 1
         end
         break if pos >= end_pos
 
         # Skip comments
-        if pos + 1 < end_pos && @css.getbyte(pos) == BYTE_SLASH && @css.getbyte(pos + 1) == BYTE_STAR
+        if pos + 1 < end_pos && @_css.getbyte(pos) == BYTE_SLASH && @_css.getbyte(pos + 1) == BYTE_STAR
           pos += 2
           while pos + 1 < end_pos
-            if @css.getbyte(pos) == BYTE_STAR && @css.getbyte(pos + 1) == BYTE_SLASH
+            if @_css.getbyte(pos) == BYTE_STAR && @_css.getbyte(pos + 1) == BYTE_SLASH
               pos += 2
               break
             end
@@ -1124,24 +1227,24 @@ module Cataract
         end
 
         # Check for nested selector indicators
-        byte = @css.getbyte(pos)
+        byte = @_css.getbyte(pos)
         if byte == BYTE_AMPERSAND || byte == BYTE_DOT || byte == BYTE_HASH ||
            byte == BYTE_LBRACKET || byte == BYTE_COLON || byte == BYTE_ASTERISK ||
            byte == BYTE_GT || byte == BYTE_PLUS || byte == BYTE_TILDE
           # Look ahead - if followed by {, it's likely a nested selector
           lookahead = pos + 1
-          while lookahead < end_pos && @css.getbyte(lookahead) != BYTE_LBRACE &&
-                @css.getbyte(lookahead) != BYTE_SEMICOLON && @css.getbyte(lookahead) != BYTE_NEWLINE
+          while lookahead < end_pos && @_css.getbyte(lookahead) != BYTE_LBRACE &&
+                @_css.getbyte(lookahead) != BYTE_SEMICOLON && @_css.getbyte(lookahead) != BYTE_NEWLINE
             lookahead += 1
           end
-          return true if lookahead < end_pos && @css.getbyte(lookahead) == BYTE_LBRACE
+          return true if lookahead < end_pos && @_css.getbyte(lookahead) == BYTE_LBRACE
         end
 
         # Check for @media, @supports, etc nested inside
         return true if byte == BYTE_AT
 
         # Skip to next line or semicolon
-        while pos < end_pos && @css.getbyte(pos) != BYTE_SEMICOLON && @css.getbyte(pos) != BYTE_NEWLINE
+        while pos < end_pos && @_css.getbyte(pos) != BYTE_SEMICOLON && @_css.getbyte(pos) != BYTE_NEWLINE
           pos += 1
         end
         pos += 1 if pos < end_pos
@@ -1277,10 +1380,10 @@ module Cataract
     # Skip to next semicolon or closing brace (error recovery)
     def skip_to_semicolon_or_brace
       until eof? || peek_byte == BYTE_SEMICOLON || peek_byte == BYTE_RBRACE # Flip to save a not_opt instruction: while !eof? && peek_byte != BYTE_SEMICOLON && peek_byte != BYTE_RBRACE
-        @pos += 1
+        @_pos += 1
       end
 
-      @pos += 1 if peek_byte == BYTE_SEMICOLON # consume semicolon
+      @_pos += 1 if peek_byte == BYTE_SEMICOLON # consume semicolon
     end
 
     # Parse an @import statement
@@ -1291,9 +1394,9 @@ module Cataract
 
       # Check for optional url(
       has_url_function = false
-      if @pos + 4 <= @len && match_ascii_ci?(@css, @pos, 'url(')
+      if @_pos + 4 <= @_len && match_ascii_ci?(@_css, @_pos, 'url(')
         has_url_function = true
-        @pos += 4
+        @_pos += 4
         skip_ws_and_comments
       end
 
@@ -1302,24 +1405,24 @@ module Cataract
       if eof? || (byte != BYTE_DQUOTE && byte != BYTE_SQUOTE)
         # Invalid @import, skip to semicolon
         while !eof? && peek_byte != BYTE_SEMICOLON
-          @pos += 1
+          @_pos += 1
         end
-        @pos += 1 unless eof?
+        @_pos += 1 unless eof?
         return
       end
 
       quote_char = byte
-      @pos += 1 # Skip opening quote
+      @_pos += 1 # Skip opening quote
 
-      url_start = @pos
+      url_start = @_pos
 
       # Find closing quote (handle escaped quotes)
       while !eof? && peek_byte != quote_char
-        @pos += if peek_byte == BYTE_BACKSLASH && @pos + 1 < @len
-                  2 # Skip escaped character
-                else
-                  1
-                end
+        @_pos += if peek_byte == BYTE_BACKSLASH && @_pos + 1 < @_len
+                   2 # Skip escaped character
+                 else
+                   1
+                 end
       end
 
       if eof?
@@ -1327,96 +1430,104 @@ module Cataract
         return
       end
 
-      url = byteslice_encoded(url_start, @pos - url_start)
-      @pos += 1 # Skip closing quote
+      url = byteslice_encoded(url_start, @_pos - url_start)
+      @_pos += 1 # Skip closing quote
 
       # Skip closing paren if we had url(
       if has_url_function
         skip_ws_and_comments
-        @pos += 1 if peek_byte == BYTE_RPAREN
+        @_pos += 1 if peek_byte == BYTE_RPAREN
       end
 
       skip_ws_and_comments
 
       # Check for optional media query (everything until semicolon)
-      media = nil
+      media_string = nil
+      media_query_id = nil
       if !eof? && peek_byte != BYTE_SEMICOLON
-        media_start = @pos
+        media_start = @_pos
 
         # Find semicolon
         while !eof? && peek_byte != BYTE_SEMICOLON
-          @pos += 1
+          @_pos += 1
         end
 
-        media_end = @pos
+        media_end = @_pos
 
         # Trim trailing whitespace from media query
-        while media_end > media_start && whitespace?(@css.getbyte(media_end - 1))
+        while media_end > media_start && whitespace?(@_css.getbyte(media_end - 1))
           media_end -= 1
         end
 
         if media_end > media_start
-          media = byteslice_encoded(media_start, media_end - media_start).to_sym
+          media_string = byteslice_encoded(media_start, media_end - media_start)
+
+          # Split comma-separated media queries (e.g., "screen, handheld" -> ["screen", "handheld"])
+          media_query_strings = media_string.split(',').map(&:strip)
+
+          # Create MediaQuery objects for each query in the list
+          media_query_ids = []
+          media_query_strings.each do |query_string|
+            media_type, media_conditions = parse_media_query_parts(query_string)
+
+            # If we have a parent import's media context, combine them
+            parent_import_type = @_parser_options[:parent_import_media_type]
+            parent_import_conditions = @_parser_options[:parent_import_media_conditions]
+
+            if parent_import_type
+              # Combine: parent's type is the effective type
+              # Conditions are combined with "and"
+              combined_type = parent_import_type
+              combined_conditions = if parent_import_conditions && media_conditions
+                                      "#{parent_import_conditions} and #{media_conditions}"
+                                    elsif parent_import_conditions
+                                      "#{parent_import_conditions} and #{media_type}#{" and #{media_conditions}" if media_conditions}"
+                                    elsif media_conditions
+                                      media_type == :all ? media_conditions : "#{media_type} and #{media_conditions}"
+                                    else
+                                      media_type == parent_import_type ? nil : media_type.to_s
+                                    end
+
+              media_type = combined_type
+              media_conditions = combined_conditions
+            end
+
+            # Create MediaQuery object
+            media_query = Cataract::MediaQuery.new(@_media_query_id_counter, media_type, media_conditions)
+            @media_queries << media_query
+            media_query_ids << @_media_query_id_counter
+            @_media_query_id_counter += 1
+          end
+
+          # Use the first media query ID for the import statement
+          # (The list is tracked separately for serialization)
+          media_query_id = media_query_ids.first
+
+          # If multiple queries, track them as a list for serialization
+          if media_query_ids.size > 1
+            media_query_list_id = @_next_media_query_list_id
+            @_media_query_lists[media_query_list_id] = media_query_ids
+            @_next_media_query_list_id += 1
+          end
         end
       end
 
       # Skip semicolon
-      @pos += 1 if peek_byte == BYTE_SEMICOLON
+      @_pos += 1 if peek_byte == BYTE_SEMICOLON
 
       # Create ImportStatement (resolved: false by default)
-      import_stmt = ImportStatement.new(@rule_id_counter, url, media, false)
+      import_stmt = ImportStatement.new(@_rule_id_counter, url, media_string, media_query_id, false)
       @imports << import_stmt
-      @rule_id_counter += 1
-    end
-
-    # Skip @import statements at the beginning of CSS (DEPRECATED - now parsed)
-    # Per CSS spec, @import must come before all rules (except @charset)
-    def skip_imports
-      until eof?
-        # Skip whitespace
-        while !eof? && whitespace?(peek_byte)
-          @pos += 1
-        end
-        break if eof?
-
-        # Skip comments
-        if @pos + 1 < @len && @css.getbyte(@pos) == BYTE_SLASH && @css.getbyte(@pos + 1) == BYTE_STAR
-          @pos += 2
-          while @pos + 1 < @len
-            if @css.getbyte(@pos) == BYTE_STAR && @css.getbyte(@pos + 1) == BYTE_SLASH
-              @pos += 2
-              break
-            end
-            @pos += 1
-          end
-          next
-        end
-
-        # Check for @import (case-insensitive byte comparison)
-        if @pos + 7 <= @len && @css.getbyte(@pos) == BYTE_AT && match_ascii_ci?(@css, @pos + 1, 'import')
-          # Check that it's followed by whitespace or quote
-          if @pos + 7 >= @len || whitespace?(@css.getbyte(@pos + 7)) || @css.getbyte(@pos + 7) == BYTE_SQUOTE || @css.getbyte(@pos + 7) == BYTE_DQUOTE
-            # Skip to semicolon
-            while !eof? && peek_byte != BYTE_SEMICOLON
-              @pos += 1
-            end
-            @pos += 1 unless eof? # Skip semicolon
-            next
-          end
-        end
-
-        # Hit non-@import content, stop skipping
-        break
-      end
+      @_rule_id_counter += 1
     end
 
     # Convert relative URLs in a value string to absolute URLs
-    # Called when @absolute_paths is enabled and @base_uri is set
+    # Called when @_absolute_paths is enabled and @_base_uri is set
     #
     # @param value [String] The declaration value to process
     # @return [String] Value with relative URLs converted to absolute
     def convert_urls_in_value(value)
-      return value unless @absolute_paths && @base_uri
+      return value unless @_absolute_paths && @_base_uri
 
       result = +''
       pos = 0
@@ -1505,7 +1616,7 @@ module Cataract
           if needs_resolution
             # Resolve relative URL using the resolver proc
             begin
-              resolved = @uri_resolver.call(@base_uri, url_str)
+              resolved = @_uri_resolver.call(@_base_uri, url_str)
               result << "'" << resolved << "'"
             rescue StandardError
               # If resolution fails, preserve original
@@ -1551,7 +1662,7 @@ module Cataract
 
       while pos < end_pos
         # Skip whitespace
-        while pos < end_pos && whitespace?(@css.getbyte(pos))
+        while pos < end_pos && whitespace?(@_css.getbyte(pos))
           pos += 1
         end
         break if pos >= end_pos
@@ -1562,6 +1673,116 @@ module Cataract
       end
 
       declarations
+    end
+
+    # Combine parent and child media query parts directly without string building
+    #
+    # The parent's type takes precedence (child type is ignored per CSS spec).
+    #
+    # @param parent_mq [MediaQuery] Parent media query object
+    # @param child_conditions [String|nil] Child conditions (e.g., "(min-width: 500px)")
+    # @return [Array<Symbol, String|nil>] [combined_type, combined_conditions]
+    #
+    # @example
+    #   combine_media_query_parts(screen_mq, "(min-width: 500px)") #=> [:screen, "... and (min-width: 500px)"]
+    def combine_media_query_parts(parent_mq, child_conditions)
+      # Type: parent's type wins (outermost type)
+      combined_type = parent_mq.type
+
+      # Conditions: combine parent and child conditions
+      combined_conditions = if parent_mq.conditions && child_conditions
+                              "#{parent_mq.conditions} and #{child_conditions}"
+                            elsif parent_mq.conditions
+                              parent_mq.conditions
+                            elsif child_conditions
+                              child_conditions
+                            end
+
+      [combined_type, combined_conditions]
+    end
+
+    # Parse media query string into type and conditions
+    #
+    # @param query [String] Media query string (e.g., "screen", "screen and (min-width: 768px)")
+    # @return [Array<Symbol, String|nil>] [type, conditions] where type is Symbol, conditions is String or nil
+    #
+    # @example
+    #   parse_media_query_parts("screen") #=> [:screen, nil]
+    #   parse_media_query_parts("screen and (min-width: 768px)") #=> [:screen, "(min-width: 768px)"]
+    #   parse_media_query_parts("(min-width: 500px)") #=> [:all, "(min-width: 500px)"]
+    def parse_media_query_parts(query)
+      i = 0
+      len = query.bytesize
+
+      # Skip leading whitespace
+      while i < len && whitespace?(query.getbyte(i))
+        i += 1
+      end
+
+      return [:all, nil] if i >= len
+
+      # Check if starts with '(' - media feature without type (defaults to :all)
+      if query.getbyte(i) == BYTE_LPAREN
+        return [:all, query.byteslice(i, len - i)]
+      end
+
+      # Find first media type word
+      word_start = i
+      while i < len
+        byte = query.getbyte(i)
+        break if whitespace?(byte) || byte == BYTE_LPAREN
+
+        i += 1
+      end
+
+      type = query.byteslice(word_start, i - word_start).to_sym
+
+      # Skip whitespace after type
+      while i < len && whitespace?(query.getbyte(i))
+        i += 1
+      end
+
+      # Check if there's more (conditions)
+      if i >= len
+        return [type, nil]
+      end
+
+      # Look for " and " keyword (case-insensitive)
+      # We need to find "and" as a separate word
+      and_pos = nil
+      check_i = i
+      while check_i < len - 2
+        # Check for 'and' (a=97/65, n=110/78, d=100/68)
+        byte0 = query.getbyte(check_i)
+        byte1 = query.getbyte(check_i + 1)
+        byte2 = query.getbyte(check_i + 2)
+
+        if (byte0 == BYTE_LOWER_A || byte0 == BYTE_UPPER_A) &&
+           (byte1 == BYTE_LOWER_N || byte1 == BYTE_UPPER_N) &&
+           (byte2 == BYTE_LOWER_D || byte2 == BYTE_UPPER_D)
+          # Make sure it's a word boundary (whitespace before and after)
+          before_ok = check_i == 0 || whitespace?(query.getbyte(check_i - 1))
+          after_ok = check_i + 3 >= len || whitespace?(query.getbyte(check_i + 3))
+          if before_ok && after_ok
+            and_pos = check_i
+            break
+          end
+        end
+        check_i += 1
+      end
+
+      if and_pos
+        # Skip past "and " to get conditions
+        conditions_start = and_pos + 3 # skip "and"
+        while conditions_start < len && whitespace?(query.getbyte(conditions_start))
+          conditions_start += 1
+        end
+        conditions = query.byteslice(conditions_start, len - conditions_start)
+        [type, conditions]
+      else
+        # No "and" found - rest is conditions (unusual but possible)
+        [type, query.byteslice(i, len - i)]
+      end
     end
   end
 end

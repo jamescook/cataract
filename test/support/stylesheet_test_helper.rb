@@ -16,7 +16,7 @@ module StylesheetTestHelper
       if media == :all
         refute_empty object.rules, 'Expected stylesheet to have rules for :all media'
       else
-        rule_ids = object.instance_variable_get(:@_media_index)[media]
+        rule_ids = object.media_index[media]
 
         refute_nil rule_ids, "Expected stylesheet to have media index entry for #{media.inspect}"
         refute_empty rule_ids, "Expected stylesheet to have rules for media #{media.inspect}"
@@ -36,7 +36,7 @@ module StylesheetTestHelper
   # @param media [Symbol] Media query symbol
   # @param stylesheet [Stylesheet] The stylesheet containing the rule
   def assert_rule_in_media(rule, media, stylesheet)
-    rule_ids = stylesheet.instance_variable_get(:@_media_index)[media]
+    rule_ids = stylesheet.media_index[media]
 
     assert rule_ids, "Expected stylesheet to have media index entry for #{media.inspect}"
     assert_includes rule_ids, rule.id,
@@ -233,12 +233,10 @@ module StylesheetTestHelper
   #   assert_media_types([:screen, :print], rule, @sheet)
   def assert_media_types(expected, rule, stylesheet)
     # Find which media index entries contain this rule ID
-    media_keys = stylesheet.instance_variable_get(:@_media_index).select { |_media, ids| ids.include?(rule.id) }.keys
+    media_keys = stylesheet.media_index.select { |_media, ids| ids.include?(rule.id) }.keys
 
-    # Extract media types from each key using C parser
-    # This handles complex queries like "screen (min-width: 400px)" => [:screen]
-    # and compound queries like "screen, print" => [:screen, :print]
-    actual = media_keys.flat_map { |key| Cataract.parse_media_types(key) }.uniq.sort
+    # Media keys are already simple media type symbols
+    actual = media_keys.sort
 
     # If not in any media query, it's a base rule (applies to :all)
     actual = [:all] if actual.empty?

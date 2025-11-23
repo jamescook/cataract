@@ -46,9 +46,12 @@ class TestStylesheetQuerying < Minitest::Test
     sheet = Cataract::Stylesheet.parse(css)
     media_queries = sheet.media_queries
 
-    assert_equal 2, media_queries.length
-    assert_member media_queries, :screen
-    assert_member media_queries, :print
+    # Should have unique media types
+    media_types = media_queries.map(&:type).uniq
+
+    assert_equal 2, media_types.length
+    assert_member media_types, :screen
+    assert_member media_types, :print
   end
 
   def test_each_selector_basic
@@ -73,13 +76,8 @@ class TestStylesheetQuerying < Minitest::Test
     # Should have 2 rules total
     assert_equal 2, sheet.size
 
-    # Query with combined media should return nested rule
-    combined_media = :'screen and (min-width: 500px)'
-
-    assert_matches_media combined_media, sheet
-    assert_selectors_match ['.nested'], sheet, media: combined_media
-
-    # Query with just :screen should return nested rule (it's in screen index too)
+    # Nested media queries are indexed by their outermost type (:screen)
+    # Query with :screen should return nested rule
     assert_matches_media :screen, sheet
     assert_selectors_match ['.nested'], sheet, media: :screen
 

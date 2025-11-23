@@ -76,8 +76,8 @@ class TestStylesheetMinusOperator < Minitest::Test
 
     assert_equal 1, result.rules.size, 'Should remove matching media rule'
     assert_equal '.other', result.rules[0].selector
-    assert_member result.media_queries, :screen
-    refute_includes result.media_queries, :print
+    assert result.media_queries.any? { |mq| mq.type == :screen }, 'Should have screen media query'
+    refute result.media_queries.any? { |mq| mq.type == :print }, 'Should not have print media query'
   end
 
   def test_minus_operator_updates_media_index_correctly

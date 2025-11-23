@@ -1,0 +1,102 @@
+/* Nested selectors for to_formatted_s benchmark */
+.card {
+  background: white;
+  border: 1px solid #ddd;
+
+  .card-header {
+    padding: 1rem;
+    border-bottom: 1px solid #ddd;
+
+    h2 {
+      margin: 0;
+      font-size: 1.5rem;
+    }
+  }
+
+  .card-body {
+    padding: 1rem;
+
+    p {
+      margin-bottom: 1rem;
+    }
+
+    &.highlighted {
+      background: #f0f0f0;
+    }
+  }
+}
+
+@media (min-width: 768px) {
+  .card {
+    max-width: 600px;
+
+    .card-header {
+      padding: 1.5rem;
+    }
+  }
+
+  .container {
+    padding: 2rem;
+
+    .row {
+      display: flex;
+      gap: 1rem;
+    }
+  }
+}
+
+@media print {
+  .card {
+    border: none;
+    box-shadow: none;
+
+    .card-header {
+      page-break-after: avoid;
+    }
+  }
+}
+
+.nav {
+  display: flex;
+  list-style: none;
+
+  .nav-item {
+    margin-right: 1rem;
+
+    a {
+      text-decoration: none;
+      color: #333;
+
+      &:hover {
+        color: #007bff;
+      }
+
+      &.active {
+        font-weight: bold;
+      }
+    }
+  }
+}
+
+.form {
+  .form-group {
+    margin-bottom: 1rem;
+
+    label {
+      display: block;
+      margin-bottom: 0.5rem;
+    }
+
+    input,
+    textarea {
+      width: 100%;
+      padding: 0.5rem;
+      border: 1px solid #ccc;
+
+      &:focus {
+        outline: none;
+        border-color: #007bff;
+      }
+    }
+  }
+}

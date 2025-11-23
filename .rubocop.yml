@@ -103,10 +103,12 @@ Naming/PredicatePrefix:
 # These cosmetic style rules add overhead via method dispatch or allocation
 
 # Disable numeric predicates in hot path - method dispatch overhead
-# Benchmark shows `> 0` is faster than `.positive?` due to avoiding method call
+# Benchmark shows `length > 0` is 30% faster than `.positive?` (method dispatch overhead)
+# `!empty?` has no perf penalty vs `length > 0` but `.positive?` is significantly slower
 Style/NumericPredicate:
   Exclude:
     - 'lib/cataract/pure/**/*.rb'
+    - 'lib/cataract/stylesheet.rb'
 
 # Disable multiple comparison style - avoid array allocation
 # `||` chain is faster than `Array#include?` which allocates an array
@@ -114,11 +116,13 @@ Style/MultipleComparison:
   Exclude:
     - 'lib/cataract/pure/**/*.rb'
 
-# Disable zero-length predicate in hot path - method dispatch overhead
-# Direct comparison `.length > 0` is faster than `.empty?` method call
+# Disable zero-length predicate - prefer `length > 0` for consistency with NumericPredicate
+# While `!empty?` has no perf penalty vs `length > 0`, we use `length > 0` consistently
+# to avoid mixing styles (since `.positive?` is 30% slower and must be avoided)
 Style/ZeroLengthPredicate:
   Exclude:
     - 'lib/cataract/pure/**/*.rb'
+    - 'lib/cataract/stylesheet.rb'
 
 # Benchmarked range vs offsets. Range has to allocated
 # so not ideal in the hot path

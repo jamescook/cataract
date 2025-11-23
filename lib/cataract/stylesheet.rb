@@ -26,6 +26,61 @@ module Cataract
     # @return [Array<Rule>] Array of parsed CSS rules
     attr_reader :rules
 
+    # @return [Array<MediaQuery>] Array of media query objects
+    attr_reader :media_queries
+
+    # @return [Hash<Symbol, Array<Integer>>] Cached index mapping media query text to rule IDs
+    # Lazily build and return media_index.
+    # Only builds the index when first accessed, not eagerly during parse.
+    #
+    # @return [Hash{Symbol => Array<Integer>}] Hash mapping media types to rule IDs
+    def media_index
+      # If media_index is empty but we have rules with media_query_id, build it
+      if @media_index.empty? && @rules.any? { |r| r.respond_to?(:media_query_id) && r.media_query_id }
+        @media_index = {}
+
+        # First, build a reverse lookup: media_query_id => list_id (if in a list)
+        mq_id_to_list_id = {}
+        @_media_query_lists.each do |list_id, mq_ids|
+          mq_ids.each { |mq_id| mq_id_to_list_id[mq_id] = list_id }
+        end
+
+        @rules.each do |rule|
+          next unless rule.media_query_id
+
+          # Check if this rule's media_query_id is part of a list
+          list_id = mq_id_to_list_id[rule.media_query_id]
+
+          if list_id
+            # This rule is in a compound media query (e.g., "@media screen, print")
+            # Index it under ALL media types in the list
+            mq_ids = @_media_query_lists[list_id]
+            mq_ids.each do |mq_id|
+              mq = @media_queries[mq_id]
+              next unless mq
+
+              media_type = mq.type
+              @media_index[media_type] ||= []
+              @media_index[media_type] << rule.id
+            end
+          else
+            # Single media query - index under its type
+            mq = @media_queries[rule.media_query_id]
+            next unless mq
+
+            media_type = mq.type
+            @media_index[media_type] ||= []
+            @media_index[media_type] << rule.id
+          end
+        end
+
+        # Deduplicate arrays once at the end
+        @media_index.each_value(&:uniq!)
+      end
+
+      @media_index
+    end
+
     # @return [String, nil] The @charset declaration if present
     attr_reader :charset
 
@@ -73,9 +128,13 @@ module Cataract
       }.merge(@options[:parser] || {})
 
       @rules = [] # Flat array of Rule structs
-      @_media_index = {} # Hash: Symbol => Array of rule IDs
+      @media_queries = [] # Array of MediaQuery objects
+      @_next_media_query_id = 0 # Counter for MediaQuery IDs
+      @media_index = {} # Hash: Symbol => Array of rule IDs (cached index, can be rebuilt from rules)
       @_selector_lists = {} # Hash: list_id => Array of rule IDs (for "h1, h2" grouping)
       @_next_selector_list_id = 0 # Counter for selector list IDs
+      @_media_query_lists = {} # Hash: list_id => Array of MediaQuery IDs (for "screen, print" grouping)
+      @_next_media_query_list_id = 0 # Counter for media query list IDs
       @charset = nil
       @imports = [] # Array of ImportStatement objects
       @_has_nesting = nil # Set by parser (nil or boolean)
@@ -93,10 +152,14 @@ module Cataract
     def initialize_copy(source)
       super
       @rules = source.instance_variable_get(:@rules).dup
+      @media_queries = source.instance_variable_get(:@media_queries).dup
+      @_next_media_query_id = source.instance_variable_get(:@_next_media_query_id)
+      @media_index = source.instance_variable_get(:@media_index).transform_values(&:dup)
       @imports = source.instance_variable_get(:@imports).dup
-      @_media_index = source.instance_variable_get(:@_media_index).transform_values(&:dup)
       @_selector_lists = source.instance_variable_get(:@_selector_lists).transform_values(&:dup)
       @_next_selector_list_id = source.instance_variable_get(:@_next_selector_list_id)
+      @_media_query_lists = source.instance_variable_get(:@_media_query_lists).transform_values(&:dup)
+      @_next_media_query_list_id = source.instance_variable_get(:@_next_media_query_list_id)
       @parser_options = source.instance_variable_get(:@parser_options).dup
       clear_memoized_caches
       @_hash = nil # Clear cached hash
@@ -306,15 +369,8 @@ module Cataract
     # @return [Array<Rule>] Rules with no media query
     def base_rules
       # Rules not in any media_index entry
-      media_rule_ids = @_media_index.values.flatten.uniq
+      media_rule_ids = media_index.values.flatten.uniq
       @rules.select.with_index { |_rule, idx| !media_rule_ids.include?(idx) }
-    end
-
-    # Get all unique media query symbols
-    #
-    # @return [Array<Symbol>] Array of unique media query symbols
-    def media_queries
-      @_media_index.keys
     end
 
     # Get all selectors
@@ -396,13 +452,14 @@ module Cataract
 
       # If :all is present, return everything (no filtering)
       if which_media_array.include?(:all)
-        Cataract._stylesheet_to_s(@rules, @_media_index, @charset, @_has_nesting || false, @_selector_lists)
+        Cataract.stylesheet_to_s(@rules, @charset, @_has_nesting || false, @_selector_lists, @media_queries, @_media_query_lists)
       else
         # Collect all rule IDs that match the requested media types
         matching_rule_ids = []
+        mi = media_index # Build media_index if needed
         which_media_array.each do |media_sym|
-          if @_media_index[media_sym]
-            matching_rule_ids.concat(@_media_index[media_sym])
+          if mi[media_sym]
+            matching_rule_ids.concat(mi[media_sym])
           end
         end
         matching_rule_ids.uniq! # Dedupe: same rule can be in multiple media indexes
@@ -410,17 +467,8 @@ module Cataract
         # Build filtered rules array (keep original IDs, no recreation needed)
         filtered_rules = matching_rule_ids.sort.map! { |rule_id| @rules[rule_id] }
 
-        # Build filtered media_index (keep original IDs, just filter to included rules)
-        filtered_media_index = {}
-        which_media_array.each do |media_sym|
-          if @_media_index[media_sym]
-            filtered_media_index[media_sym] = @_media_index[media_sym] & matching_rule_ids
-          end
-        end
-
-        # C serialization with filtered data
-        # Note: Filtered rules might still contain nesting, so pass the flag
-        Cataract._stylesheet_to_s(filtered_rules, filtered_media_index, @charset, @_has_nesting || false, @_selector_lists)
+        # Serialize with filtered data
+        Cataract.stylesheet_to_s(filtered_rules, @charset, @_has_nesting || false, @_selector_lists, @media_queries, @_media_query_lists)
       end
     end
     alias to_css to_s
@@ -453,21 +501,22 @@ module Cataract
 
       # If :all is present, return everything (no filtering)
       if which_media_array.include?(:all)
-        Cataract._stylesheet_to_formatted_s(@rules, @_media_index, @charset, @_has_nesting || false, @_selector_lists)
+        Cataract.stylesheet_to_formatted_s(@rules, @charset, @_has_nesting || false, @_selector_lists, @media_queries, @_media_query_lists)
       else
         # Collect all rule IDs that match the requested media types
         matching_rule_ids = []
+        mi = media_index # Build media_index if needed
 
         # Include rules not in any media query (they apply to all media)
-        media_rule_ids = @_media_index.values.flatten.uniq
+        media_rule_ids = mi.values.flatten.uniq
         all_rule_ids = (0...@rules.length).to_a
         non_media_rule_ids = all_rule_ids - media_rule_ids
         matching_rule_ids.concat(non_media_rule_ids)
 
         # Include rules from requested media types
         which_media_array.each do |media_sym|
-          if @_media_index[media_sym]
-            matching_rule_ids.concat(@_media_index[media_sym])
+          if mi[media_sym]
+            matching_rule_ids.concat(mi[media_sym])
           end
         end
         matching_rule_ids.uniq! # Dedupe: same rule can be in multiple media indexes
@@ -475,17 +524,8 @@ module Cataract
         # Build filtered rules array (keep original IDs, no recreation needed)
         filtered_rules = matching_rule_ids.sort.map! { |rule_id| @rules[rule_id] }
 
-        # Build filtered media_index (keep original IDs, just filter to included rules)
-        filtered_media_index = {}
-        which_media_array.each do |media_sym|
-          if @_media_index[media_sym]
-            filtered_media_index[media_sym] = @_media_index[media_sym] & matching_rule_ids
-          end
-        end
-
-        # C serialization with filtered data
-        # Note: Filtered rules might still contain nesting, so pass the flag
-        Cataract._stylesheet_to_formatted_s(filtered_rules, filtered_media_index, @charset, @_has_nesting || false, @_selector_lists)
+        # Serialize with filtered data
+        Cataract.stylesheet_to_formatted_s(filtered_rules, @charset, @_has_nesting || false, @_selector_lists, @media_queries, @_media_query_lists)
       end
     end
 
@@ -510,7 +550,7 @@ module Cataract
     # @return [self] Returns self for method chaining
     def clear!
       @rules.clear
-      @_media_index.clear
+      @media_index.clear
       @charset = nil
       clear_memoized_caches
       self
@@ -639,16 +679,14 @@ module Cataract
 
         # Check media type match if filter is specified
         if filter_media
-          rule_media_types = @_media_index.select { |_media, ids| ids.include?(rule_id) }.keys
-          # Extract individual media types from complex queries
-          individual_types = rule_media_types.flat_map { |key| Cataract.parse_media_types(key) }.uniq
+          rule_media_types = media_index.select { |_media, ids| ids.include?(rule_id) }.keys
 
           # If rule is not in any media query (base rule), skip unless :all is specified
-          if individual_types.empty?
+          if rule_media_types.empty?
             next unless filter_media.include?(:all)
           else
             # Check if rule's media types intersect with filter
-            next unless individual_types.intersect?(filter_media)
+            next unless rule_media_types.intersect?(filter_media)
           end
         end
 
@@ -660,7 +698,7 @@ module Cataract
         @rules.delete_at(rule_id)
 
         # Remove from media_index and update IDs for rules after this one
-        @_media_index.each_value do |ids|
+        @media_index.each_value do |ids|
           ids.delete(rule_id)
           # Decrement IDs greater than removed ID
           ids.map! { |id| id > rule_id ? id - 1 : id }
@@ -668,7 +706,11 @@ module Cataract
       end
 
       # Clean up empty media_index entries
-      @_media_index.delete_if { |_media, ids| ids.empty? }
+      @media_index.delete_if { |_media, ids| ids.empty? }
+
+      # Clean up unused MediaQuery objects (those not referenced by any rule)
+      used_mq_ids = @rules.filter_map { |r| r.media_query_id if r.is_a?(Rule) }.to_set
+      @media_queries.select! { |mq| used_mq_ids.include?(mq.id) }
 
       # Update rule IDs in remaining rules
       @rules.each_with_index { |rule, new_id| rule.id = new_id }
@@ -716,7 +758,6 @@ module Cataract
       result = Cataract._parse_css(css, parse_options)
 
       # Merge selector_lists with offsetted IDs
-      # Must do this BEFORE updating rule IDs so we can update rule.selector_list_id
       list_id_offset = @_next_selector_list_id
       if result[:_selector_lists] && !result[:_selector_lists].empty?
         result[:_selector_lists].each do |list_id, rule_ids|
@@ -727,6 +768,18 @@ module Cataract
         @_next_selector_list_id = list_id_offset + result[:_selector_lists].size
       end
 
+      # Merge media_query_lists with offsetted IDs
+      media_query_id_offset = @_next_media_query_id
+      mq_list_id_offset = @_next_media_query_list_id
+      if result[:_media_query_lists] && !result[:_media_query_lists].empty?
+        result[:_media_query_lists].each do |list_id, mq_ids|
+          new_list_id = list_id + mq_list_id_offset
+          offsetted_mq_ids = mq_ids.map { |id| id + media_query_id_offset }
+          @_media_query_lists[new_list_id] = offsetted_mq_ids
+        end
+        @_next_media_query_list_id = mq_list_id_offset + result[:_media_query_lists].size
+      end
+
       # Merge rules with offsetted IDs
       new_rules = result[:rules]
       new_rules.each do |rule|
@@ -735,17 +788,30 @@ module Cataract
         if rule.is_a?(Rule) && rule.selector_list_id
           rule.selector_list_id += list_id_offset
         end
+        # Update media_query_id to point to offsetted MediaQuery
+        if rule.is_a?(Rule) && rule.media_query_id
+          rule.media_query_id += media_query_id_offset
+        end
         @rules << rule
       end
 
       # Merge media_index with offsetted IDs
       result[:_media_index].each do |media_sym, rule_ids|
         offsetted_ids = rule_ids.map { |id| id + offset }
-        if @_media_index[media_sym]
-          @_media_index[media_sym].concat(offsetted_ids)
+        if @media_index[media_sym]
+          @media_index[media_sym].concat(offsetted_ids)
         else
-          @_media_index[media_sym] = offsetted_ids
+          @media_index[media_sym] = offsetted_ids
         end
+      end
+
+      # Merge media_queries with offsetted IDs
+      if result[:media_queries]
+        result[:media_queries].each do |mq|
+          mq.id += media_query_id_offset
+          @media_queries << mq
+        end
+        @_next_media_query_id += result[:media_queries].length
       end
 
       # Update last rule ID
@@ -836,7 +902,7 @@ module Cataract
     def ==(other)
       return false unless other.is_a?(Stylesheet)
       return false unless rules == other.rules
-      return false unless @_media_index == other.instance_variable_get(:@_media_index)
+      return false unless @media_queries == other.instance_variable_get(:@media_queries)
 
       true
     end
@@ -844,11 +910,11 @@ module Cataract
 
     # Generate hash code for this stylesheet.
     #
-    # Hash is based on rules and media_index to match equality semantics.
+    # Hash is based on rules and media_queries to match equality semantics.
     #
     # @return [Integer] hash code
     def hash
-      @_hash ||= [self.class, rules, @_media_index].hash # rubocop:disable Naming/MemoizedInstanceVariableName
+      @_hash ||= [self.class, rules, @media_queries].hash # rubocop:disable Naming/MemoizedInstanceVariableName
     end
 
     # Flatten all rules in this stylesheet according to CSS cascade rules.
@@ -880,7 +946,7 @@ module Cataract
     def flatten!
       flattened = Cataract.flatten(self)
       @rules = flattened.instance_variable_get(:@rules)
-      @_media_index = flattened.instance_variable_get(:@_media_index)
+      @media_index = flattened.instance_variable_get(:@media_index)
       @_has_nesting = flattened.instance_variable_get(:@_has_nesting)
       self
     end
@@ -913,12 +979,12 @@ module Cataract
       end
 
       # Merge media_index with offsetted IDs
-      other.instance_variable_get(:@_media_index).each do |media_sym, rule_ids|
+      other.instance_variable_get(:@media_index).each do |media_sym, rule_ids|
         offsetted_ids = rule_ids.map { |id| id + offset }
-        if @_media_index[media_sym]
-          @_media_index[media_sym].concat(offsetted_ids)
+        if @media_index[media_sym]
+          @media_index[media_sym].concat(offsetted_ids)
         else
-          @_media_index[media_sym] = offsetted_ids
+          @media_index[media_sym] = offsetted_ids
         end
       end
 
@@ -969,7 +1035,7 @@ module Cataract
         result.rules.delete_at(idx)
 
         # Update media_index: remove this rule ID and decrement higher IDs
-        result.instance_variable_get(:@_media_index).each_value do |ids|
+        result.instance_variable_get(:@media_index).each_value do |ids|
           ids.delete(idx)
           ids.map! { |id| id > idx ? id - 1 : id }
         end
@@ -979,7 +1045,43 @@ module Cataract
       result.rules.each_with_index { |rule, new_id| rule.id = new_id }
 
       # Clean up empty media_index entries
-      result.instance_variable_get(:@_media_index).delete_if { |_media, ids| ids.empty? }
+      result.instance_variable_get(:@media_index).delete_if { |_media, ids| ids.empty? }
+
+      # Clean up unused MediaQuery objects and rebuild ID mapping
+      used_mq_ids = Set.new
+      result.rules.each do |rule|
+        used_mq_ids << rule.media_query_id if rule.respond_to?(:media_query_id) && rule.media_query_id
+      end
+
+      # Build old_id => new_id mapping
+      # Keep MediaQuery objects that are used, maintaining their IDs
+      old_to_new_mq_id = {}
+      kept_mqs = []
+      result.instance_variable_get(:@media_queries).each do |mq|
+        next unless used_mq_ids.include?(mq.id)
+
+        old_to_new_mq_id[mq.id] = kept_mqs.size
+        mq.id = kept_mqs.size
+        kept_mqs << mq
+      end
+
+      # Replace media_queries array with kept ones
+      result.instance_variable_set(:@media_queries, kept_mqs)
+
+      # Update media_query_id references in rules
+      result.rules.each do |rule|
+        if rule.respond_to?(:media_query_id) && rule.media_query_id
+          rule.media_query_id = old_to_new_mq_id[rule.media_query_id]
+        end
+      end
+
+      # Update media_query_lists with new IDs
+      result.instance_variable_get(:@_media_query_lists).each_value do |mq_ids|
+        mq_ids.map! { |mq_id| old_to_new_mq_id[mq_id] }.compact!
+      end
+
+      # Clean up media_query_lists that are now empty
+      result.instance_variable_get(:@_media_query_lists).delete_if { |_list_id, mq_ids| mq_ids.empty? }
 
       # Clear memoized cache
       result.instance_variable_set(:@selectors, nil)
@@ -1019,7 +1121,7 @@ module Cataract
         next if import.resolved # Skip already resolved imports
 
         url = import.url
-        media = import.media
+        import_media_query_id = import.media_query_id
 
         # Validate URL
         ImportResolver.validate_url(url, opts)
@@ -1040,7 +1142,8 @@ module Cataract
 
         # Build parse options for imported CSS
         parse_opts = {
-          import: opts.merge(imported_urls: imported_urls_copy, depth: depth + 1, base_uri: imported_base_uri)
+          import: opts.merge(imported_urls: imported_urls_copy, depth: depth + 1, base_uri: imported_base_uri),
+          parser: @parser_options.dup # Inherit parent's parser options (including selector_lists)
         }
 
         # If URL conversion is enabled (base_uri present), enable it for imported files too
@@ -1050,36 +1153,50 @@ module Cataract
           parse_opts[:uri_resolver] = opts[:uri_resolver]
         end
 
+        # Pass parent import's media query context to parser so nested imports can combine
+        if import_media_query_id
+          parent_mq = @media_queries[import_media_query_id]
+          parse_opts[:parser][:parent_import_media_type] = parent_mq.type
+          parse_opts[:parser][:parent_import_media_conditions] = parent_mq.conditions
+        end
+
         imported_sheet = Stylesheet.parse(imported_css, **parse_opts)
 
         # Wrap rules in @media if import had media query
-        if media
+        if import_media_query_id
+          # Get the import's MediaQuery object
+          import_mq = @media_queries[import_media_query_id]
+
           imported_sheet.rules.each do |rule|
-            # Find rule's current media (if any) from imported sheet's media index
-            # A rule may be in multiple media entries (e.g., :screen and :"screen and (min-width: 768px)")
-            # We want the most specific one (longest string)
-            # TODO: Extract this logic to a helper method to keep it consistent across codebase
-            rule_media = nil
-            imported_sheet.instance_variable_get(:@_media_index).each do |m, ids|
-              # Keep the longest/most specific media query
-              if ids.include?(rule.id) && (rule_media.nil? || m.to_s.length > rule_media.to_s.length)
-                rule_media = m
-              end
-            end
+            next unless rule.is_a?(Rule)
 
-            # Combine media queries: "import_media and rule_media"
-            combined_media = if rule_media
-                               # Combine: "media and rule_media"
-                               :"#{media} and #{rule_media}"
-                             else
-                               media
-                             end
+            if rule.media_query_id
+              # Rule already has a media query - need to combine them
+              # Example: @import "mobile.css" screen; where mobile.css has @media (max-width: 768px)
+              # Result: screen and (max-width: 768px)
+              existing_mq = imported_sheet.media_queries[rule.media_query_id]
 
-            # Update media index
-            if @_media_index[combined_media]
-              @_media_index[combined_media] << rule.id
+              # Parse combined media query to extract type and conditions
+              # The type is always the import's type (leftmost)
+              combined_type = import_mq.type
+              combined_conditions = if import_mq.conditions && existing_mq.conditions
+                                      "#{import_mq.conditions} and #{existing_mq.conditions}"
+                                    elsif import_mq.conditions
+                                      "#{import_mq.conditions} and #{existing_mq.text}"
+                                    elsif existing_mq.conditions
+                                      existing_mq.conditions
+                                    else
+                                      existing_mq.text
+                                    end
+
+              # Create combined MediaQuery
+              combined_mq = MediaQuery.new(@_next_media_query_id, combined_type, combined_conditions)
+              @media_queries << combined_mq
+              rule.media_query_id = @_next_media_query_id
+              @_next_media_query_id += 1
             else
-              @_media_index[combined_media] = [rule.id]
+              # Rule has no media query - just assign the import's media query
+              rule.media_query_id = import_media_query_id
             end
           end
         end
@@ -1087,17 +1204,41 @@ module Cataract
         # Merge imported rules into this stylesheet
         # Insert at current position (before any remaining local rules)
         insert_position = import.id
+
+        # Insert rules without modifying IDs (will renumber everything after all imports resolved)
         imported_sheet.rules.each_with_index do |rule, idx|
           @rules.insert(insert_position + idx, rule)
         end
 
         # Merge media index
-        imported_sheet.instance_variable_get(:@_media_index).each do |media_sym, rule_ids|
-          if @_media_index[media_sym]
-            @_media_index[media_sym].concat(rule_ids)
+        imported_sheet.instance_variable_get(:@media_index).each do |media_sym, rule_ids|
+          if @media_index[media_sym]
+            @media_index[media_sym].concat(rule_ids)
           else
-            @_media_index[media_sym] = rule_ids.dup
+            @media_index[media_sym] = rule_ids.dup
           end
+        end
+
+        # Merge selector_lists with offsetted IDs
+        list_id_offset = @_next_selector_list_id
+        imported_selector_lists = imported_sheet.instance_variable_get(:@_selector_lists)
+        if imported_selector_lists && !imported_selector_lists.empty?
+          imported_selector_lists.each do |list_id, rule_ids|
+            new_list_id = list_id + list_id_offset
+            @_selector_lists[new_list_id] = rule_ids.dup
+          end
+          @_next_selector_list_id = list_id_offset + imported_selector_lists.size
+        end
+
+        # Merge media_query_lists with offsetted IDs
+        mq_list_id_offset = @_next_media_query_list_id
+        imported_mq_lists = imported_sheet.instance_variable_get(:@_media_query_lists)
+        if imported_mq_lists && !imported_mq_lists.empty?
+          imported_mq_lists.each do |list_id, mq_ids|
+            new_list_id = list_id + mq_list_id_offset
+            @_media_query_lists[new_list_id] = mq_ids.dup
+          end
+          @_next_media_query_list_id = mq_list_id_offset + imported_mq_lists.size
         end
 
         # Merge charset (first one wins per CSS spec)
@@ -1106,6 +1247,33 @@ module Cataract
         # Mark as resolved
         import.resolved = true
       end
+
+      # Renumber all rule IDs to be sequential in document order
+      # This is O(n) and very fast (~1ms for 30k rules)
+      # Only needed if we actually resolved imports
+      return unless imports.length > 0
+
+      # Single-pass renumbering: build old->new mapping while renumbering
+      old_to_new_id = {}
+      @rules.each_with_index do |rule, new_idx|
+        if rule.is_a?(Rule) || rule.is_a?(ImportStatement)
+          old_to_new_id[rule.id] = new_idx
+          rule.id = new_idx
+        end
+      end
+
+      # Update rule IDs in selector_lists (only if we have any)
+      unless @_selector_lists.empty?
+        @_selector_lists.each do |list_id, rule_ids|
+          @_selector_lists[list_id] = rule_ids.map { |old_id| old_to_new_id[old_id] }
+        end
+      end
+
+      # Update @_last_rule_id to reflect final count
+      @_last_rule_id = @rules.length
+
+      # Clear media_index so it gets rebuilt lazily when accessed
+      @media_index = {}
     end
 
     # Check if a rule matches any of the requested media queries
@@ -1114,7 +1282,7 @@ module Cataract
     # @param query_media [Array<Symbol>] Media types to match
     # @return [Boolean] true if rule appears in any of the requested media index entries
     def rule_matches_media?(rule_id, query_media)
-      query_media.any? { |m| @_media_index[m]&.include?(rule_id) }
+      query_media.any? { |m| media_index[m]&.include?(rule_id) }
     end
 
     # Check if a rule matches the specificity filter
@@ -1144,7 +1312,7 @@ module Cataract
     # - @selectors: Memoized list of all selectors
     # - @_custom_properties: Memoized custom properties organized by media context
     #
-    # Should not add ivars here that don't rebuild themselves (i.e. @_media_index)
+    # Should not add ivars here that don't rebuild themselves (i.e. @media_index)
     def clear_memoized_caches
       @selectors = nil
       @_custom_properties = nil
@@ -1158,7 +1326,7 @@ module Cataract
 
       # Build reverse lookup: rule_id => media_type
       rule_id_to_media = {}
-      @_media_index.each do |media_type, rule_ids|
+      media_index.each do |media_type, rule_ids|
         rule_ids.each do |rule_id|
           rule_id_to_media[rule_id] = media_type
         end

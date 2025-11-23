@@ -2,6 +2,12 @@
 
 # Pure Ruby CSS flatten implementation
 # NO REGEXP ALLOWED - use string manipulation only
+#
+# @api private
+# This module contains internal methods for flattening CSS (merging rules with the
+# same selector, expanding/recreating shorthands). These methods are called by
+# Cataract.flatten and should not be used directly except for expand_shorthand
+# which is part of the public API. The main public API is Cataract.flatten.
 
 module Cataract
   module Flatten
@@ -115,6 +121,24 @@ module Cataract
     LIST_STYLE_PROPERTIES = [PROP_LIST_STYLE_TYPE, PROP_LIST_STYLE_POSITION, PROP_LIST_STYLE_IMAGE].freeze
     BORDER_ALL = (BORDER_WIDTHS + BORDER_STYLES + BORDER_COLORS).freeze
 
+    # Shorthand property lookup (Hash is faster than Array#include? or Set)
+    # Used for fast-path check to avoid calling expand_shorthand for non-shorthands
+    SHORTHAND_PROPERTIES = {
+      'margin' => true,
+      'padding' => true,
+      'border' => true,
+      'border-top' => true,
+      'border-right' => true,
+      'border-bottom' => true,
+      'border-left' => true,
+      'border-width' => true,
+      'border-style' => true,
+      'border-color' => true,
+      'font' => true,
+      'background' => true,
+      'list-style' => true
+    }.freeze
+
     # List style keywords
     LIST_STYLE_POSITION_KEYWORDS = %w[inside outside].freeze
 
@@ -154,46 +178,40 @@ module Cataract
       # Expand shorthands in regular rules only (AtRules don't have declarations)
       # NOTE: Using manual each + concat instead of .flat_map for performance.
       # The concise form (.flat_map) is ~5-10% slower depending on number of shorthands to expand.
+      # NOTE: Fast-path check for shorthands (Hash lookup) avoids calling expand_shorthand
+      # for declarations that are not shorthands (~20% faster than calling method unconditionally).
       regular_rules.each do |rule|
         expanded = []
         rule.declarations.each do |decl|
-          expanded.concat(_expand_shorthand(decl))
+          if SHORTHAND_PROPERTIES[decl.property]
+            expanded.concat(expand_shorthand(decl))
+          else
+            expanded << decl
+          end
         end
         rule.declarations.replace(expanded)
       end
 
       merged_rules = []
 
-      # Build a helper to find media context for a rule
-      # Returns the media symbol for a rule, or nil if not in any media query
-      media_index = stylesheet.instance_variable_get(:@_media_index)
-      rule_media_map = {}
-      media_index.each do |media_sym, rule_ids|
-        rule_ids.each do |rule_id|
-          # A rule can be in multiple media queries, we take the first one
-          # (in practice, a rule should only be in one media query at this point)
-          rule_media_map[rule_id] ||= media_sym
-        end
-      end
-
-      # Group by (selector, media) instead of just selector
+      # Group by (selector, media_query_id) instead of just selector
       # Rules with same selector but different media contexts should NOT be merged
       # NOTE: Using manual each instead of .group_by to avoid intermediate hash allocation.
       by_selector_and_media = {}
       regular_rules.each do |rule|
-        media_context = rule_media_map[rule.id]
-        key = [rule.selector, media_context]
+        media_query_id = rule.media_query_id
+        key = [rule.selector, media_query_id]
         (by_selector_and_media[key] ||= []) << rule
       end
 
       # Track old rule ID to new merged rule index mapping (only for rules in media queries)
       old_to_new_id = {}
-      by_selector_and_media.each do |(_selector, media_context), rules|
+      by_selector_and_media.each do |(_selector, media_query_id), rules|
         merged_rule = flatten_rules_for_selector(rules.first.selector, rules)
         next unless merged_rule
 
         # Only build mapping for rules that are in media queries
-        if media_context
+        if media_query_id
           new_index = merged_rules.length
 
           rules.each do |old_rule|
@@ -221,28 +239,55 @@ module Cataract
       # Add passthrough AtRules to output
       merged_rules.concat(at_rules)
 
-      # Preserve media_index by remapping old rule IDs to new rule IDs
-      # This is important for @media rules and @import statements with media constraints
-      # The old_to_new_id mapping was already built during the merge loop above
-      old_media_index = stylesheet.instance_variable_get(:@_media_index)
+      # Rebuild media_index from rules' media_query_id
+      # This ensures media_index is consistent with the MediaQuery objects
+      media_queries = stylesheet.instance_variable_get(:@media_queries)
+      media_query_lists = stylesheet.instance_variable_get(:@_media_query_lists)
       new_media_index = {}
 
-      # Remap media index entries using the old_to_new_id mapping
-      old_media_index.each do |media_sym, old_rule_ids|
-        new_rule_ids = []
-        old_rule_ids.each do |old_id|
-          new_id = old_to_new_id[old_id]
-          # Only include if the rule still exists after merging and isn't already in the list
-          new_rule_ids << new_id if new_id && !new_rule_ids.include?(new_id)
-        end
-        # Only preserve media entry if there are still rules for it
-        new_media_index[media_sym] = new_rule_ids unless new_rule_ids.empty?
+      # Build reverse map: media_query_id => list_id (one-time cost)
+      mq_id_to_list_id = {}
+      media_query_lists.each do |list_id, mq_ids|
+        mq_ids.each { |mq_id| mq_id_to_list_id[mq_id] = list_id }
       end
+
+      merged_rules.each do |rule|
+        next unless rule.is_a?(Rule) && rule.media_query_id
+
+        # Check if this rule's media_query_id is part of a list
+        list_id = mq_id_to_list_id[rule.media_query_id]
+
+        if list_id
+          # This rule is in a compound media query (e.g., "@media screen, print")
+          # Index it under ALL media types in the list
+          mq_ids = media_query_lists[list_id]
+          mq_ids.each do |mq_id|
+            mq = media_queries[mq_id]
+            next unless mq
+
+            media_type = mq.type
+            new_media_index[media_type] ||= []
+            new_media_index[media_type] << rule.id
+          end
+        else
+          # Single media query - just index under its type
+          mq = media_queries[rule.media_query_id]
+          next unless mq
+
+          media_type = mq.type
+          new_media_index[media_type] ||= []
+          new_media_index[media_type] << rule.id
+        end
+      end
+
+      # Deduplicate arrays once at the end
+      new_media_index.each_value(&:uniq!)
 
       # Create result stylesheet
       if mutate
         stylesheet.instance_variable_set(:@rules, merged_rules)
-        stylesheet.instance_variable_set(:@_media_index, new_media_index)
+        stylesheet.instance_variable_set(:@media_index, new_media_index)
+        # @media_queries and @_media_query_lists stay the same - preserved from input
         # Update selector lists with divergence tracking
         stylesheet.instance_variable_set(:@_selector_lists, selector_lists)
         stylesheet
@@ -250,7 +295,9 @@ module Cataract
         # Create new Stylesheet with merged rules
         result = Stylesheet.new
         result.instance_variable_set(:@rules, merged_rules)
-        result.instance_variable_set(:@_media_index, new_media_index)
+        result.instance_variable_set(:@media_index, new_media_index)
+        result.instance_variable_set(:@media_queries, media_queries)
+        result.instance_variable_set(:@_media_query_lists, media_query_lists)
         result.instance_variable_set(:@charset, stylesheet.charset)
         result.instance_variable_set(:@_selector_lists, selector_lists)
         result
@@ -337,6 +384,9 @@ module Cataract
       selector_list_ids.uniq!
       selector_list_id = selector_list_ids.size == 1 ? selector_list_ids.first : nil
 
+      # All rules being merged have the same media_query_id (they were grouped by it)
+      media_query_id = rules.first.media_query_id
+
       # Create merged rule
       Rule.new(
         0, # ID will be updated later
@@ -345,7 +395,8 @@ module Cataract
         rules.first.specificity, # Use first rule's specificity
         nil,  # No parent after flattening
         nil,  # No nesting style after flattening
-        selector_list_id # Preserve if all rules share same ID
+        selector_list_id, # Preserve if all rules share same ID
+        media_query_id # Preserve media context
       )
     end
 
@@ -364,7 +415,7 @@ module Cataract
     # @param decl [Declaration] Declaration to expand
     # @return [Array<Declaration>] Array of expanded longhand declarations
     # @api private
-    def self._expand_shorthand(decl)
+    def self.expand_shorthand(decl)
       case decl.property
       when 'margin'
         expand_margin(decl)
@@ -1176,7 +1227,13 @@ module Cataract
         parts << attachment if attachment
       end
 
-      shorthand_value = parts.join(' ')
+      # If all properties are defaults, the shorthand value would be empty
+      # In this case, use "none" which is equivalent to all-default background
+      shorthand_value = if parts.empty?
+                          'none'
+                        else
+                          parts.join(' ')
+                        end
 
       # Remove individual properties and append shorthand
       # Note: We append rather than insert at original position to match C implementation behavior
@@ -1279,5 +1336,17 @@ module Cataract
           d1.important == d2.important
       end
     end
+
+    # Mark all methods except flatten and expand_shorthand as private
+    private_class_method :flatten_rules_for_selector, :calculate_specificity,
+                         :expand_margin, :expand_padding, :parse_four_sides, :split_on_whitespace,
+                         :expand_border, :expand_border_side, :expand_border_width, :expand_border_style,
+                         :expand_border_color, :parse_border_value, :is_border_width?, :is_border_style?,
+                         :expand_font, :is_font_size?, :is_font_style?, :is_font_variant?, :is_font_weight?,
+                         :expand_background, :starts_with_url?, :is_position_value?, :expand_list_style,
+                         :recreate_shorthands!, :recreate_margin!, :recreate_padding!, :check_all_same?,
+                         :recreate_border!, :recreate_border_width!, :recreate_border_style!, :recreate_border_color!,
+                         :optimize_four_sides, :recreate_font!, :recreate_background!, :recreate_list_style!,
+                         :update_selector_lists_for_divergence!, :declarations_equal?
   end
 end
