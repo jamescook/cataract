@@ -16,11 +16,15 @@ gem 'css_parser', '~> 1.0' # for benchmarking against
 gem 'minitest'
 gem 'minitest-spec'
 gem 'nokogiri' # for docs
-gem 'ruby-prof', require: false # for profiling
 gem 'simplecov', require: false
 gem 'simplecov-cobertura', require: false
-gem 'stackprof', require: false # for profiling
 gem 'webmock', '~> 3.0' # for testing URL loading
+
+# Profiling gems (not supported on JRuby)
+platforms :ruby do
+  gem 'ruby-prof', require: false # for profiling
+  gem 'stackprof', require: false # for profiling
+end
 
 gem 'overcommit', '~> 0.64', group: :development
 gem 'premailer'
