@@ -822,6 +822,10 @@ module Cataract
         new_imports = result[:imports]
         new_imports.each do |import|
           import.id += offset
+          # Update media_query_id to point to offsetted MediaQuery
+          if import.media_query_id
+            import.media_query_id += media_query_id_offset
+          end
           @imports << import
         end
 
