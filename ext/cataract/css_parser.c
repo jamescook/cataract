@@ -940,6 +940,10 @@ static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char
                 rb_ary_push(ctx->media_queries, combined_mq);
                 combined_media_query_id = ctx->media_query_id_counter;
                 ctx->media_query_id_counter++;
+
+                // Guard combined_conditions since we built it with rb_str_new_cstr/rb_str_append
+                // and it's used in rb_struct_new above (rb_ary_push could trigger GC)
+                RB_GC_GUARD(combined_conditions);
             }
 
             // Parse the block with parse_mixed_block to support further nesting

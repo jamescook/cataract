@@ -85,20 +85,20 @@ Time to flatten multiple CSS rule sets with same selector
 
 | Test Case | Native | Pure (no YJIT) | Pure (YJIT) |
 |-----------|--------|----------------|-------------|
-| No shorthand properties (large) | 20.74K i/s | 3.15K i/s | 5.73K i/s |
-| Simple properties | 155.01K i/s | 73.1K i/s | 99.95K i/s |
-| Cascade with specificity | 194.63K i/s | 74.22K i/s | 104.8K i/s |
-| Important declarations | 195.45K i/s | 72.82K i/s | 105.65K i/s |
-| Shorthand expansion | 20.74K i/s | 3.15K i/s | 5.73K i/s |
-| Complex flattening | 31.19K i/s | 15.81K i/s | 21.52K i/s |
+| No shorthand properties (large) | 13.46K i/s | 2.92K i/s | 4.89K i/s |
+| Simple properties | 141.57K i/s | 67.8K i/s | 90.61K i/s |
+| Cascade with specificity | 170.29K i/s | 65.74K i/s | 93.82K i/s |
+| Important declarations | 169.61K i/s | 66.09K i/s | 96.97K i/s |
+| Shorthand expansion | 13.46K i/s | 2.92K i/s | 4.89K i/s |
+| Complex flattening | 29.8K i/s | 15.28K i/s | 20.11K i/s |
 
 ### Speedups
 
 | Comparison | Speedup |
 |------------|---------|
-| Native vs Pure (no YJIT) | 3.01x faster (avg) |
-| Native vs Pure (YJIT) | 1.97x faster (avg) |
-| YJIT impact on Pure Ruby | 1.47x faster (avg) |
+| Native vs Pure (no YJIT) | 2.64x faster (avg) |
+| Native vs Pure (YJIT) | 1.8x faster (avg) |
+| YJIT impact on Pure Ruby | 1.44x faster (avg) |
 
 ---
 

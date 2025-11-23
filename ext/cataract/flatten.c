@@ -623,31 +623,6 @@ struct flatten_selectors_context {
     VALUE old_to_new_id;  // Hash mapping old rule IDs to new merged rule IDs (for media index)
 };
 
-// Context for building rule_media_map
-struct build_rule_media_map_context {
-    VALUE rule_media_map;
-};
-
-// Callback for building rule_media_map from input media_index
-static int build_rule_media_map_callback(VALUE media_sym, VALUE rule_ids, VALUE arg) {
-    struct build_rule_media_map_context *ctx = (struct build_rule_media_map_context *)arg;
-
-    if (NIL_P(rule_ids) || TYPE(rule_ids) != T_ARRAY) {
-        return ST_CONTINUE;
-    }
-
-    long num_ids = RARRAY_LEN(rule_ids);
-    for (long i = 0; i < num_ids; i++) {
-        VALUE rule_id = RARRAY_AREF(rule_ids, i);
-        // Only set if not already set (rule can be in multiple media, take first)
-        if (NIL_P(rb_hash_aref(ctx->rule_media_map, rule_id))) {
-            rb_hash_aset(ctx->rule_media_map, rule_id, media_sym);
-        }
-    }
-
-    return ST_CONTINUE;
-}
-
 // Context for remapping media_index
 struct remap_media_context {
     VALUE old_to_new_id;
@@ -1203,6 +1178,81 @@ static int declarations_equal(VALUE decls1, VALUE decls2) {
     return 1;
 }
 
+// Context for iterating through rules_by_list hash
+struct check_selector_lists_ctx {
+    VALUE selector_lists;  // Output hash to populate
+};
+
+// Callback for iterating through rules_by_list hash: list_id => [rule1, rule2, ...]
+static int check_selector_list_callback(VALUE list_id, VALUE rules_in_list, VALUE arg) {
+    struct check_selector_lists_ctx *ctx = (struct check_selector_lists_ctx *)arg;
+    long num_in_list = RARRAY_LEN(rules_in_list);
+
+    DEBUG_PRINTF("\n  Checking list_id=%ld: %ld rules\n", NUM2LONG(list_id), num_in_list);
+
+    // Skip if only one rule in list (nothing to compare)
+    if (num_in_list <= 1) {
+        DEBUG_PRINTF("    -> Only 1 rule, skipping\n");
+        return ST_CONTINUE;
+    }
+
+    // Get first rule as reference
+    VALUE reference_rule = RARRAY_AREF(rules_in_list, 0);
+    VALUE reference_decls = rb_struct_aref(reference_rule, INT2FIX(RULE_DECLARATIONS));
+#ifdef CATARACT_DEBUG
+    VALUE reference_selector = rb_struct_aref(reference_rule, INT2FIX(RULE_SELECTOR));
+    DEBUG_PRINTF("    Reference rule: selector=%s, %ld declarations\n",
+                 RSTRING_PTR(reference_selector), RARRAY_LEN(reference_decls));
+#endif
+
+    // Find rules that still match (have identical declarations)
+    VALUE matching_rules = rb_ary_new();
+    rb_ary_push(matching_rules, reference_rule);
+
+    for (long j = 1; j < num_in_list; j++) {
+        VALUE rule = RARRAY_AREF(rules_in_list, j);
+        VALUE decls = rb_struct_aref(rule, INT2FIX(RULE_DECLARATIONS));
+#ifdef CATARACT_DEBUG
+        VALUE selector = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR));
+        DEBUG_PRINTF("    Comparing rule %ld (selector=%s):\n", j, RSTRING_PTR(selector));
+#endif
+
+        if (declarations_equal(reference_decls, decls)) {
+            DEBUG_PRINTF("      -> MATCHES reference, keeping in list\n");
+            rb_ary_push(matching_rules, rule);
+        } else {
+            DEBUG_PRINTF("      -> DIVERGED from reference, clearing selector_list_id\n");
+            // Clear selector_list_id for diverged rule
+            rb_struct_aset(rule, INT2FIX(RULE_SELECTOR_LIST_ID), Qnil);
+        }
+    }
+
+    // Only keep the selector list if at least 2 rules still match
+    long num_matching = RARRAY_LEN(matching_rules);
+    DEBUG_PRINTF("    Result: %ld/%ld rules still match\n", num_matching, num_in_list);
+
+    if (num_matching >= 2) {
+        // Build selector_lists hash with NEW rule IDs
+        VALUE rule_ids = rb_ary_new_capa(num_matching);
+        for (long j = 0; j < num_matching; j++) {
+            VALUE rule = RARRAY_AREF(matching_rules, j);
+            VALUE rule_id = rb_struct_aref(rule, INT2FIX(RULE_ID));
+            rb_ary_push(rule_ids, rule_id);
+        }
+        rb_hash_aset(ctx->selector_lists, list_id, rule_ids);
+        DEBUG_PRINTF("    -> Keeping selector list with %ld rules\n", num_matching);
+    } else {
+        DEBUG_PRINTF("    -> Only 1 rule left, clearing selector_list_id for it too\n");
+        // Clear selector_list_id for the last remaining rule too
+        for (long j = 0; j < num_matching; j++) {
+            VALUE rule = RARRAY_AREF(matching_rules, j);
+            rb_struct_aset(rule, INT2FIX(RULE_SELECTOR_LIST_ID), Qnil);
+        }
+    }
+
+    return ST_CONTINUE;
+}
+
 /*
  * Update selector lists to remove diverged rules
  *
@@ -1254,77 +1304,9 @@ static void update_selector_lists_for_divergence(VALUE merged_rules, VALUE selec
     }
 
     // For each selector list, check if declarations still match
-    VALUE list_ids = rb_funcall(rules_by_list, rb_intern("keys"), 0);
-    long num_lists = RARRAY_LEN(list_ids);
-    DEBUG_PRINTF("  Found %ld selector list groups to check\n", num_lists);
-
-    for (long i = 0; i < num_lists; i++) {
-        VALUE list_id = RARRAY_AREF(list_ids, i);
-        VALUE rules_in_list = rb_hash_aref(rules_by_list, list_id);
-        long num_in_list = RARRAY_LEN(rules_in_list);
-
-        DEBUG_PRINTF("\n  Checking list_id=%ld: %ld rules\n", NUM2LONG(list_id), num_in_list);
-
-        // Skip if only one rule in list (nothing to compare)
-        if (num_in_list <= 1) {
-            DEBUG_PRINTF("    -> Only 1 rule, skipping\n");
-            continue;
-        }
-
-        // Get first rule as reference
-        VALUE reference_rule = RARRAY_AREF(rules_in_list, 0);
-        VALUE reference_decls = rb_struct_aref(reference_rule, INT2FIX(RULE_DECLARATIONS));
-#ifdef CATARACT_DEBUG
-        VALUE reference_selector = rb_struct_aref(reference_rule, INT2FIX(RULE_SELECTOR));
-        DEBUG_PRINTF("    Reference rule: selector=%s, %ld declarations\n",
-                     RSTRING_PTR(reference_selector), RARRAY_LEN(reference_decls));
-#endif
-
-        // Find rules that still match (have identical declarations)
-        VALUE matching_rules = rb_ary_new();
-        rb_ary_push(matching_rules, reference_rule);
-
-        for (long j = 1; j < num_in_list; j++) {
-            VALUE rule = RARRAY_AREF(rules_in_list, j);
-            VALUE decls = rb_struct_aref(rule, INT2FIX(RULE_DECLARATIONS));
-#ifdef CATARACT_DEBUG
-            VALUE selector = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR));
-            DEBUG_PRINTF("    Comparing rule %ld (selector=%s):\n", j, RSTRING_PTR(selector));
-#endif
-
-            if (declarations_equal(reference_decls, decls)) {
-                DEBUG_PRINTF("      -> MATCHES reference, keeping in list\n");
-                rb_ary_push(matching_rules, rule);
-            } else {
-                DEBUG_PRINTF("      -> DIVERGED from reference, clearing selector_list_id\n");
-                // Clear selector_list_id for diverged rule
-                rb_struct_aset(rule, INT2FIX(RULE_SELECTOR_LIST_ID), Qnil);
-            }
-        }
-
-        // Only keep the selector list if at least 2 rules still match
-        long num_matching = RARRAY_LEN(matching_rules);
-        DEBUG_PRINTF("    Result: %ld/%ld rules still match\n", num_matching, num_in_list);
-
-        if (num_matching >= 2) {
-            // Build selector_lists hash with NEW rule IDs
-            VALUE rule_ids = rb_ary_new_capa(num_matching);
-            for (long j = 0; j < num_matching; j++) {
-                VALUE rule = RARRAY_AREF(matching_rules, j);
-                VALUE rule_id = rb_struct_aref(rule, INT2FIX(RULE_ID));
-                rb_ary_push(rule_ids, rule_id);
-            }
-            rb_hash_aset(selector_lists, list_id, rule_ids);
-            DEBUG_PRINTF("    -> Keeping selector list with %ld rules\n", num_matching);
-        } else {
-            DEBUG_PRINTF("    -> Only 1 rule left, clearing selector_list_id for it too\n");
-            // Clear selector_list_id for the last remaining rule too
-            for (long j = 0; j < num_matching; j++) {
-                VALUE rule = RARRAY_AREF(matching_rules, j);
-                rb_struct_aset(rule, INT2FIX(RULE_SELECTOR_LIST_ID), Qnil);
-            }
-        }
-    }
+    DEBUG_PRINTF("  Found %ld selector list groups to check\n", RHASH_SIZE(rules_by_list));
+    struct check_selector_lists_ctx ctx = { selector_lists };
+    rb_hash_foreach(rules_by_list, check_selector_list_callback, (VALUE)&ctx);
 
     DEBUG_PRINTF("\n=== End divergence tracking: %ld selector lists preserved ===\n\n", RHASH_SIZE(selector_lists));
 }

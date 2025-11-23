@@ -84,6 +84,7 @@ static void append_media_query_string(VALUE result, VALUE media_query_id, VALUE 
             append_media_query_text(result, mq);
         }
     }
+    // No GC guards needed - we don't extract pointers from VALUEs, just pass them to functions
 }
 
 // ============================================================================
@@ -375,6 +376,27 @@ struct build_rule_map_ctx {
     VALUE rule_to_media;
 };
 
+// Context for building mq_id_to_list_id reverse map
+struct build_mq_reverse_map_ctx {
+    VALUE mq_id_to_list_id;
+};
+
+// Callback to build reverse map: media_query_id => list_id
+// Iterates through media_query_lists hash: list_id => [mq_id1, mq_id2, ...]
+static int build_mq_reverse_map_callback(VALUE list_id, VALUE mq_ids, VALUE arg) {
+    struct build_mq_reverse_map_ctx *ctx = (struct build_mq_reverse_map_ctx *)arg;
+
+    if (!NIL_P(mq_ids) && TYPE(mq_ids) == T_ARRAY) {
+        long num_mq_ids = RARRAY_LEN(mq_ids);
+        for (long i = 0; i < num_mq_ids; i++) {
+            VALUE mq_id = rb_ary_entry(mq_ids, i);
+            rb_hash_aset(ctx->mq_id_to_list_id, mq_id, list_id);
+        }
+    }
+
+    return ST_CONTINUE;
+}
+
 // Formatting options for stylesheet serialization
 // Avoids mode flags and if/else branches - all behavior controlled by struct values
 struct format_opts {
@@ -431,20 +453,8 @@ static VALUE serialize_stylesheet_with_grouping(
     // This allows us to detect when multiple rules share a comma-separated media query list
     VALUE mq_id_to_list_id = rb_hash_new();
     if (!NIL_P(media_query_lists) && TYPE(media_query_lists) == T_HASH) {
-        // Iterate through media_query_lists hash
-        VALUE list_ids = rb_funcall(media_query_lists, rb_intern("keys"), 0);
-        long num_lists = RARRAY_LEN(list_ids);
-        for (long i = 0; i < num_lists; i++) {
-            VALUE list_id = rb_ary_entry(list_ids, i);
-            VALUE mq_ids = rb_hash_aref(media_query_lists, list_id);
-            if (!NIL_P(mq_ids) && TYPE(mq_ids) == T_ARRAY) {
-                long num_mq_ids = RARRAY_LEN(mq_ids);
-                for (long j = 0; j < num_mq_ids; j++) {
-                    VALUE mq_id = rb_ary_entry(mq_ids, j);
-                    rb_hash_aset(mq_id_to_list_id, mq_id, list_id);
-                }
-            }
-        }
+        struct build_mq_reverse_map_ctx ctx = { mq_id_to_list_id };
+        rb_hash_foreach(media_query_lists, build_mq_reverse_map_callback, (VALUE)&ctx);
     }
 
     // Build rule_to_media map from media_query_id fields
@@ -697,6 +707,8 @@ static VALUE serialize_stylesheet_with_grouping(
         rb_str_cat2(result, "}\n");
     }
 
+    // Guard hash objects we created and used throughout
+    RB_GC_GUARD(mq_id_to_list_id);
     RB_GC_GUARD(rule_to_media);
     RB_GC_GUARD(processed_rule_ids);
     return result;
