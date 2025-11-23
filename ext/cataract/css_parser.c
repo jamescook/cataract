@@ -1514,10 +1514,9 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
 
                 // Get child media query (first one in the list)
                 VALUE child_mq = rb_ary_entry(ctx->media_queries, current_media_query_id);
-                VALUE child_type = rb_struct_aref(child_mq, INT2FIX(1)); // type field
                 VALUE child_conditions = rb_struct_aref(child_mq, INT2FIX(2)); // conditions field
 
-                // Combined type is parent's type (outermost wins)
+                // Combined type is parent's type (outermost wins, child type ignored)
                 VALUE combined_type = parent_type;
                 VALUE combined_conditions;
 
