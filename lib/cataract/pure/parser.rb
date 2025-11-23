@@ -538,6 +538,10 @@ module Cataract
           media_rule_id = @rule_id_counter
           @rule_id_counter += 1
 
+          # Reserve position in rules array (ensures sequential IDs match array indices)
+          rule_position = @rules.length
+          @rules << nil # Placeholder
+
           # Parse mixed block recursively with the nested media query ID as context
           @depth += 1
           media_declarations = parse_mixed_block(media_block_start, media_block_end,
@@ -559,7 +563,8 @@ module Cataract
           # Mark that we have nesting
           @_has_nesting = true unless parent_rule_id.nil?
 
-          @rules << rule
+          # Replace placeholder with actual rule
+          @rules[rule_position] = rule
           next
         end
 
@@ -604,6 +609,10 @@ module Cataract
             rule_id = @rule_id_counter
             @rule_id_counter += 1
 
+            # Reserve position in rules array (ensures sequential IDs match array indices)
+            rule_position = @rules.length
+            @rules << nil # Placeholder
+
             # Recursively parse nested block
             @depth += 1
             nested_declarations = parse_mixed_block(nested_block_start, nested_block_end,
@@ -623,7 +632,8 @@ module Cataract
             # Mark that we have nesting
             @_has_nesting = true unless parent_rule_id.nil?
 
-            @rules << rule
+            # Replace placeholder with actual rule
+            @rules[rule_position] = rule
           end
 
           next

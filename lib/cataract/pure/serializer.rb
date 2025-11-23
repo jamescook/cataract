@@ -270,8 +270,8 @@ module Cataract
     # Find all rules in this list that have identical declarations AND same media context
     matching_selectors = []
     rule_ids_in_list.each do |rid|
-      # Find the rule by ID
-      other_rule = rules.find { |r| r.id == rid }
+      # Direct array access (O(1)) - rules[i].id == i invariant is guaranteed by parser
+      other_rule = rules[rid]
       next unless other_rule
       next if processed_rule_ids[rid]
 

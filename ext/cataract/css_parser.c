@@ -1053,6 +1053,10 @@ static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char
                         // Get rule ID
                         int rule_id = ctx->rule_id_counter++;
 
+                        // Reserve position in rules array (ensures sequential IDs match array indices)
+                        long rule_position = RARRAY_LEN(ctx->rules_array);
+                        rb_ary_push(ctx->rules_array, Qnil);  // Placeholder
+
                         // Recursively parse nested block
                         ctx->depth++;
                         VALUE nested_declarations = parse_mixed_block(ctx, nested_block_start, nested_block_end,
@@ -1077,7 +1081,8 @@ static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char
                             ctx->has_nesting = 1;
                         }
 
-                        rb_ary_push(ctx->rules_array, rule);
+                        // Replace placeholder with actual rule
+                        rb_ary_store(ctx->rules_array, rule_position, rule);
                         update_media_index(ctx, parent_media_sym, rule_id);
                     }
 
