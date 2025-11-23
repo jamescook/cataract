@@ -592,6 +592,11 @@ class TestSelectorLists < Minitest::Test
     selector_lists.each_value do |rule_ids|
       assert_operator rule_ids.size, :>=, 2, 'Each selector list should have at least 2 rules'
     end
+
+    # Verify all rules have sequential IDs
+    rule_ids = sheet.rules.map(&:id)
+
+    assert_equal (0...sheet.rules.length).to_a, rule_ids.sort, 'Rule IDs should be sequential'
   end
 
   def test_selector_lists_inside_supports

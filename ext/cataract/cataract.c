@@ -736,7 +736,6 @@ static void serialize_children_only(VALUE result, VALUE rules_array, long rule_i
         for (long i = 0; i < num_children; i++) {
             long child_idx = FIX2LONG(rb_ary_entry(children_indices, i));
             VALUE child = rb_ary_entry(rules_array, child_idx);
-            VALUE child_id = rb_struct_aref(child, INT2FIX(RULE_ID));
             VALUE child_media_query_id = rb_struct_aref(child, INT2FIX(RULE_MEDIA_QUERY_ID));
 
             DEBUG_PRINTF("[SERIALIZE]   Child %ld: child_media_query_id=%s, rule_media_query_id=%s\n", child_idx,
@@ -803,7 +802,6 @@ static void serialize_children_only(VALUE result, VALUE rules_array, long rule_i
         for (long i = 0; i < num_children; i++) {
             long child_idx = FIX2LONG(rb_ary_entry(children_indices, i));
             VALUE child = rb_ary_entry(rules_array, child_idx);
-            VALUE child_id = rb_struct_aref(child, INT2FIX(RULE_ID));
             VALUE child_media_query_id = rb_struct_aref(child, INT2FIX(RULE_MEDIA_QUERY_ID));
 
             // Check if this is a different media than parent
