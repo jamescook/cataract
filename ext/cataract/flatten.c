@@ -1552,6 +1552,8 @@ VALUE cataract_flatten(VALUE self, VALUE input) {
         if (rb_obj_is_kind_of(input, cStylesheet)) {
             VALUE media_queries = rb_ivar_get(input, rb_intern("@media_queries"));
             VALUE media_query_lists = rb_ivar_get(input, rb_intern("@_media_query_lists"));
+            Check_Type(media_queries, T_ARRAY);
+            if (!NIL_P(media_query_lists)) Check_Type(media_query_lists, T_HASH);
             rb_ivar_set(passthrough_sheet, rb_intern("@media_queries"), media_queries);
             rb_ivar_set(passthrough_sheet, rb_intern("@_media_query_lists"), media_query_lists);
         }
@@ -1643,6 +1645,8 @@ VALUE cataract_flatten(VALUE self, VALUE input) {
         if (rb_obj_is_kind_of(input, cStylesheet)) {
             VALUE media_queries = rb_ivar_get(input, rb_intern("@media_queries"));
             VALUE media_query_lists = rb_ivar_get(input, rb_intern("@_media_query_lists"));
+            Check_Type(media_queries, T_ARRAY);
+            if (!NIL_P(media_query_lists)) Check_Type(media_query_lists, T_HASH);
             rb_ivar_set(merged_sheet, rb_intern("@media_queries"), media_queries);
             rb_ivar_set(merged_sheet, rb_intern("@_media_query_lists"), media_query_lists);
         }

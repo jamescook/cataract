@@ -105,12 +105,12 @@ module Cataract
         # For lists: compare list_id
         # For single queries: compare by content (type + conditions)
         needs_new_block = if rule_media_query_list_id
-                           current_media_query_list_id != rule_media_query_list_id
-                         else
-                           !current_media_query ||
-                           current_media_query.type != rule_media_query.type ||
-                           current_media_query.conditions != rule_media_query.conditions
-                         end
+                            current_media_query_list_id != rule_media_query_list_id
+                          else
+                            !current_media_query ||
+                              current_media_query.type != rule_media_query.type ||
+                              current_media_query.conditions != rule_media_query.conditions
+                          end
 
         if needs_new_block
           if in_media_block
@@ -392,12 +392,12 @@ module Cataract
         # For lists: compare list_id
         # For single queries: compare by content (type + conditions)
         needs_new_block = if rule_media_query_list_id
-                           current_media_query_list_id != rule_media_query_list_id
-                         else
-                           !current_media_query ||
-                           current_media_query.type != rule_media_query.type ||
-                           current_media_query.conditions != rule_media_query.conditions
-                         end
+                            current_media_query_list_id != rule_media_query_list_id
+                          else
+                            !current_media_query ||
+                              current_media_query.type != rule_media_query.type ||
+                              current_media_query.conditions != rule_media_query.conditions
+                          end
 
         if needs_new_block
           # Close previous media block if open
@@ -614,12 +614,12 @@ module Cataract
         # For lists: compare list_id
         # For single queries: compare by content (type + conditions)
         needs_new_block = if rule_media_query_list_id
-                           current_media_query_list_id != rule_media_query_list_id
-                         else
-                           !current_media_query ||
-                           current_media_query.type != rule_media_query.type ||
-                           current_media_query.conditions != rule_media_query.conditions
-                         end
+                            current_media_query_list_id != rule_media_query_list_id
+                          else
+                            !current_media_query ||
+                              current_media_query.type != rule_media_query.type ||
+                              current_media_query.conditions != rule_media_query.conditions
+                          end
 
         if needs_new_block
           if in_media_block

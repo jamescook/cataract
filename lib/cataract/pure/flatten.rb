@@ -234,6 +234,7 @@ module Cataract
           mq_ids.each do |mq_id|
             mq = media_queries[mq_id]
             next unless mq
+
             media_type = mq.type
             new_media_index[media_type] ||= []
             new_media_index[media_type] << rule.id
@@ -242,6 +243,7 @@ module Cataract
           # Single media query - just index under its type
           mq = media_queries[rule.media_query_id]
           next unless mq
+
           media_type = mq.type
           new_media_index[media_type] ||= []
           new_media_index[media_type] << rule.id
@@ -364,7 +366,7 @@ module Cataract
         nil,  # No parent after flattening
         nil,  # No nesting style after flattening
         selector_list_id, # Preserve if all rules share same ID
-        media_query_id  # Preserve media context
+        media_query_id # Preserve media context
       )
     end
 

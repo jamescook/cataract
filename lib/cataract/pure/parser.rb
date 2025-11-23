@@ -508,35 +508,31 @@ module Cataract
           # Create MediaQuery object for this nested @media
           # If we're already in a media query context, combine with parent
           nested_media_query_id = if parent_media_query_id
-            # Combine with parent MediaQuery
-            parent_mq = @media_queries[parent_media_query_id]
-            if parent_mq.nil?
-              # Parent media query ID is invalid, just use the child
-              media_type, media_conditions = parse_media_query_parts(media_query_str)
-              nested_media_query = Cataract::MediaQuery.new(@media_query_id_counter, media_type, media_conditions)
-              @media_queries << nested_media_query
-              mq_id = @media_query_id_counter
-              @media_query_id_counter += 1
-              mq_id
-            else
-              # Combine parent media query with child
-              child_type, child_conditions = parse_media_query_parts(media_query_str)
-              combined_type, combined_conditions = combine_media_query_parts(parent_mq, child_type, child_conditions)
-              combined_mq = Cataract::MediaQuery.new(@media_query_id_counter, combined_type, combined_conditions)
-              @media_queries << combined_mq
-              combined_id = @media_query_id_counter
-              @media_query_id_counter += 1
-              combined_id
-            end
-          else
-            # No parent context, just use the child media query
-            media_type, media_conditions = parse_media_query_parts(media_query_str)
-            nested_media_query = Cataract::MediaQuery.new(@media_query_id_counter, media_type, media_conditions)
-            @media_queries << nested_media_query
-            mq_id = @media_query_id_counter
-            @media_query_id_counter += 1
-            mq_id
-          end
+                                    # Combine with parent MediaQuery
+                                    parent_mq = @media_queries[parent_media_query_id]
+
+                                    # This should never happen - parent_media_query_id should always be valid
+                                    if parent_mq.nil?
+                                      raise ParserError, "Invalid parent_media_query_id: #{parent_media_query_id} (not found in @media_queries)"
+                                    end
+
+                                    # Combine parent media query with child
+                                    child_type, child_conditions = parse_media_query_parts(media_query_str)
+                                    combined_type, combined_conditions = combine_media_query_parts(parent_mq, child_type, child_conditions)
+                                    combined_mq = Cataract::MediaQuery.new(@media_query_id_counter, combined_type, combined_conditions)
+                                    @media_queries << combined_mq
+                                    combined_id = @media_query_id_counter
+                                    @media_query_id_counter += 1
+                                    combined_id
+                                  else
+                                    # No parent context, just use the child media query
+                                    media_type, media_conditions = parse_media_query_parts(media_query_str)
+                                    nested_media_query = Cataract::MediaQuery.new(@media_query_id_counter, media_type, media_conditions)
+                                    @media_queries << nested_media_query
+                                    mq_id = @media_query_id_counter
+                                    @media_query_id_counter += 1
+                                    mq_id
+                                  end
 
           # Create rule ID for this media rule
           media_rule_id = @rule_id_counter
@@ -557,7 +553,7 @@ module Cataract
             parent_rule_id,
             nil,  # nesting_style (nil for @media nesting)
             nil,  # selector_list_id
-            nested_media_query_id  # media_query_id
+            nested_media_query_id # media_query_id
           )
 
           # Mark that we have nesting
@@ -859,7 +855,7 @@ module Cataract
           @_next_selector_list_id = list_id_offset + nested_result[:_selector_lists].size
         end
 
-        # Note: We no longer build media_index during parse
+        # NOTE: We no longer build media_index during parse
         # It will be built from MediaQuery objects after import resolution
 
         # Add nested rules to main rules array
@@ -1041,7 +1037,7 @@ module Cataract
             rule.media_query_id = combined_media_query_id if rule.respond_to?(:media_query_id=)
           end
 
-          # Note: We no longer build media_index during parse
+          # NOTE: We no longer build media_index during parse
           # It will be built from MediaQuery objects after import resolution
 
           @rule_id_counter += 1
@@ -1768,6 +1764,7 @@ module Cataract
       while i < len
         byte = query.getbyte(i)
         break if whitespace?(byte) || byte == BYTE_LPAREN
+
         i += 1
       end
 

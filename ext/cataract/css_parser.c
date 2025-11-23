@@ -906,6 +906,14 @@ static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char
             if (parent_media_query_id >= 0) {
                 // Get parent MediaQuery
                 VALUE parent_mq = rb_ary_entry(ctx->media_queries, parent_media_query_id);
+
+                // This should never happen - parent_media_query_id should always be valid
+                if (NIL_P(parent_mq)) {
+                    rb_raise(eParserError,
+                        "Invalid parent_media_query_id: %d (not found in media_queries array)",
+                        parent_media_query_id);
+                }
+
                 VALUE parent_type = rb_struct_aref(parent_mq, INT2FIX(1)); // type field
                 VALUE parent_conditions = rb_struct_aref(parent_mq, INT2FIX(2)); // conditions field
 

@@ -14,6 +14,7 @@ VALUE cMediaQuery;
 VALUE eCataractError;
 VALUE eDepthError;
 VALUE eSizeError;
+VALUE eParserError;
 
 // ============================================================================
 // Helper Functions
@@ -933,6 +934,9 @@ static VALUE stylesheet_to_s_new(VALUE self, VALUE rules_array, VALUE media_inde
     DEBUG_PRINTF("[STYLESHEET_TO_S] About to Check_Type\n");
     Check_Type(rules_array, T_ARRAY);
     Check_Type(media_index, T_HASH);
+    Check_Type(media_queries, T_ARRAY);
+    if (!NIL_P(media_query_lists)) Check_Type(media_query_lists, T_HASH);
+    if (!NIL_P(selector_lists)) Check_Type(selector_lists, T_HASH);
     DEBUG_PRINTF("[STYLESHEET_TO_S] Check_Type passed\n");
     // TODO: Phase 2 - use selector_lists for grouping
     (void)selector_lists; // Suppress unused parameter warning
@@ -1114,6 +1118,9 @@ static VALUE stylesheet_to_formatted_s_original(VALUE rules_array, VALUE media_q
 static VALUE stylesheet_to_formatted_s_new(VALUE self, VALUE rules_array, VALUE media_index, VALUE charset, VALUE has_nesting, VALUE selector_lists, VALUE media_queries, VALUE media_query_lists) {
     Check_Type(rules_array, T_ARRAY);
     Check_Type(media_index, T_HASH);
+    Check_Type(media_queries, T_ARRAY);
+    if (!NIL_P(media_query_lists)) Check_Type(media_query_lists, T_HASH);
+    if (!NIL_P(selector_lists)) Check_Type(selector_lists, T_HASH);
 
     // Fast path: if no nesting, use original implementation (zero overhead)
     if (!RTEST(has_nesting)) {
@@ -1461,6 +1468,12 @@ void Init_native_extension(void) {
         eSizeError = rb_const_get(mCataract, rb_intern("SizeError"));
     } else {
         eSizeError = rb_define_class_under(mCataract, "SizeError", eCataractError);
+    }
+
+    if (rb_const_defined(mCataract, rb_intern("ParserError"))) {
+        eParserError = rb_const_get(mCataract, rb_intern("ParserError"));
+    } else {
+        eParserError = rb_define_class_under(mCataract, "ParserError", eCataractError);
     }
 
     // Reuse Ruby-defined structs (they must be defined before loading this extension)

@@ -19,6 +19,7 @@ extern VALUE cMediaQuery;
 extern VALUE eCataractError;
 extern VALUE eDepthError;
 extern VALUE eSizeError;
+extern VALUE eParserError;
 
 // ============================================================================
 // Struct field indices
@@ -43,7 +44,7 @@ extern VALUE eSizeError;
 #define NO_PARENT_MEDIA Qnil
 #define NO_PARENT_SELECTOR Qnil
 #define NO_PARENT_RULE_ID Qnil
-#define NO_MEDIA_QUERY_ID -1
+#define NO_MEDIA_QUERY_ID (-1)
 
 // Declaration struct field indices (property, value, important)
 #define DECL_PROPERTY 0

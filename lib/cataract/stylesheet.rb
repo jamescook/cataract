@@ -58,6 +58,7 @@ module Cataract
             mq_ids.each do |mq_id|
               mq = @media_queries[mq_id]
               next unless mq
+
               media_type = mq.type
               @media_index[media_type] ||= []
               @media_index[media_type] << rule.id
@@ -66,6 +67,7 @@ module Cataract
             # Single media query - index under its type
             mq = @media_queries[rule.media_query_id]
             next unless mq
+
             media_type = mq.type
             @media_index[media_type] ||= []
             @media_index[media_type] << rule.id
