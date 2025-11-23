@@ -65,14 +65,6 @@ module Cataract
       rule_children[parent_id] << rule
     end
 
-    # Build rule_id => media_symbol map
-    rule_to_media = {}
-    media_index.each do |media_sym, rule_ids|
-      rule_ids.each do |rule_id|
-        rule_to_media[rule_id] = media_sym
-      end
-    end
-
     # Build reverse map: media_query_id => list_id
     mq_id_to_list_id = {}
     media_query_lists.each do |list_id, mq_ids|
@@ -126,7 +118,7 @@ module Cataract
         end
       end
 
-      serialize_rule_with_nesting(result, rule, rule_children, rule_to_media, media_queries)
+      serialize_rule_with_nesting(result, rule, rule_children, media_queries)
     end
 
     if in_media_block
@@ -155,7 +147,7 @@ module Cataract
   end
 
   # Helper: serialize a rule with its nested children
-  def self.serialize_rule_with_nesting(result, rule, rule_children, rule_to_media, media_queries)
+  def self.serialize_rule_with_nesting(result, rule, rule_children, media_queries)
     # Start selector
     result << "#{rule.selector} { "
 
@@ -265,7 +257,7 @@ module Cataract
 
   # Helper: find all selectors from same list with matching declarations
   # Returns array of selectors that can be grouped, marks rules as processed
-  def self.find_groupable_selectors(rule:, rules:, selector_lists:, processed_rule_ids:, rule_to_media:, current_media:)
+  def self.find_groupable_selectors(rule:, rules:, selector_lists:, processed_rule_ids:, current_media_query_id:)
     list_id = rule.selector_list_id
     rule_ids_in_list = selector_lists[list_id]
 
@@ -283,8 +275,8 @@ module Cataract
       next unless other_rule
       next if processed_rule_ids[rid]
 
-      # Check same media context
-      next if rule_to_media[rid] != current_media
+      # Check same media context (compare media_query_id directly)
+      next if other_rule.media_query_id != current_media_query_id
 
       # Check declarations match (compare arrays directly for performance)
       if declarations_equal?(rule.declarations, other_rule.declarations)
@@ -314,14 +306,6 @@ module Cataract
   )
     grouping_enabled = selector_lists && !selector_lists.empty?
 
-    # Build rule_id => media_symbol map
-    rule_to_media = {}
-    media_index.each do |media_sym, rule_ids|
-      rule_ids.each do |rule_id|
-        rule_to_media[rule_id] = media_sym
-      end
-    end
-
     # Build reverse map: media_query_id => list_id
     mq_id_to_list_id = {}
     media_query_lists.each do |list_id, mq_ids|
@@ -344,7 +328,6 @@ module Cataract
       rule_media_query_id = rule.is_a?(Rule) ? rule.media_query_id : nil
       rule_media_query = rule_media_query_id ? media_queries[rule_media_query_id] : nil
       rule_media_query_list_id = rule_media_query_id ? mq_id_to_list_id[rule_media_query_id] : nil
-      rule_media = rule_to_media[rule.id]
       is_first_rule = (rule_index == 0)
 
       if rule_media_query.nil?
@@ -366,8 +349,7 @@ module Cataract
             rules: rules,
             selector_lists: selector_lists,
             processed_rule_ids: processed_rule_ids,
-            rule_to_media: rule_to_media,
-            current_media: rule_media
+            current_media_query_id: rule_media_query_id
           )
 
           # Serialize with grouped selectors
@@ -425,8 +407,7 @@ module Cataract
             rules: rules,
             selector_lists: selector_lists,
             processed_rule_ids: processed_rule_ids,
-            rule_to_media: rule_to_media,
-            current_media: rule_media
+            current_media_query_id: rule_media_query_id
           )
 
           # Serialize with grouped selectors (with media indent)
@@ -572,14 +553,6 @@ module Cataract
       rule_children[parent_id] << rule
     end
 
-    # Build rule_id => media_symbol map
-    rule_to_media = {}
-    media_index.each do |media_sym, rule_ids|
-      rule_ids.each do |rule_id|
-        rule_to_media[rule_id] = media_sym
-      end
-    end
-
     # Build reverse map: media_query_id => list_id
     mq_id_to_list_id = {}
     media_query_lists.each do |list_id, mq_ids|
@@ -609,7 +582,7 @@ module Cataract
         # Add blank line before base rule if we just closed a media block (ends with "}\n")
         result << "\n" if result.length > 1 && result.getbyte(-1) == BYTE_NEWLINE && result.getbyte(-2) == BYTE_RBRACE
 
-        serialize_rule_with_nesting_formatted(result, rule, rule_children, rule_to_media, '', media_queries)
+        serialize_rule_with_nesting_formatted(result, rule, rule_children, '', media_queries)
       else
         # For lists: compare list_id
         # For single queries: compare by content (type + conditions)
@@ -635,7 +608,7 @@ module Cataract
           in_media_block = true
         end
 
-        serialize_rule_with_nesting_formatted(result, rule, rule_children, rule_to_media, '  ', media_queries)
+        serialize_rule_with_nesting_formatted(result, rule, rule_children, '  ', media_queries)
       end
     end
 
@@ -665,7 +638,7 @@ module Cataract
   end
 
   # Helper: serialize a rule with nested children (formatted)
-  def self.serialize_rule_with_nesting_formatted(result, rule, rule_children, rule_to_media, indent, media_queries)
+  def self.serialize_rule_with_nesting_formatted(result, rule, rule_children, indent, media_queries)
     # Selector line with opening brace
     result << indent
     result << rule.selector
