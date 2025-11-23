@@ -2,6 +2,12 @@
 
 # Pure Ruby CSS flatten implementation
 # NO REGEXP ALLOWED - use string manipulation only
+#
+# @api private
+# This module contains internal methods for flattening CSS (merging rules with the
+# same selector, expanding/recreating shorthands). These methods are called by
+# Cataract.flatten and should not be used directly except for expand_shorthand
+# which is part of the public API. The main public API is Cataract.flatten.
 
 module Cataract
   module Flatten

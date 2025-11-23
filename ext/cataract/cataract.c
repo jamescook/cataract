@@ -1459,8 +1459,8 @@ void Init_native_extension(void) {
 
     // Define module functions
     rb_define_module_function(mCataract, "_parse_css", parse_css_new, -1);
-    rb_define_module_function(mCataract, "_stylesheet_to_s", stylesheet_to_s_new, 7);
-    rb_define_module_function(mCataract, "_stylesheet_to_formatted_s", stylesheet_to_formatted_s_new, 7);
+    rb_define_module_function(mCataract, "stylesheet_to_s", stylesheet_to_s_new, 7);
+    rb_define_module_function(mCataract, "stylesheet_to_formatted_s", stylesheet_to_formatted_s_new, 7);
     rb_define_module_function(mCataract, "parse_media_types", parse_media_types, 1);
     rb_define_module_function(mCataract, "parse_declarations", new_parse_declarations, 1);
     rb_define_module_function(mCataract, "flatten", cataract_flatten, 1);
