@@ -882,6 +882,13 @@ VALUE cataract_create_background_shorthand(VALUE self, VALUE properties) {
         rb_str_append(result, size);
     }
 
+    // If all properties are defaults, the result would be empty
+    // In this case, use "none" which is equivalent to all-default background
+    if (RSTRING_LEN(result) == 0) {
+        DEBUG_PRINTF("[create_background_shorthand] All defaults omitted, using 'none'\n");
+        return USASCII_STR("none");
+    }
+
     DEBUG_PRINTF("[create_background_shorthand] result='%s'\n", RSTRING_PTR(result));
     return result;
 }

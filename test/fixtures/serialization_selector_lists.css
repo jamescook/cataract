@@ -1,0 +1,79 @@
+/* CSS with many selector lists to test selector_list tracking overhead */
+h1, h2, h3, h4, h5, h6 { font-weight: bold; margin: 0; }
+p, div, span, section, article { box-sizing: border-box; }
+a, button, input, textarea, select { font-family: inherit; }
+ul, ol, li { list-style: none; margin: 0; padding: 0; }
+table, thead, tbody, tfoot, tr, td, th { border-collapse: collapse; }
+
+.btn, .button, .action { cursor: pointer; user-select: none; }
+.card, .panel, .box { border: 1px solid #ddd; }
+.header, .footer, .sidebar { background: #f5f5f5; }
+.container, .wrapper, .content { max-width: 1200px; margin: 0 auto; }
+.row, .grid, .flex-container { display: flex; }
+
+.text-primary, .bg-primary, .border-primary { color: #007bff; }
+.text-secondary, .bg-secondary, .border-secondary { color: #6c757d; }
+.text-success, .bg-success, .border-success { color: #28a745; }
+.text-danger, .bg-danger, .border-danger { color: #dc3545; }
+.text-warning, .bg-warning, .border-warning { color: #ffc107; }
+
+.m-1, .my-1, .mt-1 { margin-top: 0.25rem; }
+.m-1, .my-1, .mb-1 { margin-bottom: 0.25rem; }
+.m-1, .mx-1, .ml-1 { margin-left: 0.25rem; }
+.m-1, .mx-1, .mr-1 { margin-right: 0.25rem; }
+
+.p-1, .py-1, .pt-1 { padding-top: 0.25rem; }
+.p-1, .py-1, .pb-1 { padding-bottom: 0.25rem; }
+.p-1, .px-1, .pl-1 { padding-left: 0.25rem; }
+.p-1, .px-1, .pr-1 { padding-right: 0.25rem; }
+
+.d-none, .d-sm-none, .d-md-none { display: none; }
+.d-block, .d-sm-block, .d-md-block { display: block; }
+.d-flex, .d-sm-flex, .d-md-flex { display: flex; }
+.d-inline, .d-sm-inline, .d-md-inline { display: inline; }
+.d-inline-block, .d-sm-inline-block, .d-md-inline-block { display: inline-block; }
+
+.align-left, .text-left, .float-left { text-align: left; }
+.align-center, .text-center, .mx-auto { text-align: center; }
+.align-right, .text-right, .float-right { text-align: right; }
+.align-justify, .text-justify { text-align: justify; }
+
+.small, .text-small, .font-small { font-size: 0.875rem; }
+.normal, .text-normal, .font-normal { font-size: 1rem; }
+.large, .text-large, .font-large { font-size: 1.25rem; }
+.xlarge, .text-xlarge, .font-xlarge { font-size: 1.5rem; }
+
+.bold, .font-bold, .text-bold { font-weight: bold; }
+.normal-weight, .font-normal, .text-normal { font-weight: normal; }
+.light, .font-light, .text-light { font-weight: 300; }
+
+.uppercase, .text-uppercase { text-transform: uppercase; }
+.lowercase, .text-lowercase { text-transform: lowercase; }
+.capitalize, .text-capitalize { text-transform: capitalize; }
+
+.rounded, .rounded-corners, .border-radius { border-radius: 0.25rem; }
+.rounded-lg, .rounded-large { border-radius: 0.5rem; }
+.rounded-xl, .rounded-xlarge { border-radius: 1rem; }
+.rounded-full, .circle { border-radius: 9999px; }
+
+.shadow, .shadow-sm, .box-shadow { box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.shadow-md, .shadow-medium { box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+.shadow-lg, .shadow-large { box-shadow: 0 10px 15px rgba(0,0,0,0.1); }
+.shadow-xl, .shadow-xlarge { box-shadow: 0 20px 25px rgba(0,0,0,0.1); }
+
+@media (min-width: 768px) {
+  .md\:block, .md\:d-block { display: block; }
+  .md\:flex, .md\:d-flex { display: flex; }
+  .md\:hidden, .md\:d-none { display: none; }
+}
+
+@media (min-width: 1024px) {
+  .lg\:block, .lg\:d-block { display: block; }
+  .lg\:flex, .lg\:d-flex { display: flex; }
+  .lg\:hidden, .lg\:d-none { display: none; }
+}
+
+@media print {
+  .print-hidden, .no-print, .screen-only { display: none; }
+  .print-visible, .print-only { display: block; }
+}

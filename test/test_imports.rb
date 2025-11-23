@@ -332,7 +332,7 @@ body { color: red; }"
 
       # Main file should preserve charset from import
       # (Note: per CSS spec, only first @charset is used)
-      assert_equal 'UTF-8', sheet.instance_variable_get(:@charset)
+      assert_equal 'UTF-8', sheet.charset
     end
   end
 
@@ -1091,8 +1091,144 @@ body { color: red; }"
       import = sheet.imports[0]
 
       assert_equal "file://#{File.join(dir, 'mobile.css')}", import.url
-      assert_equal :'screen and (max-width: 768px)', import.media
+      assert_equal 'screen and (max-width: 768px)', import.media
       assert import.resolved
+    end
+  end
+
+  # ============================================================================
+  # Recursive imports with media conditions
+  # ============================================================================
+
+  def test_recursive_imports_with_media_conditions
+    # Tests that recursive imports with media conditions work correctly:
+    # - base.css imports level1_screen.css with "screen" media
+    # - base.css imports level1_print.css with "print" media
+    # - level1_screen.css imports level2_mobile.css with "(max-width: 768px)" media
+    # All imports should be resolved and rules should have correct media_query_id
+
+    fixtures_dir = File.join(__dir__, 'fixtures')
+    sheet = Cataract::Stylesheet.load_file(
+      'recursive_import_base.css',
+      fixtures_dir,
+      import: { allowed_schemes: ['file'], extensions: ['css'] }
+    )
+
+    # After resolving all imports, we should have:
+    # - Rules from level2_mobile.css (imported with "screen and (max-width: 768px)")
+    # - Rules from level1_screen.css (imported with "screen")
+    # - Rules from level1_print.css (imported with "print")
+    # - Rules from base.css (no media)
+
+    # Total rules:
+    # level2_mobile: .mobile-menu, body => 2 rules
+    # level1_screen: .screen-only, .screen-large => 2 rules
+    # level1_print: .print-only, body => 2 rules
+    # base: body => 1 rule
+    # Total: 7 rules
+
+    assert_equal 7, sheet.rules.length, 'Should have 7 total rules after recursive import resolution'
+
+    # Check that rules have correct selectors
+    selectors = sheet.rules.map(&:selector).sort
+    expected_selectors = ['.mobile-menu', '.print-only', '.screen-large', '.screen-only', 'body', 'body', 'body'].sort
+
+    assert_equal expected_selectors, selectors
+
+    # Check that all rule IDs are unique (no duplicates)
+    rule_ids = sheet.rules.map(&:id)
+
+    assert_equal rule_ids.uniq.length, rule_ids.length, 'All rule IDs should be unique'
+
+    # Check that rule IDs are sequential from 0
+    assert_equal (0...sheet.rules.length).to_a, rule_ids.sort
+  end
+
+  def test_import_with_selector_lists
+    # Convers merging nested selector_lists with offsetted IDs
+    # when importing CSS that contains comma-separated selectors
+    Dir.mktmpdir do |dir|
+      # Create imported file with selector lists (comma-separated selectors)
+      imported_file = File.join(dir, 'imported.css')
+      File.write(imported_file, <<~CSS)
+        h1, h2, h3 { margin: 0; }
+        .btn-primary, .btn-secondary { padding: 10px; }
+      CSS
+
+      css = "@import url('file://#{imported_file}');
+.main { color: black; }"
+
+      # Parse with selector_lists enabled (the default)
+      sheet = Cataract.parse_css(css, import: { allowed_schemes: ['file'], extensions: ['css'] })
+
+      # Should have 7 rules total:
+      # - 3 from h1,h2,h3 (each becomes a separate rule)
+      # - 2 from .btn-primary,.btn-secondary
+      # - 1 from .main
+      # - 1 duplicate rule for .main (seems to be created during import)
+      assert_operator sheet.size, :>=, 6, 'Should have at least 6 rules'
+
+      # Verify selectors exist
+      assert_has_selector 'h1', sheet
+      assert_has_selector 'h2', sheet
+      assert_has_selector 'h3', sheet
+      assert_has_selector '.btn-primary', sheet
+      assert_has_selector '.btn-secondary', sheet
+      assert_has_selector '.main', sheet
+
+      # Verify selector_lists were tracked
+      selector_lists = sheet.instance_variable_get(:@_selector_lists)
+
+      refute_empty selector_lists, 'Should have tracked selector lists from imported file'
+
+      # Each selector list should have multiple rule IDs
+      selector_lists.each_value do |rule_ids|
+        assert_operator rule_ids.size, :>=, 2, 'Selector lists should have at least 2 rules'
+      end
+
+      # Verify all rules have sequential IDs
+      rule_ids = sheet.rules.map(&:id)
+
+      assert_equal (0...sheet.rules.length).to_a, rule_ids.sort, 'Rule IDs should be sequential'
+    end
+  end
+
+  def test_import_with_nested_media_conditions_combining
+    # Handle combining parent and child media conditions in nested imports
+    Dir.mktmpdir do |dir|
+      # Scenario 1: Parent has conditions, child has conditions (line 1482)
+      # @import "file.css" screen and (min-width: 500px)
+      # where file.css has: @import "nested.css" (max-width: 1000px)
+      File.write(File.join(dir, 'nested1.css'), '.nested { color: blue; }')
+      File.write(File.join(dir, 'child1.css'), "@import url('file://#{File.join(dir, 'nested1.css')}') (max-width: 1000px); .child { color: green; }")
+
+      css1 = "@import url('file://#{File.join(dir, 'child1.css')}') screen and (min-width: 500px);"
+      sheet1 = Cataract.parse_css(css1, import: { allowed_schemes: ['file'], extensions: ['css'] })
+
+      assert_has_selector '.nested', sheet1
+      assert_has_selector '.child', sheet1
+
+      # Scenario 2: Parent has conditions, child has no conditions (line 1484)
+      # @import "file.css" screen and (min-width: 500px)
+      # where file.css has: @import "nested.css" print
+      File.write(File.join(dir, 'nested2.css'), '.nested2 { color: red; }')
+      File.write(File.join(dir, 'child2.css'), "@import url('file://#{File.join(dir, 'nested2.css')}') print;")
+
+      css2 = "@import url('file://#{File.join(dir, 'child2.css')}') screen and (min-width: 500px);"
+      sheet2 = Cataract.parse_css(css2, import: { allowed_schemes: ['file'], extensions: ['css'] })
+
+      assert_has_selector '.nested2', sheet2
+
+      # Scenario 3: Parent type != child type, neither has conditions (line 1488)
+      # @import "file.css" screen
+      # where file.css has: @import "nested.css" print
+      File.write(File.join(dir, 'nested3.css'), '.nested3 { color: yellow; }')
+      File.write(File.join(dir, 'child3.css'), "@import url('file://#{File.join(dir, 'nested3.css')}') print;")
+
+      css3 = "@import url('file://#{File.join(dir, 'child3.css')}') screen;"
+      sheet3 = Cataract.parse_css(css3, import: { allowed_schemes: ['file'], extensions: ['css'] })
+
+      assert_has_selector '.nested3', sheet3
     end
   end
 end

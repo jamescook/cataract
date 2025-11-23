@@ -531,4 +531,33 @@ body { color: red; }'
     assert_equal 1, result.rules.size, '+ should apply cascade'
     assert result.rules[0].has_property?('color', 'blue'), 'Last rule should win'
   end
+
+  # ============================================================================
+  # Serialization with media queries
+  # ============================================================================
+
+  def test_serialization_preserves_media_queries_after_flatten
+    # Tests that serialization preserves media query structure after flattening
+    # a stylesheet with recursive imports
+
+    fixtures_dir = File.join(__dir__, 'fixtures')
+    sheet = Cataract::Stylesheet.load_file(
+      'recursive_import_base.css',
+      fixtures_dir,
+      import: { allowed_schemes: ['file'], extensions: ['css'] }
+    )
+
+    flattened = sheet.flatten
+
+    # Serialize and verify structure
+    assert_has_selector('.print-only', flattened)
+    assert_has_selector('.screen-only', flattened)
+
+    # Re-parse and verify structure is preserved
+    css_output = flattened.to_s
+    reparsed = Cataract::Stylesheet.parse(css_output)
+
+    assert_has_selector('.print-only', reparsed)
+    assert_has_selector('.screen-only', reparsed)
+  end
 end

@@ -1,0 +1,8 @@
+/* Level 2: Mobile-specific styles */
+.mobile-menu {
+  display: flex;
+}
+
+body {
+  font-size: 14px;
+}

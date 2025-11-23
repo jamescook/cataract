@@ -33,6 +33,7 @@ require_relative 'constants'
 require_relative 'declaration'
 require_relative 'rule'
 require_relative 'at_rule'
+require_relative 'media_query'
 require_relative 'import_statement'
 require_relative 'stylesheet_scope'
 require_relative 'stylesheet'
@@ -62,7 +63,6 @@ end
 require_relative 'pure/byte_constants'
 require_relative 'pure/helpers'
 require_relative 'pure/specificity'
-require_relative 'pure/media_types'
 require_relative 'pure/serializer'
 require_relative 'pure/parser'
 require_relative 'pure/flatten'
@@ -138,8 +138,8 @@ module Cataract
   # @param decl [Declaration] Declaration to expand
   # @return [Array<Declaration>] Array of expanded longhand declarations
   # @api private
-  def self._expand_shorthand(decl)
-    Flatten._expand_shorthand(decl)
+  def self.expand_shorthand(decl)
+    Flatten.expand_shorthand(decl)
   end
 
   # Add stub method to Stylesheet for pure Ruby implementation

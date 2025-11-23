@@ -623,31 +623,6 @@ struct flatten_selectors_context {
     VALUE old_to_new_id;  // Hash mapping old rule IDs to new merged rule IDs (for media index)
 };
 
-// Context for building rule_media_map
-struct build_rule_media_map_context {
-    VALUE rule_media_map;
-};
-
-// Callback for building rule_media_map from input media_index
-static int build_rule_media_map_callback(VALUE media_sym, VALUE rule_ids, VALUE arg) {
-    struct build_rule_media_map_context *ctx = (struct build_rule_media_map_context *)arg;
-
-    if (NIL_P(rule_ids) || TYPE(rule_ids) != T_ARRAY) {
-        return ST_CONTINUE;
-    }
-
-    long num_ids = RARRAY_LEN(rule_ids);
-    for (long i = 0; i < num_ids; i++) {
-        VALUE rule_id = RARRAY_AREF(rule_ids, i);
-        // Only set if not already set (rule can be in multiple media, take first)
-        if (NIL_P(rb_hash_aref(ctx->rule_media_map, rule_id))) {
-            rb_hash_aset(ctx->rule_media_map, rule_id, media_sym);
-        }
-    }
-
-    return ST_CONTINUE;
-}
-
 // Context for remapping media_index
 struct remap_media_context {
     VALUE old_to_new_id;
@@ -698,7 +673,7 @@ static int flatten_selector_group_callback(VALUE group_key, VALUE group_indices,
     DEBUG_PRINTF("\n[Selector %ld/%ld] '%s' (media=%s) - %ld rules in group\n",
                  ctx->selector_index, ctx->total_selectors,
                  RSTRING_PTR(selector),
-                 NIL_P(media_context) ? "nil" : RSTRING_PTR(rb_sym_to_s(media_context)),
+                 NIL_P(media_context) ? "nil" : RSTRING_PTR(rb_inspect(media_context)),
                  RARRAY_LEN(group_indices));
 
     // Merge all rules in this selector group and preserve selector_list_id if all rules share same ID
@@ -706,6 +681,14 @@ static int flatten_selector_group_callback(VALUE group_key, VALUE group_indices,
     VALUE merged_decls = flatten_rules_for_selector(ctx->rules_array, group_indices, selector, &selector_list_id);
 
     int new_rule_id = *ctx->rule_id_counter;
+
+    // Extract media_query_id from first rule in group (all should have same media_query_id)
+    VALUE media_query_id = Qnil;
+    if (RARRAY_LEN(group_indices) > 0) {
+        long first_rule_idx = FIX2LONG(RARRAY_AREF(group_indices, 0));
+        VALUE first_rule = RARRAY_AREF(ctx->rules_array, first_rule_idx);
+        media_query_id = rb_struct_aref(first_rule, INT2FIX(RULE_MEDIA_QUERY_ID));
+    }
 
     // Track old rule IDs to new rule ID mapping (only for rules in media queries)
     if (!NIL_P(media_context)) {
@@ -726,7 +709,8 @@ static int flatten_selector_group_callback(VALUE group_key, VALUE group_indices,
         Qnil,  // specificity
         Qnil,  // parent_rule_id
         Qnil,  // nesting_style
-        selector_list_id  // Preserve selector_list_id if all rules in group share same ID
+        selector_list_id,  // Preserve selector_list_id if all rules in group share same ID
+        media_query_id  // Preserve media_query_id from source rules
     );
     rb_ary_push(ctx->merged_rules, new_rule);
 
@@ -1194,6 +1178,81 @@ static int declarations_equal(VALUE decls1, VALUE decls2) {
     return 1;
 }
 
+// Context for iterating through rules_by_list hash
+struct check_selector_lists_ctx {
+    VALUE selector_lists;  // Output hash to populate
+};
+
+// Callback for iterating through rules_by_list hash: list_id => [rule1, rule2, ...]
+static int check_selector_list_callback(VALUE list_id, VALUE rules_in_list, VALUE arg) {
+    struct check_selector_lists_ctx *ctx = (struct check_selector_lists_ctx *)arg;
+    long num_in_list = RARRAY_LEN(rules_in_list);
+
+    DEBUG_PRINTF("\n  Checking list_id=%ld: %ld rules\n", NUM2LONG(list_id), num_in_list);
+
+    // Skip if only one rule in list (nothing to compare)
+    if (num_in_list <= 1) {
+        DEBUG_PRINTF("    -> Only 1 rule, skipping\n");
+        return ST_CONTINUE;
+    }
+
+    // Get first rule as reference
+    VALUE reference_rule = RARRAY_AREF(rules_in_list, 0);
+    VALUE reference_decls = rb_struct_aref(reference_rule, INT2FIX(RULE_DECLARATIONS));
+#ifdef CATARACT_DEBUG
+    VALUE reference_selector = rb_struct_aref(reference_rule, INT2FIX(RULE_SELECTOR));
+    DEBUG_PRINTF("    Reference rule: selector=%s, %ld declarations\n",
+                 RSTRING_PTR(reference_selector), RARRAY_LEN(reference_decls));
+#endif
+
+    // Find rules that still match (have identical declarations)
+    VALUE matching_rules = rb_ary_new();
+    rb_ary_push(matching_rules, reference_rule);
+
+    for (long j = 1; j < num_in_list; j++) {
+        VALUE rule = RARRAY_AREF(rules_in_list, j);
+        VALUE decls = rb_struct_aref(rule, INT2FIX(RULE_DECLARATIONS));
+#ifdef CATARACT_DEBUG
+        VALUE selector = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR));
+        DEBUG_PRINTF("    Comparing rule %ld (selector=%s):\n", j, RSTRING_PTR(selector));
+#endif
+
+        if (declarations_equal(reference_decls, decls)) {
+            DEBUG_PRINTF("      -> MATCHES reference, keeping in list\n");
+            rb_ary_push(matching_rules, rule);
+        } else {
+            DEBUG_PRINTF("      -> DIVERGED from reference, clearing selector_list_id\n");
+            // Clear selector_list_id for diverged rule
+            rb_struct_aset(rule, INT2FIX(RULE_SELECTOR_LIST_ID), Qnil);
+        }
+    }
+
+    // Only keep the selector list if at least 2 rules still match
+    long num_matching = RARRAY_LEN(matching_rules);
+    DEBUG_PRINTF("    Result: %ld/%ld rules still match\n", num_matching, num_in_list);
+
+    if (num_matching >= 2) {
+        // Build selector_lists hash with NEW rule IDs
+        VALUE rule_ids = rb_ary_new_capa(num_matching);
+        for (long j = 0; j < num_matching; j++) {
+            VALUE rule = RARRAY_AREF(matching_rules, j);
+            VALUE rule_id = rb_struct_aref(rule, INT2FIX(RULE_ID));
+            rb_ary_push(rule_ids, rule_id);
+        }
+        rb_hash_aset(ctx->selector_lists, list_id, rule_ids);
+        DEBUG_PRINTF("    -> Keeping selector list with %ld rules\n", num_matching);
+    } else {
+        DEBUG_PRINTF("    -> Only 1 rule left, clearing selector_list_id for it too\n");
+        // Clear selector_list_id for the last remaining rule too
+        for (long j = 0; j < num_matching; j++) {
+            VALUE rule = RARRAY_AREF(matching_rules, j);
+            rb_struct_aset(rule, INT2FIX(RULE_SELECTOR_LIST_ID), Qnil);
+        }
+    }
+
+    return ST_CONTINUE;
+}
+
 /*
  * Update selector lists to remove diverged rules
  *
@@ -1245,77 +1304,9 @@ static void update_selector_lists_for_divergence(VALUE merged_rules, VALUE selec
     }
 
     // For each selector list, check if declarations still match
-    VALUE list_ids = rb_funcall(rules_by_list, rb_intern("keys"), 0);
-    long num_lists = RARRAY_LEN(list_ids);
-    DEBUG_PRINTF("  Found %ld selector list groups to check\n", num_lists);
-
-    for (long i = 0; i < num_lists; i++) {
-        VALUE list_id = RARRAY_AREF(list_ids, i);
-        VALUE rules_in_list = rb_hash_aref(rules_by_list, list_id);
-        long num_in_list = RARRAY_LEN(rules_in_list);
-
-        DEBUG_PRINTF("\n  Checking list_id=%ld: %ld rules\n", NUM2LONG(list_id), num_in_list);
-
-        // Skip if only one rule in list (nothing to compare)
-        if (num_in_list <= 1) {
-            DEBUG_PRINTF("    -> Only 1 rule, skipping\n");
-            continue;
-        }
-
-        // Get first rule as reference
-        VALUE reference_rule = RARRAY_AREF(rules_in_list, 0);
-        VALUE reference_decls = rb_struct_aref(reference_rule, INT2FIX(RULE_DECLARATIONS));
-#ifdef CATARACT_DEBUG
-        VALUE reference_selector = rb_struct_aref(reference_rule, INT2FIX(RULE_SELECTOR));
-        DEBUG_PRINTF("    Reference rule: selector=%s, %ld declarations\n",
-                     RSTRING_PTR(reference_selector), RARRAY_LEN(reference_decls));
-#endif
-
-        // Find rules that still match (have identical declarations)
-        VALUE matching_rules = rb_ary_new();
-        rb_ary_push(matching_rules, reference_rule);
-
-        for (long j = 1; j < num_in_list; j++) {
-            VALUE rule = RARRAY_AREF(rules_in_list, j);
-            VALUE decls = rb_struct_aref(rule, INT2FIX(RULE_DECLARATIONS));
-#ifdef CATARACT_DEBUG
-            VALUE selector = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR));
-            DEBUG_PRINTF("    Comparing rule %ld (selector=%s):\n", j, RSTRING_PTR(selector));
-#endif
-
-            if (declarations_equal(reference_decls, decls)) {
-                DEBUG_PRINTF("      -> MATCHES reference, keeping in list\n");
-                rb_ary_push(matching_rules, rule);
-            } else {
-                DEBUG_PRINTF("      -> DIVERGED from reference, clearing selector_list_id\n");
-                // Clear selector_list_id for diverged rule
-                rb_struct_aset(rule, INT2FIX(RULE_SELECTOR_LIST_ID), Qnil);
-            }
-        }
-
-        // Only keep the selector list if at least 2 rules still match
-        long num_matching = RARRAY_LEN(matching_rules);
-        DEBUG_PRINTF("    Result: %ld/%ld rules still match\n", num_matching, num_in_list);
-
-        if (num_matching >= 2) {
-            // Build selector_lists hash with NEW rule IDs
-            VALUE rule_ids = rb_ary_new_capa(num_matching);
-            for (long j = 0; j < num_matching; j++) {
-                VALUE rule = RARRAY_AREF(matching_rules, j);
-                VALUE rule_id = rb_struct_aref(rule, INT2FIX(RULE_ID));
-                rb_ary_push(rule_ids, rule_id);
-            }
-            rb_hash_aset(selector_lists, list_id, rule_ids);
-            DEBUG_PRINTF("    -> Keeping selector list with %ld rules\n", num_matching);
-        } else {
-            DEBUG_PRINTF("    -> Only 1 rule left, clearing selector_list_id for it too\n");
-            // Clear selector_list_id for the last remaining rule too
-            for (long j = 0; j < num_matching; j++) {
-                VALUE rule = RARRAY_AREF(matching_rules, j);
-                rb_struct_aset(rule, INT2FIX(RULE_SELECTOR_LIST_ID), Qnil);
-            }
-        }
-    }
+    DEBUG_PRINTF("  Found %ld selector list groups to check\n", RHASH_SIZE(rules_by_list));
+    struct check_selector_lists_ctx ctx = { selector_lists };
+    rb_hash_foreach(rules_by_list, check_selector_list_callback, (VALUE)&ctx);
 
     DEBUG_PRINTF("\n=== End divergence tracking: %ld selector lists preserved ===\n\n", RHASH_SIZE(selector_lists));
 }
@@ -1452,17 +1443,25 @@ VALUE cataract_flatten(VALUE self, VALUE input) {
         }
     }
 
-    // Build rule_media_map: rule_id => media_symbol
+    // Build rule_media_map: rule_id => media_query_id
     // This is used to group rules by (selector, media) instead of just selector
     VALUE input_media_index = Qnil;
     VALUE rule_media_map = rb_hash_new();
     if (rb_obj_is_kind_of(input, cStylesheet)) {
         input_media_index = rb_ivar_get(input, id_ivar_media_index);
-        if (!NIL_P(input_media_index) && TYPE(input_media_index) == T_HASH) {
-            // Build reverse mapping: rule_id => media_symbol
-            struct build_rule_media_map_context build_ctx;
-            build_ctx.rule_media_map = rule_media_map;
-            rb_hash_foreach(input_media_index, build_rule_media_map_callback, (VALUE)&build_ctx);
+
+        // Build map from rules' media_query_id field
+        // Only process Rule objects, not AtRules (AtRules don't have media_query_id field at same offset)
+        for (long i = 0; i < num_rules; i++) {
+            VALUE rule = rb_ary_entry(rules_array, i);
+            if (!rb_obj_is_kind_of(rule, cAtRule)) {
+                VALUE media_query_id = rb_struct_aref(rule, INT2FIX(RULE_MEDIA_QUERY_ID));
+                if (!NIL_P(media_query_id)) {
+                    VALUE rule_id = rb_struct_aref(rule, INT2FIX(RULE_ID));
+                    // Store media_query_id as the grouping key
+                    rb_hash_aset(rule_media_map, rule_id, media_query_id);
+                }
+            }
         }
     }
 
@@ -1510,7 +1509,7 @@ VALUE cataract_flatten(VALUE self, VALUE input) {
 
         DEBUG_PRINTF("  [Rule %ld] ADD: selector='%s', media=%s, %ld declarations\n",
                      i, RSTRING_PTR(selector),
-                     NIL_P(media_context) ? "nil" : RSTRING_PTR(rb_sym_to_s(media_context)),
+                     NIL_P(media_context) ? "nil" : RSTRING_PTR(rb_inspect(media_context)),
                      RARRAY_LEN(declarations));
 
         VALUE group = rb_hash_aref(selector_groups, group_key);
@@ -1519,7 +1518,7 @@ VALUE cataract_flatten(VALUE self, VALUE input) {
             rb_hash_aset(selector_groups, group_key, group);
             DEBUG_PRINTF("    -> Created new selector+media group for '%s' + %s\n",
                         RSTRING_PTR(selector),
-                        NIL_P(media_context) ? "nil" : RSTRING_PTR(rb_sym_to_s(media_context)));
+                        NIL_P(media_context) ? "nil" : RSTRING_PTR(rb_inspect(media_context)));
         }
         rb_ary_push(group, LONG2FIX(i));
     }
@@ -1548,6 +1547,16 @@ VALUE cataract_flatten(VALUE self, VALUE input) {
         // Set empty @media_index (no media rules after flatten)
         VALUE media_idx = rb_hash_new();
         rb_ivar_set(passthrough_sheet, id_ivar_media_index, media_idx);
+
+        // Copy @media_queries and @_media_query_lists from input
+        if (rb_obj_is_kind_of(input, cStylesheet)) {
+            VALUE media_queries = rb_ivar_get(input, rb_intern("@media_queries"));
+            VALUE media_query_lists = rb_ivar_get(input, rb_intern("@_media_query_lists"));
+            Check_Type(media_queries, T_ARRAY);
+            if (!NIL_P(media_query_lists)) Check_Type(media_query_lists, T_HASH);
+            rb_ivar_set(passthrough_sheet, rb_intern("@media_queries"), media_queries);
+            rb_ivar_set(passthrough_sheet, rb_intern("@_media_query_lists"), media_query_lists);
+        }
 
         return passthrough_sheet;
     }
@@ -1631,6 +1640,16 @@ VALUE cataract_flatten(VALUE self, VALUE input) {
         }
 
         rb_ivar_set(merged_sheet, id_ivar_media_index, new_media_index);
+
+        // Copy @media_queries and @_media_query_lists from input (these don't change during flatten)
+        if (rb_obj_is_kind_of(input, cStylesheet)) {
+            VALUE media_queries = rb_ivar_get(input, rb_intern("@media_queries"));
+            VALUE media_query_lists = rb_ivar_get(input, rb_intern("@_media_query_lists"));
+            Check_Type(media_queries, T_ARRAY);
+            if (!NIL_P(media_query_lists)) Check_Type(media_query_lists, T_HASH);
+            rb_ivar_set(merged_sheet, rb_intern("@media_queries"), media_queries);
+            rb_ivar_set(merged_sheet, rb_intern("@_media_query_lists"), media_query_lists);
+        }
 
         // Set @_selector_lists with divergence tracking
         rb_ivar_set(merged_sheet, rb_intern("@_selector_lists"), selector_lists);
@@ -2108,7 +2127,8 @@ VALUE cataract_flatten(VALUE self, VALUE input) {
         Qnil,                     // specificity (not applicable)
         Qnil,                     // parent_rule_id (not nested)
         Qnil,                     // nesting_style (not nested)
-        Qnil                      // selector_list_id
+        Qnil,                     // selector_list_id
+        Qnil                      // media_query_id
     );
 
     // Set @rules array with single merged rule (use cached ID)
