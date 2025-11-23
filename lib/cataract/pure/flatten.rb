@@ -1227,7 +1227,13 @@ module Cataract
         parts << attachment if attachment
       end
 
-      shorthand_value = parts.join(' ')
+      # If all properties are defaults, the shorthand value would be empty
+      # In this case, use "none" which is equivalent to all-default background
+      shorthand_value = if parts.empty?
+                          'none'
+                        else
+                          parts.join(' ')
+                        end
 
       # Remove individual properties and append shorthand
       # Note: We append rather than insert at original position to match C implementation behavior
