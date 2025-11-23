@@ -48,6 +48,7 @@ class TestStylesheetQuerying < Minitest::Test
 
     # Should have unique media types
     media_types = media_queries.map(&:type).uniq
+
     assert_equal 2, media_types.length
     assert_member media_types, :screen
     assert_member media_types, :print

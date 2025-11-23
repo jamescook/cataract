@@ -101,22 +101,25 @@ class TestStylesheetFlatten < Minitest::Test
 
     # Should have at least 2 separate body rules (print and base)
     # They should NOT be merged because they're in different media contexts
-    assert body_rules.length >= 2, "Should have at least 2 separate body rules after flatten (different media contexts)"
+    assert_operator body_rules.length, :>=, 2, 'Should have at least 2 separate body rules after flatten (different media contexts)'
 
     # Test observable behavior: Query rules by media type
     # Rules with .print-only should only appear in print media
     print_rules = flattened.with_media(:print).to_a
     print_selectors = print_rules.map(&:selector)
-    assert_includes print_selectors, '.print-only', "Print media should include .print-only"
+
+    assert_includes print_selectors, '.print-only', 'Print media should include .print-only'
 
     # Rules with .screen-only should only appear in screen media
     screen_rules = flattened.with_media(:screen).to_a
     screen_selectors = screen_rules.map(&:selector)
-    assert_includes screen_selectors, '.screen-only', "Screen media should include .screen-only"
+
+    assert_includes screen_selectors, '.screen-only', 'Screen media should include .screen-only'
 
     # Base body rule should be queryable without media filter
     all_rules = flattened.to_a
-    assert_includes all_rules.map(&:selector), 'body', "Should have body rules"
+
+    assert_includes all_rules.map(&:selector), 'body', 'Should have body rules'
   end
 
   def test_rule_ids_are_sequential_after_flatten
@@ -133,8 +136,9 @@ class TestStylesheetFlatten < Minitest::Test
 
     # After flatten, rule IDs should be sequential from 0
     rule_ids = flattened.rules.map(&:id).sort
+
     assert_equal (0...flattened.rules.length).to_a, rule_ids,
-                 "Rule IDs should be sequential from 0 after flatten"
+                 'Rule IDs should be sequential from 0 after flatten'
   end
 
   def test_cascade_respects_media_query_boundaries
@@ -161,17 +165,17 @@ class TestStylesheetFlatten < Minitest::Test
       r.declarations.any? { |d| d.property == 'background' && d.important }
     end
 
-    refute_nil important_bg_rule, "Should have body rule with !important background (from print media)"
+    refute_nil important_bg_rule, 'Should have body rule with !important background (from print media)'
 
     # Look for a body rule with regular (non-important) background
     regular_bg_rule = body_rules.find do |r|
       r.declarations.any? { |d| d.property == 'background' && !d.important }
     end
 
-    refute_nil regular_bg_rule, "Should have body rule with regular background (from base CSS)"
+    refute_nil regular_bg_rule, 'Should have body rule with regular background (from base CSS)'
 
     # These should be different rules (different IDs)
     refute_equal important_bg_rule.id, regular_bg_rule.id,
-                 "Print and base body rules should not be merged"
+                 'Print and base body rules should not be merged'
   end
 end

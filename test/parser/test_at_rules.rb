@@ -240,11 +240,12 @@ class TestAtRules < Minitest::Test
     assert_equal [rule], @sheet.with_media(:screen)
 
     # Verify the combined MediaQuery object was created correctly
-    refute_nil rule.media_query_id, "Rule should have a media_query_id"
+    refute_nil rule.media_query_id, 'Rule should have a media_query_id'
     media_query = @sheet.media_queries[rule.media_query_id]
-    refute_nil media_query, "MediaQuery should exist in stylesheet"
-    assert_equal :screen, media_query.type, "MediaQuery should have screen type"
-    assert_equal '(min-width: 500px)', media_query.conditions, "MediaQuery should combine parent and child conditions"
+
+    refute_nil media_query, 'MediaQuery should exist in stylesheet'
+    assert_equal :screen, media_query.type, 'MediaQuery should have screen type'
+    assert_equal '(min-width: 500px)', media_query.conditions, 'MediaQuery should combine parent and child conditions'
   end
 
   def test_nested_media_complex
@@ -266,11 +267,13 @@ class TestAtRules < Minitest::Test
 
     # .outer should be in screen media (no conditions)
     outer_mq = @sheet.media_queries[outer_rule.media_query_id]
+
     assert_equal :screen, outer_mq.type
     assert_nil outer_mq.conditions
 
     # .inner should have combined media query (screen + min-width condition)
     inner_mq = @sheet.media_queries[inner_rule.media_query_id]
+
     assert_equal :screen, inner_mq.type
     assert_equal '(min-width: 768px)', inner_mq.conditions
   end
@@ -288,10 +291,12 @@ class TestAtRules < Minitest::Test
     assert_equal 1, @sheet.size
 
     rule = @sheet.with_selector('.wide-landscape').first
+
     refute_nil rule
 
     # Should have combined MediaQuery with both parent and child conditions joined by " and "
     mq = @sheet.media_queries[rule.media_query_id]
+
     assert_equal :screen, mq.type
     assert_equal '(orientation: landscape) and (min-width > 1024px)', mq.conditions
   end

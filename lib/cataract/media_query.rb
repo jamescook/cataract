@@ -70,7 +70,7 @@ module Cataract
         false
       end
     end
-    alias eql? ==
+    alias_method :eql?, :==
 
     # Generate hash code for this media query.
     #

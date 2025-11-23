@@ -1064,14 +1064,17 @@ class TestFlattening < Minitest::Test
       # Find the print media body rule
       media_index = flattened.media_index
       print_rule_ids = media_index[:print] || []
+
       refute_empty(print_rule_ids, 'Should have print media rules')
 
       print_body_rule = body_rules.find { |r| print_rule_ids.include?(r.id) }
+
       assert(print_body_rule, 'Should have body rule in print media')
       assert_has_property({ background: 'red !important' }, print_body_rule)
 
       # Find the base body rule (NOT in print media)
       base_body_rule = body_rules.find { |r| !print_rule_ids.include?(r.id) }
+
       assert(base_body_rule, 'Should have body rule NOT in print media')
       assert_has_property({ color: '#fff' }, base_body_rule)
       assert_has_property({ 'background-color': '#9EBF00' }, base_body_rule)
@@ -1086,6 +1089,7 @@ class TestFlattening < Minitest::Test
       # Verify screen,handheld media for .hide rule
       # The rule should be indexed under both :screen and :handheld
       hide_rule = flattened.rules.find { |r| r.selector == '.hide' }
+
       assert(hide_rule, 'Should have .hide rule')
       assert_rule_in_media(hide_rule, :screen, flattened)
       assert_rule_in_media(hide_rule, :handheld, flattened)

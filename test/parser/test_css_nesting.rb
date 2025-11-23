@@ -737,12 +737,14 @@ class TestCssNesting < Minitest::Test
 
     # Find the rule with the color declaration (the innermost nested @media rule)
     rule_with_color = sheet.rules.find { |r| r.declarations.any? { |d| d.property == 'color' } }
-    refute_nil rule_with_color, "Should have a rule with color declaration"
+
+    refute_nil rule_with_color, 'Should have a rule with color declaration'
     assert_equal '.parent', rule_with_color.selector
 
     # Verify the combined MediaQuery was created (screen + min-width condition)
     refute_nil rule_with_color.media_query_id
     mq = sheet.media_queries[rule_with_color.media_query_id]
+
     refute_nil mq
     assert_equal :screen, mq.type
     assert_equal '(min-width: 500px)', mq.conditions
@@ -764,10 +766,12 @@ class TestCssNesting < Minitest::Test
 
     # Find the rule with the font-size declaration
     rule_with_font = sheet.rules.find { |r| r.declarations.any? { |d| d.property == 'font-size' } }
-    refute_nil rule_with_font, "Should have a rule with font-size declaration"
+
+    refute_nil rule_with_font, 'Should have a rule with font-size declaration'
 
     # Verify combined MediaQuery has both conditions joined by " and "
     mq = sheet.media_queries[rule_with_font.media_query_id]
+
     assert_equal :screen, mq.type
     assert_equal '(orientation: landscape) and (min-width > 1024px)', mq.conditions
   end
@@ -1125,6 +1129,7 @@ class TestCssNesting < Minitest::Test
 
     # Check the actual MediaQuery object has the conditions
     mq = sheet.media_queries[foo_media.media_query_id]
+
     assert_equal :all, mq.type
     assert_equal '(orientation: landscape)', mq.conditions
   end
@@ -1177,6 +1182,7 @@ class TestCssNesting < Minitest::Test
 
     # Check the actual MediaQuery objects have the correct conditions
     landscape_mq = sheet.media_queries[foo_landscape.media_query_id]
+
     assert_equal '(orientation: landscape)', landscape_mq.conditions
 
     nested_mq = sheet.media_queries[foo_nested.media_query_id]

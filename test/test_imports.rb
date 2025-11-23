@@ -1127,16 +1127,18 @@ body { color: red; }"
     # base: body => 1 rule
     # Total: 7 rules
 
-    assert_equal 7, sheet.rules.length, "Should have 7 total rules after recursive import resolution"
+    assert_equal 7, sheet.rules.length, 'Should have 7 total rules after recursive import resolution'
 
     # Check that rules have correct selectors
     selectors = sheet.rules.map(&:selector).sort
     expected_selectors = ['.mobile-menu', '.print-only', '.screen-large', '.screen-only', 'body', 'body', 'body'].sort
+
     assert_equal expected_selectors, selectors
 
     # Check that all rule IDs are unique (no duplicates)
     rule_ids = sheet.rules.map(&:id)
-    assert_equal rule_ids.uniq.length, rule_ids.length, "All rule IDs should be unique"
+
+    assert_equal rule_ids.uniq.length, rule_ids.length, 'All rule IDs should be unique'
 
     # Check that rule IDs are sequential from 0
     assert_equal (0...sheet.rules.length).to_a, rule_ids.sort

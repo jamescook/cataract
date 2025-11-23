@@ -115,6 +115,24 @@ module Cataract
     LIST_STYLE_PROPERTIES = [PROP_LIST_STYLE_TYPE, PROP_LIST_STYLE_POSITION, PROP_LIST_STYLE_IMAGE].freeze
     BORDER_ALL = (BORDER_WIDTHS + BORDER_STYLES + BORDER_COLORS).freeze
 
+    # Shorthand property lookup (Hash is faster than Array#include? or Set)
+    # Used for fast-path check to avoid calling _expand_shorthand for non-shorthands
+    SHORTHAND_PROPERTIES = {
+      'margin' => true,
+      'padding' => true,
+      'border' => true,
+      'border-top' => true,
+      'border-right' => true,
+      'border-bottom' => true,
+      'border-left' => true,
+      'border-width' => true,
+      'border-style' => true,
+      'border-color' => true,
+      'font' => true,
+      'background' => true,
+      'list-style' => true
+    }.freeze
+
     # List style keywords
     LIST_STYLE_POSITION_KEYWORDS = %w[inside outside].freeze
 
@@ -154,10 +172,16 @@ module Cataract
       # Expand shorthands in regular rules only (AtRules don't have declarations)
       # NOTE: Using manual each + concat instead of .flat_map for performance.
       # The concise form (.flat_map) is ~5-10% slower depending on number of shorthands to expand.
+      # NOTE: Fast-path check for shorthands (Hash lookup) avoids calling _expand_shorthand
+      # for declarations that are not shorthands (~20% faster than calling method unconditionally).
       regular_rules.each do |rule|
         expanded = []
         rule.declarations.each do |decl|
-          expanded.concat(_expand_shorthand(decl))
+          if SHORTHAND_PROPERTIES[decl.property]
+            expanded.concat(_expand_shorthand(decl))
+          else
+            expanded << decl
+          end
         end
         rule.declarations.replace(expanded)
       end
