@@ -28,20 +28,20 @@ typedef struct {
     int next_media_query_list_id; // Next media query list ID (0-indexed)
     int media_query_count;    // Safety limit for media queries
     st_table *media_cache;    // Parse-time cache: string => parsed media types
-    uint8_t has_nesting;      // Set to 1 if any nested rules are created
-    uint8_t selector_lists_enabled; // Parser option: track selector lists (1=enabled, 0=disabled)
-    uint8_t depth;            // Current recursion depth (safety limit)
+    int has_nesting;      // Set to 1 if any nested rules are created
+    int selector_lists_enabled; // Parser option: track selector lists (1=enabled, 0=disabled)
+    int depth;            // Current recursion depth (safety limit)
     // URL conversion options
     VALUE base_uri;           // Base URI for resolving relative URLs (Qnil if disabled)
     VALUE uri_resolver;       // Proc to call for URL resolution (Qnil for default)
-    uint8_t absolute_paths;   // Whether to convert relative URLs to absolute
-    // UNUSED: Testing struct size impact
-    VALUE css_string;         // UNUSED
-    uint8_t check_empty_values; // UNUSED
-    uint8_t check_malformed_declarations; // UNUSED
-    uint8_t check_invalid_selectors; // UNUSED
-    uint8_t check_malformed_at_rules; // UNUSED
-    uint8_t check_unclosed_blocks; // UNUSED
+    int absolute_paths;   // Whether to convert relative URLs to absolute
+    // Parse error checking options
+    VALUE css_string;         // Full CSS string for error position calculation
+    int check_empty_values; // Raise error on empty declaration values
+    int check_malformed_declarations; // Raise error on declarations without colons
+    int check_invalid_selectors; // Raise error on empty/malformed selectors
+    int check_malformed_at_rules; // Raise error on @media/@supports without conditions
+    int check_unclosed_blocks; // Raise error on missing closing braces
 } ParserContext;
 
 // Macro to skip CSS comments /* ... */
@@ -69,6 +69,20 @@ static inline const char* find_matching_brace(const char *start, const char *end
         if (depth > 0) p++;
     }
     return p;
+}
+
+// Find matching closing brace with strict error checking
+// Input: start = position after opening '{', end = limit, check_unclosed = whether to raise error
+// Returns: pointer to matching '}' (raises error if not found and check_unclosed is true)
+static inline const char* find_matching_brace_strict(const char *start, const char *end, int check_unclosed) {
+    const char *closing_brace = find_matching_brace(start, end);
+
+    // Check if we found the closing brace
+    if (check_unclosed && closing_brace >= end) {
+        rb_raise(eParseError, "Unclosed block: missing closing brace");
+    }
+
+    return closing_brace;
 }
 
 // Find matching closing paren
@@ -994,7 +1008,7 @@ static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char
 
             // Find matching closing brace
             const char *media_block_start = p;
-            const char *media_block_end = find_matching_brace(p, end);
+            const char *media_block_end = find_matching_brace_strict(p, end, ctx->check_unclosed_blocks);
             p = media_block_end;
 
             if (p < end) p++;  // Skip }
@@ -1120,7 +1134,7 @@ static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char
             // Example: "& .child { font: 14px; }"
             //                     ^nested_block_start  ^nested_block_end (at })
             const char *nested_block_start = p;
-            const char *nested_block_end = find_matching_brace(p, end);
+            const char *nested_block_end = find_matching_brace_strict(p, end, ctx->check_unclosed_blocks);
             p = nested_block_end;
 
             if (p < end) p++;  // Skip }
@@ -1541,7 +1555,7 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                     }
                     p++;  // Skip opening {
                     const char *block_start = p;
-                    const char *block_end = find_matching_brace(p, pe);
+                    const char *block_end = find_matching_brace_strict(p, pe, ctx->check_unclosed_blocks);
                     p = block_end;
 
                     // Parse block contents with NO media query context
@@ -1668,7 +1682,7 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
 
             // Find matching closing brace
             const char *block_start = p;
-            const char *block_end = find_matching_brace(p, pe);
+            const char *block_end = find_matching_brace_strict(p, pe, ctx->check_unclosed_blocks);
             p = block_end;
 
             // Recursively parse @media block with new media query context
@@ -1734,7 +1748,7 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
 
                 // Find matching closing brace
                 const char *block_start = p;
-                const char *block_end = find_matching_brace(p, pe);
+                const char *block_end = find_matching_brace_strict(p, pe, ctx->check_unclosed_blocks);
                 p = block_end;
 
                 // Recursively parse block content (preserve parent media context)
@@ -1773,7 +1787,7 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
 
                 // Find matching closing brace
                 const char *block_start = p;
-                const char *block_end = find_matching_brace(p, pe);
+                const char *block_end = find_matching_brace_strict(p, pe, ctx->check_unclosed_blocks);
                 p = block_end;
 
                 // Parse keyframe blocks as rules (from/to/0%/50% etc)
@@ -1844,7 +1858,7 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
 
                 // Find matching closing brace
                 const char *decl_start = p;
-                const char *decl_end = find_matching_brace(p, pe);
+                const char *decl_end = find_matching_brace_strict(p, pe, ctx->check_unclosed_blocks);
                 p = decl_end;
 
                 // Parse declarations
@@ -2212,6 +2226,11 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
 
         p++;
     }
+
+    // Check for unclosed blocks at end of parsing
+    if (ctx->check_unclosed_blocks && brace_depth > 0) {
+        rb_raise(eParseError, "Unclosed block: missing closing brace");
+    }
 }
 
 /*
@@ -2255,10 +2274,11 @@ VALUE parse_css_new_impl(VALUE css_string, VALUE parser_options, int rule_id_off
 
     // Parse error options
     VALUE raise_parse_errors_opt = rb_hash_aref(parser_options, ID2SYM(rb_intern("raise_parse_errors")));
-    uint8_t check_empty_values = 0;
-    uint8_t check_malformed_declarations = 0;
-    uint8_t check_invalid_selectors = 0;
-    uint8_t check_malformed_at_rules = 0;
+    int check_empty_values = 0;
+    int check_malformed_declarations = 0;
+    int check_invalid_selectors = 0;
+    int check_malformed_at_rules = 0;
+    int check_unclosed_blocks = 0;
 
     if (RTEST(raise_parse_errors_opt)) {
         if (TYPE(raise_parse_errors_opt) == T_HASH) {
@@ -2267,16 +2287,19 @@ VALUE parse_css_new_impl(VALUE css_string, VALUE parser_options, int rule_id_off
             VALUE malformed_declarations_opt = rb_hash_aref(raise_parse_errors_opt, ID2SYM(rb_intern("malformed_declarations")));
             VALUE invalid_selectors_opt = rb_hash_aref(raise_parse_errors_opt, ID2SYM(rb_intern("invalid_selectors")));
             VALUE malformed_at_rules_opt = rb_hash_aref(raise_parse_errors_opt, ID2SYM(rb_intern("malformed_at_rules")));
+            VALUE unclosed_blocks_opt = rb_hash_aref(raise_parse_errors_opt, ID2SYM(rb_intern("unclosed_blocks")));
             check_empty_values = RTEST(empty_values_opt) ? 1 : 0;
             check_malformed_declarations = RTEST(malformed_declarations_opt) ? 1 : 0;
             check_invalid_selectors = RTEST(invalid_selectors_opt) ? 1 : 0;
             check_malformed_at_rules = RTEST(malformed_at_rules_opt) ? 1 : 0;
+            check_unclosed_blocks = RTEST(unclosed_blocks_opt) ? 1 : 0;
         } else {
             // true - enable all checks
             check_empty_values = 1;
             check_malformed_declarations = 1;
             check_invalid_selectors = 1;
             check_malformed_at_rules = 1;
+            check_unclosed_blocks = 1;
         }
     }
 
@@ -2337,7 +2360,7 @@ VALUE parse_css_new_impl(VALUE css_string, VALUE parser_options, int rule_id_off
     ctx.check_malformed_declarations = check_malformed_declarations;
     ctx.check_invalid_selectors = check_invalid_selectors;
     ctx.check_malformed_at_rules = check_malformed_at_rules;
-    ctx.check_unclosed_blocks = 0;  // Not implemented yet
+    ctx.check_unclosed_blocks = check_unclosed_blocks;
 
     // Parse CSS (top-level, no parent context)
     DEBUG_PRINTF("[PARSE] Starting parse_css_recursive from: %.80s\n", p);
