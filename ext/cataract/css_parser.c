@@ -63,6 +63,7 @@ typedef struct {
  * @param pos Byte position in CSS where error occurred
  * @param error_type Symbol for error type (:empty_value, :malformed_declaration, etc.)
  */
+__attribute__((noreturn))
 static void raise_parse_error(const char *message, VALUE css_string, long pos, const char *error_type) {
     // Get ParseError class
     VALUE cataract_module = rb_const_get(rb_cObject, rb_intern("Cataract"));
