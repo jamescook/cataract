@@ -14,6 +14,10 @@
 #include <string.h>
 #include <stdint.h>
 
+// Use uint8_t for boolean flags to reduce struct size and improve cache efficiency
+// (int is 4 bytes, uint8_t is 1 byte - saves 27 bytes across 9 flags)
+#define BOOLEAN uint8_t
+
 // Parser context passed through recursive calls
 typedef struct {
     VALUE rules_array;        // Array of Rule structs
@@ -28,20 +32,20 @@ typedef struct {
     int next_media_query_list_id; // Next media query list ID (0-indexed)
     int media_query_count;    // Safety limit for media queries
     st_table *media_cache;    // Parse-time cache: string => parsed media types
-    int has_nesting;      // Set to 1 if any nested rules are created
-    int selector_lists_enabled; // Parser option: track selector lists (1=enabled, 0=disabled)
-    int depth;            // Current recursion depth (safety limit)
+    BOOLEAN has_nesting;      // Set to 1 if any nested rules are created
+    BOOLEAN selector_lists_enabled; // Parser option: track selector lists (1=enabled, 0=disabled)
+    BOOLEAN depth;            // Current recursion depth (safety limit)
     // URL conversion options
     VALUE base_uri;           // Base URI for resolving relative URLs (Qnil if disabled)
     VALUE uri_resolver;       // Proc to call for URL resolution (Qnil for default)
-    int absolute_paths;   // Whether to convert relative URLs to absolute
+    BOOLEAN absolute_paths;   // Whether to convert relative URLs to absolute
     // Parse error checking options
     VALUE css_string;         // Full CSS string for error position calculation
-    int check_empty_values; // Raise error on empty declaration values
-    int check_malformed_declarations; // Raise error on declarations without colons
-    int check_invalid_selectors; // Raise error on empty/malformed selectors
-    int check_malformed_at_rules; // Raise error on @media/@supports without conditions
-    int check_unclosed_blocks; // Raise error on missing closing braces
+    BOOLEAN check_empty_values; // Raise error on empty declaration values
+    BOOLEAN check_malformed_declarations; // Raise error on declarations without colons
+    BOOLEAN check_invalid_selectors; // Raise error on empty/malformed selectors
+    BOOLEAN check_malformed_at_rules; // Raise error on @media/@supports without conditions
+    BOOLEAN check_unclosed_blocks; // Raise error on missing closing braces
 } ParserContext;
 
 // Macro to skip CSS comments /* ... */
@@ -221,7 +225,7 @@ static VALUE resolve_nested_selector(VALUE parent_selector, const char *nested_s
     long parent_len = RSTRING_LEN(parent_selector);
 
     // Check if nested selector contains &
-    int has_ampersand = 0;
+    BOOLEAN has_ampersand = 0;
     for (long i = 0; i < nested_len; i++) {
         if (nested_sel[i] == '&') {
             has_ampersand = 1;
@@ -729,7 +733,7 @@ static VALUE parse_declarations(const char *start, const char *end, ParserContex
         trim_trailing(val_start, &val_end);
 
         // Check for !important
-        int is_important = 0;
+        BOOLEAN is_important = 0;
         if (val_end - val_start >= 10) {  // strlen("!important") = 10
             const char *check = val_end - 10;
             while (check < val_end && IS_WHITESPACE(*check)) check++;
@@ -1223,7 +1227,7 @@ static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char
         trim_leading(&p, end);
 
         const char *val_start = p;
-        int important = 0;
+        BOOLEAN important = 0;
 
         // Find end of value (semicolon or closing brace or end)
         while (p < end && *p != ';' && *p != '}') p++;
@@ -1709,7 +1713,7 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
             long at_name_len = at_name_end - at_start;
 
             // Check if this is a conditional group rule
-            int is_conditional_group =
+            BOOLEAN is_conditional_group =
                 (at_name_len == 8 && strncmp(at_start, "supports", 8) == 0) ||
                 (at_name_len == 5 && strncmp(at_start, "layer", 5) == 0) ||
                 (at_name_len == 9 && strncmp(at_start, "container", 9) == 0) ||
@@ -1717,7 +1721,7 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
 
             if (is_conditional_group) {
                 // Check if this rule requires a condition
-                int requires_condition =
+                BOOLEAN requires_condition =
                     (at_name_len == 8 && strncmp(at_start, "supports", 8) == 0) ||
                     (at_name_len == 9 && strncmp(at_start, "container", 9) == 0);
 
@@ -1762,7 +1766,7 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
 
             // Check for @keyframes (contains <rule-list>)
             // TODO: Test perf gains by using RB_UNLIKELY(is_keyframes) wrapper
-            int is_keyframes =
+            BOOLEAN is_keyframes =
                 (at_name_len == 9 && strncmp(at_start, "keyframes", 9) == 0) ||
                 (at_name_len == 17 && strncmp(at_start, "-webkit-keyframes", 17) == 0) ||
                 (at_name_len == 13 && strncmp(at_start, "-moz-keyframes", 13) == 0);
@@ -1836,7 +1840,7 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
             }
 
             // Check for @font-face (contains <declaration-list>)
-            int is_font_face = (at_name_len == 9 && strncmp(at_start, "font-face", 9) == 0);
+            BOOLEAN is_font_face = (at_name_len == 9 && strncmp(at_start, "font-face", 9) == 0);
 
             if (is_font_face) {
                 // Build selector string: "@font-face"
@@ -1915,7 +1919,7 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                 // We've found a complete CSS rule block - now determine if it has nesting
                 // Example: .parent { color: red; & .child { font-size: 14px; } }
                 //          ^selector_start    ^decl_start                    ^p (at })
-                int has_nesting = has_nested_selectors(decl_start, p);
+                BOOLEAN has_nesting = has_nested_selectors(decl_start, p);
 
                 // Get selector string
                 const char *sel_end = decl_start - 1;
@@ -2264,21 +2268,21 @@ VALUE parse_css_new_impl(VALUE css_string, VALUE parser_options, int rule_id_off
 
     // Read parser options
     VALUE selector_lists_opt = rb_hash_aref(parser_options, ID2SYM(rb_intern("selector_lists")));
-    int selector_lists_enabled = (NIL_P(selector_lists_opt) || RTEST(selector_lists_opt)) ? 1 : 0;
+    BOOLEAN selector_lists_enabled = (NIL_P(selector_lists_opt) || RTEST(selector_lists_opt)) ? 1 : 0;
 
     // URL conversion options
     VALUE base_uri = rb_hash_aref(parser_options, ID2SYM(rb_intern("base_uri")));
     VALUE absolute_paths_opt = rb_hash_aref(parser_options, ID2SYM(rb_intern("absolute_paths")));
     VALUE uri_resolver = rb_hash_aref(parser_options, ID2SYM(rb_intern("uri_resolver")));
-    int absolute_paths = RTEST(absolute_paths_opt) ? 1 : 0;
+    BOOLEAN absolute_paths = RTEST(absolute_paths_opt) ? 1 : 0;
 
     // Parse error options
     VALUE raise_parse_errors_opt = rb_hash_aref(parser_options, ID2SYM(rb_intern("raise_parse_errors")));
-    int check_empty_values = 0;
-    int check_malformed_declarations = 0;
-    int check_invalid_selectors = 0;
-    int check_malformed_at_rules = 0;
-    int check_unclosed_blocks = 0;
+    BOOLEAN check_empty_values = 0;
+    BOOLEAN check_malformed_declarations = 0;
+    BOOLEAN check_invalid_selectors = 0;
+    BOOLEAN check_malformed_at_rules = 0;
+    BOOLEAN check_unclosed_blocks = 0;
 
     if (RTEST(raise_parse_errors_opt)) {
         if (TYPE(raise_parse_errors_opt) == T_HASH) {
