@@ -459,6 +459,23 @@ module Cataract
 
       # Trim whitespace from selector (in-place to avoid allocation)
       selector_text.strip!
+
+      # Validate selector (strict mode) - only if enabled to avoid overhead
+      if @_check_invalid_selectors
+        # Check for empty selector
+        if selector_text.empty?
+          raise ParseError.new('Invalid selector: empty selector',
+                               css: @_css, pos: start_pos, type: :invalid_selector)
+        end
+
+        # Check if selector starts with a combinator (>, +, ~)
+        first_char = selector_text.getbyte(0)
+        if first_char == BYTE_GT || first_char == BYTE_PLUS || first_char == BYTE_TILDE
+          raise ParseError.new("Invalid selector: selector cannot start with combinator '#{selector_text[0]}'",
+                               css: @_css, pos: start_pos, type: :invalid_selector)
+        end
+      end
+
       selector_text
     end
 
