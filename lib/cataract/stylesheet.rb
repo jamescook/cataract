@@ -119,12 +119,14 @@ module Cataract
         base_dir: nil,
         absolute_paths: false,
         uri_resolver: nil,
-        parser: {}
+        parser: {},
+        raise_parse_errors: false
       }.merge(options)
 
       # Parser options with defaults (stored for passing to parser)
       @parser_options = {
-        selector_lists: true
+        selector_lists: true,
+        raise_parse_errors: @options[:raise_parse_errors]
       }.merge(@options[:parser] || {})
 
       @rules = [] # Flat array of Rule structs
