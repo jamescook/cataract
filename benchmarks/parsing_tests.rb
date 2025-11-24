@@ -49,6 +49,16 @@ module ParsingTests
           'lines' => instance.selector_lists_css.lines.count,
           'bytes' => instance.selector_lists_css.length
         }
+      ],
+      'error_checking' => [
+        {
+          'name' => "Medium CSS (#{instance.css2.lines.count} lines) - no error checking",
+          'key' => 'error_checking_off'
+        },
+        {
+          'name' => "Medium CSS (#{instance.css2.lines.count} lines) - with error checking",
+          'key' => 'error_checking_on'
+        }
       ]
     }
   end
@@ -88,6 +98,7 @@ module ParsingTests
     run_css1_benchmark
     run_css2_benchmark
     run_selector_lists_benchmark
+    run_error_checking_overhead_benchmark
   end
 
   def css1
@@ -191,6 +202,32 @@ module ParsingTests
       x.report("#{impl_label}: selector lists (disabled)") do
         parser = Cataract::Stylesheet.new(parser: { selector_lists: false })
         parser.add_block(selector_lists_css)
+      end
+
+      x.compare!
+    end
+  end
+
+  def run_error_checking_overhead_benchmark
+    puts "\n#{'=' * 80}"
+    puts "TEST: Error Checking Overhead (#{css2.lines.count} lines, #{css2.length} chars) - #{implementation_label}"
+    puts '=' * 80
+
+    benchmark('error_checking') do |x|
+      x.config(time: 5, warmup: 2)
+
+      impl_label = base_impl_type == :pure ? 'cataract pure' : 'cataract'
+
+      # Test WITHOUT error checking (baseline)
+      x.report("#{impl_label}: error checking off") do
+        parser = Cataract::Stylesheet.new
+        parser.add_block(css2)
+      end
+
+      # Test WITH error checking enabled (overhead)
+      x.report("#{impl_label}: error checking on") do
+        parser = Cataract::Stylesheet.new(parser: { raise_parse_errors: true })
+        parser.add_block(css2)
       end
 
       x.compare!
