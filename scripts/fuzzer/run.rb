@@ -108,6 +108,12 @@ CLEAN_CORPUS = [
   "@font-face { font-family: 'Custom'; src: url('font.woff'); }",
   '@keyframes fade { from { opacity: 0; } to { opacity: 1; } }',
   'h1 + *[rel=up] { border: 1px solid red; }',
+  # Parse error triggering patterns (will be mutated but base is valid to parse)
+  'h1 { color: red; }', # Will mutate to empty values
+  'div { property: value; }', # Will mutate to malformed declarations
+  '.selector { color: blue; }', # Will mutate to invalid selectors
+  '@media screen { .test { color: red; } }', # Will mutate to malformed @media
+  'body { color: red; }', # Will mutate to unclosed blocks
   BOOTSTRAP_CSS[0..1000] # Clean bootstrap snippet
 ].freeze
 
@@ -413,6 +419,13 @@ def mutate(css)
     # Value mutations
     -> { css.gsub(';', ' !important;') }, # Add !important everywhere
     -> { css.gsub(/:[^;]+;/, ": #{'x' * rand(10_000)};") }, # Very long values
+
+    # Parse error triggering mutations
+    -> { css.gsub(/:\s*[^;]+;/, ': ;') }, # Empty values (triggers empty_values check)
+    -> { css.gsub(/:\s*[^;]+;/, ' ;') }, # Remove colon (triggers malformed_declarations check)
+    -> { css.gsub(/[.#][\w-]+\s*{/, ' { ') }, # Remove selector (triggers invalid_selectors check)
+    -> { css.gsub(/@media\s+[^{]+{/, '@media { ') }, # Remove @media query (triggers malformed_at_rules check)
+    -> { css.gsub(/}\s*$/, '') }, # Remove closing braces (triggers unclosed_blocks check)
     -> { css.gsub(/calc\([^)]+\)/, "calc(#{'(' * rand(10)}1+2#{')' * rand(10)}") }, # Unbalanced calc()
     -> { css.gsub(/url\([^)]+\)/, "url(CORRUPT#{'X' * rand(100)})") }, # Corrupt URLs
     -> { css.gsub('url(', 'url(url(url(') }, # Nested url() calls
@@ -590,6 +603,7 @@ stats = {
   flatten_tested: 0,
   to_s_tested: 0,
   color_converted: 0,
+  parse_errors: 0,
   depth_errors: 0,
   size_errors: 0,
   other_errors: 0,
@@ -706,6 +720,8 @@ def parse_in_worker(stdin, stdout, stderr, wait_thr, input, last_input)
     end
 
     case response
+    when 'PARSE_ERR'
+      [:parse_error, nil, nil, nil, false, false, false]
     when /^PARSE/
       # Extract which operations were tested
       flatten_tested = response.include?('+FLATTEN')
@@ -938,6 +954,7 @@ puts "Parsed: #{stats[:parsed]} (#{(stats[:parsed] * 100.0 / stats[:total]).roun
 puts "Flatten tested: #{stats[:flatten_tested]} (#{(stats[:flatten_tested] * 100.0 / stats[:total]).round(1)}%)"
 puts "ToS tested: #{stats[:to_s_tested]} (#{(stats[:to_s_tested] * 100.0 / stats[:total]).round(1)}%)"
 puts "Color converted: #{stats[:color_converted]} (#{(stats[:color_converted] * 100.0 / stats[:total]).round(1)}%)"
+puts "Parse Errors: #{stats[:parse_errors]} (#{(stats[:parse_errors] * 100.0 / stats[:total]).round(1)}%)"
 puts "Depth Errors: #{stats[:depth_errors]} (#{(stats[:depth_errors] * 100.0 / stats[:total]).round(1)}%)"
 puts "Size Errors: #{stats[:size_errors]} (#{(stats[:size_errors] * 100.0 / stats[:total]).round(1)}%)"
 puts "Other Errors: #{stats[:other_errors]} (#{(stats[:other_errors] * 100.0 / stats[:total]).round(1)}%)"

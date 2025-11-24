@@ -731,7 +731,7 @@ module Cataract
     # @param base_dir [String, nil] Override constructor's base_dir for this block
     # @param absolute_paths [Boolean, nil] Override constructor's absolute_paths for this block
     # @return [self] Returns self for method chaining
-    def add_block(css, fix_braces: false, media_types: nil, base_uri: nil, base_dir: nil, absolute_paths: nil)
+    def add_block(css, fix_braces: false, media_types: nil, base_uri: nil, base_dir: nil, absolute_paths: nil, raise_parse_errors: false)
       css += ' }' if fix_braces && !css.strip.end_with?('}')
 
       # Convenience wrapper: wrap in @media if media_types specified
@@ -755,6 +755,8 @@ module Cataract
         parse_options[:absolute_paths] = true
         parse_options[:uri_resolver] = @options[:uri_resolver] || Cataract::DEFAULT_URI_RESOLVER
       end
+
+      parse_options[:raise_parse_errors] = raise_parse_errors if raise_parse_errors
 
       # Parse CSS first (this extracts @import statements into result[:imports])
       result = Cataract._parse_css(css, parse_options)
