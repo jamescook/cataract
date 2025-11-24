@@ -1695,7 +1695,7 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
             if (is_conditional_group) {
                 // Find condition text (between at-rule name and opening brace)
                 const char *cond_start = at_name_end;
-                const char *cond_end = at_name_end;
+                const char *cond_end;
 
                 // Skip to opening brace
                 p = at_name_end;

@@ -102,6 +102,44 @@ sheet.to_s
 # => "body { margin: 0; padding: 0; } @media screen and (min-width: 768px) { .container { width: 750px; } } ..."
 ```
 
+<details>
+<summary><strong>Parse Error Detection</strong></summary>
+
+Enable strict parsing to raise errors on malformed CSS:
+
+```ruby
+# Enable all error checks
+sheet = Cataract::Stylesheet.parse(css, raise_parse_errors: true)
+
+# Or enable specific checks
+sheet = Cataract::Stylesheet.parse(css,
+  raise_parse_errors: {
+    empty_values: true,           # Raise on "color: ;"
+    malformed_declarations: true, # Raise on "color" (missing colon)
+    invalid_selectors: true,      # Raise on "{ color: red; }" (empty selector)
+    malformed_at_rules: true,     # Raise on "@media { ... }" (missing query)
+    unclosed_blocks: true         # Raise on "h1 { color: red;" (missing })
+  }
+)
+```
+
+Errors are raised as `Cataract::ParseError` with position information:
+
+```ruby
+begin
+  Cataract::Stylesheet.parse("h1 { color: ; }", raise_parse_errors: true)
+rescue Cataract::ParseError => e
+  puts e.message     # => "Empty value for property 'color' at line 1, column 13"
+  puts e.line        # => 1
+  puts e.column      # => 13
+  puts e.error_type  # => :empty_value
+end
+```
+
+**Performance Note:** Error checking adds ~7% overhead with pure ruby parser. See [benchmarks](BENCHMARKS.md) for details.
+
+</details>
+
 ### Advanced Filtering with Enumerable
 
 `Cataracy::Stylesheet` implements `Enumerable`, providing standard Ruby collection methods plus chainable scopes:
