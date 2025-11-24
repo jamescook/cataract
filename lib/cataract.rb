@@ -2,6 +2,7 @@
 
 require_relative 'cataract/version'
 require_relative 'cataract/constants'
+require_relative 'cataract/error'
 
 # Load struct definitions first (before C extension or pure Ruby)
 require_relative 'cataract/declaration'

@@ -77,7 +77,8 @@ module Cataract
         selector_lists: true,
         base_uri: nil,
         absolute_paths: false,
-        uri_resolver: nil
+        uri_resolver: nil,
+        raise_parse_errors: false
       }.merge(parser_options)
 
       # Private: Extract options to ivars to avoid repeated hash lookups in hot path
@@ -85,6 +86,31 @@ module Cataract
       @_base_uri = @_parser_options[:base_uri]
       @_absolute_paths = @_parser_options[:absolute_paths]
       @_uri_resolver = @_parser_options[:uri_resolver] || Cataract::DEFAULT_URI_RESOLVER
+
+      # Parse error handling options - extract to ivars for hot path performance
+      @_raise_parse_errors = @_parser_options[:raise_parse_errors]
+      if @_raise_parse_errors.is_a?(Hash)
+        # Granular control - default all to false (opt-in)
+        @_check_empty_values = @_raise_parse_errors[:empty_values] || false
+        @_check_malformed_declarations = @_raise_parse_errors[:malformed_declarations] || false
+        @_check_invalid_selectors = @_raise_parse_errors[:invalid_selectors] || false
+        @_check_malformed_at_rules = @_raise_parse_errors[:malformed_at_rules] || false
+        @_check_unclosed_blocks = @_raise_parse_errors[:unclosed_blocks] || false
+      elsif @_raise_parse_errors == true
+        # Enable all error checks
+        @_check_empty_values = true
+        @_check_malformed_declarations = true
+        @_check_invalid_selectors = true
+        @_check_malformed_at_rules = true
+        @_check_unclosed_blocks = true
+      else
+        # Disabled
+        @_check_empty_values = false
+        @_check_malformed_declarations = false
+        @_check_invalid_selectors = false
+        @_check_malformed_at_rules = false
+        @_check_unclosed_blocks = false
+      end
 
       # Private: Internal counters
       @_media_query_id_counter = 0   # Next MediaQuery ID (0-indexed)
@@ -726,7 +752,7 @@ module Cataract
         value.strip!
 
         # Check for !important (byte-by-byte, no regexp)
-        if value.bytesize > 10
+        if value.bytesize >= 10
           # Scan backwards to find !important
           i = value.bytesize - 1
           # Skip trailing whitespace
@@ -755,6 +781,12 @@ module Cataract
               value.strip!
             end
           end
+        end
+
+        # Check for empty value (strict mode) - only if enabled to avoid overhead
+        if @_check_empty_values && value.empty?
+          raise ParseError.new("Empty value for property '#{property}'",
+                               css: @_css, pos: property_start, type: :empty_value)
         end
 
         # Skip semicolon if present
