@@ -436,6 +436,12 @@ module Cataract
         pos += 1
       end
 
+      # Reached EOF without finding matching closing brace
+      if @_check_unclosed_blocks && depth > 0
+        raise ParseError.new("Unclosed block: missing closing brace",
+                             css: @_css, pos: start_pos - 1, type: :unclosed_block)
+      end
+
       pos
     end
 
@@ -718,6 +724,18 @@ module Cataract
 
         # Skip if no colon found (malformed)
         if eof? || peek_byte != BYTE_COLON
+          # Check for malformed declaration (strict mode)
+          if @_check_malformed_declarations
+            property_text = byteslice_encoded(property_start, @_pos - property_start).strip
+            if property_text.empty?
+              raise ParseError.new("Malformed declaration: missing property name",
+                                   css: @_css, pos: property_start, type: :malformed_declaration)
+            else
+              raise ParseError.new("Malformed declaration: missing colon after property '#{property_text}'",
+                                   css: @_css, pos: property_start, type: :malformed_declaration)
+            end
+          end
+
           # Try to recover by finding next ; or }
           skip_to_semicolon_or_brace
           next
@@ -876,12 +894,26 @@ module Cataract
       if AT_RULE_TYPES.include?(at_rule_name)
         skip_ws_and_comments
 
+        # Remember start of condition for error reporting
+        condition_start = @_pos
+
         # Skip to opening brace
+        condition_end = @_pos
         while !eof? && peek_byte != BYTE_LBRACE
+          condition_end = @_pos
           @_pos += 1
         end
 
         return if eof? || peek_byte != BYTE_LBRACE
+
+        # Validate condition (strict mode) - @supports, @container, @scope require conditions
+        if @_check_malformed_at_rules && (at_rule_name == 'supports' || at_rule_name == 'container' || at_rule_name == 'scope')
+          condition_str = byteslice_encoded(condition_start, condition_end - condition_start).strip
+          if condition_str.empty?
+            raise ParseError.new("Malformed @#{at_rule_name}: missing condition",
+                                 css: @_css, pos: condition_start, type: :malformed_at_rule)
+          end
+        end
 
         @_pos += 1 # skip '{'
 
@@ -957,6 +989,13 @@ module Cataract
         child_media_string = byteslice_encoded(mq_start, mq_end - mq_start)
         # Keep media query exactly as written - parentheses are required per CSS spec
         child_media_string.strip!
+
+        # Validate @media has a query (strict mode)
+        if @_check_malformed_at_rules && child_media_string.empty?
+          raise ParseError.new("Malformed @media: missing media query or condition",
+                               css: @_css, pos: mq_start, type: :malformed_at_rule)
+        end
+
         child_media_sym = child_media_string.to_sym
 
         # Split comma-separated media queries (e.g., "screen, print" -> ["screen", "print"])

@@ -34,6 +34,13 @@ typedef struct {
     VALUE base_uri;           // Base URI for resolving relative URLs (Qnil if disabled)
     VALUE uri_resolver;       // Proc to call for URL resolution (Qnil for default)
     int absolute_paths;       // Whether to convert relative URLs to absolute
+    // Parse error options (for raise_parse_errors)
+    VALUE css_string;         // Full CSS string (for error position calculation)
+    int check_empty_values;   // Raise error on empty declaration values
+    int check_malformed_declarations; // Raise error on declarations without colons
+    int check_invalid_selectors; // Raise error on empty/malformed selectors
+    int check_malformed_at_rules; // Raise error on @media/@supports without conditions
+    int check_unclosed_blocks; // Raise error on missing closing braces
 } ParserContext;
 
 // Macro to skip CSS comments /* ... */
@@ -48,6 +55,35 @@ typedef struct {
         continue; \
     }
 
+/*
+ * Raise a ParseError with automatic line/column calculation
+ *
+ * @param message Error message (without position info)
+ * @param css_string Full CSS string (for calculating position)
+ * @param pos Byte position in CSS where error occurred
+ * @param error_type Symbol for error type (:empty_value, :malformed_declaration, etc.)
+ */
+static void raise_parse_error(const char *message, VALUE css_string, long pos, const char *error_type) {
+    // Get ParseError class
+    VALUE cataract_module = rb_const_get(rb_cObject, rb_intern("Cataract"));
+    VALUE parse_error_class = rb_const_get(cataract_module, rb_intern("ParseError"));
+
+    // Build keyword args hash
+    VALUE kwargs = rb_hash_new();
+    rb_hash_aset(kwargs, ID2SYM(rb_intern("css")), css_string);
+    rb_hash_aset(kwargs, ID2SYM(rb_intern("pos")), LONG2NUM(pos));
+    rb_hash_aset(kwargs, ID2SYM(rb_intern("type")), ID2SYM(rb_intern(error_type)));
+
+    // Create ParseError instance: ParseError.new(message, **kwargs)
+    // Use rb_funcallv_kw for Ruby 2.7+
+    VALUE msg_str = rb_str_new_cstr(message);
+    VALUE argv[2] = {msg_str, kwargs};
+    VALUE error = rb_funcallv_kw(parse_error_class, rb_intern("new"), 2, argv, RB_PASS_KEYWORDS);
+
+    // Raise the error
+    rb_exc_raise(error);
+}
+
 // Find matching closing brace for a block
 // Input: start = position after opening '{', end = limit
 // Returns: pointer to matching '}' (or end if not found)
@@ -61,6 +97,22 @@ static inline const char* find_matching_brace(const char *start, const char *end
         if (depth > 0) p++;
     }
     return p;
+}
+
+// Find matching closing brace with error checking for strict mode
+// Raises ParseError if closing brace is not found and strict checking is enabled
+static inline const char* find_matching_brace_strict(const char *start, const char *end,
+                                                      ParserContext *ctx, const char *block_start_for_error) {
+    const char *closing_brace = find_matching_brace(start, end);
+
+    // Check if we found the closing brace
+    if (ctx->check_unclosed_blocks && closing_brace >= end) {
+        raise_parse_error("Unclosed block: missing closing brace",
+                        ctx->css_string, block_start_for_error - RSTRING_PTR(ctx->css_string),
+                        "unclosed_block");
+    }
+
+    return closing_brace;
 }
 
 // Find matching closing paren
@@ -606,6 +658,28 @@ static VALUE parse_declarations(const char *start, const char *end, ParserContex
 
         // Malformed declaration - skip to next semicolon to recover
         if (pos >= end || *pos != ':') {
+            if (ctx->check_malformed_declarations) {
+                // Extract property text for error message
+                const char *prop_text_end = pos;
+                trim_trailing(prop_start, &prop_text_end);
+                long prop_text_len = prop_text_end - prop_start;
+
+                if (prop_text_len == 0) {
+                    raise_parse_error("Malformed declaration: missing property name",
+                                    ctx->css_string, prop_start - RSTRING_PTR(ctx->css_string),
+                                    "malformed_declaration");
+                } else {
+                    // Limit property name to 200 chars in error message to fit in 256 byte buffer
+                    int display_len = (prop_text_len > 200) ? 200 : (int)prop_text_len;
+                    char error_msg[256];
+                    snprintf(error_msg, sizeof(error_msg),
+                           "Malformed declaration: missing colon after property '%.*s'",
+                           display_len, prop_start);
+                    raise_parse_error(error_msg,
+                                    ctx->css_string, prop_start - RSTRING_PTR(ctx->css_string),
+                                    "malformed_declaration");
+                }
+            }
             while (pos < end && *pos != ';') pos++;
             if (pos < end) pos++;  // Skip the semicolon
             continue;
@@ -666,6 +740,20 @@ static VALUE parse_declarations(const char *start, const char *end, ParserContex
 
         // Final trim
         trim_trailing(val_start, &val_end);
+
+        // Check for empty value
+        if (val_end <= val_start && ctx->check_empty_values) {
+            long prop_len = prop_end - prop_start;
+            // Limit property name to 200 chars in error message to fit in 256 byte buffer
+            int display_len = (prop_len > 200) ? 200 : (int)prop_len;
+            char error_msg[256];
+            snprintf(error_msg, sizeof(error_msg),
+                   "Empty value for property '%.*s'",
+                   display_len, prop_start);
+            raise_parse_error(error_msg,
+                            ctx->css_string, val_start - RSTRING_PTR(ctx->css_string),
+                            "empty_value");
+        }
 
         // Skip if value is empty
         if (val_end > val_start) {
@@ -1432,6 +1520,30 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
             // Trim
             trim_trailing(mq_start, &mq_end);
 
+            // Check for malformed @media (empty query)
+            if (mq_end <= mq_start) {
+                if (ctx->check_malformed_at_rules) {
+                    raise_parse_error("Malformed @media: missing media query or condition",
+                                    ctx->css_string, mq_start - RSTRING_PTR(ctx->css_string),
+                                    "malformed_at_rule");
+                } else {
+                    // Empty media query with check disabled - skip @media wrapper and parse contents as regular rules
+                    if (p >= pe || *p != '{') {
+                        continue;  // Malformed structure
+                    }
+                    p++;  // Skip opening {
+                    const char *block_start = p;
+                    const char *block_end = find_matching_brace(p, pe);
+                    p = block_end;
+
+                    // Parse block contents with NO media query context (matching pure Ruby behavior)
+                    ctx->depth++;
+                    parse_css_recursive(ctx, block_start, block_end, parent_media_sym, NO_PARENT_SELECTOR, NO_PARENT_RULE_ID, parent_media_query_id);
+                    ctx->depth--;
+                    continue;
+                }
+            }
+
             if (p >= pe || *p != '{') {
                 continue;  // Malformed
             }
@@ -1546,7 +1658,7 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
 
             // Find matching closing brace
             const char *block_start = p;
-            const char *block_end = find_matching_brace(p, pe);
+            const char *block_end = find_matching_brace_strict(p, pe, ctx, p - 1);
             p = block_end;
 
             // Recursively parse @media block with new media query context
@@ -1580,9 +1692,38 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                 (at_name_len == 5 && strncmp(at_start, "scope", 5) == 0);
 
             if (is_conditional_group) {
+                // Find condition text (between at-rule name and opening brace)
+                const char *cond_start = at_name_end;
+                const char *cond_end = at_name_end;
+
                 // Skip to opening brace
                 p = at_name_end;
                 while (p < pe && *p != '{') p++;
+
+                cond_end = p;
+
+                // Trim whitespace from condition
+                while (cond_start < cond_end && IS_WHITESPACE(*cond_start)) cond_start++;
+                while (cond_end > cond_start && IS_WHITESPACE(*(cond_end - 1))) cond_end--;
+
+                // Check for malformed at-rule (missing condition) for @supports, @container, @scope
+                // Note: @layer can optionally have no condition (anonymous layer)
+                if (ctx->check_malformed_at_rules && cond_end <= cond_start) {
+                    int needs_condition =
+                        (at_name_len == 8 && strncmp(at_start, "supports", 8) == 0) ||
+                        (at_name_len == 9 && strncmp(at_start, "container", 9) == 0) ||
+                        (at_name_len == 5 && strncmp(at_start, "scope", 5) == 0);
+
+                    if (needs_condition) {
+                        char error_msg[256];
+                        snprintf(error_msg, sizeof(error_msg),
+                               "Malformed @%.*s: missing condition",
+                               (int)at_name_len, at_start);
+                        raise_parse_error(error_msg,
+                                        ctx->css_string, at_start - RSTRING_PTR(ctx->css_string),
+                                        "malformed_at_rule");
+                    }
+                }
 
                 if (p >= pe || *p != '{') {
                     continue;  // Malformed
@@ -1592,7 +1733,7 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
 
                 // Find matching closing brace
                 const char *block_start = p;
-                const char *block_end = find_matching_brace(p, pe);
+                const char *block_end = find_matching_brace_strict(p, pe, ctx, p - 1);
                 p = block_end;
 
                 // Recursively parse block content (preserve parent media context)
@@ -1631,7 +1772,7 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
 
                 // Find matching closing brace
                 const char *block_start = p;
-                const char *block_end = find_matching_brace(p, pe);
+                const char *block_end = find_matching_brace_strict(p, pe, ctx, p - 1);
                 p = block_end;
 
                 // Parse keyframe blocks as rules (from/to/0%/50% etc)
@@ -1702,7 +1843,7 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
 
                 // Find matching closing brace
                 const char *decl_start = p;
-                const char *decl_end = find_matching_brace(p, pe);
+                const char *decl_end = find_matching_brace_strict(p, pe, ctx, p - 1);
                 p = decl_end;
 
                 // Parse declarations
@@ -1740,6 +1881,12 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
 
         // Opening brace
         if (*p == '{') {
+            // Check for empty selector (opening brace with no selector before it)
+            if (ctx->check_invalid_selectors && brace_depth == 0 && selector_start == NULL) {
+                raise_parse_error("Invalid selector: empty selector",
+                                ctx->css_string, p - RSTRING_PTR(ctx->css_string),
+                                "invalid_selector");
+            }
             if (brace_depth == 0 && selector_start != NULL) {
                 decl_start = p + 1;
             }
@@ -1761,6 +1908,13 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                 const char *sel_end = decl_start - 1;
                 while (sel_end > selector_start && IS_WHITESPACE(*(sel_end - 1))) {
                     sel_end--;
+                }
+
+                // Check for empty selector
+                if (ctx->check_invalid_selectors && sel_end <= selector_start) {
+                    raise_parse_error("Invalid selector: empty selector",
+                                    ctx->css_string, selector_start - RSTRING_PTR(ctx->css_string),
+                                    "invalid_selector");
                 }
 
                 if (!has_nesting) {
@@ -1809,6 +1963,21 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                             }
 
                             if (seg_end_ptr > seg_start) {
+                                // Check for invalid selectors
+                                if (ctx->check_invalid_selectors) {
+                                    // Check if selector starts with combinator
+                                    char first_char = *seg_start;
+                                    if (first_char == '>' || first_char == '+' || first_char == '~') {
+                                        char error_msg[256];
+                                        snprintf(error_msg, sizeof(error_msg),
+                                               "Invalid selector: selector cannot start with combinator '%c'",
+                                               first_char);
+                                        raise_parse_error(error_msg,
+                                                        ctx->css_string, seg_start - RSTRING_PTR(ctx->css_string),
+                                                        "invalid_selector");
+                                    }
+                                }
+
                                 VALUE selector = rb_utf8_str_new(seg_start, seg_end_ptr - seg_start);
 
                                 // Resolve against parent if nested
@@ -2023,6 +2192,15 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
 
         p++;
     }
+
+    // Check for unclosed blocks at end of parsing
+    if (ctx->check_unclosed_blocks && brace_depth > 0) {
+        // Find where the unclosed block started (selector_start or start of last opening brace)
+        const char *error_pos = selector_start ? selector_start : css;
+        raise_parse_error("Unclosed block: missing closing brace",
+                        ctx->css_string, error_pos - RSTRING_PTR(ctx->css_string),
+                        "unclosed_block");
+    }
 }
 
 /*
@@ -2063,6 +2241,43 @@ VALUE parse_css_new_impl(VALUE css_string, VALUE parser_options, int rule_id_off
     VALUE absolute_paths_opt = rb_hash_aref(parser_options, ID2SYM(rb_intern("absolute_paths")));
     VALUE uri_resolver = rb_hash_aref(parser_options, ID2SYM(rb_intern("uri_resolver")));
     int absolute_paths = RTEST(absolute_paths_opt) ? 1 : 0;
+
+    // Parse error options
+    VALUE raise_parse_errors_opt = rb_hash_aref(parser_options, ID2SYM(rb_intern("raise_parse_errors")));
+    int check_empty_values = 0;
+    int check_malformed_declarations = 0;
+    int check_invalid_selectors = 0;
+    int check_malformed_at_rules = 0;
+    int check_unclosed_blocks = 0;
+
+    DEBUG_PRINTF("[PARSE_ERRORS] raise_parse_errors_opt type: %d, RTEST: %d\n", TYPE(raise_parse_errors_opt), RTEST(raise_parse_errors_opt));
+
+    if (RTEST(raise_parse_errors_opt)) {
+        if (TYPE(raise_parse_errors_opt) == T_HASH) {
+            // Hash of specific error types to check
+            VALUE empty_values_opt = rb_hash_aref(raise_parse_errors_opt, ID2SYM(rb_intern("empty_values")));
+            VALUE malformed_declarations_opt = rb_hash_aref(raise_parse_errors_opt, ID2SYM(rb_intern("malformed_declarations")));
+            VALUE invalid_selectors_opt = rb_hash_aref(raise_parse_errors_opt, ID2SYM(rb_intern("invalid_selectors")));
+            VALUE malformed_at_rules_opt = rb_hash_aref(raise_parse_errors_opt, ID2SYM(rb_intern("malformed_at_rules")));
+            VALUE unclosed_blocks_opt = rb_hash_aref(raise_parse_errors_opt, ID2SYM(rb_intern("unclosed_blocks")));
+
+            check_empty_values = RTEST(empty_values_opt) ? 1 : 0;
+            check_malformed_declarations = RTEST(malformed_declarations_opt) ? 1 : 0;
+            check_invalid_selectors = RTEST(invalid_selectors_opt) ? 1 : 0;
+            check_malformed_at_rules = RTEST(malformed_at_rules_opt) ? 1 : 0;
+            check_unclosed_blocks = RTEST(unclosed_blocks_opt) ? 1 : 0;
+            DEBUG_PRINTF("[PARSE_ERRORS] All checks set: empty=%d, malformed_decl=%d, invalid_sel=%d, malformed_at=%d, unclosed=%d\n",
+                        check_empty_values, check_malformed_declarations, check_invalid_selectors,
+                        check_malformed_at_rules, check_unclosed_blocks);
+        } else {
+            // true - enable all checks
+            check_empty_values = 1;
+            check_malformed_declarations = 1;
+            check_invalid_selectors = 1;
+            check_malformed_at_rules = 1;
+            check_unclosed_blocks = 1;
+        }
+    }
 
     const char *css = RSTRING_PTR(css_string);
     const char *pe = css + RSTRING_LEN(css_string);
@@ -2115,13 +2330,23 @@ VALUE parse_css_new_impl(VALUE css_string, VALUE parser_options, int rule_id_off
     ctx.base_uri = base_uri;
     ctx.uri_resolver = uri_resolver;
     ctx.absolute_paths = absolute_paths;
+    // Parse error options
+    ctx.css_string = css_string;
+    ctx.check_empty_values = check_empty_values;
+    ctx.check_malformed_declarations = check_malformed_declarations;
+    ctx.check_invalid_selectors = check_invalid_selectors;
+    ctx.check_malformed_at_rules = check_malformed_at_rules;
+    ctx.check_unclosed_blocks = check_unclosed_blocks;
 
     // Parse CSS (top-level, no parent context)
     DEBUG_PRINTF("[PARSE] Starting parse_css_recursive from: %.80s\n", p);
     parse_css_recursive(&ctx, p, pe, NO_PARENT_MEDIA, NO_PARENT_SELECTOR, NO_PARENT_RULE_ID, NO_MEDIA_QUERY_ID);
+    DEBUG_PRINTF("[PARSE] parse_css_recursive completed\n");
 
     // Build result hash
+    DEBUG_PRINTF("[PARSE_NEW] Building result hash\n");
     VALUE result = rb_hash_new();
+    DEBUG_PRINTF("[PARSE_NEW] Created result hash\n");
     rb_hash_aset(result, ID2SYM(rb_intern("rules")), ctx.rules_array);
     rb_hash_aset(result, ID2SYM(rb_intern("_media_index")), ctx.media_index);
     rb_hash_aset(result, ID2SYM(rb_intern("media_queries")), ctx.media_queries);
@@ -2142,6 +2367,11 @@ VALUE parse_css_new_impl(VALUE css_string, VALUE parser_options, int rule_id_off
     RB_GC_GUARD(ctx.base_uri);
     RB_GC_GUARD(ctx.uri_resolver);
     RB_GC_GUARD(result);
+
+    DEBUG_PRINTF("[PARSE_NEW] About to return result\n");
+    VALUE result_inspect = rb_inspect(result);
+    DEBUG_PRINTF("[PARSE_NEW] result = %s\n", RSTRING_PTR(result_inspect));
+    RB_GC_GUARD(result_inspect);
 
     return result;
 }

@@ -1273,9 +1273,9 @@ body { color: red; }"
       # The critical test: body should be in print, .hide should be in screen/handheld
       media_index = flattened.media_index
 
-      assert_member body_rule.id, media_index[:print],
-                    'body rule should be in print media'
-      refute_member body_rule.id, media_index[:screen] || [],
+      assert_includes (media_index[:print] || []), body_rule.id,
+                      'body rule should be in print media'
+      refute_includes (media_index[:screen] || []), body_rule.id,
                     'body rule should NOT be in screen media'
       refute_member body_rule.id, media_index[:handheld] || [],
                     'body rule should NOT be in handheld media'
