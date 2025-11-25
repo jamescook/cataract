@@ -1,5 +1,13 @@
 ## [ Unreleased ]
 
+- Feature: Parse error detection with `raise_parse_errors` option - validates CSS structure and raises `ParseError` exceptions for malformed input with line/column tracking
+- Feature: Granular error control - enable specific checks (empty values, malformed declarations, invalid selectors, invalid selector syntax, malformed at-rules, unclosed blocks)
+- Feature: Type safety validation for C extension - `Stylesheet.parse` and `Stylesheet.new` now validate argument types and raise clear `TypeError` instead of segfaulting
+- Feature: Selector syntax validation using whitelist approach - catches invalid characters and sequences like `..class`, `##id`, `???`
+- Fix: `add_block` with multiple `@import` statements now correctly tracks media type for each import instead of reusing the first import's media context
+- Performance: Parse error checking adds minimal overhead (effectively zero for C/Pure Ruby, ~5% for Pure Ruby with YJIT)
+- Testing: Fuzzer corpus enhanced with invalid CSS patterns for crash testing
+
 ## [0.2.4 - 2025-11-23]
 - MediaQuery first-class objects: Refactored media queries from simple symbols to proper structs with id, type, and conditions, enabling accurate
 serialization and proper handling of complex queries like @media screen and (min-width: 768px)
