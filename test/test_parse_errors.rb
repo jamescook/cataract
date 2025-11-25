@@ -493,4 +493,28 @@ class TestParseErrors < Minitest::Test
     assert_equal :empty_value, error.error_type
     # column may be nil if not tracked yet
   end
+
+  def test_parse_error_line_column_calculation_at_end_of_large_file
+    # Test that line/column calculation works for errors at the end of large files
+    # This tests the worst case for line counting (error_pos - css_start is maximum)
+    valid_rules = (1..100).map { |i| "  .rule#{i} { color: red; margin: #{i}px; }" }.join("\n")
+    css = <<~CSS
+      body { margin: 0; }
+      #{valid_rules}
+      .final-rule {
+        color: blue;
+        background: ;
+      }
+    CSS
+
+    error = assert_raises(Cataract::ParseError) do
+      Cataract::Stylesheet.parse(css, raise_parse_errors: true)
+    end
+
+    assert_match(/empty value/i, error.message)
+    assert_match(/property 'background'/i, error.message)
+    assert_equal 104, error.line # Error is on line 104 (1 body + 100 rules + 3 lines into final-rule)
+    assert_instance_of Integer, error.column
+    assert_equal :empty_value, error.error_type
+  end
 end
