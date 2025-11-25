@@ -252,6 +252,154 @@ class TestParseErrors < Minitest::Test
   end
 
   # ============================================================================
+  # Test invalid_selector_syntax errors
+  # ============================================================================
+  # These check for CSS selector syntax violations like double dots (..),
+  # double hashes (##), etc. Per W3C spec: if ANY selector in a comma-separated
+  # list is invalid, the entire rule should be dropped (here we raise an error).
+
+  def test_invalid_selector_syntax_double_dot_at_start
+    css = '..invalid { color: red; }'
+
+    error = assert_raises(Cataract::ParseError) do
+      Cataract::Stylesheet.parse(css, raise_parse_errors: true)
+    end
+
+    assert_match(/invalid selector syntax/i, error.message)
+    assert_match(/invalid characters/i, error.message)
+    assert_equal 1, error.line
+    assert_equal :invalid_selector_syntax, error.error_type
+  end
+
+  def test_invalid_selector_syntax_double_dot_in_middle
+    css = 'h2..foo { color: red; }'
+
+    error = assert_raises(Cataract::ParseError) do
+      Cataract::Stylesheet.parse(css, raise_parse_errors: true)
+    end
+
+    assert_match(/invalid selector syntax/i, error.message)
+    assert_match(/invalid characters/i, error.message)
+    assert_equal :invalid_selector_syntax, error.error_type
+  end
+
+  def test_invalid_selector_syntax_double_hash
+    css = '##invalid { color: red; }'
+
+    error = assert_raises(Cataract::ParseError) do
+      Cataract::Stylesheet.parse(css, raise_parse_errors: true)
+    end
+
+    assert_match(/invalid selector syntax/i, error.message)
+    assert_match(/invalid characters/i, error.message)
+    assert_equal :invalid_selector_syntax, error.error_type
+  end
+
+  def test_invalid_selector_syntax_question_marks
+    # Test the whitelist approach - ??? is invalid
+    css = '??? { color: red; }'
+
+    error = assert_raises(Cataract::ParseError) do
+      Cataract::Stylesheet.parse(css, raise_parse_errors: true)
+    end
+
+    assert_match(/invalid selector syntax/i, error.message)
+    assert_match(/invalid characters/i, error.message)
+    assert_equal :invalid_selector_syntax, error.error_type
+  end
+
+  def test_invalid_selector_syntax_in_list_invalidates_entire_list
+    # Per W3C spec: one bad selector invalidates the entire list
+    css = '..invalid, h2, h3 { color: red; }'
+
+    error = assert_raises(Cataract::ParseError) do
+      Cataract::Stylesheet.parse(css, raise_parse_errors: true)
+    end
+
+    assert_match(/invalid selector syntax/i, error.message)
+    assert_equal :invalid_selector_syntax, error.error_type
+  end
+
+  def test_invalid_selector_syntax_empty_in_list
+    # Empty selector from consecutive commas
+    css = 'h1, , h3 { color: red; }'
+
+    error = assert_raises(Cataract::ParseError) do
+      Cataract::Stylesheet.parse(css, raise_parse_errors: true)
+    end
+
+    assert_match(/invalid selector syntax|empty selector/i, error.message)
+    assert_equal :invalid_selector_syntax, error.error_type
+  end
+
+  def test_invalid_selector_syntax_allows_single_colon_pseudo_class
+    # Old spec style - single colon for pseudo-classes
+    css = 'a:hover { color: blue; }'
+
+    # Should parse without error
+    sheet = Cataract::Stylesheet.parse(css, raise_parse_errors: true)
+
+    assert_instance_of Cataract::Stylesheet, sheet
+    assert_equal 1, sheet.rules.count
+  end
+
+  def test_invalid_selector_syntax_allows_double_colon_pseudo_element
+    # New spec style - double colon for pseudo-elements
+    css = 'p::before { content: ""; }'
+
+    # Should parse without error (:: is valid for pseudo-elements)
+    sheet = Cataract::Stylesheet.parse(css, raise_parse_errors: true)
+
+    assert_instance_of Cataract::Stylesheet, sheet
+    assert_equal 1, sheet.rules.count
+  end
+
+  def test_invalid_selector_syntax_allows_old_spec_pseudo_elements
+    # Old spec allowed :before (single colon)
+    css = 'div:before { content: ""; }'
+
+    # Should parse without error
+    sheet = Cataract::Stylesheet.parse(css, raise_parse_errors: true)
+
+    assert_instance_of Cataract::Stylesheet, sheet
+  end
+
+  def test_invalid_selector_syntax_allows_pseudo_class_functions
+    # Pseudo-class functions like :not(), :nth-child()
+    css = 'li:not(.active) { opacity: 0.5; } tr:nth-child(2n) { background: gray; }'
+
+    # Should parse without error
+    sheet = Cataract::Stylesheet.parse(css, raise_parse_errors: true)
+
+    assert_instance_of Cataract::Stylesheet, sheet
+    assert_equal 2, sheet.rules.count
+  end
+
+  def test_invalid_selector_syntax_allows_css_custom_properties_in_selectors
+    # CSS custom properties use -- which is valid
+    css = '[data--custom] { color: red; }'
+
+    # Should parse without error (-- is valid in attribute selectors)
+    sheet = Cataract::Stylesheet.parse(css, raise_parse_errors: true)
+
+    assert_instance_of Cataract::Stylesheet, sheet
+  end
+
+  def test_invalid_selector_syntax_granular_control
+    css = '..invalid { color: red; }'
+
+    # Error when invalid_selector_syntax: true
+    assert_raises(Cataract::ParseError) do
+      Cataract::Stylesheet.parse(css, raise_parse_errors: { invalid_selector_syntax: true })
+    end
+
+    # No error when invalid_selector_syntax: false
+    sheet = Cataract::Stylesheet.parse(css, raise_parse_errors: { invalid_selector_syntax: false })
+
+    assert_instance_of Cataract::Stylesheet, sheet
+  end
+
+  # ============================================================================
   # Test unclosed_blocks errors (do this last - most complex)
   # ============================================================================
 
@@ -263,7 +411,6 @@ class TestParseErrors < Minitest::Test
     end
 
     assert_match(/unclosed block|missing closing brace/i, error.message)
-    # Note: line/error_type not set for unclosed blocks (simple rb_raise for performance)
   end
 
   def test_unclosed_block_nested_media
@@ -274,7 +421,6 @@ class TestParseErrors < Minitest::Test
     end
 
     assert_match(/unclosed block|missing closing brace/i, error.message)
-    # Note: error_type not set for unclosed blocks (simple rb_raise for performance)
   end
 
   def test_unclosed_block_granular_control

@@ -64,6 +64,9 @@ module Cataract
     end
 
     def initialize(css_string, parser_options: {}, parent_media_sym: nil, parent_media_query_id: nil, depth: 0)
+      # Type validation
+      raise TypeError, "css_string must be a String, got #{css_string.class}" unless css_string.is_a?(String)
+
       # Private: Internal parsing state
       @_css = css_string.dup.freeze
       @_pos = 0
@@ -94,6 +97,7 @@ module Cataract
         @_check_empty_values = @_raise_parse_errors[:empty_values] || false
         @_check_malformed_declarations = @_raise_parse_errors[:malformed_declarations] || false
         @_check_invalid_selectors = @_raise_parse_errors[:invalid_selectors] || false
+        @_check_invalid_selector_syntax = @_raise_parse_errors[:invalid_selector_syntax] || false
         @_check_malformed_at_rules = @_raise_parse_errors[:malformed_at_rules] || false
         @_check_unclosed_blocks = @_raise_parse_errors[:unclosed_blocks] || false
       elsif @_raise_parse_errors == true
@@ -101,6 +105,7 @@ module Cataract
         @_check_empty_values = true
         @_check_malformed_declarations = true
         @_check_invalid_selectors = true
+        @_check_invalid_selector_syntax = true
         @_check_malformed_at_rules = true
         @_check_unclosed_blocks = true
       else
@@ -108,6 +113,7 @@ module Cataract
         @_check_empty_values = false
         @_check_malformed_declarations = false
         @_check_invalid_selectors = false
+        @_check_invalid_selector_syntax = false
         @_check_malformed_at_rules = false
         @_check_unclosed_blocks = false
       end
@@ -169,6 +175,13 @@ module Cataract
 
           selectors.each do |individual_selector|
             individual_selector.strip!
+
+            # Check for empty selector in comma-separated list
+            if @_check_invalid_selector_syntax && individual_selector.empty? && selectors.size > 1
+              raise ParseError.new('Invalid selector syntax: empty selector in comma-separated list',
+                                   css: @_css, pos: decl_start, type: :invalid_selector_syntax)
+            end
+
             next if individual_selector.empty?
 
             # Get rule ID for this selector
@@ -220,6 +233,13 @@ module Cataract
 
           selectors.each do |individual_selector|
             individual_selector.strip!
+
+            # Check for empty selector in comma-separated list
+            if @_check_invalid_selector_syntax && individual_selector.empty? && selectors.size > 1
+              raise ParseError.new('Invalid selector syntax: empty selector in comma-separated list',
+                                   css: @_css, pos: decl_start, type: :invalid_selector_syntax)
+            end
+
             next if individual_selector.empty?
 
             rule_id = @_rule_id_counter
@@ -327,6 +347,54 @@ module Cataract
         skip_whitespace
         skip_comment
       end until @_pos == old_pos # No progress made # rubocop:disable Lint/Loop
+    end
+
+    # Check if a selector contains only valid CSS selector characters and sequences
+    # Returns true if valid, false if invalid
+    # Valid characters: a-z A-Z 0-9 - _ . # [ ] : * > + ~ ( ) ' " = ^ $ | \ & % / whitespace
+    def valid_selector_syntax?(selector_text)
+      i = 0
+      len = selector_text.bytesize
+
+      while i < len
+        byte = selector_text.getbyte(i)
+
+        # Check for invalid character sequences
+        if i + 1 < len
+          next_byte = selector_text.getbyte(i + 1)
+          # Double dot (..) is invalid
+          return false if byte == BYTE_DOT && next_byte == BYTE_DOT
+          # Double hash (##) is invalid
+          return false if byte == BYTE_HASH && next_byte == BYTE_HASH
+        end
+
+        # Alphanumeric
+        if (byte >= BYTE_LOWER_A && byte <= BYTE_LOWER_Z) || (byte >= BYTE_UPPER_A && byte <= BYTE_UPPER_Z) || (byte >= BYTE_DIGIT_0 && byte <= BYTE_DIGIT_9)
+          i += 1
+          next
+        end
+
+        # Whitespace
+        if byte == BYTE_SPACE || byte == BYTE_TAB || byte == BYTE_NEWLINE || byte == BYTE_CR
+          i += 1
+          next
+        end
+
+        # Valid CSS selector special characters
+        case byte
+        when BYTE_HYPHEN, BYTE_UNDERSCORE, BYTE_DOT, BYTE_HASH, BYTE_LBRACKET, BYTE_RBRACKET,
+             BYTE_COLON, BYTE_ASTERISK, BYTE_GT, BYTE_PLUS, BYTE_TILDE, BYTE_LPAREN, BYTE_RPAREN,
+             BYTE_SQUOTE, BYTE_DQUOTE, BYTE_EQUALS, BYTE_CARET, BYTE_DOLLAR,
+             BYTE_PIPE, BYTE_BACKSLASH, BYTE_AMPERSAND, BYTE_PERCENT, BYTE_SLASH, BYTE_BANG,
+             BYTE_COMMA
+          i += 1
+        else
+          # Invalid character found
+          return false
+        end
+      end
+
+      true
     end
 
     # Parse a single CSS declaration (property: value)
@@ -438,7 +506,7 @@ module Cataract
 
       # Reached EOF without finding matching closing brace
       if @_check_unclosed_blocks && depth > 0
-        raise ParseError.new("Unclosed block: missing closing brace",
+        raise ParseError.new('Unclosed block: missing closing brace',
                              css: @_css, pos: start_pos - 1, type: :unclosed_block)
       end
 
@@ -480,6 +548,12 @@ module Cataract
           raise ParseError.new("Invalid selector: selector cannot start with combinator '#{selector_text[0]}'",
                                css: @_css, pos: start_pos, type: :invalid_selector)
         end
+      end
+
+      # Check selector syntax (whitelist validation for invalid characters/sequences)
+      if @_check_invalid_selector_syntax && !valid_selector_syntax?(selector_text)
+        raise ParseError.new('Invalid selector syntax: selector contains invalid characters',
+                             css: @_css, pos: start_pos, type: :invalid_selector_syntax)
       end
 
       selector_text
@@ -728,7 +802,7 @@ module Cataract
           if @_check_malformed_declarations
             property_text = byteslice_encoded(property_start, @_pos - property_start).strip
             if property_text.empty?
-              raise ParseError.new("Malformed declaration: missing property name",
+              raise ParseError.new('Malformed declaration: missing property name',
                                    css: @_css, pos: property_start, type: :malformed_declaration)
             else
               raise ParseError.new("Malformed declaration: missing colon after property '#{property_text}'",
@@ -992,7 +1066,7 @@ module Cataract
 
         # Validate @media has a query (strict mode)
         if @_check_malformed_at_rules && child_media_string.empty?
-          raise ParseError.new("Malformed @media: missing media query or condition",
+          raise ParseError.new('Malformed @media: missing media query or condition',
                                css: @_css, pos: mq_start, type: :malformed_at_rule)
         end
 

@@ -16,7 +16,8 @@
 
 // Use uint8_t for boolean flags to reduce struct size and improve cache efficiency
 // (int is 4 bytes, uint8_t is 1 byte - saves 27 bytes across 9 flags)
-#define BOOLEAN uint8_t
+// #define BOOLEAN uint8_t
+#define BOOLEAN int
 
 // Parser context passed through recursive calls
 typedef struct {
@@ -44,6 +45,7 @@ typedef struct {
     BOOLEAN check_empty_values; // Raise error on empty declaration values
     BOOLEAN check_malformed_declarations; // Raise error on declarations without colons
     BOOLEAN check_invalid_selectors; // Raise error on empty/malformed selectors
+    BOOLEAN check_invalid_selector_syntax; // Raise error on syntax violations (.. ## etc)
     BOOLEAN check_malformed_at_rules; // Raise error on @media/@supports without conditions
     BOOLEAN check_unclosed_blocks; // Raise error on missing closing braces
 } ParserContext;
@@ -124,6 +126,77 @@ static void raise_parse_error_at(ParserContext *ctx, const char *error_pos, cons
 
     // Raise the error
     rb_exc_raise(error);
+}
+
+// Check if a selector contains only valid CSS selector characters and sequences
+// Returns 1 if valid, 0 if invalid
+// Valid characters: a-z A-Z 0-9 - _ . # [ ] : * > + ~ ( ) ' " = ^ $ | \ & % / whitespace
+static inline int is_valid_selector(const char *start, const char *end) {
+    const char *p = start;
+    while (p < end) {
+        unsigned char c = (unsigned char)*p;
+
+        // Check for invalid character sequences
+        if (p + 1 < end) {
+            // Double dot (..) is invalid
+            if (c == '.' && *(p + 1) == '.') {
+                return 0;
+            }
+            // Double hash (##) is invalid
+            if (c == '#' && *(p + 1) == '#') {
+                return 0;
+            }
+        }
+
+        // Alphanumeric
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
+            p++;
+            continue;
+        }
+
+        // Whitespace
+        if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+            p++;
+            continue;
+        }
+
+        // Valid CSS selector special characters
+        switch (c) {
+            case '-':  // Hyphen (in identifiers, attribute selectors)
+            case '_':  // Underscore (in identifiers)
+            case '.':  // Class selector
+            case '#':  // ID selector
+            case '[':  // Attribute selector start
+            case ']':  // Attribute selector end
+            case ':':  // Pseudo-class/element (:: is valid for pseudo-elements)
+            case '*':  // Universal selector, attribute operator
+            case '>':  // Child combinator
+            case '+':  // Adjacent sibling combinator
+            case '~':  // General sibling combinator
+            case '(':  // Pseudo-class function
+            case ')':  // Pseudo-class function end
+            case '\'': // String in attribute selector
+            case '"':  // String in attribute selector
+            case '=':  // Attribute operator
+            case '^':  // Attribute operator ^=
+            case '$':  // Attribute operator $=
+            case '|':  // Attribute operator |=, namespace separator
+            case '\\': // Escape character
+            case '&':  // Nesting selector
+            case '%':  // Sometimes used in selectors
+            case '/':  // Sometimes used in selectors
+            case '!':  // Negation (though rare)
+            case ',':  // List separator (shouldn't be here after splitting, but allow it)
+                p++;
+                break;
+
+            default:
+                // Invalid character found
+                return 0;
+        }
+    }
+
+    return 1;
 }
 
 // Lowercase property name (CSS property names are ASCII-only)
@@ -2016,6 +2089,11 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                                     }
                                 }
 
+                                // Check for invalid selector syntax (whitelist validation)
+                                if (ctx->check_invalid_selector_syntax && !is_valid_selector(seg_start, seg_end_ptr)) {
+                                    raise_parse_error_at(ctx, seg_start, "Invalid selector syntax: selector contains invalid characters", "invalid_selector_syntax");
+                                }
+
                                 VALUE selector = rb_utf8_str_new(seg_start, seg_end_ptr - seg_start);
 
                                 // Resolve against parent if nested
@@ -2089,6 +2167,9 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
 
                                 // Update media index
                                 update_media_index(ctx, parent_media_sym, rule_id);
+                            } else if (ctx->check_invalid_selector_syntax && selector_count > 1) {
+                                // Empty selector in comma-separated list (e.g., "h1, , h3")
+                                raise_parse_error_at(ctx, seg_start, "Invalid selector syntax: empty selector in comma-separated list", "invalid_selector_syntax");
                             }
 
                             seg_start = seg + 1;
@@ -2281,6 +2362,7 @@ VALUE parse_css_new_impl(VALUE css_string, VALUE parser_options, int rule_id_off
     BOOLEAN check_empty_values = 0;
     BOOLEAN check_malformed_declarations = 0;
     BOOLEAN check_invalid_selectors = 0;
+    BOOLEAN check_invalid_selector_syntax = 0;
     BOOLEAN check_malformed_at_rules = 0;
     BOOLEAN check_unclosed_blocks = 0;
 
@@ -2290,11 +2372,13 @@ VALUE parse_css_new_impl(VALUE css_string, VALUE parser_options, int rule_id_off
             VALUE empty_values_opt = rb_hash_aref(raise_parse_errors_opt, ID2SYM(rb_intern("empty_values")));
             VALUE malformed_declarations_opt = rb_hash_aref(raise_parse_errors_opt, ID2SYM(rb_intern("malformed_declarations")));
             VALUE invalid_selectors_opt = rb_hash_aref(raise_parse_errors_opt, ID2SYM(rb_intern("invalid_selectors")));
+            VALUE invalid_selector_syntax_opt = rb_hash_aref(raise_parse_errors_opt, ID2SYM(rb_intern("invalid_selector_syntax")));
             VALUE malformed_at_rules_opt = rb_hash_aref(raise_parse_errors_opt, ID2SYM(rb_intern("malformed_at_rules")));
             VALUE unclosed_blocks_opt = rb_hash_aref(raise_parse_errors_opt, ID2SYM(rb_intern("unclosed_blocks")));
             check_empty_values = RTEST(empty_values_opt) ? 1 : 0;
             check_malformed_declarations = RTEST(malformed_declarations_opt) ? 1 : 0;
             check_invalid_selectors = RTEST(invalid_selectors_opt) ? 1 : 0;
+            check_invalid_selector_syntax = RTEST(invalid_selector_syntax_opt) ? 1 : 0;
             check_malformed_at_rules = RTEST(malformed_at_rules_opt) ? 1 : 0;
             check_unclosed_blocks = RTEST(unclosed_blocks_opt) ? 1 : 0;
         } else {
@@ -2302,6 +2386,7 @@ VALUE parse_css_new_impl(VALUE css_string, VALUE parser_options, int rule_id_off
             check_empty_values = 1;
             check_malformed_declarations = 1;
             check_invalid_selectors = 1;
+            check_invalid_selector_syntax = 1;
             check_malformed_at_rules = 1;
             check_unclosed_blocks = 1;
         }
@@ -2363,6 +2448,7 @@ VALUE parse_css_new_impl(VALUE css_string, VALUE parser_options, int rule_id_off
     ctx.check_empty_values = check_empty_values;
     ctx.check_malformed_declarations = check_malformed_declarations;
     ctx.check_invalid_selectors = check_invalid_selectors;
+    ctx.check_invalid_selector_syntax = check_invalid_selector_syntax;
     ctx.check_malformed_at_rules = check_malformed_at_rules;
     ctx.check_unclosed_blocks = check_unclosed_blocks;
 
