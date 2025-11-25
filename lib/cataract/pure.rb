@@ -25,6 +25,8 @@ module Cataract
   class SizeError < Error; end
 end
 
+require_relative 'error'
+
 require_relative 'version'
 require_relative 'constants'
 

@@ -35,6 +35,85 @@ Performance comparison between Cataract's C extension and pure Ruby implementati
 |------------|---------|
 <%= speedup_rows(parsing_data, test_case_key: :fixture) %>
 
+### Parse Error Checking Overhead
+
+Parse error detection can be enabled with `raise_parse_errors: true`. This compares performance impact:
+
+| Configuration | Native | Pure (no YJIT) | Pure (YJIT) |
+|---------------|--------|----------------|-------------|
+<%- if parsing_data['metadata']['error_checking'] -%>
+<%- parsing_data['metadata']['error_checking'].each do |test_case| -%>
+<%-
+  # Match results by checking if the name contains the key words
+  search_term = test_case['key'].gsub('_', ' ')
+  results = parsing_data['results'].select { |r| r['name'].include?(search_term) }
+  pure_no_yjit = results.find { |r| r['implementation'] == 'pure_without_yjit' }
+  pure_with_yjit = results.find { |r| r['implementation'] == 'pure_with_yjit' }
+  native = results.find { |r| r['implementation'] == 'native' }
+-%>
+| <%= test_case['name'] %> | <%= native ? format_ips(native, short: true) : 'N/A' %> | <%= pure_no_yjit ? format_ips(pure_no_yjit, short: true) : 'N/A' %> | <%= pure_with_yjit ? format_ips(pure_with_yjit, short: true) : 'N/A' %> |
+<%- end -%>
+
+**Overhead Analysis:**
+
+<%-
+  # Calculate overhead for each implementation
+  off_results = parsing_data['results'].select { |r| r['name'].include?('error checking off') }
+  on_results = parsing_data['results'].select { |r| r['name'].include?('error checking on') }
+
+  native_off = off_results.find { |r| r['implementation'] == 'native' }
+  native_on = on_results.find { |r| r['implementation'] == 'native' }
+
+  pure_no_yjit_off = off_results.find { |r| r['implementation'] == 'pure_without_yjit' }
+  pure_no_yjit_on = on_results.find { |r| r['implementation'] == 'pure_without_yjit' }
+
+  pure_with_yjit_off = off_results.find { |r| r['implementation'] == 'pure_with_yjit' }
+  pure_with_yjit_on = on_results.find { |r| r['implementation'] == 'pure_with_yjit' }
+-%>
+
+| Implementation | Overhead |
+|----------------|----------|
+<%- if native_off && native_on -%>
+<%-
+  slowdown = ((native_off['ips'] / native_on['ips']) - 1) * 100
+  overhead_text = if slowdown.abs < 1.0
+    "~0% (within noise)"
+  elsif slowdown < 0
+    "%.1f%% faster (unexpected)" % slowdown.abs
+  else
+    "%.1f%% slower" % slowdown
+  end
+-%>
+| Native | <%= overhead_text %> |
+<%- end -%>
+<%- if pure_no_yjit_off && pure_no_yjit_on -%>
+<%-
+  slowdown = ((pure_no_yjit_off['ips'] / pure_no_yjit_on['ips']) - 1) * 100
+  overhead_text = if slowdown.abs < 1.0
+    "~0% (within noise)"
+  elsif slowdown < 0
+    "%.1f%% faster (unexpected)" % slowdown.abs
+  else
+    "%.1f%% slower" % slowdown
+  end
+-%>
+| Pure (no YJIT) | <%= overhead_text %> |
+<%- end -%>
+<%- if pure_with_yjit_off && pure_with_yjit_on -%>
+<%-
+  slowdown = ((pure_with_yjit_off['ips'] / pure_with_yjit_on['ips']) - 1) * 100
+  overhead_text = if slowdown.abs < 1.0
+    "~0% (within noise)"
+  elsif slowdown < 0
+    "%.1f%% faster (unexpected)" % slowdown.abs
+  else
+    "%.1f%% slower" % slowdown
+  end
+-%>
+| Pure (YJIT) | <%= overhead_text %> |
+<%- end -%>
+<%- end -%>
+
 ---
 <%- end -%>
 

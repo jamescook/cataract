@@ -14,7 +14,7 @@ VALUE cMediaQuery;
 VALUE eCataractError;
 VALUE eDepthError;
 VALUE eSizeError;
-VALUE eParserError;
+VALUE eParseError;
 
 // ============================================================================
 // Helper Functions
@@ -1408,10 +1408,10 @@ void Init_native_extension(void) {
         eSizeError = rb_define_class_under(mCataract, "SizeError", eCataractError);
     }
 
-    if (rb_const_defined(mCataract, rb_intern("ParserError"))) {
-        eParserError = rb_const_get(mCataract, rb_intern("ParserError"));
+    if (rb_const_defined(mCataract, rb_intern("ParseError"))) {
+        eParseError = rb_const_get(mCataract, rb_intern("ParseError"));
     } else {
-        eParserError = rb_define_class_under(mCataract, "ParserError", eCataractError);
+        eParseError = rb_define_class_under(mCataract, "ParseError", eCataractError);
     }
 
     // Reuse Ruby-defined structs (they must be defined before loading this extension)

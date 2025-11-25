@@ -109,6 +109,9 @@ module Cataract
     # @option options [Hash] :parser ({}) Parser configuration options
     #   - :selector_lists [Boolean] (true) Track selector lists for W3C-compliant serialization
     def initialize(options = {})
+      # Type validation
+      raise TypeError, "options must be a Hash, got #{options.class}" unless options.is_a?(Hash)
+
       # Support :imports as alias for :import (backwards compatibility)
       options[:import] = options.delete(:imports) if options.key?(:imports) && !options.key?(:import)
 
@@ -119,12 +122,27 @@ module Cataract
         base_dir: nil,
         absolute_paths: false,
         uri_resolver: nil,
-        parser: {}
+        parser: {},
+        raise_parse_errors: false
       }.merge(options)
+
+      # Type validation for specific options
+      if @options[:import_fetcher] && !@options[:import_fetcher].respond_to?(:call)
+        raise TypeError, "import_fetcher must be a Proc or callable, got #{@options[:import_fetcher].class}"
+      end
+
+      if @options[:base_uri] && !@options[:base_uri].is_a?(String)
+        raise TypeError, "base_uri must be a String, got #{@options[:base_uri].class}"
+      end
+
+      if @options[:uri_resolver] && !@options[:uri_resolver].respond_to?(:call)
+        raise TypeError, "uri_resolver must be a Proc or callable, got #{@options[:uri_resolver].class}"
+      end
 
       # Parser options with defaults (stored for passing to parser)
       @parser_options = {
-        selector_lists: true
+        selector_lists: true,
+        raise_parse_errors: @options[:raise_parse_errors]
       }.merge(@options[:parser] || {})
 
       @rules = [] # Flat array of Rule structs
