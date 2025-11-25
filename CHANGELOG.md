@@ -1,4 +1,6 @@
-## [ Unreleased ]
+## [Unreleased]
+
+## [0.2.5 - 2025-11-25]
 
 - Feature: Parse error detection with `raise_parse_errors` option - validates CSS structure and raises `ParseError` exceptions for malformed input with line/column tracking
 - Feature: Granular error control - enable specific checks (empty values, malformed declarations, invalid selectors, invalid selector syntax, malformed at-rules, unclosed blocks)
