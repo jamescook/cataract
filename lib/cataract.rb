@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative 'cataract/version'
+require_relative 'cataract/error'
 require_relative 'cataract/constants'
 
 # Load struct definitions first (before C extension or pure Ruby)

@@ -19,7 +19,7 @@ extern VALUE cMediaQuery;
 extern VALUE eCataractError;
 extern VALUE eDepthError;
 extern VALUE eSizeError;
-extern VALUE eParserError;
+extern VALUE eParseError;
 
 // ============================================================================
 // Struct field indices

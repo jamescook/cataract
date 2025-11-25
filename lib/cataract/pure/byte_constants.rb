@@ -46,6 +46,10 @@ module Cataract
   BYTE_BANG       = 33 # '!'
   BYTE_PERCENT    = 37 # '%'
   BYTE_SLASH_FWD  = 47 # '/' (also defined as BYTE_SLASH above)
+  BYTE_EQUALS     = 61 # '='
+  BYTE_CARET      = 94 # '^'
+  BYTE_DOLLAR     = 36 # '$'
+  BYTE_PIPE       = 124 # '|'
 
   # Specific lowercase letters (for keyword matching)
   BYTE_LOWER_U    = 117 # 'u'
