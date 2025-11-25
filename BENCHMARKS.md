@@ -20,17 +20,17 @@ Time to parse CSS into internal data structures
 
 | Test Case | Native | Pure (no YJIT) | Pure (YJIT) |
 |-----------|--------|----------------|-------------|
-| Small CSS (64 lines, 1.0KB) | 37.19K i/s | 3.34K i/s | 13.61K i/s |
-| Medium CSS with @media (139 lines, 1.6KB) | 34.51K i/s | 2.09K i/s | 9.04K i/s |
-| Selector lists (3500 lines, 62.5KB, 500 lists) | 484.1 i/s | 57.1 i/s | 214.0 i/s |
+| Small CSS (64 lines, 1.0KB) | 37.27K i/s | 3.32K i/s | 13.48K i/s |
+| Medium CSS with @media (139 lines, 1.6KB) | 34.66K i/s | 2.06K i/s | 8.94K i/s |
+| Selector lists (3500 lines, 62.5KB, 500 lists) | 485.7 i/s | 55.7 i/s | 213.6 i/s |
 
 ### Speedups
 
 | Comparison | Speedup |
 |------------|---------|
-| Native vs Pure (no YJIT) | 14.02x faster (avg) |
-| Native vs Pure (YJIT) | 3.32x faster (avg) |
-| YJIT impact on Pure Ruby | 4.19x faster (avg) |
+| Native vs Pure (no YJIT) | 14.4x faster (avg) |
+| Native vs Pure (YJIT) | 3.38x faster (avg) |
+| YJIT impact on Pure Ruby | 4.23x faster (avg) |
 
 ### Parse Error Checking Overhead
 
@@ -38,8 +38,8 @@ Parse error detection can be enabled with `raise_parse_errors: true`. This compa
 
 | Configuration | Native | Pure (no YJIT) | Pure (YJIT) |
 |---------------|--------|----------------|-------------|
-| Medium CSS (139 lines) - no error checking | 35.27K i/s | 2.09K i/s | 9.11K i/s |
-| Medium CSS (139 lines) - with error checking | 35.18K i/s | 2.08K i/s | 8.63K i/s |
+| Medium CSS (139 lines) - no error checking | 35.18K i/s | 2.07K i/s | 9.05K i/s |
+| Medium CSS (139 lines) - with error checking | 34.84K i/s | 1.9K i/s | 8.19K i/s |
 
 **Overhead Analysis:**
 
@@ -47,8 +47,8 @@ Parse error detection can be enabled with `raise_parse_errors: true`. This compa
 | Implementation | Overhead |
 |----------------|----------|
 | Native | ~0% (within noise) |
-| Pure (no YJIT) | ~0% (within noise) |
-| Pure (YJIT) | 5.6% slower |
+| Pure (no YJIT) | 8.9% slower |
+| Pure (YJIT) | 10.4% slower |
 
 ---
 

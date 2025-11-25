@@ -16,8 +16,7 @@
 
 // Use uint8_t for boolean flags to reduce struct size and improve cache efficiency
 // (int is 4 bytes, uint8_t is 1 byte - saves 27 bytes across 9 flags)
-// #define BOOLEAN uint8_t
-#define BOOLEAN int
+#define BOOLEAN uint8_t
 
 // Parser context passed through recursive calls
 typedef struct {
