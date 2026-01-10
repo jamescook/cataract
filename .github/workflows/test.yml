@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ruby: ['3.1', '3.2', '3.3', '3.4']
+        ruby: ['3.1', '3.2', '3.3', '3.4', '4.0']
 
     steps:
     - uses: actions/checkout@v4
@@ -37,8 +37,8 @@ jobs:
       env:
         COVERAGE: 1
 
-    - name: Run debug test (Ruby 3.4 only)
-      if: matrix.ruby == '3.4'
+    - name: Run debug test (Ruby 4.0 only)
+      if: matrix.ruby == '4.0'
       run: |
         bundle exec rake clean compile
         bundle exec ruby -Ilib:test test/test_stylesheet.rb
@@ -46,7 +46,7 @@ jobs:
         CONFIGURE_ARGS: --enable-debug
 
     - name: Upload coverage to Codecov
-      if: runner.os == 'Linux' && matrix.ruby == '3.4'
+      if: runner.os == 'Linux' && matrix.ruby == '4.0'
       uses: codecov/codecov-action@v5
       with:
         fail_ci_if_error: false
@@ -54,7 +54,7 @@ jobs:
         verbose: true
 
     - name: Upload coverage report artifact
-      if: runner.os == 'Linux' && matrix.ruby == '3.4'
+      if: runner.os == 'Linux' && matrix.ruby == '4.0'
       uses: actions/upload-artifact@v4
       with:
         name: coverage-report
@@ -69,7 +69,7 @@ jobs:
     - name: Set up Ruby
       uses: ruby/setup-ruby@v1
       with:
-        ruby-version: '3.4'
+        ruby-version: '4.0'
         bundler-cache: true
 
     - name: Run rubocop
