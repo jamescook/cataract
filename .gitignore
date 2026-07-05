@@ -45,3 +45,6 @@ docs/
 !docs/files/
 !docs/files/EXAMPLE.md
 .yardoc/
+
+# Claude Code local project instructions (personal, not shared)
+.claude/CLAUDE.md
