@@ -22,8 +22,7 @@ def config_str_buf_optimization?
 end
 
 # Compile main file, parser, flatten, and supporting files
-$objs = ['cataract.o', 'css_parser.o', 'flatten.o', 'shorthand_expander.o', 'specificity.o', 'value_splitter.o',
-         'import_scanner.o']
+$objs = ['cataract.o', 'css_parser.o', 'flatten.o', 'shorthand_expander.o', 'specificity.o', 'value_splitter.o']
 
 # Suppress warnings
 $CFLAGS << ' -Wno-unused-const-variable' if darwin? || linux?

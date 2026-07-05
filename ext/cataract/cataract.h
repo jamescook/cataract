@@ -157,9 +157,6 @@ void init_flatten_constants(void);
 // Specificity (specificity.c)
 VALUE calculate_specificity(VALUE self, VALUE selector);
 
-// Import scanner (import_scanner.c)
-VALUE extract_imports(VALUE self, VALUE css_string);
-
 // Shorthand expander (shorthand_expander_new.c)
 VALUE cataract_split_value(VALUE self, VALUE value);
 VALUE cataract_expand_margin(VALUE self, VALUE value);
