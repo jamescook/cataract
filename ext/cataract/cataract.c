@@ -904,43 +904,18 @@ static void serialize_rule_with_children(VALUE result, VALUE rules_array, long r
     RB_GC_GUARD(rule);
 }
 
-// New stylesheet serialization entry point - checks for nesting and delegates
-static VALUE stylesheet_to_s(VALUE self, VALUE rules_array, VALUE charset, VALUE has_nesting, VALUE selector_lists, VALUE media_queries, VALUE media_query_lists) {
-    DEBUG_PRINTF("[STYLESHEET_TO_S] Called with:\n");
-    DEBUG_PRINTF("  rules_array length: %ld\n", RARRAY_LEN(rules_array));
-    DEBUG_PRINTF("  media_queries type: %s, length: %ld\n",
-                rb_obj_classname(media_queries),
-                TYPE(media_queries) == T_ARRAY ? RARRAY_LEN(media_queries) : -1);
-    DEBUG_PRINTF("  media_queries inspect: %s\n", RSTRING_PTR(rb_inspect(media_queries)));
-    DEBUG_PRINTF("  media_query_lists class: %s\n", rb_obj_classname(media_query_lists));
-    DEBUG_PRINTF("  selector_lists class: %s\n", rb_obj_classname(selector_lists));
-
-    DEBUG_PRINTF("[STYLESHEET_TO_S] About to Check_Type\n");
-    Check_Type(rules_array, T_ARRAY);
-    Check_Type(media_queries, T_ARRAY);
-    if (!NIL_P(media_query_lists)) Check_Type(media_query_lists, T_HASH);
-    if (!NIL_P(selector_lists)) Check_Type(selector_lists, T_HASH);
-    DEBUG_PRINTF("[STYLESHEET_TO_S] Check_Type passed\n");
-    // TODO: Phase 2 - use selector_lists for grouping
-    (void)selector_lists; // Suppress unused parameter warning
-
-    // Fast path: if no nesting, use original implementation (zero overhead)
-    if (!RTEST(has_nesting)) {
-        DEBUG_PRINTF("[STYLESHEET_TO_S] Taking fast path (no nesting)\n");
-        return stylesheet_to_s_without_nesting(rules_array, media_queries, media_query_lists, charset, selector_lists);
-    }
-
-    DEBUG_PRINTF("[STYLESHEET_TO_S] Taking slow path (has nesting)\n");
-    // SLOW PATH: Has nesting - use lookahead approach
+// Shared implementation for stylesheet serialization with nesting support.
+// Handles both compact (to_s) and formatted (to_formatted_s) output via the
+// format_opts struct, mirroring the pattern serialize_stylesheet_with_grouping
+// uses for the no-nesting fast path.
+static VALUE serialize_stylesheet_with_nesting(
+    VALUE rules_array,
+    VALUE media_queries,
+    VALUE result,
+    const struct format_opts *opts
+) {
+    int formatted = (opts->decl_indent_base != NULL);
     long total_rules = RARRAY_LEN(rules_array);
-    VALUE result = rb_str_new_cstr("");
-
-    // Add charset if present
-    if (!NIL_P(charset)) {
-        rb_str_cat2(result, "@charset \"");
-        rb_str_append(result, charset);
-        rb_str_cat2(result, "\";\n");
-    }
 
     // Build parent_to_children map (parent_rule_id -> array of child indices)
     // This allows O(1) lookup of children when serializing each parent
@@ -1002,6 +977,10 @@ static VALUE stylesheet_to_s(VALUE self, VALUE rules_array, VALUE charset, VALUE
                 rb_str_cat2(result, "}\n");
                 in_media_block = 0;
                 current_media = Qnil;
+
+                if (opts->add_blank_lines) {
+                    rb_str_cat2(result, "\n");
+                }
             }
         } else {
             // In media - check if we need to open/change block (compare MediaQuery objects by value)
@@ -1009,6 +988,9 @@ static VALUE stylesheet_to_s(VALUE self, VALUE rules_array, VALUE charset, VALUE
                 // Close previous media block if open
                 if (in_media_block) {
                     rb_str_cat2(result, "}\n");
+                } else if (opts->add_blank_lines && RSTRING_LEN(result) > 0) {
+                    // Add blank line before new media block (except at start)
+                    rb_str_cat2(result, "\n");
                 }
                 // Open new media block - store the MediaQuery object for comparison
                 current_media = rule_media;
@@ -1025,11 +1007,18 @@ static VALUE stylesheet_to_s(VALUE self, VALUE rules_array, VALUE charset, VALUE
             continue;
         }
 
+        // Add indent if inside media block (no-op in compact mode, where media_indent is "")
+        if (in_media_block) {
+            DEBUG_PRINTF("[FORMATTED] Adding base indent for media block\n");
+            rb_str_cat2(result, opts->media_indent);
+        }
+
         // Serialize rule with nested children
+        DEBUG_PRINTF("[FORMATTED] Calling serialize_rule_with_children, in_media_block=%d\n", in_media_block);
         serialize_rule_with_children(
             result, rules_array, i, parent_to_children, media_queries,
-            0,  // formatted (compact)
-            0   // indent_level (top-level)
+            formatted,
+            in_media_block ? 1 : 0   // indent_level (unused when !formatted)
         );
     }
 
@@ -1040,6 +1029,56 @@ static VALUE stylesheet_to_s(VALUE self, VALUE rules_array, VALUE charset, VALUE
 
     RB_GC_GUARD(parent_to_children);
     return result;
+}
+
+// New stylesheet serialization entry point - checks for nesting and delegates
+static VALUE stylesheet_to_s(VALUE self, VALUE rules_array, VALUE charset, VALUE has_nesting, VALUE selector_lists, VALUE media_queries, VALUE media_query_lists) {
+    DEBUG_PRINTF("[STYLESHEET_TO_S] Called with:\n");
+    DEBUG_PRINTF("  rules_array length: %ld\n", RARRAY_LEN(rules_array));
+    DEBUG_PRINTF("  media_queries type: %s, length: %ld\n",
+                rb_obj_classname(media_queries),
+                TYPE(media_queries) == T_ARRAY ? RARRAY_LEN(media_queries) : -1);
+    DEBUG_PRINTF("  media_queries inspect: %s\n", RSTRING_PTR(rb_inspect(media_queries)));
+    DEBUG_PRINTF("  media_query_lists class: %s\n", rb_obj_classname(media_query_lists));
+    DEBUG_PRINTF("  selector_lists class: %s\n", rb_obj_classname(selector_lists));
+
+    DEBUG_PRINTF("[STYLESHEET_TO_S] About to Check_Type\n");
+    Check_Type(rules_array, T_ARRAY);
+    Check_Type(media_queries, T_ARRAY);
+    if (!NIL_P(media_query_lists)) Check_Type(media_query_lists, T_HASH);
+    if (!NIL_P(selector_lists)) Check_Type(selector_lists, T_HASH);
+    DEBUG_PRINTF("[STYLESHEET_TO_S] Check_Type passed\n");
+    // TODO: Phase 2 - use selector_lists for grouping
+    (void)selector_lists; // Suppress unused parameter warning
+
+    // Fast path: if no nesting, use original implementation (zero overhead)
+    if (!RTEST(has_nesting)) {
+        DEBUG_PRINTF("[STYLESHEET_TO_S] Taking fast path (no nesting)\n");
+        return stylesheet_to_s_without_nesting(rules_array, media_queries, media_query_lists, charset, selector_lists);
+    }
+
+    DEBUG_PRINTF("[STYLESHEET_TO_S] Taking slow path (has nesting)\n");
+    // SLOW PATH: Has nesting - use lookahead approach
+    VALUE result = rb_str_new_cstr("");
+
+    // Add charset if present
+    if (!NIL_P(charset)) {
+        rb_str_cat2(result, "@charset \"");
+        rb_str_append(result, charset);
+        rb_str_cat2(result, "\";\n");
+    }
+
+    // Compact formatting options
+    struct format_opts opts = {
+        .opening_brace = " { ",
+        .closing_brace = " }\n",
+        .media_indent = "",
+        .decl_indent_base = NULL,
+        .decl_indent_media = NULL,
+        .add_blank_lines = 0
+    };
+
+    return serialize_stylesheet_with_nesting(rules_array, media_queries, result, &opts);
 }
 
 // Original formatted serialization (no nesting support)
@@ -1082,7 +1121,6 @@ static VALUE stylesheet_to_formatted_s(VALUE self, VALUE rules_array, VALUE char
     }
 
     // SLOW PATH: Has nesting - use parameterized serialization with formatted=1
-    long total_rules = RARRAY_LEN(rules_array);
     VALUE result = rb_str_new_cstr("");
 
     // Add charset if present
@@ -1092,101 +1130,17 @@ static VALUE stylesheet_to_formatted_s(VALUE self, VALUE rules_array, VALUE char
         rb_str_cat2(result, "\";\n");
     }
 
-    // Build parent_to_children map (parent_rule_id -> array of child indices)
-    VALUE parent_to_children = rb_hash_new();
-    for (long i = 0; i < total_rules; i++) {
-        VALUE rule = rb_ary_entry(rules_array, i);
-        VALUE parent_id = rb_struct_aref(rule, INT2FIX(RULE_PARENT_RULE_ID));
+    // Formatted output options
+    struct format_opts opts = {
+        .opening_brace = " {\n",
+        .closing_brace = "}\n",
+        .media_indent = "  ",
+        .decl_indent_base = "  ",
+        .decl_indent_media = "    ",
+        .add_blank_lines = 1
+    };
 
-        if (!NIL_P(parent_id)) {
-            VALUE children = rb_hash_aref(parent_to_children, parent_id);
-            if (NIL_P(children)) {
-                children = rb_ary_new();
-                rb_hash_aset(parent_to_children, parent_id, children);
-            }
-            rb_ary_push(children, LONG2FIX(i));
-        }
-    }
-
-    // Track media block state for proper opening/closing
-    VALUE current_media = Qnil;
-    int in_media_block = 0;
-
-    // Serialize only top-level rules (parent_rule_id == nil)
-    for (long i = 0; i < total_rules; i++) {
-        VALUE rule = rb_ary_entry(rules_array, i);
-        VALUE parent_id = rb_struct_aref(rule, INT2FIX(RULE_PARENT_RULE_ID));
-
-        // Skip child rules - they're serialized when we hit their parent
-        if (!NIL_P(parent_id)) {
-            continue;
-        }
-
-        // Get media_query_id for this rule and fetch the MediaQuery object
-        VALUE rule_media_query_id = rb_obj_is_kind_of(rule, cAtRule) ? Qnil : rb_struct_aref(rule, INT2FIX(RULE_MEDIA_QUERY_ID));
-        VALUE rule_media = Qnil;
-        if (!NIL_P(rule_media_query_id)) {
-            rule_media = rb_ary_entry(media_queries, FIX2INT(rule_media_query_id));
-        }
-
-        // Handle media block transitions
-        if (NIL_P(rule_media)) {
-            // Not in media - close any open media block
-            if (in_media_block) {
-                rb_str_cat2(result, "}\n");
-                in_media_block = 0;
-                current_media = Qnil;
-
-                // Add blank line after closing media block
-                rb_str_cat2(result, "\n");
-            }
-        } else {
-            // In media - check if we need to open/change block (compare MediaQuery objects by value)
-            if (NIL_P(current_media) || !rb_equal(current_media, rule_media)) {
-                // Close previous media block if open
-                if (in_media_block) {
-                    rb_str_cat2(result, "}\n");
-                } else if (RSTRING_LEN(result) > 0) {
-                    // Add blank line before new media block (except at start)
-                    rb_str_cat2(result, "\n");
-                }
-                // Open new media block - store the MediaQuery object for comparison
-                current_media = rule_media;
-                rb_str_cat2(result, "@media ");
-                append_media_query_text(result, rule_media);
-                rb_str_cat2(result, " {\n");
-                in_media_block = 1;
-            }
-        }
-
-        // Check if this is an AtRule
-        if (rb_obj_is_kind_of(rule, cAtRule)) {
-            serialize_at_rule(result, rule);
-            continue;
-        }
-
-        // Add indent if inside media block
-        if (in_media_block) {
-            DEBUG_PRINTF("[FORMATTED] Adding base indent for media block\n");
-            rb_str_cat2(result, "  ");
-        }
-
-        // Serialize rule with nested children
-        DEBUG_PRINTF("[FORMATTED] Calling serialize_rule_with_children, in_media_block=%d\n", in_media_block);
-        serialize_rule_with_children(
-            result, rules_array, i, parent_to_children, media_queries,
-            1,  // formatted (with indentation)
-            in_media_block ? 1 : 0   // indent_level (1 if inside media block, 0 otherwise)
-        );
-    }
-
-    // Close final media block if still open
-    if (in_media_block) {
-        rb_str_cat2(result, "}\n");
-    }
-
-    RB_GC_GUARD(parent_to_children);
-    return result;
+    return serialize_stylesheet_with_nesting(rules_array, media_queries, result, &opts);
 }
 
 /*

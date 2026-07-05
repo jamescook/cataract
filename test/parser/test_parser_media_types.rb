@@ -275,14 +275,17 @@ class TestParserMediaTypes < Minitest::Test
 
     output = @sheet.to_s(media: :screen)
 
-    # Should only include screen rules - verify by reparsing
+    # Should include screen rules plus base rules - verify by reparsing
     reparsed = Cataract::Stylesheet.parse(output)
 
     assert_has_selector '.header', reparsed, media: :screen
     assert_has_property({ color: 'blue' }, reparsed.with_media(:screen).with_selector('.header').first)
 
-    # Should NOT include universal or print rules
-    assert_equal 0, reparsed.with_selector('body').to_a.length
+    # Base rules apply regardless of media and should be included
+    assert_equal 1, reparsed.with_selector('body').to_a.length
+    assert_has_property({ color: 'black' }, reparsed.with_selector('body').first)
+
+    # Should NOT include print rules
     assert_no_selector_matches '.footer', reparsed
   end
 
@@ -295,17 +298,20 @@ class TestParserMediaTypes < Minitest::Test
 
     output = @sheet.to_s(media: :print)
 
-    # Parse output and verify only print rules
+    # Parse output and verify base and print rules
     reparsed = Cataract.parse_css(output)
 
-    assert_equal 1, reparsed.rules.size
+    assert_equal 2, reparsed.rules.size
 
-    # Should only have print media rule
+    # Should have base rule
+    assert_has_selector('body', reparsed)
+    assert_has_property({ color: 'black' }, reparsed.with_selector('body').first)
+
+    # Should have print media rule
     assert_has_selector('.footer', reparsed, media: :print)
     assert_has_property({ color: 'red' }, reparsed.with_media(:print).with_selector('.footer').first)
 
-    # Should NOT have base or screen rules
-    assert_no_selector_matches('body', reparsed)
+    # Should NOT have screen rules
     assert_no_selector_matches('.header', reparsed)
   end
 
@@ -319,10 +325,14 @@ class TestParserMediaTypes < Minitest::Test
 
     output = @sheet.to_s(media: %i[screen print])
 
-    # Parse output and verify only screen and print rules
+    # Parse output and verify base, screen, and print rules
     reparsed = Cataract.parse_css(output)
 
-    assert_equal 2, reparsed.rules.size
+    assert_equal 3, reparsed.rules.size
+
+    # Should have base rule
+    assert_has_selector('body', reparsed)
+    assert_has_property({ color: 'black' }, reparsed.with_selector('body').first)
 
     # Should have screen and print rules
     assert_has_selector('.header', reparsed, media: :screen)
@@ -331,8 +341,7 @@ class TestParserMediaTypes < Minitest::Test
     assert_has_selector('.footer', reparsed, media: :print)
     assert_has_property({ color: 'red' }, reparsed.with_media(:print).with_selector('.footer').first)
 
-    # Should NOT have base or handheld rules
-    assert_no_selector_matches('body', reparsed)
+    # Should NOT have handheld rules
     assert_no_selector_matches('.mobile', reparsed)
   end
 

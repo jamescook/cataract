@@ -445,49 +445,26 @@ module Cataract
     #
     # @param media [Symbol, Array<Symbol>] Media type(s) to include (default: :all)
     #   - :all - Output all rules including base rules and all media queries
-    #   - :screen, :print, etc. - Output only rules from specified media query
-    #   - [:screen, :print] - Output rules from multiple media queries
+    #   - :screen, :print, etc. - Output base rules plus rules from the specified media query
+    #   - [:screen, :print] - Output base rules plus rules from multiple media queries
     #
     # Important: When filtering to specific media types, base rules (rules not
-    # inside any @media block) are NOT included. Only rules explicitly inside
-    # the requested @media queries are output. Use :all to include base rules.
+    # inside any @media block) are always included, since they apply regardless
+    # of media context. Only rules from OTHER @media queries are excluded.
     # @return [String] CSS string
     #
     # @example Get all CSS
     #   sheet.to_s                 # => "body { color: black; } @media print { .footer { color: red; } }"
     #   sheet.to_s(media: :all)    # => "body { color: black; } @media print { .footer { color: red; } }"
     #
-    # @example Filter to specific media type (excludes base rules)
-    #   sheet.to_s(media: :print)  # => "@media print { .footer { color: red; } }"
-    #   # Note: base rules like "body { color: black; }" are NOT included
+    # @example Filter to specific media type (base rules still included)
+    #   sheet.to_s(media: :print)  # => "body { color: black; } @media print { .footer { color: red; } }"
+    #   # Note: base rules like "body { color: black; }" apply during print too, so they're kept
     #
     # @example Filter to multiple media types
     #   sheet.to_s(media: [:screen, :print])  # => "@media screen { ... } @media print { ... }"
     def to_s(media: :all)
-      which_media = media
-      # Normalize to array for consistent filtering
-      which_media_array = which_media.is_a?(Array) ? which_media : [which_media]
-
-      # If :all is present, return everything (no filtering)
-      if which_media_array.include?(:all)
-        Cataract.stylesheet_to_s(@rules, @charset, @_has_nesting || false, @_selector_lists, @media_queries, @_media_query_lists)
-      else
-        # Collect all rule IDs that match the requested media types
-        matching_rule_ids = []
-        mi = media_index # Build media_index if needed
-        which_media_array.each do |media_sym|
-          if mi[media_sym]
-            matching_rule_ids.concat(mi[media_sym])
-          end
-        end
-        matching_rule_ids.uniq! # Dedupe: same rule can be in multiple media indexes
-
-        # Build filtered rules array (keep original IDs, no recreation needed)
-        filtered_rules = matching_rule_ids.sort.map! { |rule_id| @rules[rule_id] }
-
-        # Serialize with filtered data
-        Cataract.stylesheet_to_s(filtered_rules, @charset, @_has_nesting || false, @_selector_lists, @media_queries, @_media_query_lists)
-      end
+      Cataract.stylesheet_to_s(filter_rules_by_media(media), @charset, @_has_nesting || false, @_selector_lists, @media_queries, @_media_query_lists)
     end
     alias to_css to_s
 
@@ -497,10 +474,10 @@ module Cataract
     # Rules are formatted with each declaration on its own line, and media queries
     # are properly indented. Optionally filters output to specific media queries.
     #
-    # @param which_media [Symbol, Array<Symbol>] Optional media filter (default: :all)
+    # @param media [Symbol, Array<Symbol>] Optional media filter (default: :all)
     #   - :all - Output all rules including base rules and all media queries
-    #   - :screen, :print, etc. - Output only rules from specified media query
-    #   - [:screen, :print] - Output rules from multiple media queries
+    #   - :screen, :print, etc. - Output base rules plus rules from the specified media query
+    #   - [:screen, :print] - Output base rules plus rules from multiple media queries
     #
     # @return [String] Formatted CSS string
     #
@@ -508,43 +485,12 @@ module Cataract
     #   sheet.to_formatted_s
     #   # => "body {\n  color: black;\n}\n@media print {\n  .footer {\n    color: red;\n  }\n}\n"
     #
-    # @example Filter to specific media type
-    #   sheet.to_formatted_s(:print)
+    # @example Filter to specific media type (base rules still included)
+    #   sheet.to_formatted_s(media: :print)
     #
     # @see #to_s For compact single-line output
     def to_formatted_s(media: :all)
-      which_media = media
-      # Normalize to array for consistent filtering
-      which_media_array = which_media.is_a?(Array) ? which_media : [which_media]
-
-      # If :all is present, return everything (no filtering)
-      if which_media_array.include?(:all)
-        Cataract.stylesheet_to_formatted_s(@rules, @charset, @_has_nesting || false, @_selector_lists, @media_queries, @_media_query_lists)
-      else
-        # Collect all rule IDs that match the requested media types
-        matching_rule_ids = []
-        mi = media_index # Build media_index if needed
-
-        # Include rules not in any media query (they apply to all media)
-        media_rule_ids = mi.values.flatten.uniq
-        all_rule_ids = (0...@rules.length).to_a
-        non_media_rule_ids = all_rule_ids - media_rule_ids
-        matching_rule_ids.concat(non_media_rule_ids)
-
-        # Include rules from requested media types
-        which_media_array.each do |media_sym|
-          if mi[media_sym]
-            matching_rule_ids.concat(mi[media_sym])
-          end
-        end
-        matching_rule_ids.uniq! # Dedupe: same rule can be in multiple media indexes
-
-        # Build filtered rules array (keep original IDs, no recreation needed)
-        filtered_rules = matching_rule_ids.sort.map! { |rule_id| @rules[rule_id] }
-
-        # Serialize with filtered data
-        Cataract.stylesheet_to_formatted_s(filtered_rules, @charset, @_has_nesting || false, @_selector_lists, @media_queries, @_media_query_lists)
-      end
+      Cataract.stylesheet_to_formatted_s(filter_rules_by_media(media), @charset, @_has_nesting || false, @_selector_lists, @media_queries, @_media_query_lists)
     end
 
     # Get number of rules
@@ -1113,6 +1059,38 @@ module Cataract
     end
 
     private
+
+    # Filter rules down to those relevant for the given media type(s).
+    #
+    # Shared by #to_s and #to_formatted_s so both serialize the same rule set
+    # for a given filter. Base rules (not inside any @media block) always
+    # apply regardless of media context, so they're included alongside any
+    # explicitly requested media types.
+    #
+    # @param media [Symbol, Array<Symbol>] Media type(s) to filter to
+    # @return [Array<Rule>] Filtered rules, in original order
+    def filter_rules_by_media(media)
+      which_media_array = media.is_a?(Array) ? media : [media]
+      return @rules if which_media_array.include?(:all)
+
+      mi = media_index # Build media_index if needed
+
+      # Base rules (not in any media query) apply to all media contexts.
+      # Built as a Set so the membership check below is O(1) per rule instead
+      # of the O(n) scan an Array#- would do, and to avoid materializing a
+      # separate 0..N array of every rule id just to subtract from it.
+      media_rule_id_set = Set.new
+      mi.each_value { |ids| media_rule_id_set.merge(ids) }
+      matching_rule_ids = (0...@rules.length).reject { |rule_id| media_rule_id_set.include?(rule_id) }
+
+      # Include rules from requested media types
+      which_media_array.each do |media_sym|
+        matching_rule_ids.concat(mi[media_sym]) if mi[media_sym]
+      end
+      matching_rule_ids.uniq! # Dedupe: same rule can be in multiple media indexes
+
+      matching_rule_ids.sort!.map! { |rule_id| @rules[rule_id] }
+    end
 
     # Resolve @import statements by fetching and merging imported stylesheets
     #
