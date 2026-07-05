@@ -457,6 +457,21 @@ class TestCssNesting < Minitest::Test
     assert_equal expected, output
   end
 
+  def test_to_s_preserves_full_nesting_depth
+    depth = 10 # matches the parser's MAX_PARSE_DEPTH
+    css = +''
+    depth.times { |i| css << ".lvl#{i + 1} { color: c#{i + 1}; " }
+    css << ('}' * depth)
+
+    sheet = Cataract::Stylesheet.parse(css)
+
+    assert_equal depth, sheet.rules_count
+
+    expected = "#{(1..depth).map { |level| ".lvl#{level} { color: c#{level};" }.join(' ')}#{' }' * depth}\n"
+
+    assert_equal expected, sheet.to_s
+  end
+
   def test_to_s_roundtrip_with_nesting
     css = <<~CSS
       .parent {
@@ -594,6 +609,28 @@ class TestCssNesting < Minitest::Test
     CSS
 
     assert_equal expected, output
+  end
+
+  def test_to_formatted_s_preserves_full_nesting_depth
+    depth = 10 # matches the parser's MAX_PARSE_DEPTH
+    css = +''
+    depth.times { |i| css << ".lvl#{i + 1} { color: c#{i + 1}; " }
+    css << ('}' * depth)
+
+    sheet = Cataract::Stylesheet.parse(css)
+
+    assert_equal depth, sheet.rules_count
+
+    lines = []
+    (1..depth).each do |level|
+      indent = '  ' * (level - 1)
+      lines << "#{indent}.lvl#{level} {"
+      lines << "#{indent}  color: c#{level};"
+    end
+    depth.downto(1) { |level| lines << "#{'  ' * (level - 1)}}" }
+    expected = "#{lines.join("\n")}\n"
+
+    assert_equal expected, sheet.to_formatted_s
   end
 
   def test_to_formatted_s_with_mixed_content

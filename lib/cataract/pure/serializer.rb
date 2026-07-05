@@ -161,20 +161,23 @@ module Cataract
       _serialize_declarations(result, rule.declarations)
     end
 
-    # Get nested children for this rule
-    children = rule_children[rule.id] || []
+    _serialize_children(result, rule.selector, rule_children[rule.id] || [], rule_children, media_queries, has_declarations)
 
-    # Serialize nested children
+    result << " }\n"
+  end
+
+  # Helper: recursively serialize a rule's nested children. CSS nesting can go
+  # as deep as the parser allows (MAX_PARSE_DEPTH), so this recurses rather
+  # than hand-unrolling a fixed number of levels - a nested rule's own nested
+  # rules are found the same way its parent's were, via rule_children[id].
+  def self._serialize_children(result, parent_selector, children, rule_children, media_queries, parent_has_declarations)
     children.each_with_index do |child, index|
       # Add space before nested content
-      # - Always add space if we had declarations
+      # - Always add space if the parent had declarations
       # - Add space between nested rules (not before first if no declarations)
-      if has_declarations || index > 0
+      if parent_has_declarations || index > 0
         result << ' '
       end
-
-      # Determine if we need to reconstruct the nested selector with &
-      nested_selector = _reconstruct_nested_selector(rule.selector, child.selector, child.nesting_style)
 
       # Check if this child has @media nesting (parent_rule_id present but nesting_style is nil)
       if child.nesting_style.nil? && child.media_query_id && media_queries[child.media_query_id]
@@ -188,7 +191,7 @@ module Cataract
         result << "@media #{media_query_string} { "
         _serialize_declarations(result, child.declarations)
 
-        # Recursively serialize any children of this @media rule
+        # Serialize any children of this @media rule
         media_children = rule_children[child.id] || []
         media_children.each_with_index do |media_child, media_idx|
           result << ' ' if media_idx > 0 || !child.declarations.empty?
@@ -205,31 +208,18 @@ module Cataract
 
         result << ' }'
       else
-        # Regular nested selector
+        # Regular nested selector - determine if we need to reconstruct it with &
+        nested_selector = _reconstruct_nested_selector(parent_selector, child.selector, child.nesting_style)
+
         result << "#{nested_selector} { "
         _serialize_declarations(result, child.declarations)
 
-        # Recursively serialize any children of this nested rule
-        grandchildren = rule_children[child.id] || []
-        grandchildren.each_with_index do |grandchild, grandchild_idx|
-          result << ' ' if grandchild_idx > 0 || !child.declarations.empty?
-
-          nested_grandchild_selector = _reconstruct_nested_selector(
-            child.selector,
-            grandchild.selector,
-            grandchild.nesting_style
-          )
-
-          result << "#{nested_grandchild_selector} { "
-          _serialize_declarations(result, grandchild.declarations)
-          result << ' }'
-        end
+        # Recurse into this child's own nested children, however deep they go
+        _serialize_children(result, child.selector, rule_children[child.id] || [], rule_children, media_queries, !child.declarations.empty?)
 
         result << ' }'
       end
     end
-
-    result << " }\n"
   end
 
   # Reconstruct nested selector representation
@@ -650,13 +640,20 @@ module Cataract
       _serialize_declarations_formatted(result, rule.declarations, "#{indent}  ")
     end
 
-    # Get nested children
-    children = rule_children[rule.id] || []
+    _serialize_children_formatted(result, rule.selector, rule_children[rule.id] || [], rule_children, media_queries, "#{indent}  ")
 
-    # Serialize nested children
+    # Closing brace
+    result << indent
+    result << "}\n"
+  end
+
+  # Helper: recursively serialize a rule's nested children with indentation.
+  # CSS nesting can go as deep as the parser allows (MAX_PARSE_DEPTH), so this
+  # recurses rather than hand-unrolling a fixed number of levels - a nested
+  # rule's own nested rules are found the same way its parent's were, via
+  # rule_children[id], with the indent growing by one level each call.
+  def self._serialize_children_formatted(result, parent_selector, children, rule_children, media_queries, indent)
     children.each do |child|
-      nested_selector = _reconstruct_nested_selector(rule.selector, child.selector, child.nesting_style)
-
       if child.nesting_style.nil? && child.media_query_id && media_queries[child.media_query_id]
         # Nested @media
         mq = media_queries[child.media_query_id]
@@ -666,13 +663,13 @@ module Cataract
                                mq.type.to_s
                              end
         result << indent
-        result << "  @media #{media_query_string} {\n"
+        result << "@media #{media_query_string} {\n"
 
         unless child.declarations.empty?
-          _serialize_declarations_formatted(result, child.declarations, "#{indent}    ")
+          _serialize_declarations_formatted(result, child.declarations, "#{indent}  ")
         end
 
-        # Recursively handle media children
+        # Handle nested media children
         media_children = rule_children[child.id] || []
         media_children.each do |media_child|
           nested_media_selector = _reconstruct_nested_selector(
@@ -682,51 +679,34 @@ module Cataract
           )
 
           result << indent
-          result << "    #{nested_media_selector} {\n"
+          result << "  #{nested_media_selector} {\n"
           unless media_child.declarations.empty?
-            _serialize_declarations_formatted(result, media_child.declarations, "#{indent}      ")
+            _serialize_declarations_formatted(result, media_child.declarations, "#{indent}    ")
           end
           result << indent
-          result << "    }\n"
+          result << "  }\n"
         end
 
         result << indent
-        result << "  }\n"
+        result << "}\n"
       else
         # Regular nested selector
+        nested_selector = _reconstruct_nested_selector(parent_selector, child.selector, child.nesting_style)
+
         result << indent
-        result << "  #{nested_selector} {\n"
+        result << "#{nested_selector} {\n"
 
         unless child.declarations.empty?
-          _serialize_declarations_formatted(result, child.declarations, "#{indent}    ")
+          _serialize_declarations_formatted(result, child.declarations, "#{indent}  ")
         end
 
-        # Recursively handle grandchildren
-        grandchildren = rule_children[child.id] || []
-        grandchildren.each do |grandchild|
-          nested_grandchild_selector = _reconstruct_nested_selector(
-            child.selector,
-            grandchild.selector,
-            grandchild.nesting_style
-          )
-
-          result << indent
-          result << "    #{nested_grandchild_selector} {\n"
-          unless grandchild.declarations.empty?
-            _serialize_declarations_formatted(result, grandchild.declarations, "#{indent}      ")
-          end
-          result << indent
-          result << "    }\n"
-        end
+        # Recurse into this child's own nested children, however deep they go
+        _serialize_children_formatted(result, child.selector, rule_children[child.id] || [], rule_children, media_queries, "#{indent}  ")
 
         result << indent
-        result << "  }\n"
+        result << "}\n"
       end
     end
-
-    # Closing brace
-    result << indent
-    result << "}\n"
   end
 
   # Helper: serialize a single rule with formatting
