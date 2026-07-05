@@ -298,6 +298,92 @@ class TestRemoveRules < Minitest::Test
     refute_includes new_selectors, '.header'
   end
 
+  def test_remove_rules_does_not_desync_media_query_ids
+    @sheet.add_block(<<~CSS)
+      @media screen { .a { color: red; } }
+      @media print { .b { color: blue; } }
+    CSS
+
+    # Removing the only rule under :screen makes that MediaQuery unused and
+    # eligible for cleanup, while the :print MediaQuery (positioned after it
+    # in @media_queries) survives.
+    @sheet.remove_rules!('.a { }', media_types: :screen)
+
+    assert_equal 1, @sheet.rules_count
+
+    # Invariant: each MediaQuery's id must match its actual array position,
+    # since lookups elsewhere treat @media_queries[id] as positional.
+    @sheet.media_queries.each_with_index do |mq, index|
+      assert_equal index, mq.id, "MediaQuery #{mq.inspect} has id #{mq.id} but sits at array index #{index}"
+    end
+
+    # .b must still resolve under :print, not silently escape to a base rule
+    assert_predicate @sheet.with_media(:print).with_selector('.b'), :any?
+
+    # Round-trip through serialization: reparsing the output must still
+    # scope .b under @media print, not as a base rule
+    reparsed = Cataract::Stylesheet.parse(@sheet.to_s)
+
+    assert_has_selector '.b', reparsed, media: :print
+    refute_member reparsed.base_rules.map(&:selector), '.b'
+  end
+
+  def test_remove_rules_does_not_desync_media_query_id_for_at_rule_only_media
+    @sheet.add_block(<<~CSS)
+      @media screen { .a { color: red; } }
+      @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+    CSS
+
+    # Manually scope the keyframes AtRule to a :print media query, bypassing
+    # the parser entirely. This isolates compact_media_queries!'s handling of
+    # AtRule-referenced media queries from a separate, unrelated parser
+    # limitation where an @media-wrapped @keyframes doesn't get its
+    # media_query_id set at parse time on the C extension (see the
+    # round-trip test below, which is skipped on that backend for exactly
+    # this reason).
+    print_mq = Cataract::MediaQuery.new(@sheet.media_queries.size, :print, nil)
+    @sheet.media_queries << print_mq
+    keyframes_rule = @sheet.find { |r| r.is_a?(Cataract::AtRule) && r.at_rule_type?(:keyframes) }
+    keyframes_rule.media_query_id = print_mq.id
+
+    # The :print MediaQuery is referenced only by an AtRule (@keyframes), no
+    # plain Rule - it must still count as "used" when :screen is compacted away.
+    @sheet.remove_rules!('.a { }', media_types: :screen)
+
+    assert_equal 1, @sheet.rules_count
+    refute_nil keyframes_rule.media_query_id, '@keyframes should still be scoped to a media query'
+
+    scoped_mq = @sheet.media_queries.find { |mq| mq.id == keyframes_rule.media_query_id }
+
+    assert scoped_mq, "keyframes_rule.media_query_id (#{keyframes_rule.media_query_id}) must resolve to a real MediaQuery"
+    assert_equal :print, scoped_mq.type
+  end
+
+  def test_remove_rules_round_trip_preserves_at_rule_media_scope
+    # End-to-end confirmation of the same fix as the test above, but through
+    # the real public API only (parse -> remove_rules! -> serialize ->
+    # reparse), instead of manually poking at internals to isolate the
+    # mechanism.
+    css = <<~CSS
+      @media screen { .a { color: red; } }
+      @media print { @keyframes fade { from { opacity: 0; } to { opacity: 1; } } }
+    CSS
+    sheet = Cataract::Stylesheet.parse(css)
+
+    sheet.remove_rules!('.a { }', media_types: :screen)
+
+    reparsed = Cataract::Stylesheet.parse(sheet.to_s)
+    keyframes_rule = reparsed.find { |r| r.is_a?(Cataract::AtRule) && r.at_rule_type?(:keyframes) }
+
+    assert keyframes_rule, 'Expected @keyframes to survive the round trip'
+    refute_nil keyframes_rule.media_query_id, '@keyframes should still be scoped to a media query after round-trip'
+
+    scoped_mq = reparsed.media_queries.find { |mq| mq.id == keyframes_rule.media_query_id }
+
+    assert scoped_mq, "keyframes_rule.media_query_id (#{keyframes_rule.media_query_id}) must resolve to a real MediaQuery"
+    assert_equal :print, scoped_mq.type
+  end
+
   # ============================================================================
   # Edge cases
   # ============================================================================

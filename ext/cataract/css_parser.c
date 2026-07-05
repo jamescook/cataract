@@ -1888,12 +1888,13 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                 int rule_id = ctx->rule_id_counter++;
 
                 // Create AtRule with nested rules
+                VALUE media_query_id_val = (parent_media_query_id >= 0) ? INT2FIX(parent_media_query_id) : Qnil;
                 VALUE at_rule = rb_struct_new(cAtRule,
                     INT2FIX(rule_id),
                     selector,
                     nested_ctx.rules_array,  // Array of Rule (keyframe blocks)
                     Qnil,  // specificity
-                    Qnil   // media_query_id
+                    media_query_id_val  // media_query_id from parent context
                 );
 
                 // Add to rules array
@@ -1946,12 +1947,13 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                 int rule_id = ctx->rule_id_counter++;
 
                 // Create AtRule with declarations
+                VALUE media_query_id_val = (parent_media_query_id >= 0) ? INT2FIX(parent_media_query_id) : Qnil;
                 VALUE at_rule = rb_struct_new(cAtRule,
                     INT2FIX(rule_id),
                     selector,
                     declarations,  // Array of Declaration
                     Qnil,  // specificity
-                    Qnil   // media_query_id
+                    media_query_id_val  // media_query_id from parent context
                 );
 
                 // Add to rules array

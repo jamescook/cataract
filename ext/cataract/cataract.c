@@ -393,6 +393,23 @@ static int build_mq_reverse_map_callback(VALUE list_id, VALUE mq_ids, VALUE arg)
     return ST_CONTINUE;
 }
 
+// Rule and AtRule don't share a member layout past their first few fields
+// (see the AT_RULE_* comment in cataract.h), so reading parent_rule_id or
+// media_query_id off a rule of unknown type needs to dispatch on which
+// struct it actually is rather than always using Rule's index - otherwise,
+// for an AtRule, RULE_PARENT_RULE_ID's index (4) actually reads its
+// media_query_id field instead.
+static inline VALUE rule_parent_id(VALUE rule) {
+    // AtRule instances are never nested via CSS nesting - only Rule can be.
+    return rb_obj_is_kind_of(rule, cAtRule) ? Qnil : rb_struct_aref(rule, INT2FIX(RULE_PARENT_RULE_ID));
+}
+
+static inline VALUE rule_media_query_id_of(VALUE rule) {
+    return rb_obj_is_kind_of(rule, cAtRule)
+        ? rb_struct_aref(rule, INT2FIX(AT_RULE_MEDIA_QUERY_ID))
+        : rb_struct_aref(rule, INT2FIX(RULE_MEDIA_QUERY_ID));
+}
+
 // Formatting options for stylesheet serialization
 // Avoids mode flags and if/else branches - all behavior controlled by struct values
 struct format_opts {
@@ -443,8 +460,8 @@ static VALUE serialize_stylesheet_with_grouping(
             continue;
         }
 
-        // Get media_query_id and fetch MediaQuery object (nil for AtRule or rules without media query)
-        VALUE rule_media_query_id = rb_obj_is_kind_of(rule, cAtRule) ? Qnil : rb_struct_aref(rule, INT2FIX(RULE_MEDIA_QUERY_ID));
+        // Get media_query_id and fetch MediaQuery object (nil for rules without media query)
+        VALUE rule_media_query_id = rule_media_query_id_of(rule);
         VALUE rule_media = Qnil;
         if (!NIL_P(rule_media_query_id)) {
             rule_media = rb_ary_entry(media_queries, FIX2INT(rule_media_query_id));
@@ -922,7 +939,7 @@ static VALUE serialize_stylesheet_with_nesting(
     VALUE parent_to_children = rb_hash_new();
     for (long i = 0; i < total_rules; i++) {
         VALUE rule = rb_ary_entry(rules_array, i);
-        VALUE parent_id = rb_struct_aref(rule, INT2FIX(RULE_PARENT_RULE_ID));
+        VALUE parent_id = rule_parent_id(rule);
 
         if (!NIL_P(parent_id)) {
             DEBUG_PRINTF("[MAP] Rule %ld has parent_id=%s, adding to map\n", i,
@@ -948,7 +965,7 @@ static VALUE serialize_stylesheet_with_nesting(
     DEBUG_PRINTF("[SERIALIZE] Starting serialization, total_rules=%ld\n", total_rules);
     for (long i = 0; i < total_rules; i++) {
         VALUE rule = rb_ary_entry(rules_array, i);
-        VALUE parent_id = rb_struct_aref(rule, INT2FIX(RULE_PARENT_RULE_ID));
+        VALUE parent_id = rule_parent_id(rule);
 
         DEBUG_PRINTF("[SERIALIZE] Rule %ld: selector=%s, parent_id=%s\n", i,
                     RSTRING_PTR(rb_struct_aref(rule, INT2FIX(RULE_SELECTOR))),
@@ -961,7 +978,7 @@ static VALUE serialize_stylesheet_with_nesting(
         }
 
         // Get media_query_id for this rule and fetch the MediaQuery object
-        VALUE rule_media_query_id = rb_obj_is_kind_of(rule, cAtRule) ? Qnil : rb_struct_aref(rule, INT2FIX(RULE_MEDIA_QUERY_ID));
+        VALUE rule_media_query_id = rule_media_query_id_of(rule);
         VALUE rule_media = Qnil;
         if (!NIL_P(rule_media_query_id)) {
             rule_media = rb_ary_entry(media_queries, FIX2INT(rule_media_query_id));

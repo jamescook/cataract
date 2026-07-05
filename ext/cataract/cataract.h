@@ -51,12 +51,16 @@ extern VALUE eParseError;
 #define DECL_VALUE 1
 #define DECL_IMPORTANT 2
 
-// AtRule struct field indices (id, selector, content, specificity)
-// Matches Rule interface for duck-typing
+// AtRule struct field indices (id, selector, content, specificity, media_query_id)
+// Matches Rule interface for duck-typing, but AtRule has fewer members - its
+// indices do NOT line up with Rule's past AT_RULE_SPECIFICITY (e.g. index 4
+// is media_query_id here but parent_rule_id on Rule), so never read a field
+// off an AtRule using a RULE_* index beyond AT_RULE_SPECIFICITY.
 #define AT_RULE_ID 0
 #define AT_RULE_SELECTOR 1
 #define AT_RULE_CONTENT 2
 #define AT_RULE_SPECIFICITY 3
+#define AT_RULE_MEDIA_QUERY_ID 4
 
 // ============================================================================
 // Macros

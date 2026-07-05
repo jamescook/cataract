@@ -673,9 +673,7 @@ module Cataract
       # Clean up empty media_index entries
       @media_index.delete_if { |_media, ids| ids.empty? }
 
-      # Clean up unused MediaQuery objects (those not referenced by any rule)
-      used_mq_ids = @rules.filter_map { |r| r.media_query_id if r.is_a?(Rule) }.to_set
-      @media_queries.select! { |mq| used_mq_ids.include?(mq.id) }
+      compact_media_queries!
 
       # Update rule IDs in remaining rules
       @rules.each_with_index { |rule, new_id| rule.id = new_id }
@@ -1016,41 +1014,7 @@ module Cataract
       # Clean up empty media_index entries
       result.instance_variable_get(:@media_index).delete_if { |_media, ids| ids.empty? }
 
-      # Clean up unused MediaQuery objects and rebuild ID mapping
-      used_mq_ids = Set.new
-      result.rules.each do |rule|
-        used_mq_ids << rule.media_query_id if rule.respond_to?(:media_query_id) && rule.media_query_id
-      end
-
-      # Build old_id => new_id mapping
-      # Keep MediaQuery objects that are used, maintaining their IDs
-      old_to_new_mq_id = {}
-      kept_mqs = []
-      result.instance_variable_get(:@media_queries).each do |mq|
-        next unless used_mq_ids.include?(mq.id)
-
-        old_to_new_mq_id[mq.id] = kept_mqs.size
-        mq.id = kept_mqs.size
-        kept_mqs << mq
-      end
-
-      # Replace media_queries array with kept ones
-      result.instance_variable_set(:@media_queries, kept_mqs)
-
-      # Update media_query_id references in rules
-      result.rules.each do |rule|
-        if rule.respond_to?(:media_query_id) && rule.media_query_id
-          rule.media_query_id = old_to_new_mq_id[rule.media_query_id]
-        end
-      end
-
-      # Update media_query_lists with new IDs
-      result.instance_variable_get(:@_media_query_lists).each_value do |mq_ids|
-        mq_ids.map! { |mq_id| old_to_new_mq_id[mq_id] }.compact!
-      end
-
-      # Clean up media_query_lists that are now empty
-      result.instance_variable_get(:@_media_query_lists).delete_if { |_list_id, mq_ids| mq_ids.empty? }
+      result.send(:compact_media_queries!)
 
       # Clear memoized cache
       result.instance_variable_set(:@selectors, nil)
@@ -1060,6 +1024,43 @@ module Cataract
     end
 
     private
+
+    # Remove MediaQuery objects no longer referenced by any rule, renumbering
+    # the ones that remain so mq.id keeps matching its position in
+    # @media_queries. Lookups elsewhere (parser, serializer) treat
+    # @media_queries[id] as positional, so simply compacting the array
+    # without renumbering would desync mq.id from rule.media_query_id and
+    # @_media_query_lists as soon as an earlier entry gets removed.
+    #
+    # Shared by #remove_rules! (via self) and #- (via result.send, since it
+    # operates on a separate Stylesheet instance).
+    #
+    # @return [void]
+    def compact_media_queries!
+      # Rule and AtRule both define media_query_id directly (it's a member of
+      # both structs), so every element of @rules responds to it - no need
+      # for a respond_to?/is_a? guard here. filter_map keeps only rules that
+      # actually have one set (i.e. are scoped to a media query).
+      used_mq_ids = @rules.filter_map(&:media_query_id).to_set
+
+      old_to_new_mq_id = {}
+      kept_mqs = []
+      @media_queries.each do |mq|
+        next unless used_mq_ids.include?(mq.id)
+
+        old_to_new_mq_id[mq.id] = kept_mqs.size
+        mq.id = kept_mqs.size
+        kept_mqs << mq
+      end
+      @media_queries = kept_mqs
+
+      @rules.each do |rule|
+        rule.media_query_id = old_to_new_mq_id[rule.media_query_id] if rule.media_query_id
+      end
+
+      @_media_query_lists.each_value { |mq_ids| mq_ids.map! { |mq_id| old_to_new_mq_id[mq_id] }.compact! }
+      @_media_query_lists.delete_if { |_list_id, mq_ids| mq_ids.empty? }
+    end
 
     # Filter rules down to those relevant for the given media type(s).
     #

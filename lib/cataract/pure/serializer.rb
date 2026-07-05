@@ -38,6 +38,17 @@ module Cataract
     end
   end
 
+  # @api private
+  # Helper: read a rule's parent_rule_id, guarding against AtRule (which has
+  # no such member - only Rule participates in CSS nesting, AtRule never is
+  # nested via '&' nesting). Calling .parent_rule_id directly on an AtRule
+  # raises NoMethodError.
+  # @param rule [Rule, AtRule] The rule to check
+  # @return [Integer, nil] parent_rule_id, or nil if the rule isn't a Rule
+  def self._rule_parent_id(rule)
+    rule.is_a?(Rule) ? rule.parent_rule_id : nil
+  end
+
   # Serialize stylesheet to compact CSS string
   #
   # @param rules [Array<Rule>] Array of rules
@@ -63,9 +74,10 @@ module Cataract
     # Build parent-child relationships
     rule_children = {}
     rules.each do |rule|
-      next unless rule.parent_rule_id
+      parent_rule_id = _rule_parent_id(rule)
+      next unless parent_rule_id
 
-      parent_id = rule.parent_rule_id.is_a?(Integer) ? rule.parent_rule_id : rule.parent_rule_id.to_i
+      parent_id = parent_rule_id.is_a?(Integer) ? parent_rule_id : parent_rule_id.to_i
       rule_children[parent_id] ||= []
       rule_children[parent_id] << rule
     end
@@ -83,9 +95,9 @@ module Cataract
 
     rules.each do |rule|
       # Skip rules that have a parent (they'll be serialized as nested)
-      next if rule.parent_rule_id
+      next if _rule_parent_id(rule)
 
-      rule_media_query_id = rule.is_a?(Rule) ? rule.media_query_id : nil
+      rule_media_query_id = rule.media_query_id
       rule_media_query = rule_media_query_id ? media_queries[rule_media_query_id] : nil
       rule_media_query_list_id = rule_media_query_id ? mq_id_to_list_id[rule_media_query_id] : nil
 
@@ -152,6 +164,14 @@ module Cataract
 
   # Helper: serialize a rule with its nested children
   def self._serialize_rule_with_nesting(result, rule, rule_children, media_queries)
+    # Check if this is an AtRule - it can never have nested children of its
+    # own via rule_children (only Rule participates in CSS nesting), so it
+    # always serializes the same way regardless of has_nesting
+    if rule.is_a?(AtRule)
+      _serialize_at_rule(result, rule)
+      return
+    end
+
     # Start selector
     result << "#{rule.selector} { "
 
@@ -318,7 +338,7 @@ module Cataract
       # Skip if already processed (when grouped)
       next if processed_rule_ids[rule.id]
 
-      rule_media_query_id = rule.is_a?(Rule) ? rule.media_query_id : nil
+      rule_media_query_id = rule.media_query_id
       rule_media_query = rule_media_query_id ? media_queries[rule_media_query_id] : nil
       rule_media_query_list_id = rule_media_query_id ? mq_id_to_list_id[rule_media_query_id] : nil
       is_first_rule = (rule_index == 0)
@@ -538,9 +558,10 @@ module Cataract
     # Build parent-child relationships
     rule_children = {}
     rules.each do |rule|
-      next unless rule.parent_rule_id
+      parent_rule_id = _rule_parent_id(rule)
+      next unless parent_rule_id
 
-      parent_id = rule.parent_rule_id.is_a?(Integer) ? rule.parent_rule_id : rule.parent_rule_id.to_i
+      parent_id = parent_rule_id.is_a?(Integer) ? parent_rule_id : parent_rule_id.to_i
       rule_children[parent_id] ||= []
       rule_children[parent_id] << rule
     end
@@ -557,9 +578,9 @@ module Cataract
     in_media_block = false
 
     rules.each do |rule|
-      next if rule.parent_rule_id
+      next if _rule_parent_id(rule)
 
-      rule_media_query_id = rule.is_a?(Rule) ? rule.media_query_id : nil
+      rule_media_query_id = rule.media_query_id
       rule_media_query = rule_media_query_id ? media_queries[rule_media_query_id] : nil
       rule_media_query_list_id = rule_media_query_id ? mq_id_to_list_id[rule_media_query_id] : nil
 
@@ -630,6 +651,14 @@ module Cataract
 
   # Helper: serialize a rule with nested children (formatted)
   def self._serialize_rule_with_nesting_formatted(result, rule, rule_children, indent, media_queries)
+    # Check if this is an AtRule - it can never have nested children of its
+    # own via rule_children (only Rule participates in CSS nesting), so it
+    # always serializes the same way regardless of has_nesting
+    if rule.is_a?(AtRule)
+      _serialize_at_rule_formatted(result, rule, indent)
+      return
+    end
+
     # Selector line with opening brace
     result << indent
     result << rule.selector
