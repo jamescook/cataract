@@ -48,6 +48,38 @@ typedef struct {
     BOOLEAN check_unclosed_blocks; // Raise error on missing closing braces
 } ParserContext;
 
+// Build a fresh ParserContext for a nested parse (e.g. @keyframes contents).
+// The child gets its own rule/media collections, but explicitly inherits the
+// parent's error-checking flags and URL/error-reporting fields instead of
+// relying on zero-initialization, which previously left check_* flags
+// disabled and css_string/base_uri NULL regardless of the parent's settings.
+static inline ParserContext init_child_context(ParserContext *parent) {
+    ParserContext child = {0};
+
+    child.rules_array = rb_ary_new();
+    child.media_index = rb_hash_new();
+    child.selector_lists = rb_hash_new();
+    child.imports_array = rb_ary_new();
+    child.media_queries = rb_ary_new();
+    child.media_query_lists = rb_hash_new();
+
+    child.selector_lists_enabled = parent->selector_lists_enabled;
+
+    child.base_uri = parent->base_uri;
+    child.uri_resolver = parent->uri_resolver;
+    child.absolute_paths = parent->absolute_paths;
+
+    child.css_string = parent->css_string;
+    child.check_empty_values = parent->check_empty_values;
+    child.check_malformed_declarations = parent->check_malformed_declarations;
+    child.check_invalid_selectors = parent->check_invalid_selectors;
+    child.check_invalid_selector_syntax = parent->check_invalid_selector_syntax;
+    child.check_malformed_at_rules = parent->check_malformed_at_rules;
+    child.check_unclosed_blocks = parent->check_unclosed_blocks;
+
+    return child;
+}
+
 // Macro to skip CSS comments /* ... */
 // Usage: SKIP_COMMENT(p, end) where p is current position, end is limit
 // Side effect: advances p past the comment and continues to next iteration
@@ -1865,19 +1897,11 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                 const char *block_end = find_matching_brace_strict(p, pe, ctx->check_unclosed_blocks);
                 p = block_end;
 
-                // Parse keyframe blocks as rules (from/to/0%/50% etc)
-                ParserContext nested_ctx = {
-                    .rules_array = rb_ary_new(),
-                    .media_index = rb_hash_new(),
-                    .selector_lists = rb_hash_new(),
-                    .imports_array = rb_ary_new(),
-                    .rule_id_counter = 0,
-                    .next_selector_list_id = 0,
-                    .media_query_count = 0,
-                    .has_nesting = 0,
-                    .selector_lists_enabled = ctx->selector_lists_enabled,
-                    .depth = 0
-                };
+                // Parse keyframe blocks as rules (from/to/0%/50% etc). Unlike @media/@supports,
+                // which thread ctx straight through, these aren't real page selectors and must
+                // NOT land in ctx->rules_array — they need their own array to become this
+                // AtRule's `content` below, so parse into an isolated child context instead.
+                ParserContext nested_ctx = init_child_context(ctx);
                 parse_css_recursive(&nested_ctx, block_start, block_end, NO_PARENT_MEDIA, NO_PARENT_SELECTOR, NO_PARENT_RULE_ID, NO_MEDIA_QUERY_ID);
 
                 // Get rule ID and increment

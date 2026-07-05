@@ -438,6 +438,25 @@ class TestParseErrors < Minitest::Test
   end
 
   # ============================================================================
+  # Test that error checking propagates into nested @keyframes contexts
+  # ============================================================================
+
+  def test_malformed_declaration_inside_keyframes_block
+    css = <<~CSS
+      @keyframes slide {
+        from { color red; }
+        to { color: blue; }
+      }
+    CSS
+
+    error = assert_raises(Cataract::ParseError) do
+      Cataract::Stylesheet.parse(css, raise_parse_errors: true)
+    end
+
+    assert_match(/malformed declaration/i, error.message)
+  end
+
+  # ============================================================================
   # Test multiple errors (should raise first encountered)
   # ============================================================================
 
