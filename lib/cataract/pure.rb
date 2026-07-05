@@ -18,13 +18,6 @@ if defined?(Cataract::NATIVE_EXTENSION_LOADED)
   raise LoadError, 'Cataract C extension is already loaded. Cannot load pure Ruby version.'
 end
 
-# Define base module and error classes first
-module Cataract
-  class Error < StandardError; end
-  class DepthError < Error; end
-  class SizeError < Error; end
-end
-
 require_relative 'error'
 
 require_relative 'version'

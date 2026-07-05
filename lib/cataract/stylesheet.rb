@@ -1114,12 +1114,6 @@ module Cataract
 
     private
 
-    # @private
-    # Internal index mapping media query symbols to rule IDs for efficient filtering.
-    # This is an implementation detail and should not be relied upon by external code.
-    # @return [Hash<Symbol, Array<Integer>>]
-    attr_reader :_media_index
-
     # Resolve @import statements by fetching and merging imported stylesheets
     #
     # @param imports [Array<ImportStatement>] Import statements to resolve
@@ -1298,32 +1292,6 @@ module Cataract
       @media_index = {}
     end
 
-    # Check if a rule matches any of the requested media queries
-    #
-    # @param rule_id [Integer] Rule ID to check
-    # @param query_media [Array<Symbol>] Media types to match
-    # @return [Boolean] true if rule appears in any of the requested media index entries
-    def rule_matches_media?(rule_id, query_media)
-      query_media.any? { |m| media_index[m]&.include?(rule_id) }
-    end
-
-    # Check if a rule matches the specificity filter
-    #
-    # @param rule [Rule] Rule to check
-    # @param specificity [Integer, Range] Specificity filter
-    # @return [Boolean] true if rule matches specificity
-    def rule_matches_specificity?(rule, specificity)
-      # Skip rules with nil specificity (e.g., AtRule)
-      return false if rule.specificity.nil?
-
-      case specificity
-      when Range
-        specificity.cover?(rule.specificity)
-      else
-        specificity == rule.specificity
-      end
-    end
-
     # Clear memoized caches that can be lazily rebuilt.
     #
     # Call this method after any operation that modifies the stylesheet's rules
@@ -1371,20 +1339,6 @@ module Cataract
       end
 
       props_by_media
-    end
-
-    # Check if a rule has a declaration matching property and/or value
-    #
-    # @param rule [Rule] Rule to check (AtRule filtered out by each_selector)
-    # @param property [String, nil] Property name to match
-    # @param property_value [String, nil] Property value to match
-    # @return [Boolean] true if rule has matching declaration
-    def rule_matches_property?(rule, property, property_value)
-      rule.declarations.any? do |decl|
-        property_matches = property.nil? || decl.property == property
-        value_matches = property_value.nil? || decl.value == property_value
-        property_matches && value_matches
-      end
     end
   end
 end

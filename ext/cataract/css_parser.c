@@ -31,7 +31,6 @@ typedef struct {
     int media_query_id_counter; // Next MediaQuery ID (0-indexed)
     int next_media_query_list_id; // Next media query list ID (0-indexed)
     int media_query_count;    // Safety limit for media queries
-    st_table *media_cache;    // Parse-time cache: string => parsed media types
     BOOLEAN has_nesting;      // Set to 1 if any nested rules are created
     BOOLEAN selector_lists_enabled; // Parser option: track selector lists (1=enabled, 0=disabled)
     BOOLEAN depth;            // Current recursion depth (safety limit)
@@ -1875,7 +1874,6 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                     .rule_id_counter = 0,
                     .next_selector_list_id = 0,
                     .media_query_count = 0,
-                    .media_cache = NULL,
                     .has_nesting = 0,
                     .selector_lists_enabled = ctx->selector_lists_enabled,
                     .depth = 0
@@ -2434,7 +2432,6 @@ VALUE parse_css_new_impl(VALUE css_string, VALUE parser_options, int rule_id_off
     ctx.media_query_id_counter = 0;  // Start from 0
     ctx.next_media_query_list_id = 0;  // Start from 0
     ctx.media_query_count = 0;
-    ctx.media_cache = NULL;  // Removed - no perf benefit
     ctx.has_nesting = 0;  // Will be set to 1 if any nested rules are created
     ctx.selector_lists_enabled = selector_lists_enabled;
     ctx.depth = 0;  // Start at depth 0

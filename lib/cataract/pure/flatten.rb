@@ -99,7 +99,6 @@ module Cataract
     SIDE_RIGHT = 'right'
     SIDE_BOTTOM = 'bottom'
     SIDE_LEFT = 'left'
-    BORDER_SIDES = [SIDE_TOP, SIDE_RIGHT, SIDE_BOTTOM, SIDE_LEFT].freeze
 
     FONT_PROPERTIES = [
       PROP_FONT_STYLE,
@@ -702,7 +701,7 @@ module Cataract
           j = 0
           len = size_part.bytesize
           while j < len
-            if size_part.getbyte(j) == BYTE_SLASH_FWD
+            if size_part.getbyte(j) == BYTE_SLASH
               slash_idx = j
               break
             end

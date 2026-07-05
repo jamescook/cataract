@@ -45,7 +45,6 @@ module Cataract
   BYTE_BACKSLASH  = 92 # '\\'
   BYTE_BANG       = 33 # '!'
   BYTE_PERCENT    = 37 # '%'
-  BYTE_SLASH_FWD  = 47 # '/' (also defined as BYTE_SLASH above)
   BYTE_EQUALS     = 61 # '='
   BYTE_CARET      = 94 # '^'
   BYTE_DOLLAR     = 36 # '$'

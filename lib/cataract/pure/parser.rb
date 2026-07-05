@@ -23,10 +23,6 @@ module Cataract
     # Maximum media queries (prevent symbol table exhaustion)
     MAX_MEDIA_QUERIES = 1000
 
-    # Maximum property name/value lengths
-    MAX_PROPERTY_NAME_LENGTH = 256
-    MAX_PROPERTY_VALUE_LENGTH = 32_768
-
     AT_RULE_TYPES = %w[supports layer container scope].freeze
 
     # Extract substring and force specified encoding
