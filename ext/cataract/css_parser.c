@@ -752,8 +752,15 @@ static VALUE parse_declarations(const char *start, const char *end, ParserContex
         // Find property (up to colon)
         // Example: "color: red; ..."
         //           ^pos  ^pos (at :)
+        // Also stops at '{' - a property name can never legitimately contain
+        // one, so its presence means this is actually an unsupported/invalid
+        // nested selector (e.g. a bare type selector without '&') that
+        // has_nested_selectors() didn't recognize as nesting. Treating it as
+        // malformed here (instead of scanning through the '{' looking for a
+        // colon) keeps its matching '}' from being silently swallowed later,
+        // which was corrupting output with unbalanced braces.
         const char *prop_start = pos;
-        while (pos < end && *pos != ':' && *pos != ';') pos++;
+        while (pos < end && *pos != ':' && *pos != ';' && *pos != '{') pos++;
 
         // Malformed declaration - skip to next semicolon to recover
         if (pos >= end || *pos != ':') {

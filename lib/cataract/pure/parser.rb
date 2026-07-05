@@ -446,10 +446,18 @@ module Cataract
     # @param parse_important [Boolean] Whether to parse !important flag (false for at-rules)
     # @return [Array(Declaration|nil, Integer)] Tuple of [declaration, new_position]
     def parse_single_declaration(pos, end_pos, parse_important)
-      # Parse property name (scan until ':')
+      # Parse property name (scan until ':').
+      # Also stops at '{' - a property name can never legitimately contain
+      # one, so its presence means this is actually an unsupported/invalid
+      # nested selector (e.g. a bare type selector without '&') that wasn't
+      # recognized as nesting. Treating it as malformed here (instead of
+      # scanning through the '{' looking for a colon) keeps its matching '}'
+      # from being silently swallowed later, which was corrupting output
+      # with unbalanced braces.
       prop_start = pos
       while pos < end_pos && @_css.getbyte(pos) != BYTE_COLON &&
-            @_css.getbyte(pos) != BYTE_SEMICOLON && @_css.getbyte(pos) != BYTE_RBRACE
+            @_css.getbyte(pos) != BYTE_SEMICOLON && @_css.getbyte(pos) != BYTE_RBRACE &&
+            @_css.getbyte(pos) != BYTE_LBRACE
         pos += 1
       end
 
@@ -821,11 +829,17 @@ module Cataract
           break
         end
 
-        # Parse property name (read until ':')
+        # Parse property name (read until ':'). Also stops at '{' - a property
+        # name can never legitimately contain one, so its presence means this
+        # is actually an unsupported/invalid nested selector (e.g. a bare type
+        # selector without '&') that wasn't recognized as nesting. Treating it
+        # as malformed here (instead of scanning through the '{' looking for a
+        # colon) keeps its matching '}' from being silently swallowed later,
+        # which was corrupting output with unbalanced braces.
         property_start = @_pos
         until eof?
           byte = peek_byte
-          break if byte == BYTE_COLON || byte == BYTE_SEMICOLON || byte == BYTE_RBRACE
+          break if byte == BYTE_COLON || byte == BYTE_SEMICOLON || byte == BYTE_RBRACE || byte == BYTE_LBRACE
 
           @_pos += 1
         end
@@ -1039,6 +1053,17 @@ module Cataract
           @rules << rule
         end
 
+        # Propagate nesting found inside the block up to this parser, since
+        # it ran as a separate Parser instance (see nested_parser above) with
+        # its own independent @_has_nesting - without this, a rule nested
+        # inside a top-level @supports/@container/@scope block would carry a
+        # correct parent_rule_id but the stylesheet would still report
+        # has_nesting: false, causing serialization to use the flat
+        # (non-nesting-aware) path and print the rule's already-resolved
+        # selector as an unrelated top-level rule instead of reconstructing
+        # the nested syntax.
+        @_has_nesting ||= nested_result[:_has_nesting]
+
         # Move position past the closing brace
         @_pos = block_end
         @_pos += 1 if @_pos < @_len && @_css.getbyte(@_pos) == BYTE_RBRACE
@@ -1218,6 +1243,16 @@ module Cataract
           @_rule_id_counter += 1
           @rules << rule
         end
+
+        # Propagate nesting found inside the block up to this parser, since
+        # it ran as a separate Parser instance (see nested_parser above) with
+        # its own independent @_has_nesting - without this, a rule nested
+        # inside a top-level @media block would carry a correct parent_rule_id
+        # but the stylesheet would still report has_nesting: false, causing
+        # serialization to use the flat (non-nesting-aware) path and print
+        # the rule's already-resolved selector as an unrelated top-level rule
+        # instead of reconstructing the nested syntax.
+        @_has_nesting ||= nested_result[:_has_nesting]
 
         # Move position past the closing brace
         @_pos = block_end

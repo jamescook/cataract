@@ -519,6 +519,69 @@ class TestCssNesting < Minitest::Test
     assert_equal expected, output
   end
 
+  # A nested rule whose selector is a bare type selector (no '&' prefix, e.g.
+  # "a { ... }") isn't recognized as CSS nesting - the CSS Nesting spec
+  # requires '&' to disambiguate a bare type selector from a declaration.
+  # Regression coverage for a parser bug where, once has_nesting was true for
+  # the stylesheet (due to the unrelated &:hover rule below), this
+  # unsupported construct got misparsed as a declaration whose property name
+  # swallowed the literal '{' character, silently dropping the matching '}'
+  # and corrupting the serialized output with unbalanced braces.
+  def test_bare_type_selector_child_alongside_ampersand_nesting_is_dropped_cleanly
+    css = <<~CSS
+      body {
+        color: black;
+        &:hover {
+          color: gray;
+        }
+      }
+      @media print {
+        .footer {
+          color: red;
+          a {
+            text-decoration: none;
+          }
+        }
+      }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css)
+
+    footer_rule = sheet.with_selector('.footer').first
+
+    assert footer_rule, 'Should have .footer rule'
+    assert_equal [%w[color red]], footer_rule.declarations.map { |d| [d.property, d.value] }
+
+    output = sheet.to_s
+
+    assert_equal output.count('{'), output.count('}'),
+                 "Braces should balance in: #{output.inspect}"
+  end
+
+  def test_to_s_with_nesting_inside_media_block
+    css = <<~CSS
+      @media print {
+        .footer {
+          color: red;
+          .link {
+            text-decoration: none;
+          }
+        }
+      }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css)
+    output = sheet.to_s
+
+    expected = <<~CSS
+      @media print {
+      .footer { color: red; .link { text-decoration: none; } }
+      }
+    CSS
+
+    assert_equal expected, output
+  end
+
   # ============================================================================
   # Serialization tests (to_formatted_s) - formatted with indentation
   # ============================================================================
