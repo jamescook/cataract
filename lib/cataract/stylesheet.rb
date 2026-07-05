@@ -169,6 +169,7 @@ module Cataract
     # @param source [Stylesheet] Source stylesheet being copied
     def initialize_copy(source)
       super
+      @options = source.instance_variable_get(:@options).dup
       @rules = source.instance_variable_get(:@rules).dup
       @media_queries = source.instance_variable_get(:@media_queries).dup
       @_next_media_query_id = source.instance_variable_get(:@_next_media_query_id)

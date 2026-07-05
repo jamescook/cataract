@@ -428,6 +428,26 @@ body { color: red; }"
     end
   end
 
+  def test_dup_before_load_file_does_not_leak_base_path_into_original
+    # load_uri sets base_path by reassigning a key within @options[:import]
+    # (@options[:import] = @options[:import].merge(base_path: ...)). If
+    # @options itself weren't dup'd, that reassignment on the copy would be
+    # visible on the original too, since they'd share the same Hash object.
+    Dir.mktmpdir do |dir|
+      main_file = File.join(dir, 'main.css')
+      File.write(main_file, 'body { color: red; }')
+
+      original = Cataract::Stylesheet.new(import: { allowed_schemes: ['file'] })
+      copy = original.dup
+
+      copy.load_file(main_file)
+
+      assert_equal dir, copy.instance_variable_get(:@options)[:import][:base_path]
+      assert_nil original.instance_variable_get(:@options)[:import][:base_path],
+                 "loading a file on the copy must not set base_path on the original's options"
+    end
+  end
+
   def test_import_with_comment_before_import
     # Test that comments before @import are handled correctly
     Dir.mktmpdir do |dir|

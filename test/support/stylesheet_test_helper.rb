@@ -320,6 +320,33 @@ module StylesheetTestHelper
     refute_includes collection, element, message
   end
 
+  # Assert that dup/clone produced a truly independent copy - no instance
+  # variable holding mutable state (Hash, Array, or other object) points at
+  # the exact same object as the source. Skips ivars that are safe to share
+  # by reference (nil, true/false, Symbols, Numerics, or anything frozen),
+  # since none of those can be mutated in place either way.
+  #
+  # @param original [Object] The source object that was dup'd/cloned
+  # @param copy [Object] The object returned by original.dup or original.clone
+  #
+  # @example
+  #   sheet2 = sheet.dup
+  #   assert_no_shared_mutable_state(sheet, sheet2)
+  def assert_no_shared_mutable_state(original, copy)
+    shared = original.instance_variables.filter_map do |ivar|
+      orig_val = original.instance_variable_get(ivar)
+      next if orig_val.nil? || orig_val.frozen? || orig_val.is_a?(Numeric) || orig_val.is_a?(Symbol) ||
+              orig_val == true || orig_val == false
+
+      copy_val = copy.instance_variable_get(ivar)
+      "#{ivar} (#{orig_val.class})" if orig_val.equal?(copy_val)
+    end
+
+    assert_empty shared,
+                 'Expected the copy to have fully independent state, but these ivars still point at the ' \
+                 "exact same object as the source: #{shared.join(', ')}"
+  end
+
   # Lifted from Rails
   def silence_warnings(&)
     with_warnings(nil, &)

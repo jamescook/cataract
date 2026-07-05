@@ -238,6 +238,32 @@ body { color: red; }'
     assert_equal '#<Cataract::Stylesheet 2 rules: body, div>', inspect_str
   end
 
+  def test_dup_creates_fully_independent_copy
+    css = <<~CSS
+      body { color: red; }
+      h1, h2 { margin: 0; }
+      @media screen, print { .footer { color: blue; } }
+    CSS
+    sheet = Cataract::Stylesheet.parse(css, import: { allowed_schemes: ['file'], base_path: '/original' })
+
+    copy = sheet.dup
+
+    assert_no_shared_mutable_state(sheet, copy)
+  end
+
+  def test_clone_creates_fully_independent_copy
+    css = <<~CSS
+      body { color: red; }
+      h1, h2 { margin: 0; }
+      @media screen, print { .footer { color: blue; } }
+    CSS
+    sheet = Cataract::Stylesheet.parse(css, import: { allowed_schemes: ['file'], base_path: '/original' })
+
+    copy = sheet.clone
+
+    assert_no_shared_mutable_state(sheet, copy)
+  end
+
   # ============================================================================
   # Safety limit tests
   # ============================================================================

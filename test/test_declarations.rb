@@ -109,6 +109,34 @@ class TestDeclarations < Minitest::Test
     assert_equal 'blue', decl['background']
   end
 
+  def test_dup_creates_independent_copy
+    original = Cataract::Declarations.new({ 'color' => 'red', 'margin' => '10px' })
+
+    copy = original.dup
+
+    assert_no_shared_mutable_state(original, copy)
+
+    copy['color'] = 'blue'
+    copy['padding'] = '5px'
+
+    assert_equal 'red', original['color'], 'mutating the copy must not affect the original'
+    assert_nil original['padding'], 'mutating the copy must not affect the original'
+  end
+
+  def test_clone_creates_independent_copy
+    original = Cataract::Declarations.new({ 'color' => 'red', 'margin' => '10px' })
+
+    copy = original.clone
+
+    assert_no_shared_mutable_state(original, copy)
+
+    copy['color'] = 'blue'
+    copy['padding'] = '5px'
+
+    assert_equal 'red', original['color'], 'mutating the copy must not affect the original'
+    assert_nil original['padding'], 'mutating the copy must not affect the original'
+  end
+
   def test_equality
     decl1 = Cataract::Declarations.new({ 'color' => 'red', 'margin' => '10px' })
     decl2 = Cataract::Declarations.new({ 'color' => 'red', 'margin' => '10px' })

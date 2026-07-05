@@ -278,13 +278,19 @@ module Cataract
       dup.merge!(other)
     end
 
-    # Create a shallow copy of this Declarations object.
+    # Ensure dup/clone create a proper independent copy, duplicating the
+    # internal declarations array so mutations (via []=, delete, merge!, etc.)
+    # on the copy don't affect the source. Declaration structs themselves are
+    # treated as immutable value objects throughout this class (always
+    # replaced wholesale, never mutated in place), so a shallow copy of the
+    # array is sufficient - defining this via initialize_copy (rather than
+    # overriding #dup directly) ensures #clone gets the same fix, since both
+    # go through initialize_copy.
     #
-    # @return [Declarations] New Declarations with copied properties
-    def dup
-      new_decl = self.class.new
-      each { |prop, value, important| new_decl[prop] = important ? "#{value} !important" : value }
-      new_decl
+    # @param source [Declarations] Source Declarations being copied
+    def initialize_copy(source)
+      super
+      @values = source.instance_variable_get(:@values).dup
     end
 
     # Compare this Declarations with another object.
