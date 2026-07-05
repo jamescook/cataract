@@ -388,6 +388,48 @@ body { color: red; }'
     end
   end
 
+  def test_load_uri_follows_redirects
+    css_fixture = '.button { color: blue; }'
+
+    stub_request(:get, 'https://example.com/old.css')
+      .to_return(status: 301, headers: { 'Location' => 'https://example.com/new.css' })
+    stub_request(:get, 'https://example.com/new.css')
+      .to_return(status: 200, body: css_fixture)
+
+    sheet = Cataract::Stylesheet.load_uri('https://example.com/old.css')
+
+    assert_instance_of Cataract::Stylesheet, sheet
+    assert_equal 1, sheet.size
+    assert_equal '.button', sheet.rules.first.selector
+  end
+
+  def test_load_uri_file_scheme_blocks_sensitive_paths_by_default
+    assert_raises(IOError) do
+      Cataract::Stylesheet.load_uri('file:///etc/hosts')
+    end
+  end
+
+  def test_load_uri_file_scheme_allows_sensitive_paths_with_override
+    # /etc/hosts is a real, always-present, always-readable file on macOS and
+    # Linux - used here only to prove dangerous_path_prefixes: [] is a
+    # genuine escape hatch, not to read anything actually sensitive.
+    sheet = Cataract::Stylesheet.load_uri('file:///etc/hosts', dangerous_path_prefixes: [])
+
+    assert_instance_of Cataract::Stylesheet, sheet
+  end
+
+  def test_load_file_blocks_sensitive_paths_by_default
+    assert_raises(IOError) do
+      Cataract::Stylesheet.load_file('/etc/hosts')
+    end
+  end
+
+  def test_load_file_allows_sensitive_paths_with_override
+    sheet = Cataract::Stylesheet.load_file('/etc/hosts', '.', dangerous_path_prefixes: [])
+
+    assert_instance_of Cataract::Stylesheet, sheet
+  end
+
   # ============================================================================
   # Stylesheet equality and hash tests
   # ============================================================================

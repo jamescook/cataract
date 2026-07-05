@@ -57,7 +57,8 @@ module Cataract
       end
     end
 
-    # Default options for safe import resolution
+    # Default options for safe import resolution (@import statements
+    # discovered while parsing a stylesheet - untrusted by default)
     SAFE_DEFAULTS = {
       max_depth: 5,                      # Prevent infinite recursion
       allowed_schemes: ['https'],        # Only HTTPS by default
@@ -66,17 +67,33 @@ module Cataract
       follow_redirects: true,            # Follow redirects
       base_path: nil,                    # Base path for resolving relative file imports
       base_uri: nil,                     # Base URI for resolving relative HTTP imports
-      fetcher: nil                       # Custom fetcher (defaults to DefaultFetcher)
+      fetcher: nil,                      # Custom fetcher (defaults to DefaultFetcher)
+      dangerous_path_prefixes: ['/etc/', '/proc/', '/sys/', '/dev/'] # Blocked file:// path prefixes
     }.freeze
 
+    # Default options for an explicitly caller-invoked load (Stylesheet#load_uri
+    # / #load_file). The caller chose this exact URI/path themselves - a
+    # different trust model than @import content discovered inside a
+    # stylesheet - so this permits the schemes/extensions load_uri has always
+    # supported, while still keeping the dangerous_path_prefixes protection
+    # from SAFE_DEFAULTS as a default (callers can still override it).
+    LOAD_DEFAULTS = SAFE_DEFAULTS.merge(
+      allowed_schemes: %w[http https file],
+      extensions: :any # skip extension validation entirely - see validate_url
+    ).freeze
+
     # Normalize options with safe defaults
-    def self.normalize_options(options)
+    #
+    # @param options [true, Hash] true for defaults as-is, or a Hash to merge over them
+    # @param defaults [Hash] Which default profile to merge over (SAFE_DEFAULTS
+    #   for @import resolution, LOAD_DEFAULTS for an explicit load_uri/load_file call)
+    def self.normalize_options(options, defaults: SAFE_DEFAULTS)
       if options == true
-        # imports: true -> use safe defaults
-        SAFE_DEFAULTS.dup
+        # imports: true -> use defaults as-is
+        defaults.dup
       elsif options.is_a?(Hash)
-        # imports: { ... } -> merge with safe defaults
-        SAFE_DEFAULTS.merge(options)
+        # imports: { ... } -> merge with defaults
+        defaults.merge(options)
       else
         raise ArgumentError, 'imports option must be true or a Hash'
       end
@@ -127,13 +144,16 @@ module Cataract
               "Import scheme '#{uri.scheme}' not allowed. Allowed schemes: #{options[:allowed_schemes].join(', ')}"
       end
 
-      # Check extension
-      path = uri.path || ''
-      ext = File.extname(path).delete_prefix('.')
+      # Check extension (extensions: :any skips this check entirely - used by
+      # LOAD_DEFAULTS, since a directly-invoked load isn't restricted to .css)
+      unless options[:extensions] == :any
+        path = uri.path || ''
+        ext = File.extname(path).delete_prefix('.')
 
-      unless ext.empty? || options[:extensions].include?(ext)
-        raise ImportError,
-              "Import extension '.#{ext}' not allowed. Allowed extensions: #{options[:extensions].join(', ')}"
+        unless ext.empty? || options[:extensions].include?(ext)
+          raise ImportError,
+                "Import extension '.#{ext}' not allowed. Allowed extensions: #{options[:extensions].join(', ')}"
+        end
       end
 
       # Additional security checks for file:// scheme
@@ -146,9 +166,9 @@ module Cataract
           raise ImportError, "Import file not found or not readable: #{file_path}"
         end
 
-        # Prevent reading sensitive files (basic check)
-        dangerous_paths = ['/etc/', '/proc/', '/sys/', '/dev/']
-        if dangerous_paths.any? { |prefix| file_path.start_with?(prefix) }
+        # Prevent reading sensitive files (basic check, configurable via
+        # options[:dangerous_path_prefixes] - pass [] to disable)
+        if options[:dangerous_path_prefixes]&.any? { |prefix| file_path.start_with?(prefix) }
           raise ImportError, "Import of sensitive system files not allowed: #{file_path}"
         end
       end

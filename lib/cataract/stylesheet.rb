@@ -199,11 +199,12 @@ module Cataract
     #
     # @param filename [String] Path to the CSS file
     # @param base_dir [String] Base directory for resolving the filename (default: '.')
-    # @param options [Hash] Options passed to Stylesheet.new
+    # @param options [Hash] Options passed to Stylesheet.new, and to load_file
+    #   (e.g. dangerous_path_prefixes: [] to load a path load_file blocks by default)
     # @return [Stylesheet] A new Stylesheet containing the parsed CSS
     def self.load_file(filename, base_dir = '.', **options)
       sheet = new(options)
-      sheet.load_file(filename, base_dir)
+      sheet.load_file(filename, base_dir, options)
       sheet
     end
 
@@ -525,14 +526,15 @@ module Cataract
     #
     # @param filename [String] Path to the CSS file
     # @param base_dir [String] Base directory for resolving the filename (default: '.')
+    # @param options [Hash] Passed through to load_uri (e.g. dangerous_path_prefixes: [])
     # @return [self] Returns self for method chaining
-    def load_file(filename, base_dir = '.', _media_types = :all)
+    def load_file(filename, base_dir = '.', options = {})
       # Normalize file path and convert to file:// URI
       file_path = File.expand_path(filename, base_dir)
       file_uri = "file://#{file_path}"
 
       # Delegate to load_uri which handles imports and base_path
-      load_uri(file_uri)
+      load_uri(file_uri, options)
     end
 
     # Load CSS from a URI and add to this stylesheet.
@@ -542,20 +544,25 @@ module Cataract
     # @return [self] Returns self for method chaining
     def load_uri(uri, options = {})
       require 'uri'
-      require 'net/http'
 
       uri_obj = URI(uri)
+      # Reuse the same validation and fetch collaborator @import resolution
+      # uses (ImportResolver, via DefaultFetcher/open-uri) instead of a
+      # second, separate Net::HTTP implementation with no validation at all -
+      # that duplicate implementation also didn't follow redirects, unlike
+      # this one. LOAD_DEFAULTS (rather than SAFE_DEFAULTS) reflects that the
+      # caller chose this exact URI themselves, so http/any-extension are
+      # allowed by default; dangerous_path_prefixes still applies unless the
+      # caller overrides it (e.g. dangerous_path_prefixes: []).
+      opts = ImportResolver.normalize_options(options, defaults: ImportResolver::LOAD_DEFAULTS)
+      fetcher = opts[:fetcher] || @options[:import_fetcher] || ImportResolver::DefaultFetcher.new
       css_content = nil
       file_path = nil
 
       case uri_obj.scheme
       when 'http', 'https'
-        response = Net::HTTP.get_response(uri_obj)
-        unless response.is_a?(Net::HTTPSuccess)
-          raise IOError, "Failed to load URI: #{uri} (#{response.code} #{response.message})"
-        end
-
-        css_content = response.body
+        ImportResolver.validate_url(uri, opts)
+        css_content = fetcher.call(uri, opts)
       when 'file', nil
         # file:// URI or relative path
         path = uri_obj.scheme == 'file' ? uri_obj.path : uri
@@ -572,7 +579,9 @@ module Cataract
           @options[:import] = @options[:import].merge(base_path: file_dir)
         end
 
-        css_content = File.read(file_path)
+        file_uri = "file://#{file_path}"
+        ImportResolver.validate_url(file_uri, opts)
+        css_content = fetcher.call(file_uri, opts)
       else
         raise ArgumentError, "Unsupported URI scheme: #{uri_obj.scheme}"
       end

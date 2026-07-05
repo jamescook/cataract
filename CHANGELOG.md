@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+- Security/Breaking: `Stylesheet#load_uri` and `#load_file` now reject `file://` paths under `/etc/`, `/proc/`, `/sys/`, and `/dev/` by default (override with `dangerous_path_prefixes: []`). Previously these methods used a separate, unvalidated fetch implementation; they now reuse `ImportResolver` (the same validation and fetching `@import` resolution already uses), which also fixes `load_uri` not following HTTP redirects.
+
 ## [0.2.5 - 2025-11-25]
 
 - Feature: Parse error detection with `raise_parse_errors` option - validates CSS structure and raises `ParseError` exceptions for malformed input with line/column tracking
