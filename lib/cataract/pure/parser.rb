@@ -564,16 +564,25 @@ module Cataract
     end
 
     # Parse selector (read until '{')
-    def parse_selector
-      start_pos = @_pos
-
-      # Read until we find '{'
+    # Advance @_pos to the next unescaped '{', or through to EOF if none is
+    # found. Doesn't consume the brace itself. Shared by parse_selector and
+    # scan_at_rule_selector, which both need this same scan but differ in
+    # what they do with the boundary afterward (validation, trimming, what
+    # to return on EOF).
+    #
+    # @return [Boolean] true if '{' was found, false if EOF was hit first
+    def skip_to_opening_brace # rubocop:disable Naming/PredicateMethod
       until eof? || peek_byte == BYTE_LBRACE # Flip to save a 'opt_not' instruction: while !eof? && peek_byte != BYTE_LBRACE
         @_pos += 1
       end
+      !eof?
+    end
+
+    def parse_selector
+      start_pos = @_pos
 
       # If we hit EOF without finding '{', return nil
-      return nil if eof?
+      return nil unless skip_to_opening_brace
 
       # Extract selector text
       selector_text = byteslice_encoded(start_pos, @_pos - start_pos)
@@ -947,10 +956,7 @@ module Cataract
     # @param at_rule_start [Integer] Position of the at-rule's leading '@'
     # @return [String, nil] The trimmed selector, or nil if '{' was never found
     def scan_at_rule_selector(at_rule_start)
-      until eof? || peek_byte == BYTE_LBRACE
-        @_pos += 1
-      end
-      return nil if eof? || peek_byte != BYTE_LBRACE
+      return nil unless skip_to_opening_brace
 
       selector_end = @_pos
       while selector_end > at_rule_start && whitespace?(@_css.getbyte(selector_end - 1))
@@ -1167,11 +1173,7 @@ module Cataract
 
       # Find media query (up to opening brace)
       mq_start = @_pos
-      while !eof? && peek_byte != BYTE_LBRACE
-        @_pos += 1
-      end
-
-      return if eof? || peek_byte != BYTE_LBRACE
+      return unless skip_to_opening_brace
 
       mq_end = @_pos
       # Trim trailing whitespace
