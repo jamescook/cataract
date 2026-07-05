@@ -88,6 +88,38 @@ static inline void trim_trailing(const char *start, const char **end) {
     }
 }
 
+// Detect and strip a trailing '!important' marker from a value range.
+// Assumes [val_start, *val_end) has already had trailing whitespace trimmed.
+// Shared by every declaration-value scanner (css_parser.c's parse_declarations
+// and parse_mixed_block, and cataract.c's declaration-string parser) so they
+// all agree on what counts as important.
+//
+// The CSS2.1 grammar defines the IMPORTANT_SYM lexical token as:
+//   "!"({w}|{comment})*{I}{M}{P}{O}{R}{T}{A}{N}{T}
+// (https://www.w3.org/TR/CSS2/grammar.html) - i.e. zero or more whitespace
+// tokens are allowed between '!' and 'important'.
+//
+// On match, *val_end is updated to exclude the marker (not including any
+// whitespace immediately before the '!' - callers should trim_trailing again)
+// and 1 is returned. Otherwise *val_end is left untouched and 0 is returned.
+static inline int extract_important(const char *val_start, const char **val_end) {
+    const char *check = *val_end;
+    if (check - val_start < 10) return 0;  // strlen("!important") = 10
+
+    while (check > val_start && IS_WHITESPACE(*(check - 1))) check--;
+
+    if (check - val_start < 9 || strncmp(check - 9, "important", 9) != 0) return 0;
+    check -= 9;
+
+    while (check > val_start && IS_WHITESPACE(*(check - 1))) check--;
+
+    if (check <= val_start || *(check - 1) != '!') return 0;
+    check--;
+
+    *val_end = check;
+    return 1;
+}
+
 // Strip whitespace from both ends and return new string
 static inline VALUE strip_string(const char *str, long len) {
     const char *start = str;

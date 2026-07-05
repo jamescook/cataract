@@ -836,26 +836,9 @@ static VALUE parse_declarations(const char *start, const char *end, ParserContex
         trim_trailing(val_start, &val_end);
 
         // Check for !important
-        BOOLEAN is_important = 0;
-        if (val_end - val_start >= 10) {  // strlen("!important") = 10
-            const char *check = val_end - 10;
-            while (check < val_end && IS_WHITESPACE(*check)) check++;
-            if (check < val_end && *check == '!') {
-                check++;
-                while (check < val_end && IS_WHITESPACE(*check)) check++;
-                // strncmp safely handles remaining length check
-                if (check + 9 <= val_end && strncmp(check, "important", 9) == 0) {
-                    is_important = 1;
-                    const char *important_pos = check - 1;
-                    while (important_pos > val_start && (IS_WHITESPACE(*(important_pos-1)) || *(important_pos-1) == '!')) {
-                        important_pos--;
-                    }
-                    val_end = important_pos;
-                }
-            }
-        }
+        BOOLEAN is_important = extract_important(val_start, &val_end) ? 1 : 0;
 
-        // Final trim
+        // Final trim (remove whitespace left before the '!' that was stripped)
         trim_trailing(val_start, &val_end);
 
         // Check for empty value
@@ -1337,19 +1320,9 @@ static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char
         const char *val_end = p;
 
         // Check for !important
-        const char *important_check = val_end - 10;  // " !important"
-        if (important_check >= val_start) {
-            trim_trailing(val_start, &val_end);
-            if (val_end - val_start >= 10) {
-                if (strncmp(val_end - 10, "!important", 10) == 0) {
-                    important = 1;
-                    val_end -= 10;
-                    trim_trailing(val_start, &val_end);
-                }
-            }
-        } else {
-            trim_trailing(val_start, &val_end);
-        }
+        trim_trailing(val_start, &val_end);
+        important = extract_important(val_start, &val_end) ? 1 : 0;
+        trim_trailing(val_start, &val_end);
 
         if (p < end && *p == ';') p++;
 

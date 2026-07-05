@@ -1272,4 +1272,24 @@ class TestCssNesting < Minitest::Test
     assert_equal '10px', margin_decl.value
     refute margin_decl.important, 'Margin declaration should not be marked as important'
   end
+
+  def test_nested_important_declaration_tolerates_whitespace_around_bang
+    # Per CSS spec, whitespace is allowed between '!' and 'important'. Top-level
+    # declarations already tolerate this, but nested-rule declarations go through
+    # a separate parser path that currently does not.
+    css = <<~CSS
+      .parent {
+        .child {
+          color: blue !  important;
+        }
+      }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css)
+    child_rule = sheet.with_selector('.parent .child').first
+    color_decl = child_rule.declarations.find { |d| d.property == 'color' }
+
+    assert_equal 'blue', color_decl.value, 'Value should not retain "!  important"'
+    assert color_decl.important, 'Declaration should be marked important despite whitespace around the bang'
+  end
 end

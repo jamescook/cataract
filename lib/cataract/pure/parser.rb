@@ -393,10 +393,53 @@ module Cataract
       true
     end
 
+    # Detect and strip a trailing '!important' marker from an already-extracted,
+    # already-right-trimmed declaration value, in place. Shared by
+    # parse_single_declaration and parse_declarations so both code paths agree
+    # on what counts as important.
+    #
+    # The CSS2.1 grammar defines the IMPORTANT_SYM lexical token as:
+    #   "!"({w}|{comment})*{I}{M}{P}{O}{R}{T}{A}{N}{T}
+    # (https://www.w3.org/TR/CSS2/grammar.html) - i.e. zero or more whitespace
+    # tokens are allowed between '!' and 'important'.
+    #
+    # Mutates value in place (via slice!) instead of returning a new
+    # [value, important] tuple, so the common case (no !important present)
+    # allocates nothing beyond the two getbyte/compare checks below.
+    #
+    # @param value [String] already-extracted, right-trimmed declaration value (mutated in place)
+    # @return [Boolean] whether an important marker was found and stripped
+    def extract_important!(value) # rubocop:disable Naming/PredicateMethod
+      return false if value.bytesize < 10
+
+      i = value.bytesize - 1
+      # Skip trailing whitespace
+      while i >= 0 && whitespace?(value.getbyte(i))
+        i -= 1
+      end
+
+      # Check for 'important' (9 chars)
+      return false if i < 8 || value[(i - 8), 9] != 'important'
+
+      i -= 9
+      # Skip whitespace between '!' and 'important'
+      while i >= 0 && whitespace?(value.getbyte(i))
+        i -= 1
+      end
+
+      # Check for '!'
+      return false unless i >= 0 && value.getbyte(i) == BYTE_BANG
+
+      # Remove everything from '!' onwards, in place
+      value.slice!(i..-1)
+      value.strip!
+      true
+    end
+
     # Parse a single CSS declaration (property: value)
     #
     # Performance-critical helper that parses one declaration.
-    # Shared by parse_mixed_block, parse_declarations, and parse_declarations_block.
+    # Shared by parse_mixed_block and parse_declarations_block.
     #
     # @param pos [Integer] Current position in CSS string
     # @param end_pos [Integer] End position (boundary for parsing)
@@ -457,12 +500,7 @@ module Cataract
       value = byteslice_encoded(val_start, val_end - val_start)
 
       # Parse !important flag if requested
-      important = false
-      if parse_important && value.end_with?('!important')
-        important = true
-        # Remove '!important' and trailing whitespace
-        value = value[0, value.length - 10].rstrip
-      end
+      important = parse_important && extract_important!(value)
 
       # Skip semicolon if present
       pos += 1 if pos < end_pos && @_css.getbyte(pos) == BYTE_SEMICOLON
@@ -827,7 +865,6 @@ module Cataract
 
         # Parse value (read until ';' or '}', but respect quoted strings)
         value_start = @_pos
-        important = false
         in_quote = nil # nil, BYTE_SQUOTE, or BYTE_DQUOTE
 
         until eof?
@@ -857,36 +894,7 @@ module Cataract
         value.strip!
 
         # Check for !important (byte-by-byte, no regexp)
-        if value.bytesize >= 10
-          # Scan backwards to find !important
-          i = value.bytesize - 1
-          # Skip trailing whitespace
-          while i >= 0
-            b = value.getbyte(i)
-            break unless b == BYTE_SPACE || b == BYTE_TAB
-
-            i -= 1
-          end
-
-          # Check for 'important' (9 chars)
-          if i >= 8 && value[(i - 8), 9] == 'important'
-            i -= 9
-            # Skip whitespace before 'important'
-            while i >= 0
-              b = value.getbyte(i)
-              break unless b == BYTE_SPACE || b == BYTE_TAB
-
-              i -= 1
-            end
-            # Check for '!'
-            if i >= 0 && value.getbyte(i) == BYTE_BANG
-              important = true
-              # Remove everything from '!' onwards (use byteslice and strip in-place)
-              value = value.byteslice(0, i)
-              value.strip!
-            end
-          end
-        end
+        important = extract_important!(value)
 
         # Check for empty value (strict mode) - only if enabled to avoid overhead
         if @_check_empty_values && value.empty?
