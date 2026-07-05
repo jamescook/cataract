@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'erb'
+require 'fileutils'
 require 'uri'
 require_relative '../../lib/cataract'
 require_relative 'analyzers/properties'
@@ -71,13 +72,18 @@ module CSSAnalyzer
     def save_parsed_css
       # Generate a unique filename based on source
       source_slug = @source.gsub(%r{[:/]}, '_').gsub(/[^a-zA-Z0-9_.-]/, '')
-      filename = "parsed-css-#{source_slug}.css"
+
+      # Write next to this script (not the caller's cwd) so running the
+      # analyzer from repo root doesn't scatter debug output there.
+      output_dir = File.join(__dir__, 'output')
+      FileUtils.mkdir_p(output_dir)
+      path = File.join(output_dir, "parsed-css-#{source_slug}.css")
 
       # Serialize stylesheet to CSS
       css_output = @stylesheet.to_s
 
-      File.write(filename, css_output)
-      warn "Parsed CSS saved to #{filename} (#{@stylesheet.size} rules, #{css_output.length} bytes)"
+      File.write(path, css_output)
+      warn "Parsed CSS saved to #{path} (#{@stylesheet.size} rules, #{css_output.length} bytes)"
     end
 
     private

@@ -9,6 +9,13 @@
 require 'timeout'
 require 'open3'
 require 'rbconfig'
+require 'fileutils'
+
+# All fuzzer-generated litter (crash inputs, logs, recent-input dumps) goes
+# here instead of alongside the tracked run.rb/worker.rb, so it can't be
+# accidentally git-added.
+OUTPUT_DIR = File.join(__dir__, 'output')
+FileUtils.mkdir_p(OUTPUT_DIR)
 
 # Load pure Ruby or C extension based on ENV var
 PURE_RUBY = ENV['CATARACT_PURE'] == '1'
@@ -778,7 +785,7 @@ rescue Errno::EPIPE, IOError
 end
 
 start_time = Time.now
-crash_file = File.join(__dir__, 'fuzz_last_input.css')
+crash_file = File.join(OUTPUT_DIR, 'fuzz_last_input.css')
 
 # Track last N inputs for debugging freezes
 RECENT_INPUTS = [] # rubocop:disable Style/MutableConstant
@@ -788,7 +795,7 @@ MAX_RECENT = 20
 Signal.trap('INT') do
   puts "\n\nInterrupted! Dumping last #{RECENT_INPUTS.length} inputs..."
   RECENT_INPUTS.each_with_index do |input, i|
-    filename = File.join(__dir__, "fuzz_recent_#{i}.css")
+    filename = File.join(OUTPUT_DIR, "fuzz_recent_#{i}.css")
     File.binwrite(filename, input)
     puts "  #{i}: #{filename} (#{input.bytesize} bytes)"
   end
@@ -848,7 +855,7 @@ ITERATIONS.times do |i|
     actual_crash = crashed_input || input
 
     # Save crash files
-    crash_save = File.join(__dir__, "fuzz_crash_#{Time.now.to_i}.css")
+    crash_save = File.join(OUTPUT_DIR, "fuzz_crash_#{Time.now.to_i}.css")
     crash_log = crash_save.sub(/\.css$/, '.log')
 
     File.binwrite(crash_save, actual_crash)

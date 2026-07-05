@@ -4,6 +4,8 @@
 # Fuzzer worker process - runs in subprocess and parses CSS inputs from stdin
 # Communicates via length-prefixed protocol
 
+require 'fileutils'
+
 # Load pure Ruby or C extension based on ENV var
 PURE_RUBY = ENV['CATARACT_PURE'] == '1'
 if PURE_RUBY
@@ -153,7 +155,8 @@ loop do
   rescue StandardError => e
     $VERBOSE = old_verbose if defined?(old_verbose)
     # Always log errors to a file for debugging
-    File.open(File.join(__dir__, 'fuzz_errors.log'), 'a') do |f|
+    FileUtils.mkdir_p(File.join(__dir__, 'output'))
+    File.open(File.join(__dir__, 'output', 'fuzz_errors.log'), 'a') do |f|
       f.puts "[#{Time.now}] #{e.class}: #{e.message}"
       f.puts e.backtrace.first(5).join("\n") if e.backtrace
       f.puts '---'
