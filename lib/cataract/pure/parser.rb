@@ -167,17 +167,9 @@ module Cataract
         if has_nested_selectors?(decl_start, decl_end)
           # NESTED PATH: Parse mixed declarations + nested rules
           # Split comma-separated selectors and parse each one
-          selectors = selector.split(',')
+          selectors = split_and_validate_selectors(selector, decl_start)
 
           selectors.each do |individual_selector|
-            individual_selector.strip!
-
-            # Check for empty selector in comma-separated list
-            if @_check_invalid_selector_syntax && individual_selector.empty? && selectors.size > 1
-              raise ParseError.new('Invalid selector syntax: empty selector in comma-separated list',
-                                   css: @_css, pos: decl_start, type: :invalid_selector_syntax)
-            end
-
             next if individual_selector.empty?
 
             # Get rule ID for this selector
@@ -216,7 +208,7 @@ module Cataract
           declarations = parse_declarations
 
           # Split comma-separated selectors into individual rules
-          selectors = selector.split(',')
+          selectors = split_and_validate_selectors(selector, decl_start)
 
           # Determine if we should track this as a selector list
           # Check boolean first to potentially avoid size() call via short-circuit evaluation
@@ -228,14 +220,6 @@ module Cataract
           end
 
           selectors.each do |individual_selector|
-            individual_selector.strip!
-
-            # Check for empty selector in comma-separated list
-            if @_check_invalid_selector_syntax && individual_selector.empty? && selectors.size > 1
-              raise ParseError.new('Invalid selector syntax: empty selector in comma-separated list',
-                                   css: @_css, pos: decl_start, type: :invalid_selector_syntax)
-            end
-
             next if individual_selector.empty?
 
             rule_id = @_rule_id_counter
@@ -282,6 +266,30 @@ module Cataract
     end
 
     private
+
+    # Split a comma-separated selector list into individual selector strings,
+    # stripping whitespace from each and validating (in strict mode) that
+    # none are empty. Empty entries are left in the returned array - callers
+    # skip them - since the emptiness check needs the original
+    # comma-separated count (selectors.size > 1) to know whether this is
+    # really a list or just a single selector, which callers no longer have
+    # once they've filtered.
+    #
+    # @param selector [String] Raw selector text (already trimmed as a whole)
+    # @param pos [Integer] Position to report in a raised ParseError
+    # @return [Array<String>] Individual selectors, stripped
+    def split_and_validate_selectors(selector, pos)
+      selectors = selector.split(',')
+      selectors.each do |individual_selector|
+        individual_selector.strip!
+
+        if @_check_invalid_selector_syntax && individual_selector.empty? && selectors.size > 1
+          raise ParseError.new('Invalid selector syntax: empty selector in comma-separated list',
+                               css: @_css, pos: pos, type: :invalid_selector_syntax)
+        end
+      end
+      selectors
+    end
 
     # Check if we're at end of input
     def eof?
@@ -929,6 +937,85 @@ module Cataract
       declarations
     end
 
+    # Scan from at_rule_start (pointing at the '@') to the at-rule's opening
+    # brace, returning the trimmed selector text (e.g. "@keyframes fade").
+    # Leaves @_pos just past the opening brace. Shared by at-rule kinds whose
+    # selector is just "everything up to '{'" with no separate condition/query
+    # text to extract along the way (@keyframes, @font-face, and the unknown/
+    # default at-rule fallback).
+    #
+    # @param at_rule_start [Integer] Position of the at-rule's leading '@'
+    # @return [String, nil] The trimmed selector, or nil if '{' was never found
+    def scan_at_rule_selector(at_rule_start)
+      until eof? || peek_byte == BYTE_LBRACE
+        @_pos += 1
+      end
+      return nil if eof? || peek_byte != BYTE_LBRACE
+
+      selector_end = @_pos
+      while selector_end > at_rule_start && whitespace?(@_css.getbyte(selector_end - 1))
+        selector_end -= 1
+      end
+      selector = byteslice_encoded(at_rule_start, selector_end - at_rule_start)
+
+      @_pos += 1 # skip '{'
+      selector
+    end
+
+    # Merge selector_lists from a nested Parser's result into this parser,
+    # offsetting list ids and rule ids to avoid collisions. Shared by the
+    # conditional-group (@supports/@layer/@container/@scope) and @media
+    # at-rule handlers, which both recurse into a fresh Parser instance for
+    # their block content.
+    #
+    # @param nested_result [Hash] Result hash from a nested Parser#parse call
+    # @return [Integer] The list_id_offset used - pass through to
+    #   merge_nested_rules so each rule's selector_list_id stays consistent
+    def merge_nested_selector_lists(nested_result)
+      list_id_offset = @_next_selector_list_id
+      if nested_result[:_selector_lists] && !nested_result[:_selector_lists].empty?
+        nested_result[:_selector_lists].each do |list_id, rule_ids|
+          new_list_id = list_id + list_id_offset
+          offsetted_rule_ids = rule_ids.map { |rid| rid + @_rule_id_counter }
+          @_selector_lists[new_list_id] = offsetted_rule_ids
+        end
+        @_next_selector_list_id = list_id_offset + nested_result[:_selector_lists].size
+      end
+      list_id_offset
+    end
+
+    # Merge rules from a nested Parser's result into this parser's @rules,
+    # renumbering ids and offsetting selector_list_id, then propagate whether
+    # nesting was found inside the block up to this parser - the nested
+    # parser tracked its own independent @_has_nesting, so without this a
+    # rule nested inside a top-level at-rule block would carry a correct
+    # parent_rule_id but the stylesheet would still report has_nesting:
+    # false, causing serialization to use the flat, non-nesting-aware path
+    # and print the rule's already-resolved selector as an unrelated
+    # top-level rule instead of reconstructing the nested syntax.
+    #
+    # Yields each rule (after id/selector_list_id are updated, before it's
+    # appended to @rules) for callers needing extra per-rule handling - e.g.
+    # @media combining media_query_id with its outer media context.
+    #
+    # @param nested_result [Hash] Result hash from a nested Parser#parse call
+    # @param list_id_offset [Integer] Offset from merge_nested_selector_lists
+    def merge_nested_rules(nested_result, list_id_offset)
+      nested_result[:rules].each do |rule|
+        rule.id = @_rule_id_counter
+        if rule.is_a?(Rule) && rule.selector_list_id
+          rule.selector_list_id += list_id_offset
+        end
+
+        yield rule if block_given?
+
+        @_rule_id_counter += 1
+        @rules << rule
+      end
+
+      @_has_nesting ||= nested_result[:_has_nesting] # rubocop:disable Naming/MemoizedInstanceVariableName -- not memoization, propagating a flag from the nested parse
+    end
+
     # Parse at-rule (@media, @supports, @charset, @keyframes, @font-face, etc)
     # Translated from C: see ext/cataract/css_parser.c lines 962-1128
     def parse_at_rule
@@ -947,443 +1034,367 @@ module Cataract
       at_rule_name = byteslice_encoded(name_start, @_pos - name_start)
 
       # Handle @charset specially - it's just @charset "value";
-      if at_rule_name == 'charset'
-        skip_ws_and_comments
-        # Read until semicolon
-        value_start = @_pos
-        while !eof? && peek_byte != BYTE_SEMICOLON
-          @_pos += 1
-        end
-
-        charset_value = byteslice_encoded(value_start, @_pos - value_start)
-        charset_value.strip!
-        # Remove quotes
-        @charset = charset_value.delete('"\'')
-
-        @_pos += 1 if peek_byte == BYTE_SEMICOLON # consume semicolon
-        return
-      end
+      return parse_charset_at_rule if at_rule_name == 'charset'
 
       # Handle @import - must come before rules (except @charset)
-      if at_rule_name == 'import'
-        # If we've already seen a rule, this @import is invalid
-        if @rules.size > 0
-          warn 'CSS @import ignored: @import must appear before all rules (found import after rules)'
-          # Skip to semicolon
-          while !eof? && peek_byte != BYTE_SEMICOLON
-            @_pos += 1
-          end
-          @_pos += 1 if peek_byte == BYTE_SEMICOLON
-          return
-        end
-
-        parse_import_statement
-        return
-      end
+      return parse_import_at_rule if at_rule_name == 'import'
 
       # Handle conditional group at-rules: @supports, @layer, @container, @scope
       # These behave like @media but don't affect media context
-      if AT_RULE_TYPES.include?(at_rule_name)
-        skip_ws_and_comments
-
-        # Remember start of condition for error reporting
-        condition_start = @_pos
-
-        # Skip to opening brace
-        condition_end = @_pos
-        while !eof? && peek_byte != BYTE_LBRACE
-          condition_end = @_pos
-          @_pos += 1
-        end
-
-        return if eof? || peek_byte != BYTE_LBRACE
-
-        # Validate condition (strict mode) - @supports, @container, @scope require conditions
-        if @_check_malformed_at_rules && (at_rule_name == 'supports' || at_rule_name == 'container' || at_rule_name == 'scope')
-          condition_str = byteslice_encoded(condition_start, condition_end - condition_start).strip
-          if condition_str.empty?
-            raise ParseError.new("Malformed @#{at_rule_name}: missing condition",
-                                 css: @_css, pos: condition_start, type: :malformed_at_rule)
-          end
-        end
-
-        @_pos += 1 # skip '{'
-
-        # Find matching closing brace
-        block_start = @_pos
-        block_end = find_matching_brace(@_pos)
-
-        # Check depth before recursing
-        if @_depth + 1 > MAX_PARSE_DEPTH
-          raise DepthError, "CSS nesting too deep: exceeded maximum depth of #{MAX_PARSE_DEPTH}"
-        end
-
-        # Recursively parse block content (preserve parent media context)
-        nested_parser = Parser.new(
-          byteslice_encoded(block_start, block_end - block_start),
-          parser_options: @_parser_options,
-          parent_media_sym: @_parent_media_sym,
-          depth: @_depth + 1
-        )
-
-        nested_result = nested_parser.parse
-
-        # Merge nested selector_lists with offsetted IDs
-        list_id_offset = @_next_selector_list_id
-        if nested_result[:_selector_lists] && !nested_result[:_selector_lists].empty?
-          nested_result[:_selector_lists].each do |list_id, rule_ids|
-            new_list_id = list_id + list_id_offset
-            offsetted_rule_ids = rule_ids.map { |rid| rid + @_rule_id_counter }
-            @_selector_lists[new_list_id] = offsetted_rule_ids
-          end
-          @_next_selector_list_id = list_id_offset + nested_result[:_selector_lists].size
-        end
-
-        # NOTE: We no longer build media_index during parse
-        # It will be built from MediaQuery objects after import resolution
-
-        # Add nested rules to main rules array
-        nested_result[:rules].each do |rule|
-          rule.id = @_rule_id_counter
-          # Update selector_list_id if applicable
-          if rule.is_a?(Rule) && rule.selector_list_id
-            rule.selector_list_id += list_id_offset
-          end
-          @_rule_id_counter += 1
-          @rules << rule
-        end
-
-        # Propagate nesting found inside the block up to this parser, since
-        # it ran as a separate Parser instance (see nested_parser above) with
-        # its own independent @_has_nesting - without this, a rule nested
-        # inside a top-level @supports/@container/@scope block would carry a
-        # correct parent_rule_id but the stylesheet would still report
-        # has_nesting: false, causing serialization to use the flat
-        # (non-nesting-aware) path and print the rule's already-resolved
-        # selector as an unrelated top-level rule instead of reconstructing
-        # the nested syntax.
-        @_has_nesting ||= nested_result[:_has_nesting]
-
-        # Move position past the closing brace
-        @_pos = block_end
-        @_pos += 1 if @_pos < @_len && @_css.getbyte(@_pos) == BYTE_RBRACE
-
-        return
-      end
+      return parse_conditional_group_at_rule(at_rule_name) if AT_RULE_TYPES.include?(at_rule_name)
 
       # Handle @media specially - parse content and track in media_index
-      if at_rule_name == 'media'
-        skip_ws_and_comments
-
-        # Find media query (up to opening brace)
-        mq_start = @_pos
-        while !eof? && peek_byte != BYTE_LBRACE
-          @_pos += 1
-        end
-
-        return if eof? || peek_byte != BYTE_LBRACE
-
-        mq_end = @_pos
-        # Trim trailing whitespace
-        while mq_end > mq_start && whitespace?(@_css.getbyte(mq_end - 1))
-          mq_end -= 1
-        end
-
-        child_media_string = byteslice_encoded(mq_start, mq_end - mq_start)
-        # Keep media query exactly as written - parentheses are required per CSS spec
-        child_media_string.strip!
-
-        # Validate @media has a query (strict mode)
-        if @_check_malformed_at_rules && child_media_string.empty?
-          raise ParseError.new('Malformed @media: missing media query or condition',
-                               css: @_css, pos: mq_start, type: :malformed_at_rule)
-        end
-
-        child_media_sym = child_media_string.to_sym
-
-        # Split comma-separated media queries (e.g., "screen, print" -> ["screen", "print"])
-        # Per W3C spec, comma acts as logical OR - each query is independent
-        media_query_strings = child_media_string.split(',').map(&:strip)
-
-        # Create MediaQuery objects for each query in the list
-        media_query_ids = []
-        media_query_strings.each do |query_string|
-          media_type, media_conditions = parse_media_query_parts(query_string)
-          media_query = Cataract::MediaQuery.new(@_media_query_id_counter, media_type, media_conditions)
-          @media_queries << media_query
-          media_query_ids << @_media_query_id_counter
-          @_media_query_id_counter += 1
-        end
-
-        # If multiple queries, track them as a list for serialization
-        if media_query_ids.size > 1
-          @_media_query_lists[@_next_media_query_list_id] = media_query_ids
-          @_next_media_query_list_id += 1
-        end
-
-        # Use first query ID as the primary one for rules in this block
-        current_media_query_id = media_query_ids.first
-
-        # Combine with parent media context
-        combined_media_sym = combine_media_queries(@_parent_media_sym, child_media_sym)
-
-        # NOTE: @_parent_media_query_id is always nil here because top-level @media blocks
-        # create separate parsers without passing parent_media_query_id (see nested_parser creation below).
-        # MediaQuery combining for nested @media happens in parse_mixed_block instead.
-        # So this is just an alias to current_media_query_id.
-        combined_media_query_id = current_media_query_id
-
-        # Check media query limit
-        unless @media_index.key?(combined_media_sym)
-          @_media_query_count += 1
-          if @_media_query_count > MAX_MEDIA_QUERIES
-            raise SizeError, "Too many media queries: exceeded maximum of #{MAX_MEDIA_QUERIES}"
-          end
-        end
-
-        @_pos += 1 # skip '{'
-
-        # Find matching closing brace
-        block_start = @_pos
-        block_end = find_matching_brace(@_pos)
-
-        # Check depth before recursing
-        if @_depth + 1 > MAX_PARSE_DEPTH
-          raise DepthError, "CSS nesting too deep: exceeded maximum depth of #{MAX_PARSE_DEPTH}"
-        end
-
-        # Parse the content with the combined media context
-        # Note: We don't pass parent_media_query_id because MediaQuery IDs are local to each parser
-        # The nested parser will create its own MediaQueries, which we'll merge with offsetted IDs
-        nested_parser = Parser.new(
-          byteslice_encoded(block_start, block_end - block_start),
-          parser_options: @_parser_options,
-          parent_media_sym: combined_media_sym,
-          depth: @_depth + 1
-        )
-
-        nested_result = nested_parser.parse
-
-        # Merge nested selector_lists with offsetted IDs
-        list_id_offset = @_next_selector_list_id
-        if nested_result[:_selector_lists] && !nested_result[:_selector_lists].empty?
-          nested_result[:_selector_lists].each do |list_id, rule_ids|
-            new_list_id = list_id + list_id_offset
-            offsetted_rule_ids = rule_ids.map { |rid| rid + @_rule_id_counter }
-            @_selector_lists[new_list_id] = offsetted_rule_ids
-          end
-          @_next_selector_list_id = list_id_offset + nested_result[:_selector_lists].size
-        end
-
-        # Merge nested MediaQuery objects with offsetted IDs
-        mq_id_offset = @_media_query_id_counter
-        if nested_result[:media_queries] && !nested_result[:media_queries].empty?
-          nested_result[:media_queries].each do |mq|
-            # Create new MediaQuery with offsetted ID
-            new_mq = Cataract::MediaQuery.new(mq.id + mq_id_offset, mq.type, mq.conditions)
-            @media_queries << new_mq
-          end
-          @_media_query_id_counter += nested_result[:media_queries].size
-        end
-
-        # Merge nested media_query_lists with offsetted IDs
-        if nested_result[:_media_query_lists] && !nested_result[:_media_query_lists].empty?
-          nested_result[:_media_query_lists].each do |list_id, mq_ids|
-            # Offset the list_id and media_query_ids
-            new_list_id = list_id + @_next_media_query_list_id
-            offsetted_mq_ids = mq_ids.map { |mq_id| mq_id + mq_id_offset }
-            @_media_query_lists[new_list_id] = offsetted_mq_ids
-          end
-          @_next_media_query_list_id += nested_result[:_media_query_lists].size
-        end
-
-        # Merge nested media_index into ours (for nested @media)
-        # Note: We no longer build media_index during parse
-        # It will be built from MediaQuery objects after import resolution
-
-        # Add nested rules to main rules array
-        nested_result[:rules].each do |rule|
-          rule.id = @_rule_id_counter
-          # Update selector_list_id if applicable
-          if rule.is_a?(Rule) && rule.selector_list_id
-            rule.selector_list_id += list_id_offset
-          end
-
-          # Update media_query_id if applicable (both Rule and AtRule can have media_query_id)
-          if rule.media_query_id
-            # Nested parser assigned a media_query_id - need to combine with our context
-            nested_mq_id = rule.media_query_id + mq_id_offset
-            nested_mq = @media_queries[nested_mq_id]
-
-            # Combine nested media query with our media context
-            if nested_mq && combined_media_query_id
-              outer_mq = @media_queries[combined_media_query_id]
-              if outer_mq
-                # Combine media queries directly without string building
-                combined_type, combined_conditions = combine_media_query_parts(outer_mq, nested_mq.conditions)
-                combined_mq = Cataract::MediaQuery.new(@_media_query_id_counter, combined_type, combined_conditions)
-                @media_queries << combined_mq
-                rule.media_query_id = @_media_query_id_counter
-                @_media_query_id_counter += 1
-              else
-                rule.media_query_id = nested_mq_id
-              end
-            else
-              rule.media_query_id = nested_mq_id
-            end
-          elsif rule.respond_to?(:media_query_id=)
-            # Assign the combined media_query_id if no media_query_id set
-            # (applies to both Rule and AtRule)
-            rule.media_query_id = combined_media_query_id
-          end
-
-          # NOTE: We no longer build media_index during parse
-          # It will be built from MediaQuery objects after import resolution
-
-          @_rule_id_counter += 1
-          @rules << rule
-        end
-
-        # Propagate nesting found inside the block up to this parser, since
-        # it ran as a separate Parser instance (see nested_parser above) with
-        # its own independent @_has_nesting - without this, a rule nested
-        # inside a top-level @media block would carry a correct parent_rule_id
-        # but the stylesheet would still report has_nesting: false, causing
-        # serialization to use the flat (non-nesting-aware) path and print
-        # the rule's already-resolved selector as an unrelated top-level rule
-        # instead of reconstructing the nested syntax.
-        @_has_nesting ||= nested_result[:_has_nesting]
-
-        # Move position past the closing brace
-        @_pos = block_end
-        @_pos += 1 if @_pos < @_len && @_css.getbyte(@_pos) == BYTE_RBRACE
-
-        return
-      end
+      return parse_media_at_rule if at_rule_name == 'media'
 
       # Check for @keyframes (contains <rule-list>)
       is_keyframes = at_rule_name == 'keyframes' ||
                      at_rule_name == '-webkit-keyframes' ||
                      at_rule_name == '-moz-keyframes'
-
-      if is_keyframes
-        # Build full selector string: "@keyframes fade"
-        selector_start = at_rule_start # Points to '@'
-
-        # Skip to opening brace
-        while !eof? && peek_byte != BYTE_LBRACE
-          @_pos += 1
-        end
-
-        return if eof? || peek_byte != BYTE_LBRACE
-
-        selector_end = @_pos
-        # Trim trailing whitespace
-        while selector_end > selector_start && whitespace?(@_css.getbyte(selector_end - 1))
-          selector_end -= 1
-        end
-        selector = byteslice_encoded(selector_start, selector_end - selector_start)
-
-        @_pos += 1 # skip '{'
-
-        # Find matching closing brace
-        block_start = @_pos
-        block_end = find_matching_brace(@_pos)
-
-        # Check depth before recursing
-        if @_depth + 1 > MAX_PARSE_DEPTH
-          raise DepthError, "CSS nesting too deep: exceeded maximum depth of #{MAX_PARSE_DEPTH}"
-        end
-
-        # Parse keyframe blocks as rules (0%/from/to etc)
-        # Create a nested parser context
-        nested_parser = Parser.new(
-          byteslice_encoded(block_start, block_end - block_start),
-          parser_options: @_parser_options,
-          depth: @_depth + 1
-        )
-        nested_result = nested_parser.parse
-        content = nested_result[:rules]
-
-        # Move position past the closing brace
-        @_pos = block_end
-        # The closing brace should be at block_end
-        @_pos += 1 if @_pos < @_len && @_css.getbyte(@_pos) == BYTE_RBRACE
-
-        # Get rule ID and increment
-        rule_id = @_rule_id_counter
-        @_rule_id_counter += 1
-
-        # Create AtRule with nested rules
-        at_rule = AtRule.new(rule_id, selector, content, nil, @_parent_media_query_id)
-        @rules << at_rule
-
-        return
-      end
+      return parse_keyframes_at_rule(at_rule_start) if is_keyframes
 
       # Check for @font-face (contains <declaration-list>)
-      if at_rule_name == 'font-face'
-        # Build selector string: "@font-face"
-        selector_start = at_rule_start # Points to '@'
-
-        # Skip to opening brace
-        while !eof? && peek_byte != BYTE_LBRACE
-          @_pos += 1
-        end
-
-        return if eof? || peek_byte != BYTE_LBRACE
-
-        selector_end = @_pos
-        # Trim trailing whitespace
-        while selector_end > selector_start && whitespace?(@_css.getbyte(selector_end - 1))
-          selector_end -= 1
-        end
-        selector = byteslice_encoded(selector_start, selector_end - selector_start)
-
-        @_pos += 1 # skip '{'
-
-        # Find matching closing brace
-        decl_start = @_pos
-        decl_end = find_matching_brace(@_pos)
-
-        # Parse declarations
-        content = parse_declarations_block(decl_start, decl_end)
-
-        # Move position past the closing brace
-        @_pos = decl_end
-        # The closing brace should be at decl_end
-        @_pos += 1 if @_pos < @_len && @_css.getbyte(@_pos) == BYTE_RBRACE
-
-        # Get rule ID and increment
-        rule_id = @_rule_id_counter
-        @_rule_id_counter += 1
-
-        # Create AtRule with declarations
-        at_rule = AtRule.new(rule_id, selector, content, nil, @_parent_media_query_id)
-        @rules << at_rule
-
-        return
-      end
+      return parse_font_face_at_rule(at_rule_start) if at_rule_name == 'font-face'
 
       # Unknown at-rule (@property, @page, @counter-style, etc.)
       # Treat as a regular selector-based rule with declarations
-      selector_start = at_rule_start # Points to '@'
+      parse_unknown_at_rule(at_rule_start)
+    end
+
+    # @charset "value"; - stores the value and consumes through the semicolon.
+    def parse_charset_at_rule
+      skip_ws_and_comments
+      # Read until semicolon
+      value_start = @_pos
+      while !eof? && peek_byte != BYTE_SEMICOLON
+        @_pos += 1
+      end
+
+      charset_value = byteslice_encoded(value_start, @_pos - value_start)
+      charset_value.strip!
+      # Remove quotes
+      @charset = charset_value.delete('"\'')
+
+      @_pos += 1 if peek_byte == BYTE_SEMICOLON # consume semicolon
+    end
+
+    # @import must appear before all rules (except @charset) per CSS spec -
+    # anything else is invalid and gets skipped with a warning instead of
+    # being parsed as an import.
+    def parse_import_at_rule
+      # If we've already seen a rule, this @import is invalid
+      if @rules.size > 0
+        warn 'CSS @import ignored: @import must appear before all rules (found import after rules)'
+        # Skip to semicolon
+        while !eof? && peek_byte != BYTE_SEMICOLON
+          @_pos += 1
+        end
+        @_pos += 1 if peek_byte == BYTE_SEMICOLON
+        return
+      end
+
+      parse_import_statement
+    end
+
+    # @supports, @layer, @container, @scope - behave like @media but don't
+    # affect media context, so unlike parse_media_at_rule there's no media
+    # query/media_query_id merging to do on top of the shared nested-parser
+    # result merge.
+    #
+    # @param at_rule_name [String] The at-rule name (e.g. "supports"), used
+    #   to decide whether a condition is required and for error messages
+    def parse_conditional_group_at_rule(at_rule_name)
+      skip_ws_and_comments
+
+      # Remember start of condition for error reporting
+      condition_start = @_pos
 
       # Skip to opening brace
-      until eof? || peek_byte == BYTE_LBRACE # Save a not_opt instruction: while !eof? && peek_byte != BYTE_LBRACE
+      condition_end = @_pos
+      while !eof? && peek_byte != BYTE_LBRACE
+        condition_end = @_pos
         @_pos += 1
       end
 
       return if eof? || peek_byte != BYTE_LBRACE
 
-      selector_end = @_pos
-      # Trim trailing whitespace
-      while selector_end > selector_start && whitespace?(@_css.getbyte(selector_end - 1))
-        selector_end -= 1
+      # Validate condition (strict mode) - @supports, @container, @scope require conditions
+      if @_check_malformed_at_rules && (at_rule_name == 'supports' || at_rule_name == 'container' || at_rule_name == 'scope')
+        condition_str = byteslice_encoded(condition_start, condition_end - condition_start).strip
+        if condition_str.empty?
+          raise ParseError.new("Malformed @#{at_rule_name}: missing condition",
+                               css: @_css, pos: condition_start, type: :malformed_at_rule)
+        end
       end
-      selector = byteslice_encoded(selector_start, selector_end - selector_start)
 
       @_pos += 1 # skip '{'
+
+      # Find matching closing brace
+      block_start = @_pos
+      block_end = find_matching_brace(@_pos)
+
+      # Check depth before recursing
+      if @_depth + 1 > MAX_PARSE_DEPTH
+        raise DepthError, "CSS nesting too deep: exceeded maximum depth of #{MAX_PARSE_DEPTH}"
+      end
+
+      # Recursively parse block content (preserve parent media context)
+      nested_parser = Parser.new(
+        byteslice_encoded(block_start, block_end - block_start),
+        parser_options: @_parser_options,
+        parent_media_sym: @_parent_media_sym,
+        depth: @_depth + 1
+      )
+
+      nested_result = nested_parser.parse
+
+      # NOTE: We no longer build media_index during parse
+      # It will be built from MediaQuery objects after import resolution
+      list_id_offset = merge_nested_selector_lists(nested_result)
+      merge_nested_rules(nested_result, list_id_offset)
+
+      # Move position past the closing brace
+      @_pos = block_end
+      @_pos += 1 if @_pos < @_len && @_css.getbyte(@_pos) == BYTE_RBRACE
+    end
+
+    # @media - parses the media query, recurses into a nested Parser for the
+    # block content (combining its media context with any parent), and
+    # merges the result. Unlike parse_conditional_group_at_rule, this also
+    # merges MediaQuery objects/lists and combines each nested rule's
+    # media_query_id with this block's own media context.
+    def parse_media_at_rule
+      skip_ws_and_comments
+
+      # Find media query (up to opening brace)
+      mq_start = @_pos
+      while !eof? && peek_byte != BYTE_LBRACE
+        @_pos += 1
+      end
+
+      return if eof? || peek_byte != BYTE_LBRACE
+
+      mq_end = @_pos
+      # Trim trailing whitespace
+      while mq_end > mq_start && whitespace?(@_css.getbyte(mq_end - 1))
+        mq_end -= 1
+      end
+
+      child_media_string = byteslice_encoded(mq_start, mq_end - mq_start)
+      # Keep media query exactly as written - parentheses are required per CSS spec
+      child_media_string.strip!
+
+      # Validate @media has a query (strict mode)
+      if @_check_malformed_at_rules && child_media_string.empty?
+        raise ParseError.new('Malformed @media: missing media query or condition',
+                             css: @_css, pos: mq_start, type: :malformed_at_rule)
+      end
+
+      child_media_sym = child_media_string.to_sym
+
+      # Split comma-separated media queries (e.g., "screen, print" -> ["screen", "print"])
+      # Per W3C spec, comma acts as logical OR - each query is independent
+      media_query_strings = child_media_string.split(',').map(&:strip)
+
+      # Create MediaQuery objects for each query in the list
+      media_query_ids = []
+      media_query_strings.each do |query_string|
+        media_type, media_conditions = parse_media_query_parts(query_string)
+        media_query = Cataract::MediaQuery.new(@_media_query_id_counter, media_type, media_conditions)
+        @media_queries << media_query
+        media_query_ids << @_media_query_id_counter
+        @_media_query_id_counter += 1
+      end
+
+      # If multiple queries, track them as a list for serialization
+      if media_query_ids.size > 1
+        @_media_query_lists[@_next_media_query_list_id] = media_query_ids
+        @_next_media_query_list_id += 1
+      end
+
+      # Use first query ID as the primary one for rules in this block
+      current_media_query_id = media_query_ids.first
+
+      # Combine with parent media context
+      combined_media_sym = combine_media_queries(@_parent_media_sym, child_media_sym)
+
+      # NOTE: @_parent_media_query_id is always nil here because top-level @media blocks
+      # create separate parsers without passing parent_media_query_id (see nested_parser creation below).
+      # MediaQuery combining for nested @media happens in parse_mixed_block instead.
+      # So this is just an alias to current_media_query_id.
+      combined_media_query_id = current_media_query_id
+
+      # Check media query limit
+      unless @media_index.key?(combined_media_sym)
+        @_media_query_count += 1
+        if @_media_query_count > MAX_MEDIA_QUERIES
+          raise SizeError, "Too many media queries: exceeded maximum of #{MAX_MEDIA_QUERIES}"
+        end
+      end
+
+      @_pos += 1 # skip '{'
+
+      # Find matching closing brace
+      block_start = @_pos
+      block_end = find_matching_brace(@_pos)
+
+      # Check depth before recursing
+      if @_depth + 1 > MAX_PARSE_DEPTH
+        raise DepthError, "CSS nesting too deep: exceeded maximum depth of #{MAX_PARSE_DEPTH}"
+      end
+
+      # Parse the content with the combined media context
+      # Note: We don't pass parent_media_query_id because MediaQuery IDs are local to each parser
+      # The nested parser will create its own MediaQueries, which we'll merge with offsetted IDs
+      nested_parser = Parser.new(
+        byteslice_encoded(block_start, block_end - block_start),
+        parser_options: @_parser_options,
+        parent_media_sym: combined_media_sym,
+        depth: @_depth + 1
+      )
+
+      nested_result = nested_parser.parse
+
+      list_id_offset = merge_nested_selector_lists(nested_result)
+
+      # Merge nested MediaQuery objects with offsetted IDs
+      mq_id_offset = @_media_query_id_counter
+      if nested_result[:media_queries] && !nested_result[:media_queries].empty?
+        nested_result[:media_queries].each do |mq|
+          # Create new MediaQuery with offsetted ID
+          new_mq = Cataract::MediaQuery.new(mq.id + mq_id_offset, mq.type, mq.conditions)
+          @media_queries << new_mq
+        end
+        @_media_query_id_counter += nested_result[:media_queries].size
+      end
+
+      # Merge nested media_query_lists with offsetted IDs
+      if nested_result[:_media_query_lists] && !nested_result[:_media_query_lists].empty?
+        nested_result[:_media_query_lists].each do |list_id, mq_ids|
+          # Offset the list_id and media_query_ids
+          new_list_id = list_id + @_next_media_query_list_id
+          offsetted_mq_ids = mq_ids.map { |mq_id| mq_id + mq_id_offset }
+          @_media_query_lists[new_list_id] = offsetted_mq_ids
+        end
+        @_next_media_query_list_id += nested_result[:_media_query_lists].size
+      end
+
+      # Merge nested media_index into ours (for nested @media)
+      # Note: We no longer build media_index during parse
+      # It will be built from MediaQuery objects after import resolution
+
+      merge_nested_rules(nested_result, list_id_offset) do |rule|
+        # Update media_query_id if applicable (both Rule and AtRule can have media_query_id)
+        if rule.media_query_id
+          # Nested parser assigned a media_query_id - need to combine with our context
+          nested_mq_id = rule.media_query_id + mq_id_offset
+          nested_mq = @media_queries[nested_mq_id]
+
+          # Combine nested media query with our media context
+          if nested_mq && combined_media_query_id
+            outer_mq = @media_queries[combined_media_query_id]
+            if outer_mq
+              # Combine media queries directly without string building
+              combined_type, combined_conditions = combine_media_query_parts(outer_mq, nested_mq.conditions)
+              combined_mq = Cataract::MediaQuery.new(@_media_query_id_counter, combined_type, combined_conditions)
+              @media_queries << combined_mq
+              rule.media_query_id = @_media_query_id_counter
+              @_media_query_id_counter += 1
+            else
+              rule.media_query_id = nested_mq_id
+            end
+          else
+            rule.media_query_id = nested_mq_id
+          end
+        elsif rule.respond_to?(:media_query_id=)
+          # Assign the combined media_query_id if no media_query_id set
+          # (applies to both Rule and AtRule)
+          rule.media_query_id = combined_media_query_id
+        end
+      end
+
+      # Move position past the closing brace
+      @_pos = block_end
+      @_pos += 1 if @_pos < @_len && @_css.getbyte(@_pos) == BYTE_RBRACE
+    end
+
+    # @keyframes (contains a <rule-list> of percentage/from/to blocks)
+    #
+    # @param at_rule_start [Integer] Position of the at-rule's leading '@'
+    def parse_keyframes_at_rule(at_rule_start)
+      # Build full selector string: "@keyframes fade"
+      selector = scan_at_rule_selector(at_rule_start)
+      return if selector.nil?
+
+      # Find matching closing brace
+      block_start = @_pos
+      block_end = find_matching_brace(@_pos)
+
+      # Check depth before recursing
+      if @_depth + 1 > MAX_PARSE_DEPTH
+        raise DepthError, "CSS nesting too deep: exceeded maximum depth of #{MAX_PARSE_DEPTH}"
+      end
+
+      # Parse keyframe blocks as rules (0%/from/to etc)
+      # Create a nested parser context
+      nested_parser = Parser.new(
+        byteslice_encoded(block_start, block_end - block_start),
+        parser_options: @_parser_options,
+        depth: @_depth + 1
+      )
+      nested_result = nested_parser.parse
+      content = nested_result[:rules]
+
+      # Move position past the closing brace
+      @_pos = block_end
+      # The closing brace should be at block_end
+      @_pos += 1 if @_pos < @_len && @_css.getbyte(@_pos) == BYTE_RBRACE
+
+      # Get rule ID and increment
+      rule_id = @_rule_id_counter
+      @_rule_id_counter += 1
+
+      # Create AtRule with nested rules
+      at_rule = AtRule.new(rule_id, selector, content, nil, @_parent_media_query_id)
+      @rules << at_rule
+    end
+
+    # @font-face (contains a <declaration-list>)
+    #
+    # @param at_rule_start [Integer] Position of the at-rule's leading '@'
+    def parse_font_face_at_rule(at_rule_start)
+      # Build selector string: "@font-face"
+      selector = scan_at_rule_selector(at_rule_start)
+      return if selector.nil?
+
+      # Find matching closing brace
+      decl_start = @_pos
+      decl_end = find_matching_brace(@_pos)
+
+      # Parse declarations
+      content = parse_declarations_block(decl_start, decl_end)
+
+      # Move position past the closing brace
+      @_pos = decl_end
+      # The closing brace should be at decl_end
+      @_pos += 1 if @_pos < @_len && @_css.getbyte(@_pos) == BYTE_RBRACE
+
+      # Get rule ID and increment
+      rule_id = @_rule_id_counter
+      @_rule_id_counter += 1
+
+      # Create AtRule with declarations
+      at_rule = AtRule.new(rule_id, selector, content, nil, @_parent_media_query_id)
+      @rules << at_rule
+    end
+
+    # Unknown at-rule (@property, @page, @counter-style, etc.) - treated as a
+    # regular selector-based rule with declarations, since this parser has no
+    # special handling for it.
+    #
+    # @param at_rule_start [Integer] Position of the at-rule's leading '@'
+    def parse_unknown_at_rule(at_rule_start)
+      selector = scan_at_rule_selector(at_rule_start)
+      return if selector.nil?
 
       # Parse declarations
       declarations = parse_declarations
