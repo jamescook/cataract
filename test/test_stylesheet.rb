@@ -315,6 +315,17 @@ body { color: red; }'
     assert_equal 1, rules.first.declarations.length
   end
 
+  def test_add_block_preserves_at_rule_media_query_after_earlier_block
+    sheet = Cataract::Stylesheet.new
+    sheet.add_block('@media screen { .a { color: red; } }')
+    sheet.add_block('@media print { @font-face { font-family: "Foo"; src: url(foo.woff); } }')
+
+    at_rule = sheet.rules.find(&:at_rule?)
+
+    assert_has_selector '.a', sheet, media: :screen
+    assert_equal :print, sheet.media_queries[at_rule.media_query_id].type
+  end
+
   def test_adding_a_rule
     sheet = Cataract::Stylesheet.new
     sheet.add_rule(selector: 'div', declarations: 'color: blue')
@@ -598,6 +609,28 @@ body { color: red; }'
 
     assert_equal 1, result.rules.size, '+ should apply cascade'
     assert result.rules[0].has_property?('color', 'blue'), 'Last rule should win'
+  end
+
+  def test_concat_preserves_other_sheets_media_query_context
+    sheet1 = Cataract.parse_css('@media screen { .box { color: red; } }')
+    sheet2 = Cataract.parse_css('@media print { .other { color: blue; } }')
+
+    sheet1.concat(sheet2)
+
+    assert_equal 2, sheet1.media_queries.size, "sheet2's @media print should be merged in, not dropped"
+    assert_equal %w[screen print], sheet1.media_queries.map(&:type).map(&:to_s)
+    assert_has_selector '.other', sheet1, media: :print
+    refute_includes sheet1.with_media(:screen).map(&:selector), '.other',
+                    "sheet2's rule must not be attributed to sheet1's @media screen"
+  end
+
+  def test_concat_preserves_other_sheets_grouped_selectors
+    sheet1 = Cataract.parse_css('.box { color: red; }')
+    sheet2 = Cataract.parse_css('h3, h4 { color: blue; }')
+
+    sheet1.concat(sheet2)
+
+    assert_equal ".box { color: red; }\nh3, h4 { color: blue; }\n", sheet1.to_s
   end
 
   # ============================================================================

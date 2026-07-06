@@ -1164,6 +1164,46 @@ body { color: red; }"
     assert_equal (0...sheet.rules.length).to_a, rule_ids.sort
   end
 
+  def test_import_renumbers_at_rules_along_with_rules
+    # Every rule (including at-rules like @keyframes/@font-face) must end up
+    # with a unique id matching its final position in the stylesheet, even
+    # when @import resolution inserts rules ahead of it and shifts things.
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, 'imported.css'), '.imported-a { color: blue; } .imported-b { color: green; }')
+
+      css = "@import url('file://#{File.join(dir, 'imported.css')}');
+@keyframes fade { 0% { opacity: 0; } }
+.after { color: red; }
+@font-face { font-family: 'Foo'; src: url(foo.woff); }"
+
+      sheet = Cataract.parse_css(css, import: { allowed_schemes: ['file'], extensions: ['css'] })
+
+      rule_ids = sheet.rules.map(&:id)
+
+      assert_equal rule_ids.uniq.length, rule_ids.length, 'All rule IDs (including at-rules) must be unique'
+      assert_equal (0...sheet.rules.length).to_a, rule_ids.sort
+    end
+  end
+
+  def test_plain_import_preserves_imported_files_own_media_queries
+    # A plain @import "file.css"; (no media qualifier on the @import itself)
+    # must preserve whatever @media blocks the imported file declares on its
+    # own - imported rules stay scoped to their original media query rather
+    # than picking up an unrelated one from the parent stylesheet.
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, 'imported.css'), '@media screen { .imported-screen { color: blue; } }')
+
+      css = "@import url('file://#{File.join(dir, 'imported.css')}');
+@media print { .existing { color: red; } }"
+
+      sheet = Cataract.parse_css(css, import: { allowed_schemes: ['file'], extensions: ['css'] })
+
+      assert_has_selector '.imported-screen', sheet, media: :screen
+      assert_has_selector '.existing', sheet, media: :print
+      assert_no_selector_matches '.imported-screen', sheet, media: :print
+    end
+  end
+
   def test_import_with_selector_lists
     # Convers merging nested selector_lists with offsetted IDs
     # when importing CSS that contains comma-separated selectors

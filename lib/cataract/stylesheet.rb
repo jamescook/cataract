@@ -169,17 +169,17 @@ module Cataract
     # @param source [Stylesheet] Source stylesheet being copied
     def initialize_copy(source)
       super
-      @options = source.instance_variable_get(:@options).dup
-      @rules = source.instance_variable_get(:@rules).dup
-      @media_queries = source.instance_variable_get(:@media_queries).dup
-      @_next_media_query_id = source.instance_variable_get(:@_next_media_query_id)
-      @media_index = source.instance_variable_get(:@media_index).transform_values(&:dup)
-      @imports = source.instance_variable_get(:@imports).dup
-      @_selector_lists = source.instance_variable_get(:@_selector_lists).transform_values(&:dup)
-      @_next_selector_list_id = source.instance_variable_get(:@_next_selector_list_id)
-      @_media_query_lists = source.instance_variable_get(:@_media_query_lists).transform_values(&:dup)
-      @_next_media_query_list_id = source.instance_variable_get(:@_next_media_query_list_id)
-      @parser_options = source.instance_variable_get(:@parser_options).dup
+      @options = source.options.dup
+      @rules = source.rules.dup
+      @media_queries = source.media_queries.dup
+      @_next_media_query_id = source.next_media_query_id
+      @media_index = source.media_index_cache.transform_values(&:dup)
+      @imports = source.imports.dup
+      @_selector_lists = source.selector_lists.transform_values(&:dup)
+      @_next_selector_list_id = source.next_selector_list_id
+      @_media_query_lists = source.media_query_lists.transform_values(&:dup)
+      @_next_media_query_list_id = source.next_media_query_list_id
+      @parser_options = source.parser_options.dup
       clear_memoized_caches
       @_hash = nil # Clear cached hash
     end
@@ -715,119 +715,12 @@ module Cataract
       effective_base_dir = base_dir || @options[:base_dir]
       effective_absolute_paths = absolute_paths.nil? ? @options[:absolute_paths] : absolute_paths
 
-      # Get current rule ID offset
-      offset = @_last_rule_id || 0
-
-      # Build parser options with URL conversion settings
-      parse_options = @parser_options.dup
-      if effective_absolute_paths && effective_base_uri
-        parse_options[:base_uri] = effective_base_uri
-        parse_options[:absolute_paths] = true
-        parse_options[:uri_resolver] = @options[:uri_resolver] || Cataract::DEFAULT_URI_RESOLVER
-      end
+      parse_options = build_parse_options(effective_base_uri, effective_absolute_paths)
 
       # Parse CSS first (this extracts @import statements into result[:imports])
       result = Cataract._parse_css(css, parse_options)
 
-      # Merge selector_lists with offsetted IDs
-      list_id_offset = @_next_selector_list_id
-      if result[:_selector_lists] && !result[:_selector_lists].empty?
-        result[:_selector_lists].each do |list_id, rule_ids|
-          new_list_id = list_id + list_id_offset
-          offsetted_rule_ids = rule_ids.map { |id| id + offset }
-          @_selector_lists[new_list_id] = offsetted_rule_ids
-        end
-        @_next_selector_list_id = list_id_offset + result[:_selector_lists].size
-      end
-
-      # Merge media_query_lists with offsetted IDs
-      media_query_id_offset = @_next_media_query_id
-      mq_list_id_offset = @_next_media_query_list_id
-      if result[:_media_query_lists] && !result[:_media_query_lists].empty?
-        result[:_media_query_lists].each do |list_id, mq_ids|
-          new_list_id = list_id + mq_list_id_offset
-          offsetted_mq_ids = mq_ids.map { |id| id + media_query_id_offset }
-          @_media_query_lists[new_list_id] = offsetted_mq_ids
-        end
-        @_next_media_query_list_id = mq_list_id_offset + result[:_media_query_lists].size
-      end
-
-      # Merge rules with offsetted IDs
-      new_rules = result[:rules]
-      new_rules.each do |rule|
-        rule.id += offset
-        # Update selector_list_id to point to offsetted list (only for Rule, not AtRule)
-        if rule.is_a?(Rule) && rule.selector_list_id
-          rule.selector_list_id += list_id_offset
-        end
-        # Update media_query_id to point to offsetted MediaQuery
-        if rule.is_a?(Rule) && rule.media_query_id
-          rule.media_query_id += media_query_id_offset
-        end
-        @rules << rule
-      end
-
-      # Merge media_index with offsetted IDs
-      result[:_media_index].each do |media_sym, rule_ids|
-        offsetted_ids = rule_ids.map { |id| id + offset }
-        if @media_index[media_sym]
-          @media_index[media_sym].concat(offsetted_ids)
-        else
-          @media_index[media_sym] = offsetted_ids
-        end
-      end
-
-      # Merge media_queries with offsetted IDs
-      if result[:media_queries]
-        result[:media_queries].each do |mq|
-          mq.id += media_query_id_offset
-          @media_queries << mq
-        end
-        @_next_media_query_id += result[:media_queries].length
-      end
-
-      # Update last rule ID
-      @_last_rule_id = offset + new_rules.length
-
-      # Merge imports with offsetted IDs
-      if result[:imports]
-        new_imports = result[:imports]
-        new_imports.each do |import|
-          import.id += offset
-          # Update media_query_id to point to offsetted MediaQuery
-          if import.media_query_id
-            import.media_query_id += media_query_id_offset
-          end
-          @imports << import
-        end
-
-        # Resolve imports if configured
-        if @options[:import]
-          # Extract imported_urls and depth from options
-          if @options[:import].is_a?(Hash)
-            imported_urls = @options[:import][:imported_urls] || []
-            depth = @options[:import][:depth] || 0
-          else
-            imported_urls = []
-            depth = 0
-          end
-
-          # Build import options with base_uri/base_dir for URL resolution
-          import_opts = @options[:import].is_a?(Hash) ? @options[:import].dup : {}
-          import_opts[:base_uri] = effective_base_uri if effective_base_uri
-          import_opts[:base_path] = effective_base_dir if effective_base_dir
-
-          resolve_imports(new_imports, import_opts, imported_urls: imported_urls, depth: depth)
-        end
-      end
-
-      # Set charset if not already set
-      @charset ||= result[:charset]
-
-      # Track if we have any nesting (for serialization optimization)
-      @_has_nesting = result[:_has_nesting]
-
-      clear_memoized_caches
+      merge_parsed_block!(result, effective_base_uri, effective_base_dir)
 
       self
     end
@@ -878,7 +771,7 @@ module Cataract
     def ==(other)
       return false unless other.is_a?(Stylesheet)
       return false unless rules == other.rules
-      return false unless @media_queries == other.instance_variable_get(:@media_queries)
+      return false unless @media_queries == other.media_queries
 
       true
     end
@@ -921,9 +814,9 @@ module Cataract
     # @return [self] Returns self for method chaining
     def flatten!
       flattened = Cataract.flatten(self)
-      @rules = flattened.instance_variable_get(:@rules)
-      @media_index = flattened.instance_variable_get(:@media_index)
-      @_has_nesting = flattened.instance_variable_get(:@_has_nesting)
+      @rules = flattened.rules
+      @media_index = flattened.media_index_cache
+      @_has_nesting = flattened.has_nesting
       self
     end
     alias cascade! flatten!
@@ -944,29 +837,23 @@ module Cataract
     def concat(other)
       raise ArgumentError, 'Argument must be a Stylesheet' unless other.is_a?(Stylesheet)
 
-      # Get the current offset for rule IDs
+      # Get the current offset for rule/media-query/selector-list IDs
       offset = @rules.length
+      list_id_offset = merge_selector_lists!(other.selector_lists, rule_id_offset: offset)
+      mq_id_offset = merge_media_queries!(other.media_queries)
+      merge_media_query_lists!(other.media_query_lists, mq_id_offset: mq_id_offset)
 
-      # Add rules with updated IDs
+      # Add rules with updated IDs and cross-references
       other.rules.each do |rule|
         new_rule = rule.dup
-        new_rule.id = @rules.length
+        rebase_rule!(new_rule, rule_id_offset: offset, list_id_offset: list_id_offset, mq_id_offset: mq_id_offset)
         @rules << new_rule
       end
 
-      # Merge media_index with offsetted IDs
-      other.instance_variable_get(:@media_index).each do |media_sym, rule_ids|
-        offsetted_ids = rule_ids.map { |id| id + offset }
-        if @media_index[media_sym]
-          @media_index[media_sym].concat(offsetted_ids)
-        else
-          @media_index[media_sym] = offsetted_ids
-        end
-      end
+      merge_media_index!(other.media_index_cache, rule_id_offset: offset)
 
       # Update nesting flag if other has nesting
-      other_has_nesting = other.instance_variable_get(:@_has_nesting)
-      @_has_nesting = true if other_has_nesting
+      @_has_nesting = true if other.has_nesting
 
       clear_memoized_caches
 
@@ -1011,7 +898,7 @@ module Cataract
         result.rules.delete_at(idx)
 
         # Update media_index: remove this rule ID and decrement higher IDs
-        result.instance_variable_get(:@media_index).each_value do |ids|
+        result.media_index_cache.each_value do |ids|
           ids.delete(idx)
           ids.map! { |id| id > idx ? id - 1 : id }
         end
@@ -1021,18 +908,232 @@ module Cataract
       result.rules.each_with_index { |rule, new_id| rule.id = new_id }
 
       # Clean up empty media_index entries
-      result.instance_variable_get(:@media_index).delete_if { |_media, ids| ids.empty? }
+      result.media_index_cache.delete_if { |_media, ids| ids.empty? }
 
       result.send(:compact_media_queries!)
 
       # Clear memoized cache
-      result.instance_variable_set(:@selectors, nil)
-      result.instance_variable_set(:@_hash, nil)
+      result.send(:clear_memoized_caches)
+      result._hash = nil
 
       result
     end
 
+    protected
+
+    # Internal accessors for another Stylesheet instance's private state.
+    # Protected (not public) so this stays reachable from sibling instances
+    # within this class (dup/clone, concat, resolve_imports, -) without
+    # becoming part of the public API - and not plain attr_readers, since
+    # several ivar names would collide with unrelated public methods
+    # (notably #media_index, which lazily rebuilds rather than exposing the
+    # raw cache these need).
+
+    attr_reader :options, :parser_options
+
+    def next_media_query_id
+      @_next_media_query_id
+    end
+
+    def next_selector_list_id
+      @_next_selector_list_id
+    end
+
+    def next_media_query_list_id
+      @_next_media_query_list_id
+    end
+
+    # @return [Hash{Symbol => Array<Integer>}] the raw cached media index,
+    #   without triggering the public #media_index reader's lazy rebuild
+    def media_index_cache
+      @media_index
+    end
+
+    def has_nesting
+      @_has_nesting
+    end
+
+    def selector_lists
+      @_selector_lists
+    end
+
+    def media_query_lists
+      @_media_query_lists
+    end
+
+    attr_writer :_hash
+
     private
+
+    # Offset and append MediaQuery objects into @media_queries, without
+    # mutating the source objects (a caller may still hold its own
+    # references to them, e.g. concat's `other`). Returns the id offset
+    # applied, so callers can rebase any rule/import media_query_id that
+    # pointed into the source collection.
+    #
+    # @param source_media_queries [Array<MediaQuery>, nil]
+    # @return [Integer] id offset applied to each merged MediaQuery
+    def merge_media_queries!(source_media_queries)
+      mq_id_offset = @_next_media_query_id
+      return mq_id_offset if source_media_queries.nil? || source_media_queries.empty?
+
+      source_media_queries.each do |mq|
+        new_mq = mq.dup
+        new_mq.id += mq_id_offset
+        @media_queries << new_mq
+      end
+      @_next_media_query_id += source_media_queries.size
+
+      mq_id_offset
+    end
+
+    # Offset and merge a selector_lists hash (list_id => [rule_ids]) into
+    # @_selector_lists. List ids are always rebased onto the next available
+    # id; rule ids are rebased by rule_id_offset (0 when the caller defers
+    # rule-id fixups to a later bulk renumber).
+    #
+    # @param source_lists [Hash{Integer => Array<Integer>}, nil]
+    # @param rule_id_offset [Integer]
+    # @return [Integer] id offset applied to the source's list ids
+    def merge_selector_lists!(source_lists, rule_id_offset: 0)
+      list_id_offset = @_next_selector_list_id
+      return list_id_offset if source_lists.nil? || source_lists.empty?
+
+      source_lists.each do |list_id, rule_ids|
+        @_selector_lists[list_id + list_id_offset] = rule_ids.map { |id| id + rule_id_offset }
+      end
+      @_next_selector_list_id = list_id_offset + source_lists.size
+
+      list_id_offset
+    end
+
+    # Same shape as merge_selector_lists!, for @_media_query_lists
+    # (list_id => [media_query_ids]).
+    #
+    # @param source_lists [Hash{Integer => Array<Integer>}, nil]
+    # @param mq_id_offset [Integer]
+    # @return [Integer] id offset applied to the source's list ids
+    def merge_media_query_lists!(source_lists, mq_id_offset: 0)
+      list_id_offset = @_next_media_query_list_id
+      return list_id_offset if source_lists.nil? || source_lists.empty?
+
+      source_lists.each do |list_id, mq_ids|
+        @_media_query_lists[list_id + list_id_offset] = mq_ids.map { |id| id + mq_id_offset }
+      end
+      @_next_media_query_list_id = list_id_offset + source_lists.size
+
+      list_id_offset
+    end
+
+    # Merge a media_index hash (media_sym => [rule_ids]) into @media_index,
+    # offsetting the rule ids.
+    #
+    # @param source_index [Hash{Symbol => Array<Integer>}, nil]
+    # @param rule_id_offset [Integer]
+    # @return [void]
+    def merge_media_index!(source_index, rule_id_offset:)
+      return if source_index.nil? || source_index.empty?
+
+      source_index.each do |media_sym, rule_ids|
+        offsetted_ids = rule_ids.map { |id| id + rule_id_offset }
+        if @media_index[media_sym]
+          @media_index[media_sym].concat(offsetted_ids)
+        else
+          @media_index[media_sym] = offsetted_ids
+        end
+      end
+    end
+
+    # Rebase a rule/at-rule's own id and its cross-references (Rule's
+    # selector_list_id, and media_query_id on both Rule and AtRule) by the
+    # given offsets, mutating it in place. Callers merging from a live
+    # Stylesheet they don't own (e.g. concat) must dup the rule first.
+    #
+    # @param rule [Rule, AtRule]
+    # @param rule_id_offset [Integer]
+    # @param list_id_offset [Integer]
+    # @param mq_id_offset [Integer]
+    # @return [void]
+    def rebase_rule!(rule, rule_id_offset:, list_id_offset: 0, mq_id_offset: 0)
+      rule.id += rule_id_offset
+      rule.media_query_id += mq_id_offset if rule.media_query_id
+      return unless rule.is_a?(Rule)
+
+      rule.selector_list_id += list_id_offset if rule.selector_list_id
+    end
+
+    # Build parser options for a block, enabling relative -> absolute URL
+    # conversion when both absolute_paths and a base_uri are in effect.
+    #
+    # @return [Hash] Parser options
+    def build_parse_options(effective_base_uri, effective_absolute_paths)
+      parse_options = @parser_options.dup
+      if effective_absolute_paths && effective_base_uri
+        parse_options[:base_uri] = effective_base_uri
+        parse_options[:absolute_paths] = true
+        parse_options[:uri_resolver] = @options[:uri_resolver] || Cataract::DEFAULT_URI_RESOLVER
+      end
+      parse_options
+    end
+
+    # Merge a freshly parsed CSS block's result into this stylesheet's
+    # rules, media queries, selector/media-query lists, and index, then
+    # resolve any @import statements it contained.
+    #
+    # @param result [Hash] Return value of Cataract._parse_css
+    # @return [void]
+    def merge_parsed_block!(result, effective_base_uri, effective_base_dir)
+      offset = @_last_rule_id || 0
+
+      list_id_offset = merge_selector_lists!(result[:_selector_lists], rule_id_offset: offset)
+      mq_id_offset = merge_media_queries!(result[:media_queries])
+      merge_media_query_lists!(result[:_media_query_lists], mq_id_offset: mq_id_offset)
+
+      new_rules = result[:rules]
+      new_rules.each do |rule|
+        rebase_rule!(rule, rule_id_offset: offset, list_id_offset: list_id_offset, mq_id_offset: mq_id_offset)
+        @rules << rule
+      end
+      @_last_rule_id = offset + new_rules.length
+
+      merge_media_index!(result[:_media_index], rule_id_offset: offset)
+      merge_block_imports!(result[:imports], offset, mq_id_offset, effective_base_uri, effective_base_dir)
+
+      @charset ||= result[:charset]
+      @_has_nesting = result[:_has_nesting]
+
+      clear_memoized_caches
+    end
+
+    # Merge a freshly parsed block's @import statements into @imports (with
+    # offsetted IDs), then kick off import resolution if enabled.
+    #
+    # @return [void]
+    def merge_block_imports!(new_imports, offset, mq_id_offset, effective_base_uri, effective_base_dir)
+      return unless new_imports
+
+      new_imports.each do |import|
+        import.id += offset
+        import.media_query_id += mq_id_offset if import.media_query_id
+        @imports << import
+      end
+
+      return unless @options[:import]
+
+      if @options[:import].is_a?(Hash)
+        imported_urls = @options[:import][:imported_urls] || []
+        depth = @options[:import][:depth] || 0
+      else
+        imported_urls = []
+        depth = 0
+      end
+
+      import_opts = @options[:import].is_a?(Hash) ? @options[:import].dup : {}
+      import_opts[:base_uri] = effective_base_uri if effective_base_uri
+      import_opts[:base_path] = effective_base_dir if effective_base_dir
+
+      resolve_imports(new_imports, import_opts, imported_urls: imported_urls, depth: depth)
+    end
 
     # Remove MediaQuery objects no longer referenced by any rule, renumbering
     # the ones that remain so mq.id keeps matching its position in
@@ -1125,146 +1226,150 @@ module Cataract
       imports.each do |import|
         next if import.resolved # Skip already resolved imports
 
-        url = import.url
-        import_media_query_id = import.media_query_id
-
-        # Validate URL
-        ImportResolver.validate_url(url, opts)
-
-        # Check for circular references
-        raise ImportError, "Circular import detected: #{url}" if imported_urls.include?(url)
-
-        # Fetch imported CSS
-        imported_css = fetcher.call(url, opts)
-
-        # Parse imported CSS recursively
-        imported_urls_copy = imported_urls.dup
-        imported_urls_copy << url
-
-        # Determine the base URI for the imported file
-        # This becomes the new base for resolving relative URLs in the imported CSS
-        imported_base_uri = ImportResolver.normalize_url(url, base_path: opts[:base_path], base_uri: opts[:base_uri]).to_s
-
-        # Build parse options for imported CSS
-        parse_opts = {
-          import: opts.merge(imported_urls: imported_urls_copy, depth: depth + 1, base_uri: imported_base_uri),
-          parser: @parser_options.dup # Inherit parent's parser options (including selector_lists)
-        }
-
-        # If URL conversion is enabled (base_uri present), enable it for imported files too
-        if opts[:base_uri]
-          parse_opts[:absolute_paths] = true
-          parse_opts[:base_uri] = imported_base_uri
-          parse_opts[:uri_resolver] = opts[:uri_resolver]
-        end
-
-        # Pass parent import's media query context to parser so nested imports can combine
-        if import_media_query_id
-          parent_mq = @media_queries[import_media_query_id]
-          parse_opts[:parser][:parent_import_media_type] = parent_mq.type
-          parse_opts[:parser][:parent_import_media_conditions] = parent_mq.conditions
-        end
-
-        imported_sheet = Stylesheet.parse(imported_css, **parse_opts)
-
-        # Wrap rules in @media if import had media query
-        if import_media_query_id
-          # Get the import's MediaQuery object
-          import_mq = @media_queries[import_media_query_id]
-
-          imported_sheet.rules.each do |rule|
-            next unless rule.is_a?(Rule)
-
-            if rule.media_query_id
-              # Rule already has a media query - need to combine them
-              # Example: @import "mobile.css" screen; where mobile.css has @media (max-width: 768px)
-              # Result: screen and (max-width: 768px)
-              existing_mq = imported_sheet.media_queries[rule.media_query_id]
-
-              # Parse combined media query to extract type and conditions
-              # The type is always the import's type (leftmost)
-              combined_type = import_mq.type
-              combined_conditions = if import_mq.conditions && existing_mq.conditions
-                                      "#{import_mq.conditions} and #{existing_mq.conditions}"
-                                    elsif import_mq.conditions
-                                      "#{import_mq.conditions} and #{existing_mq.text}"
-                                    elsif existing_mq.conditions
-                                      existing_mq.conditions
-                                    else
-                                      existing_mq.text
-                                    end
-
-              # Create combined MediaQuery
-              combined_mq = MediaQuery.new(@_next_media_query_id, combined_type, combined_conditions)
-              @media_queries << combined_mq
-              rule.media_query_id = @_next_media_query_id
-              @_next_media_query_id += 1
-            else
-              # Rule has no media query - just assign the import's media query
-              rule.media_query_id = import_media_query_id
-            end
-          end
-        end
-
-        # Merge imported rules into this stylesheet
-        # Insert at current position (before any remaining local rules)
-        insert_position = import.id
-
-        # Insert rules without modifying IDs (will renumber everything after all imports resolved)
-        imported_sheet.rules.each_with_index do |rule, idx|
-          @rules.insert(insert_position + idx, rule)
-        end
-
-        # Merge media index
-        imported_sheet.instance_variable_get(:@media_index).each do |media_sym, rule_ids|
-          if @media_index[media_sym]
-            @media_index[media_sym].concat(rule_ids)
-          else
-            @media_index[media_sym] = rule_ids.dup
-          end
-        end
-
-        # Merge selector_lists with offsetted IDs
-        list_id_offset = @_next_selector_list_id
-        imported_selector_lists = imported_sheet.instance_variable_get(:@_selector_lists)
-        if imported_selector_lists && !imported_selector_lists.empty?
-          imported_selector_lists.each do |list_id, rule_ids|
-            new_list_id = list_id + list_id_offset
-            @_selector_lists[new_list_id] = rule_ids.dup
-          end
-          @_next_selector_list_id = list_id_offset + imported_selector_lists.size
-        end
-
-        # Merge media_query_lists with offsetted IDs
-        mq_list_id_offset = @_next_media_query_list_id
-        imported_mq_lists = imported_sheet.instance_variable_get(:@_media_query_lists)
-        if imported_mq_lists && !imported_mq_lists.empty?
-          imported_mq_lists.each do |list_id, mq_ids|
-            new_list_id = list_id + mq_list_id_offset
-            @_media_query_lists[new_list_id] = mq_ids.dup
-          end
-          @_next_media_query_list_id = mq_list_id_offset + imported_mq_lists.size
-        end
-
-        # Merge charset (first one wins per CSS spec)
-        @charset ||= imported_sheet.instance_variable_get(:@charset)
-
-        # Mark as resolved
-        import.resolved = true
+        resolve_single_import!(import, opts, fetcher, imported_urls, depth)
       end
 
-      # Renumber all rule IDs to be sequential in document order
-      # This is O(n) and very fast (~1ms for 30k rules)
-      # Only needed if we actually resolved imports
-      return unless imports.length > 0
+      # Renumber all rule IDs to be sequential in document order.
+      # This is O(n) and very fast (~1ms for 30k rules). Only needed if we
+      # actually resolved imports.
+      renumber_after_import_resolution! if imports.length > 0
+    end
 
+    # Fetch, parse, and merge one @import statement's target stylesheet into
+    # this one, inserted at the import's original document position.
+    #
+    # @return [void]
+    def resolve_single_import!(import, opts, fetcher, imported_urls, depth)
+      url = import.url
+      import_media_query_id = import.media_query_id
+
+      # Validate URL
+      ImportResolver.validate_url(url, opts)
+
+      # Check for circular references
+      raise ImportError, "Circular import detected: #{url}" if imported_urls.include?(url)
+
+      # Fetch imported CSS
+      imported_css = fetcher.call(url, opts)
+
+      # Parse imported CSS recursively
+      imported_urls_copy = imported_urls.dup
+      imported_urls_copy << url
+
+      # Determine the base URI for the imported file
+      # This becomes the new base for resolving relative URLs in the imported CSS
+      imported_base_uri = ImportResolver.normalize_url(url, base_path: opts[:base_path], base_uri: opts[:base_uri]).to_s
+
+      # Build parse options for imported CSS
+      parse_opts = {
+        import: opts.merge(imported_urls: imported_urls_copy, depth: depth + 1, base_uri: imported_base_uri),
+        parser: @parser_options.dup # Inherit parent's parser options (including selector_lists)
+      }
+
+      # If URL conversion is enabled (base_uri present), enable it for imported files too
+      if opts[:base_uri]
+        parse_opts[:absolute_paths] = true
+        parse_opts[:base_uri] = imported_base_uri
+        parse_opts[:uri_resolver] = opts[:uri_resolver]
+      end
+
+      # Pass parent import's media query context to parser so nested imports can combine
+      if import_media_query_id
+        parent_mq = @media_queries[import_media_query_id]
+        parse_opts[:parser][:parent_import_media_type] = parent_mq.type
+        parse_opts[:parser][:parent_import_media_conditions] = parent_mq.conditions
+      end
+
+      imported_sheet = Stylesheet.parse(imported_css, **parse_opts)
+
+      merge_imported_sheet!(imported_sheet, import)
+
+      # Merge charset (first one wins per CSS spec)
+      @charset ||= imported_sheet.charset
+
+      # Mark as resolved
+      import.resolved = true
+    end
+
+    # Merge an already-parsed imported stylesheet's media queries, rules,
+    # and selector/media-query lists into this one. Rules are inserted at
+    # the importing @import statement's original document position; rule
+    # ids (and selector_lists' rule-id references) are left unoffset here
+    # and fixed up in one bulk pass once all imports are resolved, since
+    # positional insertion shifts everything after it anyway.
+    #
+    # @return [void]
+    def merge_imported_sheet!(imported_sheet, import)
+      mq_id_offset = merge_media_queries!(imported_sheet.media_queries)
+      rebase_imported_rules_media_query!(imported_sheet.rules, mq_id_offset, import.media_query_id)
+
+      insert_position = import.id
+      imported_sheet.rules.each_with_index do |rule, idx|
+        @rules.insert(insert_position + idx, rule)
+      end
+
+      merge_selector_lists!(imported_sheet.selector_lists)
+      merge_media_query_lists!(imported_sheet.media_query_lists, mq_id_offset: mq_id_offset)
+    end
+
+    # Rebase every imported rule/at-rule's media_query_id onto this
+    # stylesheet's own @media_queries (now that the imported sheet's own
+    # media queries have been merged in), then, if the @import statement
+    # itself had a media qualifier, combine it with (or assign it to) each
+    # rule's media context.
+    #
+    # @return [void]
+    def rebase_imported_rules_media_query!(imported_rules, mq_id_offset, import_media_query_id)
+      imported_rules.each { |rule| rebase_rule!(rule, rule_id_offset: 0, mq_id_offset: mq_id_offset) }
+
+      return unless import_media_query_id
+
+      import_mq = @media_queries[import_media_query_id]
+
+      imported_rules.each do |rule|
+        next unless rule.is_a?(Rule)
+
+        if rule.media_query_id
+          # Rule already has a media query - need to combine them
+          # Example: @import "mobile.css" screen; where mobile.css has @media (max-width: 768px)
+          # Result: screen and (max-width: 768px)
+          existing_mq = @media_queries[rule.media_query_id]
+
+          # The type is always the import's type (leftmost)
+          combined_type = import_mq.type
+          combined_conditions = if import_mq.conditions && existing_mq.conditions
+                                  "#{import_mq.conditions} and #{existing_mq.conditions}"
+                                elsif import_mq.conditions
+                                  "#{import_mq.conditions} and #{existing_mq.text}"
+                                elsif existing_mq.conditions
+                                  existing_mq.conditions
+                                else
+                                  existing_mq.text
+                                end
+
+          combined_mq = MediaQuery.new(@_next_media_query_id, combined_type, combined_conditions)
+          @media_queries << combined_mq
+          rule.media_query_id = @_next_media_query_id
+          @_next_media_query_id += 1
+        else
+          # Rule has no media query - just assign the import's media query
+          rule.media_query_id = import_media_query_id
+        end
+      end
+    end
+
+    # After all imports for this call are resolved, renumber every rule
+    # (including at-rules) and import statement placeholder to sequential
+    # ids matching final document order, and propagate the same mapping to
+    # selector_lists' rule-id references.
+    #
+    # @return [void]
+    def renumber_after_import_resolution!
       # Single-pass renumbering: build old->new mapping while renumbering
       old_to_new_id = {}
       @rules.each_with_index do |rule, new_idx|
-        if rule.is_a?(Rule) || rule.is_a?(ImportStatement)
-          old_to_new_id[rule.id] = new_idx
-          rule.id = new_idx
-        end
+        old_to_new_id[rule.id] = new_idx
+        rule.id = new_idx
       end
 
       # Update rule IDs in selector_lists (only if we have any)
