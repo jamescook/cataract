@@ -4,6 +4,10 @@
 # NO REGEXP ALLOWED - char-by-char parsing only
 
 module Cataract
+  # Legacy CSS2 pseudo-elements written with a single colon (e.g. :before)
+  # that must still be counted as pseudo-elements, not pseudo-classes.
+  PSEUDO_ELEMENT_KEYWORDS = %w[before after first-line first-letter selection].freeze
+
   # Calculate CSS specificity for a selector
   #
   # @param selector [String] CSS selector
@@ -27,180 +31,132 @@ module Cataract
     i = 0
     len = selector.length
 
-    pseudo_element_kwords = %w[before after first-line first-letter selection]
-
     while i < len
       byte = selector.getbyte(i)
 
-      # Skip whitespace and combinators
-      if byte == BYTE_SPACE || byte == BYTE_TAB || byte == BYTE_NEWLINE || byte == BYTE_CR ||
-         byte == BYTE_GT || byte == BYTE_PLUS || byte == BYTE_TILDE || byte == BYTE_COMMA
-        i += 1
-        next
-      end
-
-      # ID selector: #id
       if byte == BYTE_HASH
         id_count += 1
-        i += 1
-        # Skip the identifier
-        while i < len && ident_char?(selector.getbyte(i))
-          i += 1
-        end
-        next
-      end
-
-      # Class selector: .class
-      if byte == BYTE_DOT
+        i = skip_identifier(selector, i + 1, len)
+      elsif byte == BYTE_DOT
         class_count += 1
-        i += 1
-        # Skip the identifier
-        while i < len && ident_char?(selector.getbyte(i))
-          i += 1
-        end
-        next
-      end
-
-      # Attribute selector: [attr]
-      if byte == BYTE_LBRACKET
+        i = skip_identifier(selector, i + 1, len)
+      elsif byte == BYTE_LBRACKET
         attr_count += 1
-        i += 1
-        # Skip to closing bracket
-        bracket_depth = 1
-        while i < len && bracket_depth > 0
-          b = selector.getbyte(i)
-          if b == BYTE_LBRACKET
-            bracket_depth += 1
-          elsif b == BYTE_RBRACKET
-            bracket_depth -= 1
-          end
-          i += 1
-        end
-        next
-      end
-
-      # Pseudo-element (::) or pseudo-class (:)
-      if byte == BYTE_COLON
-        i += 1
-        is_pseudo_element = false
-
-        # Check for double colon (::)
-        if i < len && selector.getbyte(i) == BYTE_COLON
-          is_pseudo_element = true
-          i += 1
-        end
-
-        # Extract pseudo name
-        pseudo_start = i
-        while i < len && ident_char?(selector.getbyte(i))
-          i += 1
-        end
-        pseudo_name = selector[pseudo_start...i]
-
-        # Check for legacy pseudo-elements (single colon but should be double)
-        is_legacy_pseudo_element = false
-        if !is_pseudo_element && !pseudo_name.empty?
-          is_legacy_pseudo_element = pseudo_element_kwords.include?(pseudo_name)
-        end
-
-        # Check for :not() - it doesn't count itself, but its content does
-        is_not = (pseudo_name == 'not')
-
-        # Skip function arguments if present
-        if i < len && selector.getbyte(i) == BYTE_LPAREN
-          i += 1
-          paren_depth = 1
-
-          # If it's :not(), calculate specificity of the content
-          if is_not
-            not_content_start = i
-
-            # Find closing paren
-            while i < len && paren_depth > 0
-              b = selector.getbyte(i)
-              if b == BYTE_LPAREN
-                paren_depth += 1
-              elsif b == BYTE_RPAREN
-                paren_depth -= 1
-              end
-              i += 1 if paren_depth > 0
-            end
-
-            not_content = selector[not_content_start...i]
-
-            # Recursively calculate specificity of :not() content
-            unless not_content.empty?
-              not_specificity = calculate_specificity(not_content)
-
-              # Add :not() content's specificity to our counts
-              additional_a = not_specificity / 100
-              additional_b = (not_specificity % 100) / 10
-              additional_c = not_specificity % 10
-
-              id_count += additional_a
-              class_count += additional_b
-              element_count += additional_c
-            end
-
-            i += 1 # Skip closing paren
-          else
-            # Skip other function arguments
-            while i < len && paren_depth > 0
-              b = selector.getbyte(i)
-              if b == BYTE_LPAREN
-                paren_depth += 1
-              elsif b == BYTE_RPAREN
-                paren_depth -= 1
-              end
-              i += 1
-            end
-
-            # Count the pseudo-class/element
-            if is_pseudo_element || is_legacy_pseudo_element
-              pseudo_element_count += 1
-            else
-              pseudo_class_count += 1
-            end
-          end
-        else
-          # No function arguments - count the pseudo-class/element
-          if is_not
-            # :not without parens is invalid, but don't count it
-          elsif is_pseudo_element || is_legacy_pseudo_element
+        i = skip_attribute_selector(selector, i, len)
+      elsif byte == BYTE_COLON
+        i, is_not, not_content, counts_as_element = parse_pseudo(selector, i, len)
+        if not_content
+          # :not() doesn't count itself, but its content does
+          not_specificity = calculate_specificity(not_content)
+          id_count += not_specificity / 100
+          class_count += (not_specificity % 100) / 10
+          element_count += not_specificity % 10
+        elsif !is_not
+          if counts_as_element
             pseudo_element_count += 1
           else
             pseudo_class_count += 1
           end
         end
-        next
-      end
-
-      # Universal selector: *
-      if byte == BYTE_ASTERISK
-        # Universal selector has specificity 0, don't count
-        i += 1
-        next
-      end
-
-      # Type selector (element name): div, span, etc.
-      if letter?(byte)
+      elsif letter?(byte)
         element_count += 1
-        # Skip the identifier
-        while i < len && ident_char?(selector.getbyte(i))
-          i += 1
-        end
-        next
+        i = skip_identifier(selector, i + 1, len)
+      else
+        # Whitespace, combinators, and the universal selector (*) all have
+        # zero specificity - just skip a single byte.
+        i += 1
       end
-
-      # Unknown character, skip it
-      i += 1
     end
 
     # Calculate specificity using W3C formula
-    specificity = (id_count * 100) +
-                  ((class_count + attr_count + pseudo_class_count) * 10) +
-                  ((element_count + pseudo_element_count) * 1)
-
-    specificity
+    (id_count * 100) +
+      ((class_count + attr_count + pseudo_class_count) * 10) +
+      ((element_count + pseudo_element_count) * 1)
   end
+
+  # Advances past an identifier (used after #id, .class, element names, and
+  # pseudo names), returning the index of the first non-identifier byte.
+  def self.skip_identifier(selector, pos, len)
+    pos += 1 while pos < len && ident_char?(selector.getbyte(pos))
+    pos
+  end
+  private_class_method :skip_identifier
+
+  # Advances past a bracketed [attr] selector, honoring nested brackets,
+  # returning the index just after the matching closing bracket.
+  def self.skip_attribute_selector(selector, pos, len)
+    skip_balanced(selector, pos + 1, len, BYTE_LBRACKET, BYTE_RBRACKET)
+  end
+  private_class_method :skip_attribute_selector
+
+  # Advances past a balanced open/close byte pair (already past the opening
+  # byte, with depth 1), returning the index just after the matching close.
+  def self.skip_balanced(selector, pos, len, open_byte, close_byte)
+    depth = 1
+    while pos < len && depth > 0
+      b = selector.getbyte(pos)
+      depth += 1 if b == open_byte
+      depth -= 1 if b == close_byte
+      pos += 1
+    end
+    pos
+  end
+  private_class_method :skip_balanced
+
+  # Advances past a balanced open/close byte pair (already past the opening
+  # byte, with depth 1), returning the index OF the matching close byte
+  # (rather than past it), so the caller can capture the content in between.
+  def self.find_balanced_close(selector, pos, len, open_byte, close_byte)
+    depth = 1
+    while pos < len && depth > 0
+      b = selector.getbyte(pos)
+      depth += 1 if b == open_byte
+      depth -= 1 if b == close_byte
+      pos += 1 if depth > 0
+    end
+    pos
+  end
+  private_class_method :find_balanced_close
+
+  # Parses a :pseudo-class, ::pseudo-element, or :not(...) token starting at
+  # the colon byte. Returns [new_pos, is_not, not_content, counts_as_element]:
+  # - new_pos: index just after the fully-consumed token (incl. any (...) args)
+  # - is_not: whether this token is :not (which never counts itself)
+  # - not_content: the non-empty content of :not(...), or nil otherwise
+  # - counts_as_element: whether this token counts toward pseudo-elements
+  #   (::foo, or a legacy single-colon pseudo-element like :before) rather
+  #   than pseudo-classes
+  def self.parse_pseudo(selector, pos, len)
+    pos += 1
+    is_pseudo_element = false
+    if pos < len && selector.getbyte(pos) == BYTE_COLON
+      is_pseudo_element = true
+      pos += 1
+    end
+
+    pseudo_start = pos
+    pos = skip_identifier(selector, pos, len)
+    pseudo_name = selector[pseudo_start...pos]
+
+    is_legacy_pseudo_element = !is_pseudo_element && !pseudo_name.empty? &&
+                               PSEUDO_ELEMENT_KEYWORDS.include?(pseudo_name)
+    is_not = (pseudo_name == 'not')
+    not_content = nil
+
+    if pos < len && selector.getbyte(pos) == BYTE_LPAREN
+      pos += 1
+      if is_not
+        content_start = pos
+        pos = find_balanced_close(selector, pos, len, BYTE_LPAREN, BYTE_RPAREN)
+        content = selector[content_start...pos]
+        not_content = content unless content.empty?
+        pos += 1 # Skip closing paren
+      else
+        pos = skip_balanced(selector, pos, len, BYTE_LPAREN, BYTE_RPAREN)
+      end
+    end
+
+    [pos, is_not, not_content, is_pseudo_element || is_legacy_pseudo_element]
+  end
+  private_class_method :parse_pseudo
 end

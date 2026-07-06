@@ -39,6 +39,24 @@ module Cataract
   end
 
   # @api private
+  # Helper: does the rule's media query differ from the currently open media
+  # block, requiring a new "@media ... {" to be opened? Comma-separated
+  # lists are compared by list id; single queries are compared by content
+  # (type + conditions), since two separately-parsed queries with the same
+  # content should still be grouped under one block.
+  # @return [Boolean]
+  def self._needs_new_media_block?(current_media_query, current_media_query_list_id, rule_media_query,
+                                   rule_media_query_list_id)
+    if rule_media_query_list_id
+      current_media_query_list_id != rule_media_query_list_id
+    else
+      !current_media_query ||
+        current_media_query.type != rule_media_query.type ||
+        current_media_query.conditions != rule_media_query.conditions
+    end
+  end
+
+  # @api private
   # Helper: read a rule's parent_rule_id, guarding against AtRule (which has
   # no such member - only Rule participates in CSS nesting, AtRule never is
   # nested via '&' nesting). Calling .parent_rule_id directly on an AtRule
@@ -113,13 +131,8 @@ module Cataract
         # Check if we need to open a new media block
         # For lists: compare list_id
         # For single queries: compare by content (type + conditions)
-        needs_new_block = if rule_media_query_list_id
-                            current_media_query_list_id != rule_media_query_list_id
-                          else
-                            !current_media_query ||
-                              current_media_query.type != rule_media_query.type ||
-                              current_media_query.conditions != rule_media_query.conditions
-                          end
+        needs_new_block = _needs_new_media_block?(current_media_query, current_media_query_list_id, rule_media_query,
+                                                  rule_media_query_list_id)
 
         if needs_new_block
           if in_media_block
@@ -203,11 +216,7 @@ module Cataract
       if child.nesting_style.nil? && child.media_query_id && media_queries[child.media_query_id]
         # This is a nested @media rule
         mq = media_queries[child.media_query_id]
-        media_query_string = if mq.conditions
-                               mq.type == :all ? mq.conditions : "#{mq.type} and #{mq.conditions}"
-                             else
-                               mq.type.to_s
-                             end
+        media_query_string = _build_media_query_string(mq, nil, nil, media_queries)
         result << "@media #{media_query_string} { "
         _serialize_declarations(result, child.declarations)
 
@@ -386,13 +395,8 @@ module Cataract
         # This rule is in a media query
         # For lists: compare list_id
         # For single queries: compare by content (type + conditions)
-        needs_new_block = if rule_media_query_list_id
-                            current_media_query_list_id != rule_media_query_list_id
-                          else
-                            !current_media_query ||
-                              current_media_query.type != rule_media_query.type ||
-                              current_media_query.conditions != rule_media_query.conditions
-                          end
+        needs_new_block = _needs_new_media_block?(current_media_query, current_media_query_list_id, rule_media_query,
+                                                  rule_media_query_list_id)
 
         if needs_new_block
           # Close previous media block if open
@@ -599,13 +603,8 @@ module Cataract
       else
         # For lists: compare list_id
         # For single queries: compare by content (type + conditions)
-        needs_new_block = if rule_media_query_list_id
-                            current_media_query_list_id != rule_media_query_list_id
-                          else
-                            !current_media_query ||
-                              current_media_query.type != rule_media_query.type ||
-                              current_media_query.conditions != rule_media_query.conditions
-                          end
+        needs_new_block = _needs_new_media_block?(current_media_query, current_media_query_list_id, rule_media_query,
+                                                  rule_media_query_list_id)
 
         if needs_new_block
           if in_media_block
@@ -686,11 +685,7 @@ module Cataract
       if child.nesting_style.nil? && child.media_query_id && media_queries[child.media_query_id]
         # Nested @media
         mq = media_queries[child.media_query_id]
-        media_query_string = if mq.conditions
-                               mq.type == :all ? mq.conditions : "#{mq.type} and #{mq.conditions}"
-                             else
-                               mq.type.to_s
-                             end
+        media_query_string = _build_media_query_string(mq, nil, nil, media_queries)
         result << indent
         result << "@media #{media_query_string} {\n"
 
@@ -797,7 +792,8 @@ module Cataract
   end
 
   # Mark helper methods as private (public APIs: stylesheet_to_s, stylesheet_to_formatted_s)
-  private_class_method :_build_media_query_string, :_stylesheet_to_s_without_nesting, :_serialize_rule_with_nesting,
+  private_class_method :_build_media_query_string, :_needs_new_media_block?, :_stylesheet_to_s_without_nesting,
+                       :_serialize_rule_with_nesting,
                        :_reconstruct_nested_selector, :_find_groupable_selectors, :_declarations_equal?,
                        :_serialize_rule, :_serialize_declarations, :_serialize_declarations_formatted,
                        :_serialize_at_rule, :_stylesheet_to_formatted_s_without_nesting, :_serialize_rule_with_nesting_formatted,
