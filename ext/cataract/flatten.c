@@ -393,7 +393,9 @@ static inline void try_recreate_shorthand(VALUE properties_hash, const struct sh
 // allow a mix of required and optional candidates - see
 // shorthand_family_mapping for the exact rules.
 static inline void try_recreate_shorthand_family(VALUE properties_hash, const struct shorthand_family_mapping *family) {
-    VALUE datas[MAX_SHORTHAND_FAMILY_CANDIDATES];
+    // Zero-initialize all slots (not just the first num_candidates) so every
+    // read below is well-defined regardless of a given family's arity.
+    VALUE datas[MAX_SHORTHAND_FAMILY_CANDIDATES] = { Qnil, Qnil, Qnil, Qnil, Qnil, Qnil };
     int present_count = 0;
 
     for (int i = 0; i < family->num_candidates; i++) {
@@ -449,6 +451,9 @@ static inline void try_recreate_shorthand_family(VALUE properties_hash, const st
             primary_idx = i;
             break;
         }
+    }
+    if (primary_idx < 0) {
+        return; // Nothing present to build a shorthand from
     }
 
     VALUE shorthand_data = rb_ary_new_capa(4);

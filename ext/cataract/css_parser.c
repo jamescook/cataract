@@ -907,7 +907,7 @@ static VALUE parse_declarations(const char *start, const char *end, ParserContex
             VALUE value = rb_utf8_str_new(val_start, val_len);
 
             // Convert relative URLs to absolute if enabled
-            if (ctx && ctx->absolute_paths && !NIL_P(ctx->base_uri)) {
+            if (ctx->absolute_paths && !NIL_P(ctx->base_uri)) {
                 value = convert_urls_in_value(value, ctx->base_uri, ctx->uri_resolver);
             }
 
