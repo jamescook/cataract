@@ -1,0 +1,147 @@
+@charset "UTF-8";
+
+/* Basic selectors and selector lists */
+body, html {
+  margin: 0;
+  padding: 0;
+}
+
+.container {
+  --spacing: 16px;
+  --primary-color: #336699;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: var(--spacing);
+}
+
+/* Combinators */
+.container > .row {
+  display: flex;
+}
+
+.container + .footer {
+  margin-top: 2rem;
+}
+
+.container ~ .sibling {
+  color: gray;
+}
+
+/* Shorthand vs longhand, specificity, and cascade order (for flatten) */
+.box {
+  margin-top: 10px;
+  margin-right: 10px;
+  margin-bottom: 10px;
+  margin-left: 10px;
+  color: red;
+}
+
+.box {
+  color: blue;
+}
+
+#special.box {
+  color: green;
+}
+
+.override {
+  color: red !important;
+}
+
+.override {
+  color: blue;
+}
+
+/* CSS nesting: implicit (class-based), explicit &, deep, mixed with declarations */
+.card {
+  background: white;
+  border: 1px solid #ddd;
+
+  .card-header {
+    padding: 1rem;
+
+    &.highlighted {
+      background: #f0f0f0;
+    }
+  }
+
+  &:hover {
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.2);
+  }
+
+  .card-body {
+    .card-title {
+      font-size: 1.25rem;
+    }
+  }
+}
+
+/* !important variants that are solidly supported */
+.urgent {
+  color: red !important;
+}
+
+.urgent-commented {
+  color: green /* keep this */ !important;
+}
+
+/* Media queries: simple, compound, comma-separated list, nested inside a selector */
+@media screen {
+  .visible-screen {
+    display: block;
+  }
+}
+
+@media print {
+  .visible-print {
+    display: block;
+  }
+}
+
+@media screen and (min-width: 768px) {
+  .responsive {
+    width: 750px;
+  }
+}
+
+@media screen, print {
+  .universal {
+    color: black;
+  }
+}
+
+.widget {
+  padding: 1rem;
+
+  @media (min-width: 1024px) {
+    padding: 2rem;
+  }
+}
+
+/* @keyframes */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* @font-face */
+@font-face {
+  font-family: "CustomFont";
+  src: url("custom-font.woff2") format("woff2");
+  font-weight: 400;
+}
+
+/* Unknown/unsupported at-rule - passed through as a plain rule with declarations */
+@page {
+  margin: 1in;
+}
+
+/* url() values and quoted strings */
+.background {
+  background-image: url("images/bg.png");
+  content: "hello world";
+}
