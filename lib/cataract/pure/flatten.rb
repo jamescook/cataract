@@ -100,6 +100,14 @@ module Cataract
     SIDE_BOTTOM = 'bottom'
     SIDE_LEFT = 'left'
 
+    # Maps a border side name to its [width, style, color] property constants
+    BORDER_SIDE_PROPS = {
+      SIDE_TOP => [PROP_BORDER_TOP_WIDTH, PROP_BORDER_TOP_STYLE, PROP_BORDER_TOP_COLOR],
+      SIDE_RIGHT => [PROP_BORDER_RIGHT_WIDTH, PROP_BORDER_RIGHT_STYLE, PROP_BORDER_RIGHT_COLOR],
+      SIDE_BOTTOM => [PROP_BORDER_BOTTOM_WIDTH, PROP_BORDER_BOTTOM_STYLE, PROP_BORDER_BOTTOM_COLOR],
+      SIDE_LEFT => [PROP_BORDER_LEFT_WIDTH, PROP_BORDER_LEFT_STYLE, PROP_BORDER_LEFT_COLOR]
+    }.freeze
+
     FONT_PROPERTIES = [
       PROP_FONT_STYLE,
       PROP_FONT_VARIANT,
@@ -162,11 +170,38 @@ module Cataract
     # @param mutate [Boolean] If true, mutate the stylesheet; otherwise create new one
     # @return [Stylesheet] Merged stylesheet
     def self.flatten(stylesheet, mutate: false)
-      # Separate AtRules (pass-through) from regular Rules (to merge)
+      at_rules, regular_rules = partition_at_rules(stylesheet.rules)
+
+      expand_all_shorthands!(regular_rules)
+      merged_rules = merge_rules_by_selector_and_media(regular_rules)
+      merged_rules.each { |rule| recreate_shorthands!(rule) }
+
+      # Assign new IDs before checking divergence (so we can build correct selector_lists hash)
+      merged_rules.each_with_index { |rule, i| rule.id = i }
+
+      selector_lists = build_selector_lists(stylesheet, merged_rules)
+
+      # Add passthrough AtRules to output
+      merged_rules.concat(at_rules)
+
+      media_queries = stylesheet.instance_variable_get(:@media_queries)
+      media_query_lists = stylesheet.instance_variable_get(:@_media_query_lists)
+      new_media_index = rebuild_media_index(merged_rules, media_queries, media_query_lists)
+
+      build_result(stylesheet, merged_rules, new_media_index, media_queries, media_query_lists, selector_lists,
+                   mutate)
+    end
+
+    # Separate AtRules (pass-through, unaffected by cascade) from regular
+    # Rules (to merge).
+    #
+    # @param rules [Array<Rule, AtRule>]
+    # @return [Array(Array<AtRule>, Array<Rule>)]
+    def self.partition_at_rules(rules)
       at_rules = []
       regular_rules = []
 
-      stylesheet.rules.each do |rule|
+      rules.each do |rule|
         if rule.at_rule?
           at_rules << rule
         else
@@ -174,11 +209,20 @@ module Cataract
         end
       end
 
-      # Expand shorthands in regular rules only (AtRules don't have declarations)
-      # NOTE: Using manual each + concat instead of .flat_map for performance.
-      # The concise form (.flat_map) is ~5-10% slower depending on number of shorthands to expand.
-      # NOTE: Fast-path check for shorthands (Hash lookup) avoids calling expand_shorthand
-      # for declarations that are not shorthands (~20% faster than calling method unconditionally).
+      [at_rules, regular_rules]
+    end
+
+    # Expand shorthands in regular rules only (AtRules don't have declarations).
+    # Mutates each rule's declarations in place.
+    #
+    # NOTE: Using manual each + concat instead of .flat_map for performance.
+    # The concise form (.flat_map) is ~5-10% slower depending on number of shorthands to expand.
+    # NOTE: Fast-path check for shorthands (Hash lookup) avoids calling expand_shorthand
+    # for declarations that are not shorthands (~20% faster than calling method unconditionally).
+    #
+    # @param regular_rules [Array<Rule>]
+    # @return [void]
+    def self.expand_all_shorthands!(regular_rules)
       regular_rules.each do |rule|
         expanded = []
         rule.declarations.each do |decl|
@@ -190,58 +234,55 @@ module Cataract
         end
         rule.declarations.replace(expanded)
       end
+    end
 
-      merged_rules = []
-
-      # Group by (selector, media_query_id) instead of just selector
-      # Rules with same selector but different media contexts should NOT be merged
+    # Group rules by (selector, media_query_id) and merge each group
+    # according to CSS cascade rules. Rules with the same selector but
+    # different media contexts are NOT merged together.
+    #
+    # @param regular_rules [Array<Rule>]
+    # @return [Array<Rule>] Merged rules, one per (selector, media_query_id) group
+    def self.merge_rules_by_selector_and_media(regular_rules)
       # NOTE: Using manual each instead of .group_by to avoid intermediate hash allocation.
       by_selector_and_media = {}
       regular_rules.each do |rule|
-        media_query_id = rule.media_query_id
-        key = [rule.selector, media_query_id]
+        key = [rule.selector, rule.media_query_id]
         (by_selector_and_media[key] ||= []) << rule
       end
 
-      # Track old rule ID to new merged rule index mapping (only for rules in media queries)
-      old_to_new_id = {}
-      by_selector_and_media.each do |(_selector, media_query_id), rules|
+      merged_rules = []
+      by_selector_and_media.each_value do |rules|
         merged_rule = flatten_rules_for_selector(rules.first.selector, rules)
-        next unless merged_rule
-
-        # Only build mapping for rules that are in media queries
-        if media_query_id
-          new_index = merged_rules.length
-
-          rules.each do |old_rule|
-            old_to_new_id[old_rule.id] = new_index
-          end
-        end
-        merged_rules << merged_rule
+        merged_rules << merged_rule if merged_rule
       end
+      merged_rules
+    end
 
-      # Recreate shorthands where possible
-      merged_rules.each { |rule| recreate_shorthands!(rule) }
-
-      # Assign new IDs before checking divergence (so we can build correct selector_lists hash)
-      merged_rules.each_with_index { |rule, i| rule.id = i }
-
-      # Handle selector list divergence: remove rules from selector lists if declarations no longer match
-      # This makes selector_list_id authoritative - if set, declarations MUST be identical
-      # Only process if selector_lists is enabled in the stylesheet's parser options
+    # Handle selector list divergence: remove rules from selector lists if
+    # declarations no longer match. This makes selector_list_id
+    # authoritative - if set, declarations MUST be identical. Only
+    # processed if selector_lists is enabled in the stylesheet's parser
+    # options.
+    #
+    # @param stylesheet [Stylesheet] Source stylesheet (for parser options)
+    # @param merged_rules [Array<Rule>] Merged rules, already assigned final IDs
+    # @return [Hash] list_id => Array of rule IDs, empty if not tracking selector lists
+    def self.build_selector_lists(stylesheet, merged_rules)
       selector_lists = {}
       parser_options = stylesheet.instance_variable_get(:@parser_options) || {}
-      if parser_options[:selector_lists]
-        update_selector_lists_for_divergence!(merged_rules, selector_lists)
-      end
+      update_selector_lists_for_divergence!(merged_rules, selector_lists) if parser_options[:selector_lists]
+      selector_lists
+    end
 
-      # Add passthrough AtRules to output
-      merged_rules.concat(at_rules)
-
-      # Rebuild media_index from rules' media_query_id
-      # This ensures media_index is consistent with the MediaQuery objects
-      media_queries = stylesheet.instance_variable_get(:@media_queries)
-      media_query_lists = stylesheet.instance_variable_get(:@_media_query_lists)
+    # Rebuild media_index from rules' media_query_id. This ensures
+    # media_index is consistent with the MediaQuery objects, rather than
+    # trying to remap the stylesheet's existing (now-stale) media_index.
+    #
+    # @param merged_rules [Array<Rule, AtRule>] Final rules, including passthrough AtRules
+    # @param media_queries [Array<MediaQuery>]
+    # @param media_query_lists [Hash{Integer => Array<Integer>}] list_id => media_query_ids
+    # @return [Hash{Symbol => Array<Integer>}] media type => rule IDs
+    def self.rebuild_media_index(merged_rules, media_queries, media_query_lists)
       new_media_index = {}
 
       # Build reverse map: media_query_id => list_id (one-time cost)
@@ -264,34 +305,37 @@ module Cataract
             mq = media_queries[mq_id]
             next unless mq
 
-            media_type = mq.type
-            new_media_index[media_type] ||= []
-            new_media_index[media_type] << rule.id
+            new_media_index[mq.type] ||= []
+            new_media_index[mq.type] << rule.id
           end
         else
           # Single media query - just index under its type
           mq = media_queries[rule.media_query_id]
           next unless mq
 
-          media_type = mq.type
-          new_media_index[media_type] ||= []
-          new_media_index[media_type] << rule.id
+          new_media_index[mq.type] ||= []
+          new_media_index[mq.type] << rule.id
         end
       end
 
       # Deduplicate arrays once at the end
       new_media_index.each_value(&:uniq!)
+      new_media_index
+    end
 
-      # Create result stylesheet
+    # Build the final result: either mutate the input stylesheet in place,
+    # or construct a new one, with the merged rules/media_index/selector_lists.
+    #
+    # @return [Stylesheet]
+    def self.build_result(stylesheet, merged_rules, new_media_index, media_queries, media_query_lists,
+                          selector_lists, mutate)
       if mutate
         stylesheet.instance_variable_set(:@rules, merged_rules)
         stylesheet.instance_variable_set(:@media_index, new_media_index)
         # @media_queries and @_media_query_lists stay the same - preserved from input
-        # Update selector lists with divergence tracking
         stylesheet.instance_variable_set(:@_selector_lists, selector_lists)
         stylesheet
       else
-        # Create new Stylesheet with merged rules
         result = Stylesheet.new
         result.instance_variable_set(:@rules, merged_rules)
         result.instance_variable_set(:@media_index, new_media_index)
@@ -552,39 +596,12 @@ module Cataract
       # Extract side from property name (e.g., "border-top" -> "top")
       side = decl.property.byteslice(7..-1) # Skip "border-" prefix
       width, style, color = parse_border_value(decl.value)
+      width_prop, style_prop, color_prop = BORDER_SIDE_PROPS[side]
 
       result = []
-
-      # Map side to property constants
-      if width
-        width_prop = case side
-                     when SIDE_TOP then PROP_BORDER_TOP_WIDTH
-                     when SIDE_RIGHT then PROP_BORDER_RIGHT_WIDTH
-                     when SIDE_BOTTOM then PROP_BORDER_BOTTOM_WIDTH
-                     when SIDE_LEFT then PROP_BORDER_LEFT_WIDTH
-                     end
-        result << Declaration.new(width_prop, width, decl.important)
-      end
-
-      if style
-        style_prop = case side
-                     when SIDE_TOP then PROP_BORDER_TOP_STYLE
-                     when SIDE_RIGHT then PROP_BORDER_RIGHT_STYLE
-                     when SIDE_BOTTOM then PROP_BORDER_BOTTOM_STYLE
-                     when SIDE_LEFT then PROP_BORDER_LEFT_STYLE
-                     end
-        result << Declaration.new(style_prop, style, decl.important)
-      end
-
-      if color
-        color_prop = case side
-                     when SIDE_TOP then PROP_BORDER_TOP_COLOR
-                     when SIDE_RIGHT then PROP_BORDER_RIGHT_COLOR
-                     when SIDE_BOTTOM then PROP_BORDER_BOTTOM_COLOR
-                     when SIDE_LEFT then PROP_BORDER_LEFT_COLOR
-                     end
-        result << Declaration.new(color_prop, color, decl.important)
-      end
+      result << Declaration.new(width_prop, width, decl.important) if width
+      result << Declaration.new(style_prop, style, decl.important) if style
+      result << Declaration.new(color_prop, color, decl.important) if color
 
       result
     end
@@ -643,12 +660,8 @@ module Cataract
       [width, style, color]
     end
 
-    # Check if value looks like a border width
-    def self.is_border_width?(value)
-      # Check for numeric values or width keywords
-      return true if BORDER_WIDTH_KEYWORDS.include?(value)
-
-      # Check if value contains a digit (byte-by-byte)
+    # Check if value contains a digit (byte-by-byte)
+    def self.contains_digit?(value)
       i = 0
       len = value.bytesize
       while i < len
@@ -659,6 +672,14 @@ module Cataract
       end
 
       false
+    end
+
+    # Check if value looks like a border width
+    def self.is_border_width?(value)
+      # Check for numeric values or width keywords
+      return true if BORDER_WIDTH_KEYWORDS.include?(value)
+
+      contains_digit?(value)
     end
 
     # Check if value is a border style
@@ -754,14 +775,8 @@ module Cataract
     # Check if value is a font size
     def self.is_font_size?(value)
       # Has digit or is a keyword
-      i = 0
-      len = value.bytesize
-      while i < len
-        byte = value.getbyte(i)
-        return true if byte >= BYTE_DIGIT_0 && byte <= BYTE_DIGIT_9
+      return true if contains_digit?(value)
 
-        i += 1
-      end
       FONT_SIZE_KEYWORDS.include?(value)
     end
 
@@ -778,14 +793,8 @@ module Cataract
     # Check if value is a font weight
     def self.is_font_weight?(value)
       # Check for numeric weights like 400, 700
-      i = 0
-      len = value.bytesize
-      while i < len
-        byte = value.getbyte(i)
-        return true if byte >= BYTE_DIGIT_0 && byte <= BYTE_DIGIT_9
+      return true if contains_digit?(value)
 
-        i += 1
-      end
       FONT_WEIGHT_KEYWORDS.include?(value)
     end
 
@@ -848,14 +857,13 @@ module Cataract
     # Check if value is a position value (for background-position)
     def self.is_position_value?(value)
       return true if BACKGROUND_POSITION_KEYWORDS.include?(value)
+      return true if contains_digit?(value)
 
-      # Check for '%' or digits
+      # Check for '%'
       i = 0
       len = value.bytesize
       while i < len
-        byte = value.getbyte(i)
-        return true if byte == BYTE_PERCENT
-        return true if byte >= BYTE_DIGIT_0 && byte <= BYTE_DIGIT_9
+        return true if value.getbyte(i) == BYTE_PERCENT
 
         i += 1
       end
@@ -891,6 +899,14 @@ module Cataract
       result << Declaration.new(PROP_LIST_STYLE_IMAGE, image, decl.important) if image
 
       result.empty? ? [decl] : result
+    end
+
+    # Remove the individual longhand declarations a shorthand replaces and
+    # append the shorthand declaration in their place.
+    # Note: We append rather than insert at original position to match C implementation behavior
+    def self.replace_with_shorthand!(rule, longhand_props, shorthand_prop, value, important)
+      rule.declarations.reject! { |d| longhand_props.include?(d.property) }
+      rule.declarations << Declaration.new(shorthand_prop, value, important)
     end
 
     # Recreate shorthand properties where possible (mutates declarations)
@@ -942,10 +958,7 @@ module Cataract
       # Create optimized shorthand
       shorthand_value = optimize_four_sides(values)
 
-      # Remove individual sides and append shorthand
-      # Note: We append rather than insert at original position to match C implementation behavior
-      rule.declarations.reject! { |d| MARGIN_SIDES.include?(d.property) }
-      rule.declarations << Declaration.new(PROP_MARGIN, shorthand_value, important)
+      replace_with_shorthand!(rule, MARGIN_SIDES, PROP_MARGIN, shorthand_value, important)
     end
 
     # Try to recreate padding shorthand
@@ -968,10 +981,7 @@ module Cataract
 
       shorthand_value = optimize_four_sides(values)
 
-      # Remove individual sides and append shorthand
-      # Note: We append rather than insert at original position to match C implementation behavior
-      rule.declarations.reject! { |d| PADDING_SIDES.include?(d.property) }
-      rule.declarations << Declaration.new(PROP_PADDING, shorthand_value, important)
+      replace_with_shorthand!(rule, PADDING_SIDES, PROP_PADDING, shorthand_value, important)
     end
 
     # Helper: Check if all declarations have same value and importance
@@ -1036,10 +1046,7 @@ module Cataract
 
           border_value = parts.join(' ')
 
-          # Remove individual properties and append shorthand
-          # Note: We append rather than insert at original position to match C implementation behavior
-          rule.declarations.reject! { |d| BORDER_ALL.include?(d.property) }
-          rule.declarations << Declaration.new(PROP_BORDER, border_value, important)
+          replace_with_shorthand!(rule, BORDER_ALL, PROP_BORDER, border_value, important)
           return
         end
       end
@@ -1060,8 +1067,7 @@ module Cataract
 
       shorthand_value = optimize_four_sides(values)
 
-      rule.declarations.reject! { |d| BORDER_WIDTHS.include?(d.property) }
-      rule.declarations << Declaration.new(PROP_BORDER_WIDTH, shorthand_value, important)
+      replace_with_shorthand!(rule, BORDER_WIDTHS, PROP_BORDER_WIDTH, shorthand_value, important)
     end
 
     # Recreate border-style shorthand
@@ -1074,8 +1080,7 @@ module Cataract
 
       shorthand_value = optimize_four_sides(values)
 
-      rule.declarations.reject! { |d| BORDER_STYLES.include?(d.property) }
-      rule.declarations << Declaration.new(PROP_BORDER_STYLE, shorthand_value, important)
+      replace_with_shorthand!(rule, BORDER_STYLES, PROP_BORDER_STYLE, shorthand_value, important)
     end
 
     # Recreate border-color shorthand
@@ -1088,8 +1093,7 @@ module Cataract
 
       shorthand_value = optimize_four_sides(values)
 
-      rule.declarations.reject! { |d| BORDER_COLORS.include?(d.property) }
-      rule.declarations << Declaration.new(PROP_BORDER_COLOR, shorthand_value, important)
+      replace_with_shorthand!(rule, BORDER_COLORS, PROP_BORDER_COLOR, shorthand_value, important)
     end
 
     # Optimize four-sided value representation
@@ -1175,10 +1179,7 @@ module Cataract
 
       shorthand_value = parts.join(' ')
 
-      # Remove individual properties and append shorthand
-      # Note: We append rather than insert at original position to match C implementation behavior
-      rule.declarations.reject! { |d| FONT_PROPERTIES.include?(d.property) }
-      rule.declarations << Declaration.new(PROP_FONT, shorthand_value, important)
+      replace_with_shorthand!(rule, FONT_PROPERTIES, PROP_FONT, shorthand_value, important)
     end
 
     # Try to recreate background shorthand
@@ -1234,10 +1235,7 @@ module Cataract
                           parts.join(' ')
                         end
 
-      # Remove individual properties and append shorthand
-      # Note: We append rather than insert at original position to match C implementation behavior
-      rule.declarations.reject! { |d| BACKGROUND_PROPERTIES.include?(d.property) }
-      rule.declarations << Declaration.new(PROP_BACKGROUND, shorthand_value, important)
+      replace_with_shorthand!(rule, BACKGROUND_PROPERTIES, PROP_BACKGROUND, shorthand_value, important)
     end
 
     # Try to recreate list-style shorthand
@@ -1263,10 +1261,7 @@ module Cataract
 
       shorthand_value = parts.join(' ')
 
-      # Remove individual properties and append shorthand
-      # Note: We append rather than insert at original position to match C implementation behavior
-      rule.declarations.reject! { |d| LIST_STYLE_PROPERTIES.include?(d.property) }
-      rule.declarations << Declaration.new(PROP_LIST_STYLE, shorthand_value, important)
+      replace_with_shorthand!(rule, LIST_STYLE_PROPERTIES, PROP_LIST_STYLE, shorthand_value, important)
     end
 
     # Update selector lists to remove diverged rules
@@ -1340,12 +1335,16 @@ module Cataract
     private_class_method :flatten_rules_for_selector, :calculate_specificity,
                          :expand_margin, :expand_padding, :parse_four_sides, :split_on_whitespace,
                          :expand_border, :expand_border_side, :expand_border_width, :expand_border_style,
-                         :expand_border_color, :parse_border_value, :is_border_width?, :is_border_style?,
+                         :expand_border_color, :parse_border_value, :contains_digit?, :is_border_width?,
+                         :is_border_style?,
                          :expand_font, :is_font_size?, :is_font_style?, :is_font_variant?, :is_font_weight?,
                          :expand_background, :starts_with_url?, :is_position_value?, :expand_list_style,
-                         :recreate_shorthands!, :recreate_margin!, :recreate_padding!, :check_all_same?,
+                         :replace_with_shorthand!, :recreate_shorthands!, :recreate_margin!, :recreate_padding!,
+                         :check_all_same?,
                          :recreate_border!, :recreate_border_width!, :recreate_border_style!, :recreate_border_color!,
                          :optimize_four_sides, :recreate_font!, :recreate_background!, :recreate_list_style!,
-                         :update_selector_lists_for_divergence!, :declarations_equal?
+                         :update_selector_lists_for_divergence!, :declarations_equal?,
+                         :partition_at_rules, :expand_all_shorthands!, :merge_rules_by_selector_and_media,
+                         :build_selector_lists, :rebuild_media_index, :build_result
   end
 end
