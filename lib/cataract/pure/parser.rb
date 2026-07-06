@@ -501,9 +501,20 @@ module Cataract
         pos += 1
       end
 
-      # Parse value (scan until ';' or '}')
+      # Parse value (scan until ';' outside parens, or '}'). Paren depth
+      # tracking keeps a ';' inside url(...)/rgba(...) from ending the value
+      # early - e.g. "url(data:image/svg+xml;base64,...)".
       val_start = pos
-      while pos < end_pos && @_css.getbyte(pos) != BYTE_SEMICOLON && @_css.getbyte(pos) != BYTE_RBRACE
+      paren_depth = 0
+      while pos < end_pos && @_css.getbyte(pos) != BYTE_RBRACE
+        byte = @_css.getbyte(pos)
+        if byte == BYTE_LPAREN
+          paren_depth += 1
+        elsif byte == BYTE_RPAREN
+          paren_depth -= 1
+        elsif byte == BYTE_SEMICOLON && paren_depth == 0
+          break
+        end
         pos += 1
       end
       val_end = pos
@@ -894,9 +905,13 @@ module Cataract
 
         skip_ws_and_comments
 
-        # Parse value (read until ';' or '}', but respect quoted strings)
+        # Parse value (read until ';' outside parens, or '}', but respect
+        # quoted strings). Paren depth tracking keeps a ';' inside
+        # url(...)/rgba(...) from ending the value early - e.g.
+        # "url(data:image/svg+xml;base64,...)".
         value_start = @_pos
         in_quote = nil # nil, BYTE_SQUOTE, or BYTE_DQUOTE
+        paren_depth = 0
 
         until eof?
           byte = peek_byte
@@ -910,11 +925,17 @@ module Cataract
               @_pos += 1
             end
           else
-            # Not in quote - check for terminators or quote start
-            break if byte == BYTE_SEMICOLON || byte == BYTE_RBRACE
+            # Not in quote - check for terminators or quote/paren start
+            break if byte == BYTE_RBRACE || (byte == BYTE_SEMICOLON && paren_depth == 0)
 
-            if byte == BYTE_SQUOTE || byte == BYTE_DQUOTE
+            # case/when compiles to opt_send(===) here, not opt_eq - benchmarked
+            # ~1.7x slower without YJIT, still slower with it.
+            if byte == BYTE_SQUOTE || byte == BYTE_DQUOTE # rubocop:disable Style/CaseLikeIf
               in_quote = byte
+            elsif byte == BYTE_LPAREN
+              paren_depth += 1
+            elsif byte == BYTE_RPAREN
+              paren_depth -= 1
             end
           end
 

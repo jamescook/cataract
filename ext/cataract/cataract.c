@@ -1044,48 +1044,18 @@ static VALUE new_parse_declarations_string(const char *start, const char *end) {
         while (pos < end && (IS_WHITESPACE(*pos) || *pos == ';')) pos++;
         if (pos >= end) break;
 
-        // Find property (up to colon)
-        const char *prop_start = pos;
-        while (pos < end && *pos != ':') pos++;
-        if (pos >= end) break;  // No colon found
-
-        const char *prop_end = pos;
-        // Trim trailing whitespace
-        while (prop_end > prop_start && IS_WHITESPACE(*(prop_end-1))) prop_end--;
-        // Trim leading whitespace
-        while (prop_start < prop_end && IS_WHITESPACE(*prop_start)) prop_start++;
-
-        pos++;  // Skip colon
-        // Trim leading whitespace
-        while (pos < end && IS_WHITESPACE(*pos)) pos++;
-
-        // Find value (up to semicolon or end), handling parentheses
-        const char *val_start = pos;
-        int paren_depth = 0;
-        while (pos < end) {
-            if (*pos == '(') paren_depth++;
-            else if (*pos == ')') paren_depth--;
-            else if (*pos == ';' && paren_depth == 0) break;
-            pos++;
-        }
-        const char *val_end = pos;
-        // Trim trailing whitespace
-        while (val_end > val_start && IS_WHITESPACE(*(val_end-1))) val_end--;
-
-        // Check for !important
-        int is_important = extract_important(val_start, &val_end) ? 1 : 0;
-        if (is_important) {
-            // Trim trailing whitespace again
-            while (val_end > val_start && IS_WHITESPACE(*(val_end-1))) val_end--;
-        }
+        // Standalone declaration-list input never contains braces, so only
+        // ':' terminates the property scan (stop_prop_scan_early=0).
+        struct declaration_span span;
+        if (!parse_one_declaration(&pos, end, 0, &span)) break;  // No colon found
 
         // Skip if value is empty
-        if (val_end > val_start) {
-            long prop_len = prop_end - prop_start;
-            long val_len = val_end - val_start;
+        if (span.val_end > span.val_start) {
+            long prop_len = span.prop_end - span.prop_start;
+            long val_len = span.val_end - span.val_start;
 
             // Create property string (US-ASCII, lowercased)
-            VALUE property = rb_usascii_str_new(prop_start, prop_len);
+            VALUE property = rb_usascii_str_new(span.prop_start, prop_len);
             // Lowercase it inline
             char *prop_ptr = RSTRING_PTR(property);
             for (long i = 0; i < prop_len; i++) {
@@ -1094,11 +1064,11 @@ static VALUE new_parse_declarations_string(const char *start, const char *end) {
                 }
             }
 
-            VALUE value = rb_utf8_str_new(val_start, val_len);
+            VALUE value = rb_utf8_str_new(span.val_start, val_len);
 
             // Create Declaration struct
             VALUE decl = rb_struct_new(cDeclaration,
-                property, value, is_important ? Qtrue : Qfalse);
+                property, value, span.is_important ? Qtrue : Qfalse);
 
             rb_ary_push(declarations, decl);
         }

@@ -289,6 +289,28 @@ class TestCssNesting < Minitest::Test
     assert_has_property({ padding: '5px' }, child_rule)
   end
 
+  def test_declaration_value_with_semicolon_in_url_alongside_nesting
+    css = <<~CSS
+      .parent {
+        & .child {
+          color: red;
+        }
+        background: url(data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=);
+      }
+    CSS
+
+    @sheet.add_block(css)
+
+    parent_rule = @sheet.with_selector('.parent').first
+
+    assert parent_rule, 'Should have .parent rule'
+
+    assert_has_property(
+      { background: 'url(data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=)' },
+      parent_rule
+    )
+  end
+
   # Combinators with implicit nesting
   def test_combinators_with_implicit_nesting
     css = <<~CSS

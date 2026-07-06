@@ -45,6 +45,24 @@ class TestImportStatement < Minitest::Test
     assert_equal 'screen and (max-width: 768px)', import.media
   end
 
+  def test_import_statement_media_query_conditions_excludes_and_keyword
+    # import.media is the raw, unparsed text (asserted above) - this checks
+    # the structured MediaQuery built from it, which is what gets combined
+    # with an imported file's own @media context on resolution. The "and"
+    # keyword between type and conditions must be stripped, same as a plain
+    # @media block, or combining it with another condition later would
+    # produce "and (max-width: 768px) and (...)" instead of
+    # "(max-width: 768px) and (...)".
+    css = '@import "mobile.css" screen and (max-width: 768px);'
+    sheet = Cataract::Stylesheet.parse(css)
+
+    import = sheet.imports[0]
+    mq = sheet.media_queries[import.media_query_id]
+
+    assert_equal :screen, mq.type
+    assert_equal '(max-width: 768px)', mq.conditions
+  end
+
   def test_import_statement_with_simple_media_type
     css = '@import "print.css" print;'
     sheet = Cataract::Stylesheet.parse(css)

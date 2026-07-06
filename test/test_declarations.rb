@@ -341,6 +341,25 @@ class TestDeclarations < Minitest::Test
     assert_equal 'url(data:image/png;base64,abc123)', decl['background']
   end
 
+  def test_string_constructor_tracks_paren_depth_around_semicolons
+    # Cataract.parse_declarations (which backs this string constructor) is
+    # currently C-extension-only.
+    # Remove this guard once that's implemented.
+    skip 'Cataract.parse_declarations not yet implemented for pure Ruby' if ENV['CATARACT_PURE']
+
+    # Unlike test_url_with_special_chars above (which uses the hash setter and
+    # never touches the C parser), constructing from a declaration-block
+    # string exercises the string parser directly - the embedded ';' inside
+    # url(...) must not be treated as a declaration terminator, and parsing
+    # must still pick up the next declaration afterward.
+    decl = Cataract::Declarations.new(
+      'background: url(data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=); color: red'
+    )
+
+    assert_equal 'url(data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=)', decl['background']
+    assert_equal 'red', decl['color']
+  end
+
   def test_escaped_quotes_in_string
     # Escaped quotes inside quoted strings
     decl = Cataract::Declarations.new

@@ -124,6 +124,84 @@ static inline int extract_important(const char *val_start, const char **val_end)
     return 1;
 }
 
+// Property/value/important spans found by parse_one_declaration(), in terms
+// of offsets into the original CSS buffer - callers build whatever VALUEs
+// (Declaration structs, error messages, etc.) they need from these.
+struct declaration_span {
+    const char *prop_start;
+    const char *prop_end;   // trimmed
+    const char *val_start;
+    const char *val_end;    // trimmed; excludes a trailing '!important' marker
+    int is_important;
+};
+
+// Scans one "prop: value" declaration starting at *pos_ptr, stopping at
+// `end` (never reads past it). On success, fills `span`, advances *pos_ptr
+// past the terminating ';' (leaving it at a '}' or `end` if there wasn't
+// one), and returns 1. On failure - no ':' found before a stop character -
+// *pos_ptr is left at the stop character (or `end`) and 0 is returned,
+// leaving recovery (skip-to-semicolon, raise, etc.) to the caller, since
+// that differs by call site.
+//
+// stop_prop_scan_early: if true, ';' and '{' also terminate the property-name
+// scan (used by the two block-oriented parsers, so a missing colon is
+// detected without scanning past the declaration's boundary); if false,
+// only ':' terminates it (used by the standalone declaration-list parser,
+// whose input never contains braces).
+//
+// The value scan always tracks paren depth (so a ';' inside url(...) or
+// rgba(...) doesn't end the value early) and always stops at an unguarded
+// '}', which is harmless for callers whose `end` never contains one.
+static inline int parse_one_declaration(const char **pos_ptr, const char *end,
+                                         int stop_prop_scan_early,
+                                         struct declaration_span *span) {
+    const char *pos = *pos_ptr;
+    const char *prop_start = pos;
+
+    if (stop_prop_scan_early) {
+        while (pos < end && *pos != ':' && *pos != ';' && *pos != '{') pos++;
+    } else {
+        while (pos < end && *pos != ':') pos++;
+    }
+
+    if (pos >= end || *pos != ':') {
+        *pos_ptr = pos;
+        return 0;
+    }
+
+    const char *prop_end = pos;
+    trim_trailing(prop_start, &prop_end);
+    trim_leading(&prop_start, prop_end);
+
+    pos++;  // Skip ':'
+    while (pos < end && IS_WHITESPACE(*pos)) pos++;
+
+    const char *val_start = pos;
+    int paren_depth = 0;
+    while (pos < end && *pos != '}') {
+        if (*pos == '(') paren_depth++;
+        else if (*pos == ')') paren_depth--;
+        else if (*pos == ';' && paren_depth == 0) break;
+        pos++;
+    }
+    const char *val_end = pos;
+    trim_trailing(val_start, &val_end);
+
+    int is_important = extract_important(val_start, &val_end) ? 1 : 0;
+    trim_trailing(val_start, &val_end);
+
+    if (pos < end && *pos == ';') pos++;
+
+    span->prop_start = prop_start;
+    span->prop_end = prop_end;
+    span->val_start = val_start;
+    span->val_end = val_end;
+    span->is_important = is_important;
+
+    *pos_ptr = pos;
+    return 1;
+}
+
 // Strip whitespace from both ends and return new string
 static inline VALUE strip_string(const char *str, long len) {
     const char *start = str;
