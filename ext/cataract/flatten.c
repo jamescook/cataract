@@ -51,6 +51,49 @@ static struct shorthand_mapping SHORTHAND_MAPPINGS[] = {
     {NULL, 0, Qnil, NULL, Qnil, NULL, Qnil, NULL, Qnil, NULL, Qnil, NULL} // Sentinel to mark end of array
 };
 
+/*
+ * Family shorthand mapping: for shorthands whose longhand components aren't
+ * "all N required" like the 4-sided shorthands above, but a mix of required
+ * and optional candidates - border only requires border-style (width/color
+ * optional); font requires font-size and font-family (4 others optional);
+ * list-style and background don't require any specific candidate, just a
+ * minimum count of any 2 present.
+ *
+ * Candidates must be listed with any REQUIRED ones first: the recreation
+ * logic uses "first present candidate in this order" as the source of
+ * source_order/specificity/importance for the resulting shorthand, which is
+ * always the first required candidate when there is one (border-style for
+ * border, font-size for font) or the first present optional candidate
+ * otherwise (matching what list-style/background use) - see
+ * try_recreate_shorthand_family.
+ */
+#define MAX_SHORTHAND_FAMILY_CANDIDATES 6
+
+struct shorthand_family_mapping {
+    VALUE shorthand_name_val;                              // Cached Ruby string for the shorthand property name
+    VALUE candidate_vals[MAX_SHORTHAND_FAMILY_CANDIDATES]; // Cached candidate longhand property names, populated in init_flatten_constants()
+    int num_candidates;
+    int num_required;  // First `num_required` candidates are mandatory; 0 means "optional-only" (see min_present)
+    int min_present;    // Only checked when num_required == 0: minimum count of ANY candidates that must be present
+    VALUE (*creator_func)(VALUE, VALUE);
+};
+
+// Order matches the original inline recreation blocks (border, list-style,
+// font, background) - properties_hash is a Ruby Hash, whose iteration order
+// (and therefore the final declaration output order) follows insertion
+// order, so this table's order is observable behavior, not just style.
+static struct shorthand_family_mapping SHORTHAND_FAMILY_MAPPINGS[] = {
+    // border: only border-style is required; border-width/border-color are optional
+    { Qnil, { Qnil, Qnil, Qnil, Qnil, Qnil, Qnil }, 3, 1, 0, cataract_create_border_shorthand },
+    // list-style: none individually required, but at least 2 of the 3 must be present
+    { Qnil, { Qnil, Qnil, Qnil, Qnil, Qnil, Qnil }, 3, 0, 2, cataract_create_list_style_shorthand },
+    // font: font-size and font-family are both required; the rest are optional
+    { Qnil, { Qnil, Qnil, Qnil, Qnil, Qnil, Qnil }, 6, 2, 0, cataract_create_font_shorthand },
+    // background: none individually required, but at least 2 of the 5 must be present
+    { Qnil, { Qnil, Qnil, Qnil, Qnil, Qnil, Qnil }, 5, 0, 2, cataract_create_background_shorthand },
+};
+#define NUM_SHORTHAND_FAMILIES (sizeof(SHORTHAND_FAMILY_MAPPINGS) / sizeof(SHORTHAND_FAMILY_MAPPINGS[0]))
+
 // Cached property name strings (frozen, never GC'd)
 // Initialized in init_flatten_constants() at module load time
 static VALUE str_margin = Qnil;
@@ -260,6 +303,33 @@ void init_flatten_constants(void) {
     SHORTHAND_MAPPINGS[4].prop_right_val = str_border_right_color;
     SHORTHAND_MAPPINGS[4].prop_bottom_val = str_border_bottom_color;
     SHORTHAND_MAPPINGS[4].prop_left_val = str_border_left_color;
+
+    // Populate the family shorthand mapping table. Candidate order matches
+    // what each original inline block checked (required candidates first).
+    SHORTHAND_FAMILY_MAPPINGS[0].shorthand_name_val = str_border;
+    SHORTHAND_FAMILY_MAPPINGS[0].candidate_vals[0] = str_border_style;
+    SHORTHAND_FAMILY_MAPPINGS[0].candidate_vals[1] = str_border_width;
+    SHORTHAND_FAMILY_MAPPINGS[0].candidate_vals[2] = str_border_color;
+
+    SHORTHAND_FAMILY_MAPPINGS[1].shorthand_name_val = str_list_style;
+    SHORTHAND_FAMILY_MAPPINGS[1].candidate_vals[0] = str_list_style_type;
+    SHORTHAND_FAMILY_MAPPINGS[1].candidate_vals[1] = str_list_style_position;
+    SHORTHAND_FAMILY_MAPPINGS[1].candidate_vals[2] = str_list_style_image;
+
+    SHORTHAND_FAMILY_MAPPINGS[2].shorthand_name_val = str_font;
+    SHORTHAND_FAMILY_MAPPINGS[2].candidate_vals[0] = str_font_size;
+    SHORTHAND_FAMILY_MAPPINGS[2].candidate_vals[1] = str_font_family;
+    SHORTHAND_FAMILY_MAPPINGS[2].candidate_vals[2] = str_font_style;
+    SHORTHAND_FAMILY_MAPPINGS[2].candidate_vals[3] = str_font_variant;
+    SHORTHAND_FAMILY_MAPPINGS[2].candidate_vals[4] = str_font_weight;
+    SHORTHAND_FAMILY_MAPPINGS[2].candidate_vals[5] = str_line_height;
+
+    SHORTHAND_FAMILY_MAPPINGS[3].shorthand_name_val = str_background;
+    SHORTHAND_FAMILY_MAPPINGS[3].candidate_vals[0] = str_background_color;
+    SHORTHAND_FAMILY_MAPPINGS[3].candidate_vals[1] = str_background_image;
+    SHORTHAND_FAMILY_MAPPINGS[3].candidate_vals[2] = str_background_repeat;
+    SHORTHAND_FAMILY_MAPPINGS[3].candidate_vals[3] = str_background_position;
+    SHORTHAND_FAMILY_MAPPINGS[3].candidate_vals[4] = str_background_attachment;
 }
 
 // Helper function: Try to recreate a shorthand property from its longhand components
@@ -315,6 +385,87 @@ static inline void try_recreate_shorthand(VALUE properties_hash, const struct sh
     rb_hash_delete(properties_hash, mapping->prop_left_val);
 
     DEBUG_PRINTF("      -> Recreated %s shorthand\n", mapping->shorthand_name);
+}
+
+// Helper function: Try to recreate a "family" shorthand (border, font,
+// list-style, background) from its longhand components. Unlike
+// try_recreate_shorthand above (always exactly 4 required sides), these
+// allow a mix of required and optional candidates - see
+// shorthand_family_mapping for the exact rules.
+static inline void try_recreate_shorthand_family(VALUE properties_hash, const struct shorthand_family_mapping *family) {
+    VALUE datas[MAX_SHORTHAND_FAMILY_CANDIDATES];
+    int present_count = 0;
+
+    for (int i = 0; i < family->num_candidates; i++) {
+        datas[i] = rb_hash_aref(properties_hash, family->candidate_vals[i]);
+        if (!NIL_P(datas[i])) present_count++;
+    }
+
+    // Required candidates (if any) must all be present
+    for (int i = 0; i < family->num_required; i++) {
+        if (NIL_P(datas[i])) return;
+    }
+
+    // If nothing is individually required, need a minimum count of ANY present
+    if (family->num_required == 0 && present_count < family->min_present) {
+        return;
+    }
+
+    // All present candidates must share the same !important flag
+    VALUE reference_imp = Qnil;
+    int have_reference = 0;
+    for (int i = 0; i < family->num_candidates; i++) {
+        if (NIL_P(datas[i])) continue;
+        VALUE imp = RARRAY_AREF(datas[i], PROP_IMPORTANT);
+        if (!have_reference) {
+            reference_imp = imp;
+            have_reference = 1;
+        } else if (RTEST(reference_imp) != RTEST(imp)) {
+            return;
+        }
+    }
+
+    // Build a hash of present property values for the creator function
+    VALUE props = rb_hash_new();
+    for (int i = 0; i < family->num_candidates; i++) {
+        if (!NIL_P(datas[i])) {
+            rb_hash_aset(props, family->candidate_vals[i], RARRAY_AREF(datas[i], PROP_VALUE));
+        }
+    }
+
+    VALUE shorthand_value = family->creator_func(Qnil, props);
+    if (NIL_P(shorthand_value)) {
+        return; // Creator decided not to create shorthand
+    }
+
+    // First present candidate (in declared order) supplies source_order/
+    // specificity/importance for the shorthand - always the first required
+    // candidate when there is one (border-style for border, font-size for
+    // font), otherwise the first present optional candidate, matching what
+    // each original inline block hardcoded.
+    int primary_idx = -1;
+    for (int i = 0; i < family->num_candidates; i++) {
+        if (!NIL_P(datas[i])) {
+            primary_idx = i;
+            break;
+        }
+    }
+
+    VALUE shorthand_data = rb_ary_new_capa(4);
+    rb_ary_push(shorthand_data, RARRAY_AREF(datas[primary_idx], PROP_SOURCE_ORDER));
+    rb_ary_push(shorthand_data, RARRAY_AREF(datas[primary_idx], PROP_SPECIFICITY));
+    rb_ary_push(shorthand_data, reference_imp);
+    rb_ary_push(shorthand_data, shorthand_value);
+
+    // Add shorthand and remove longhand properties
+    rb_hash_aset(properties_hash, family->shorthand_name_val, shorthand_data);
+    for (int i = 0; i < family->num_candidates; i++) {
+        if (!NIL_P(datas[i])) {
+            rb_hash_delete(properties_hash, family->candidate_vals[i]);
+        }
+    }
+
+    DEBUG_PRINTF("      -> Recreated family shorthand\n");
 }
 
 /*
@@ -722,204 +873,9 @@ static VALUE flatten_rules_for_selector(VALUE rules_array, VALUE rule_indices, V
         try_recreate_shorthand(properties_hash, mapping);
     }
 
-    // Try to recreate full border shorthand (if border-width, border-style, border-color present)
-    {
-        VALUE width = rb_hash_aref(properties_hash, STR_NEW_CSTR("border-width"));
-        VALUE style = rb_hash_aref(properties_hash, STR_NEW_CSTR("border-style"));
-        VALUE color = rb_hash_aref(properties_hash, STR_NEW_CSTR("border-color"));
-
-        // Need at least style (border shorthand requires style)
-        if (!NIL_P(style)) {
-            // Check all have same !important flag
-            VALUE style_imp = RARRAY_AREF(style, PROP_IMPORTANT);
-            int same_importance = 1;
-            if (!NIL_P(width)) same_importance = same_importance && (RTEST(style_imp) == RTEST(RARRAY_AREF(width, PROP_IMPORTANT)));
-            if (!NIL_P(color)) same_importance = same_importance && (RTEST(style_imp) == RTEST(RARRAY_AREF(color, PROP_IMPORTANT)));
-
-            if (same_importance) {
-                VALUE props = rb_hash_new();
-                if (!NIL_P(width)) rb_hash_aset(props, STR_NEW_CSTR("border-width"), RARRAY_AREF(width, PROP_VALUE));
-                rb_hash_aset(props, STR_NEW_CSTR("border-style"), RARRAY_AREF(style, PROP_VALUE));
-                if (!NIL_P(color)) rb_hash_aset(props, STR_NEW_CSTR("border-color"), RARRAY_AREF(color, PROP_VALUE));
-
-                VALUE shorthand_value = cataract_create_border_shorthand(Qnil, props);
-                if (!NIL_P(shorthand_value)) {
-                    VALUE shorthand_data = rb_ary_new_capa(4);
-                    rb_ary_push(shorthand_data, RARRAY_AREF(style, PROP_SOURCE_ORDER));
-                    rb_ary_push(shorthand_data, RARRAY_AREF(style, PROP_SPECIFICITY));
-                    rb_ary_push(shorthand_data, style_imp);
-                    rb_ary_push(shorthand_data, shorthand_value);
-                    rb_hash_aset(properties_hash, USASCII_STR("border"), shorthand_data);
-
-                    rb_hash_delete(properties_hash, STR_NEW_CSTR("border-width"));
-                    rb_hash_delete(properties_hash, STR_NEW_CSTR("border-style"));
-                    rb_hash_delete(properties_hash, STR_NEW_CSTR("border-color"));
-                    DEBUG_PRINTF("      -> Recreated border shorthand\n");
-                }
-            }
-        }
-    }
-
-    // Try to recreate list-style shorthand
-    {
-        VALUE type = rb_hash_aref(properties_hash, STR_NEW_CSTR("list-style-type"));
-        VALUE position = rb_hash_aref(properties_hash, STR_NEW_CSTR("list-style-position"));
-        VALUE image = rb_hash_aref(properties_hash, STR_NEW_CSTR("list-style-image"));
-
-        // Need at least 2 properties to create shorthand
-        // Single property should stay as longhand (semantic difference)
-        int list_count = 0;
-        if (!NIL_P(type)) list_count++;
-        if (!NIL_P(position)) list_count++;
-        if (!NIL_P(image)) list_count++;
-
-        if (list_count >= 2) {
-            // Check all have same !important flag
-            VALUE first_imp = Qnil;
-            if (!NIL_P(type)) first_imp = RARRAY_AREF(type, PROP_IMPORTANT);
-            else if (!NIL_P(position)) first_imp = RARRAY_AREF(position, PROP_IMPORTANT);
-            else if (!NIL_P(image)) first_imp = RARRAY_AREF(image, PROP_IMPORTANT);
-
-            int same_importance = 1;
-            if (!NIL_P(type)) same_importance = same_importance && (RTEST(first_imp) == RTEST(RARRAY_AREF(type, PROP_IMPORTANT)));
-            if (!NIL_P(position)) same_importance = same_importance && (RTEST(first_imp) == RTEST(RARRAY_AREF(position, PROP_IMPORTANT)));
-            if (!NIL_P(image)) same_importance = same_importance && (RTEST(first_imp) == RTEST(RARRAY_AREF(image, PROP_IMPORTANT)));
-
-            if (same_importance) {
-                VALUE props = rb_hash_new();
-                if (!NIL_P(type)) rb_hash_aset(props, STR_NEW_CSTR("list-style-type"), RARRAY_AREF(type, PROP_VALUE));
-                if (!NIL_P(position)) rb_hash_aset(props, STR_NEW_CSTR("list-style-position"), RARRAY_AREF(position, PROP_VALUE));
-                if (!NIL_P(image)) rb_hash_aset(props, STR_NEW_CSTR("list-style-image"), RARRAY_AREF(image, PROP_VALUE));
-
-                VALUE shorthand_value = cataract_create_list_style_shorthand(Qnil, props);
-                if (!NIL_P(shorthand_value)) {
-                    VALUE first_prop = !NIL_P(type) ? type : (!NIL_P(position) ? position : image);
-                    VALUE shorthand_data = rb_ary_new_capa(4);
-                    rb_ary_push(shorthand_data, RARRAY_AREF(first_prop, PROP_SOURCE_ORDER));
-                    rb_ary_push(shorthand_data, RARRAY_AREF(first_prop, PROP_SPECIFICITY));
-                    rb_ary_push(shorthand_data, first_imp);
-                    rb_ary_push(shorthand_data, shorthand_value);
-                    rb_hash_aset(properties_hash, USASCII_STR("list-style"), shorthand_data);
-
-                    rb_hash_delete(properties_hash, STR_NEW_CSTR("list-style-type"));
-                    rb_hash_delete(properties_hash, STR_NEW_CSTR("list-style-position"));
-                    rb_hash_delete(properties_hash, STR_NEW_CSTR("list-style-image"));
-                    DEBUG_PRINTF("      -> Recreated list-style shorthand\n");
-                }
-            }
-        }
-    }
-
-    // Try to recreate font shorthand (requires at least font-size and font-family)
-    {
-        VALUE size = rb_hash_aref(properties_hash, STR_NEW_CSTR("font-size"));
-        VALUE family = rb_hash_aref(properties_hash, STR_NEW_CSTR("font-family"));
-
-        if (!NIL_P(size) && !NIL_P(family)) {
-            VALUE style = rb_hash_aref(properties_hash, STR_NEW_CSTR("font-style"));
-            VALUE variant = rb_hash_aref(properties_hash, STR_NEW_CSTR("font-variant"));
-            VALUE weight = rb_hash_aref(properties_hash, STR_NEW_CSTR("font-weight"));
-            VALUE line_height = rb_hash_aref(properties_hash, STR_NEW_CSTR("line-height"));
-
-            // Check all font properties have same !important flag
-            VALUE size_imp = RARRAY_AREF(size, PROP_IMPORTANT);
-            VALUE family_imp = RARRAY_AREF(family, PROP_IMPORTANT);
-
-            int same_importance = (RTEST(size_imp) == RTEST(family_imp));
-            if (!NIL_P(style)) same_importance = same_importance && (RTEST(size_imp) == RTEST(RARRAY_AREF(style, PROP_IMPORTANT)));
-            if (!NIL_P(variant)) same_importance = same_importance && (RTEST(size_imp) == RTEST(RARRAY_AREF(variant, PROP_IMPORTANT)));
-            if (!NIL_P(weight)) same_importance = same_importance && (RTEST(size_imp) == RTEST(RARRAY_AREF(weight, PROP_IMPORTANT)));
-            if (!NIL_P(line_height)) same_importance = same_importance && (RTEST(size_imp) == RTEST(RARRAY_AREF(line_height, PROP_IMPORTANT)));
-
-            if (same_importance) {
-                VALUE props = rb_hash_new();
-                rb_hash_aset(props, STR_NEW_CSTR("font-size"), RARRAY_AREF(size, PROP_VALUE));
-                rb_hash_aset(props, STR_NEW_CSTR("font-family"), RARRAY_AREF(family, PROP_VALUE));
-                if (!NIL_P(style)) rb_hash_aset(props, STR_NEW_CSTR("font-style"), RARRAY_AREF(style, PROP_VALUE));
-                if (!NIL_P(variant)) rb_hash_aset(props, STR_NEW_CSTR("font-variant"), RARRAY_AREF(variant, PROP_VALUE));
-                if (!NIL_P(weight)) rb_hash_aset(props, STR_NEW_CSTR("font-weight"), RARRAY_AREF(weight, PROP_VALUE));
-                if (!NIL_P(line_height)) rb_hash_aset(props, STR_NEW_CSTR("line-height"), RARRAY_AREF(line_height, PROP_VALUE));
-
-                VALUE shorthand_value = cataract_create_font_shorthand(Qnil, props);
-                if (!NIL_P(shorthand_value)) {
-                    VALUE shorthand_data = rb_ary_new_capa(4);
-                    rb_ary_push(shorthand_data, RARRAY_AREF(size, PROP_SOURCE_ORDER));
-                    rb_ary_push(shorthand_data, RARRAY_AREF(size, PROP_SPECIFICITY));
-                    rb_ary_push(shorthand_data, size_imp);
-                    rb_ary_push(shorthand_data, shorthand_value);
-                    rb_hash_aset(properties_hash, USASCII_STR("font"), shorthand_data);
-
-                    rb_hash_delete(properties_hash, STR_NEW_CSTR("font-size"));
-                    rb_hash_delete(properties_hash, STR_NEW_CSTR("font-family"));
-                    rb_hash_delete(properties_hash, STR_NEW_CSTR("font-style"));
-                    rb_hash_delete(properties_hash, STR_NEW_CSTR("font-variant"));
-                    rb_hash_delete(properties_hash, STR_NEW_CSTR("font-weight"));
-                    rb_hash_delete(properties_hash, STR_NEW_CSTR("line-height"));
-                    DEBUG_PRINTF("      -> Recreated font shorthand\n");
-                }
-            }
-        }
-    }
-
-    // Try to recreate background shorthand (if 2+ properties present)
-    {
-        VALUE color = rb_hash_aref(properties_hash, STR_NEW_CSTR("background-color"));
-        VALUE image = rb_hash_aref(properties_hash, STR_NEW_CSTR("background-image"));
-        VALUE repeat = rb_hash_aref(properties_hash, STR_NEW_CSTR("background-repeat"));
-        VALUE position = rb_hash_aref(properties_hash, STR_NEW_CSTR("background-position"));
-        VALUE attachment = rb_hash_aref(properties_hash, STR_NEW_CSTR("background-attachment"));
-
-        int bg_count = 0;
-        if (!NIL_P(color)) bg_count++;
-        if (!NIL_P(image)) bg_count++;
-        if (!NIL_P(repeat)) bg_count++;
-        if (!NIL_P(position)) bg_count++;
-        if (!NIL_P(attachment)) bg_count++;
-
-        // Need at least 2 properties to create shorthand
-        if (bg_count >= 2) {
-            // Check all have same !important flag
-            VALUE first_imp = Qnil;
-            if (!NIL_P(color)) first_imp = RARRAY_AREF(color, PROP_IMPORTANT);
-            else if (!NIL_P(image)) first_imp = RARRAY_AREF(image, PROP_IMPORTANT);
-            else if (!NIL_P(repeat)) first_imp = RARRAY_AREF(repeat, PROP_IMPORTANT);
-            else if (!NIL_P(position)) first_imp = RARRAY_AREF(position, PROP_IMPORTANT);
-            else if (!NIL_P(attachment)) first_imp = RARRAY_AREF(attachment, PROP_IMPORTANT);
-
-            int same_importance = 1;
-            if (!NIL_P(color)) same_importance = same_importance && (RTEST(first_imp) == RTEST(RARRAY_AREF(color, PROP_IMPORTANT)));
-            if (!NIL_P(image)) same_importance = same_importance && (RTEST(first_imp) == RTEST(RARRAY_AREF(image, PROP_IMPORTANT)));
-            if (!NIL_P(repeat)) same_importance = same_importance && (RTEST(first_imp) == RTEST(RARRAY_AREF(repeat, PROP_IMPORTANT)));
-            if (!NIL_P(position)) same_importance = same_importance && (RTEST(first_imp) == RTEST(RARRAY_AREF(position, PROP_IMPORTANT)));
-            if (!NIL_P(attachment)) same_importance = same_importance && (RTEST(first_imp) == RTEST(RARRAY_AREF(attachment, PROP_IMPORTANT)));
-
-            if (same_importance) {
-                VALUE props = rb_hash_new();
-                if (!NIL_P(color)) rb_hash_aset(props, STR_NEW_CSTR("background-color"), RARRAY_AREF(color, PROP_VALUE));
-                if (!NIL_P(image)) rb_hash_aset(props, STR_NEW_CSTR("background-image"), RARRAY_AREF(image, PROP_VALUE));
-                if (!NIL_P(repeat)) rb_hash_aset(props, STR_NEW_CSTR("background-repeat"), RARRAY_AREF(repeat, PROP_VALUE));
-                if (!NIL_P(position)) rb_hash_aset(props, STR_NEW_CSTR("background-position"), RARRAY_AREF(position, PROP_VALUE));
-                if (!NIL_P(attachment)) rb_hash_aset(props, STR_NEW_CSTR("background-attachment"), RARRAY_AREF(attachment, PROP_VALUE));
-
-                VALUE shorthand_value = cataract_create_background_shorthand(Qnil, props);
-                if (!NIL_P(shorthand_value)) {
-                    VALUE first_prop = !NIL_P(color) ? color : (!NIL_P(image) ? image : (!NIL_P(repeat) ? repeat : (!NIL_P(position) ? position : attachment)));
-                    VALUE shorthand_data = rb_ary_new_capa(4);
-                    rb_ary_push(shorthand_data, RARRAY_AREF(first_prop, PROP_SOURCE_ORDER));
-                    rb_ary_push(shorthand_data, RARRAY_AREF(first_prop, PROP_SPECIFICITY));
-                    rb_ary_push(shorthand_data, first_imp);
-                    rb_ary_push(shorthand_data, shorthand_value);
-                    rb_hash_aset(properties_hash, USASCII_STR("background"), shorthand_data);
-
-                    rb_hash_delete(properties_hash, STR_NEW_CSTR("background-color"));
-                    rb_hash_delete(properties_hash, STR_NEW_CSTR("background-image"));
-                    rb_hash_delete(properties_hash, STR_NEW_CSTR("background-repeat"));
-                    rb_hash_delete(properties_hash, STR_NEW_CSTR("background-position"));
-                    rb_hash_delete(properties_hash, STR_NEW_CSTR("background-attachment"));
-                    DEBUG_PRINTF("      -> Recreated background shorthand\n");
-                }
-            }
-        }
+    // Try to recreate family shorthands (border, font, list-style, background) using the mapping table
+    for (size_t i = 0; i < NUM_SHORTHAND_FAMILIES; i++) {
+        try_recreate_shorthand_family(properties_hash, &SHORTHAND_FAMILY_MAPPINGS[i]);
     }
 
     // Build declarations array from properties_hash
@@ -1117,6 +1073,104 @@ static void update_selector_lists_for_divergence(VALUE merged_rules, VALUE selec
     DEBUG_PRINTF("\n=== End divergence tracking: %ld selector lists preserved ===\n\n", RHASH_SIZE(selector_lists));
 }
 
+// Build a map from rule_id -> media_query_id for all Rule (non-AtRule)
+// entries that have one set. Used to group rules by (selector, media)
+// instead of just selector, and later to remap the stylesheet's media_index
+// after flattening.
+//
+// @param out_input_media_index Output: the input Stylesheet's @media_index
+//   ivar (Qnil if input isn't a Stylesheet), needed by the caller for
+//   remap_media_index_callback
+static VALUE build_rule_media_map(VALUE input, VALUE rules_array, long num_rules, VALUE *out_input_media_index) {
+    VALUE rule_media_map = rb_hash_new();
+    *out_input_media_index = Qnil;
+
+    if (!rb_obj_is_kind_of(input, cStylesheet)) {
+        return rule_media_map;
+    }
+
+    *out_input_media_index = rb_ivar_get(input, id_ivar_media_index);
+
+    // Only process Rule objects, not AtRules (AtRules don't have media_query_id field at same offset)
+    for (long i = 0; i < num_rules; i++) {
+        VALUE rule = rb_ary_entry(rules_array, i);
+        if (!rb_obj_is_kind_of(rule, cAtRule)) {
+            VALUE media_query_id = rb_struct_aref(rule, INT2FIX(RULE_MEDIA_QUERY_ID));
+            if (!NIL_P(media_query_id)) {
+                VALUE rule_id = rb_struct_aref(rule, INT2FIX(RULE_ID));
+                rb_hash_aset(rule_media_map, rule_id, media_query_id);
+            }
+        }
+    }
+
+    return rule_media_map;
+}
+
+// Group rules by (selector, media) - not just selector - since rules with
+// the same selector but different media contexts must NOT be merged
+// together. AtRule entries (e.g. @keyframes, @font-face) have no
+// declarations to merge and can't be grouped this way at all, so they're
+// collected separately into passthrough_rules and passed through unchanged.
+//
+// @param passthrough_rules Output: empty array to populate with AtRule entries
+// @return Hash of [selector, media_context] => Array of rule indices
+static VALUE group_rules_by_selector_and_media(VALUE rules_array, long num_rules, VALUE rule_media_map, VALUE passthrough_rules) {
+    VALUE selector_groups = rb_hash_new();
+
+    for (long i = 0; i < num_rules; i++) {
+        VALUE rule = RARRAY_AREF(rules_array, i);
+
+        // Handle AtRule objects (@keyframes, @font-face, etc.) - pass through unchanged
+        // AtRule has 'content' (string) instead of 'declarations' (array)
+        if (rb_obj_is_kind_of(rule, cAtRule)) {
+            DEBUG_PRINTF("  [Rule %ld] PASSTHROUGH: AtRule (e.g., @keyframes, @font-face)\n", i);
+            rb_ary_push(passthrough_rules, rule);
+            continue;
+        }
+
+        VALUE declarations = rb_struct_aref(rule, INT2FIX(RULE_DECLARATIONS));
+        VALUE selector = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR));
+        VALUE rule_id_val = rb_struct_aref(rule, INT2FIX(RULE_ID));
+
+        // Skip empty rules (no declarations)
+        // This handles both empty containers and rules with no properties
+        if (RARRAY_LEN(declarations) == 0) {
+            DEBUG_PRINTF("  [Rule %ld] SKIP: selector='%s' (empty declarations)\n",
+                         i, RSTRING_PTR(selector));
+            continue;
+        }
+
+        // Note: We do NOT skip parent rules that have children!
+        // Per CSS spec, parent can have its own declarations AND nested rules.
+        // Example: .parent { color: red; .child { color: blue; } }
+        // Should output both .parent (color: red) and .parent .child (color: blue)
+        // The nesting is already flattened during parsing, so they have different selectors.
+
+        // Get media context for this rule (nil if not in media query)
+        VALUE media_context = rb_hash_aref(rule_media_map, rule_id_val);
+
+        // Build grouping key as [selector, media_context]
+        VALUE group_key = rb_ary_new3(2, selector, media_context);
+
+        DEBUG_PRINTF("  [Rule %ld] ADD: selector='%s', media=%s, %ld declarations\n",
+                     i, RSTRING_PTR(selector),
+                     NIL_P(media_context) ? "nil" : RSTRING_PTR(rb_inspect(media_context)),
+                     RARRAY_LEN(declarations));
+
+        VALUE group = rb_hash_aref(selector_groups, group_key);
+        if (NIL_P(group)) {
+            group = rb_ary_new();
+            rb_hash_aset(selector_groups, group_key, group);
+            DEBUG_PRINTF("    -> Created new selector+media group for '%s' + %s\n",
+                        RSTRING_PTR(selector),
+                        NIL_P(media_context) ? "nil" : RSTRING_PTR(rb_inspect(media_context)));
+        }
+        rb_ary_push(group, LONG2FIX(i));
+    }
+
+    return selector_groups;
+}
+
 // Flatten CSS rules by applying cascade rules
 // Input: Stylesheet object or CSS string
 // Output: Stylesheet with flattened declarations (cascade applied)
@@ -1139,13 +1193,6 @@ VALUE cataract_flatten(VALUE self, VALUE input) {
     }
 
     Check_Type(rules_array, T_ARRAY);
-
-    // Check if stylesheet has nesting (affects selector rollup)
-    int has_nesting = 0;
-    if (rb_obj_is_kind_of(input, cStylesheet)) {
-        VALUE has_nesting_ivar = rb_ivar_get(input, rb_intern("@_has_nesting"));
-        has_nesting = RTEST(has_nesting_ivar);
-    }
 
     long num_rules = RARRAY_LEN(rules_array);
     // Empty stylesheets are rare
@@ -1227,107 +1274,16 @@ VALUE cataract_flatten(VALUE self, VALUE input) {
      * ============================================================================
      */
 
-    // For nested CSS: identify parent rules (rules that have children)
-    // These should be skipped during flatten, even if they have declarations
-    // Use Ruby hash as a set: parent_id => true
-    VALUE parent_ids = Qnil;
-    if (has_nesting) {
-        DEBUG_PRINTF("\n=== FLATTEN: has_nesting=true, num_rules=%ld ===\n", num_rules);
-        parent_ids = rb_hash_new();
-        for (long i = 0; i < num_rules; i++) {
-            VALUE rule = RARRAY_AREF(rules_array, i);
-            VALUE parent_rule_id = rb_struct_aref(rule, INT2FIX(RULE_PARENT_RULE_ID));
-            DEBUG_PRINTF("  Rule %ld: selector='%s', rule_id=%d, parent_rule_id=%s\n",
-                         i,
-                         RSTRING_PTR(rb_struct_aref(rule, INT2FIX(RULE_SELECTOR))),
-                         FIX2INT(rb_struct_aref(rule, INT2FIX(RULE_ID))),
-                         NIL_P(parent_rule_id) ? "nil" : RSTRING_PTR(rb_inspect(parent_rule_id)));
-            if (!NIL_P(parent_rule_id)) {
-                // This rule has a parent, so mark that parent ID
-                rb_hash_aset(parent_ids, parent_rule_id, Qtrue);
-            }
-        }
-    }
-
     // Build rule_media_map: rule_id => media_query_id
     // This is used to group rules by (selector, media) instead of just selector
     VALUE input_media_index = Qnil;
-    VALUE rule_media_map = rb_hash_new();
-    if (rb_obj_is_kind_of(input, cStylesheet)) {
-        input_media_index = rb_ivar_get(input, id_ivar_media_index);
-
-        // Build map from rules' media_query_id field
-        // Only process Rule objects, not AtRules (AtRules don't have media_query_id field at same offset)
-        for (long i = 0; i < num_rules; i++) {
-            VALUE rule = rb_ary_entry(rules_array, i);
-            if (!rb_obj_is_kind_of(rule, cAtRule)) {
-                VALUE media_query_id = rb_struct_aref(rule, INT2FIX(RULE_MEDIA_QUERY_ID));
-                if (!NIL_P(media_query_id)) {
-                    VALUE rule_id = rb_struct_aref(rule, INT2FIX(RULE_ID));
-                    // Store media_query_id as the grouping key
-                    rb_hash_aset(rule_media_map, rule_id, media_query_id);
-                }
-            }
-        }
-    }
+    VALUE rule_media_map = build_rule_media_map(input, rules_array, num_rules, &input_media_index);
 
     // Group rules by (selector, media) instead of just selector
     // Rules with same selector but different media contexts should NOT be merged
-    // selector_and_media_key => [rule indices]
-    DEBUG_PRINTF("\n=== Building selector+media groups (has_nesting=%d) ===\n", has_nesting);
-    VALUE selector_groups = rb_hash_new();
+    DEBUG_PRINTF("\n=== Building selector+media groups ===\n");
     VALUE passthrough_rules = rb_ary_new(); // AtRules to pass through unchanged
-
-    for (long i = 0; i < num_rules; i++) {
-        VALUE rule = RARRAY_AREF(rules_array, i);
-
-        // Handle AtRule objects (@keyframes, @font-face, etc.) - pass through unchanged
-        // AtRule has 'content' (string) instead of 'declarations' (array)
-        if (rb_obj_is_kind_of(rule, cAtRule)) {
-            DEBUG_PRINTF("  [Rule %ld] PASSTHROUGH: AtRule (e.g., @keyframes, @font-face)\n", i);
-            rb_ary_push(passthrough_rules, rule);
-            continue;
-        }
-
-        VALUE declarations = rb_struct_aref(rule, INT2FIX(RULE_DECLARATIONS));
-        VALUE selector = rb_struct_aref(rule, INT2FIX(RULE_SELECTOR));
-        VALUE rule_id_val = rb_struct_aref(rule, INT2FIX(RULE_ID));
-
-        // Skip empty rules (no declarations)
-        // This handles both empty containers and rules with no properties
-        if (RARRAY_LEN(declarations) == 0) {
-            DEBUG_PRINTF("  [Rule %ld] SKIP: selector='%s' (empty declarations)\n",
-                         i, RSTRING_PTR(selector));
-            continue;
-        }
-
-        // Note: We do NOT skip parent rules that have children!
-        // Per CSS spec, parent can have its own declarations AND nested rules.
-        // Example: .parent { color: red; .child { color: blue; } }
-        // Should output both .parent (color: red) and .parent .child (color: blue)
-        // The nesting is already flattened during parsing, so they have different selectors.
-
-        // Get media context for this rule (nil if not in media query)
-        VALUE media_context = rb_hash_aref(rule_media_map, rule_id_val);
-
-        // Build grouping key as [selector, media_context]
-        VALUE group_key = rb_ary_new3(2, selector, media_context);
-
-        DEBUG_PRINTF("  [Rule %ld] ADD: selector='%s', media=%s, %ld declarations\n",
-                     i, RSTRING_PTR(selector),
-                     NIL_P(media_context) ? "nil" : RSTRING_PTR(rb_inspect(media_context)),
-                     RARRAY_LEN(declarations));
-
-        VALUE group = rb_hash_aref(selector_groups, group_key);
-        if (NIL_P(group)) {
-            group = rb_ary_new();
-            rb_hash_aset(selector_groups, group_key, group);
-            DEBUG_PRINTF("    -> Created new selector+media group for '%s' + %s\n",
-                        RSTRING_PTR(selector),
-                        NIL_P(media_context) ? "nil" : RSTRING_PTR(rb_inspect(media_context)));
-        }
-        rb_ary_push(group, LONG2FIX(i));
-    }
+    VALUE selector_groups = group_rules_by_selector_and_media(rules_array, num_rules, rule_media_map, passthrough_rules);
     DEBUG_PRINTF("=== Total selector+media groups: %ld ===\n\n", RHASH_SIZE(selector_groups));
 
     // ALWAYS group by selector and keep them separate
