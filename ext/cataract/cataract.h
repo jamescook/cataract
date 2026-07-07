@@ -273,16 +273,16 @@ VALUE calculate_specificity(VALUE self, VALUE selector);
 
 // Shorthand expander (shorthand_expander_new.c)
 VALUE cataract_split_value(VALUE self, VALUE value);
-VALUE cataract_expand_margin(VALUE self, VALUE value);
-VALUE cataract_expand_padding(VALUE self, VALUE value);
-VALUE cataract_expand_border(VALUE self, VALUE value);
-VALUE cataract_expand_border_color(VALUE self, VALUE value);
-VALUE cataract_expand_border_style(VALUE self, VALUE value);
-VALUE cataract_expand_border_width(VALUE self, VALUE value);
-VALUE cataract_expand_border_side(VALUE self, VALUE side, VALUE value);
-VALUE cataract_expand_font(VALUE self, VALUE value);
-VALUE cataract_expand_list_style(VALUE self, VALUE value);
-VALUE cataract_expand_background(VALUE self, VALUE value);
+VALUE cataract_expand_margin(VALUE self, VALUE value, VALUE important);
+VALUE cataract_expand_padding(VALUE self, VALUE value, VALUE important);
+VALUE cataract_expand_border(VALUE self, VALUE value, VALUE important);
+VALUE cataract_expand_border_color(VALUE self, VALUE value, VALUE important);
+VALUE cataract_expand_border_style(VALUE self, VALUE value, VALUE important);
+VALUE cataract_expand_border_width(VALUE self, VALUE value, VALUE important);
+VALUE cataract_expand_border_side(VALUE self, VALUE side, VALUE value, VALUE important);
+VALUE cataract_expand_font(VALUE self, VALUE value, VALUE important);
+VALUE cataract_expand_list_style(VALUE self, VALUE value, VALUE important);
+VALUE cataract_expand_background(VALUE self, VALUE value, VALUE important);
 VALUE cataract_expand_shorthand(VALUE self, VALUE decl);
 VALUE cataract_create_margin_shorthand(VALUE self, VALUE properties);
 VALUE cataract_create_padding_shorthand(VALUE self, VALUE properties);

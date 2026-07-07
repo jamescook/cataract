@@ -791,44 +791,49 @@ static VALUE flatten_rules_for_selector(VALUE rules_array, VALUE rule_indices, V
             if (first_char == 'm' || first_char == 'p' || first_char == 'b' ||
                 first_char == 'f' || first_char == 'l') {
                 // Potentially a shorthand - check specific property names
+                //
+                // Importance is always passed as Qfalse here: the expanded
+                // declarations' own `important` field is never read below
+                // (see expand_data.is_important) - actual importance comes
+                // from the original, un-expanded declaration instead.
                 if (strcmp(prop_cstr, "margin") == 0) {
-                    expanded = cataract_expand_margin(Qnil, value);
+                    expanded = cataract_expand_margin(Qnil, value, Qfalse);
                     DEBUG_PRINTF("          -> Expanding margin shorthand (%ld longhands)\n", RARRAY_LEN(expanded));
                 } else if (strcmp(prop_cstr, "padding") == 0) {
-                    expanded = cataract_expand_padding(Qnil, value);
+                    expanded = cataract_expand_padding(Qnil, value, Qfalse);
                     DEBUG_PRINTF("          -> Expanding padding shorthand (%ld longhands)\n", RARRAY_LEN(expanded));
                 } else if (strcmp(prop_cstr, "background") == 0) {
-                    expanded = cataract_expand_background(Qnil, value);
+                    expanded = cataract_expand_background(Qnil, value, Qfalse);
                     DEBUG_PRINTF("          -> Expanding background shorthand (%ld longhands)\n", RARRAY_LEN(expanded));
                 } else if (strcmp(prop_cstr, "font") == 0) {
-                    expanded = cataract_expand_font(Qnil, value);
+                    expanded = cataract_expand_font(Qnil, value, Qfalse);
                     DEBUG_PRINTF("          -> Expanding font shorthand (%ld longhands)\n", RARRAY_LEN(expanded));
                 } else if (strcmp(prop_cstr, "border") == 0) {
-                    expanded = cataract_expand_border(Qnil, value);
+                    expanded = cataract_expand_border(Qnil, value, Qfalse);
                     DEBUG_PRINTF("          -> Expanding border shorthand (%ld longhands)\n", RARRAY_LEN(expanded));
                 } else if (strcmp(prop_cstr, "border-color") == 0) {
-                    expanded = cataract_expand_border_color(Qnil, value);
+                    expanded = cataract_expand_border_color(Qnil, value, Qfalse);
                     DEBUG_PRINTF("          -> Expanding border-color shorthand (%ld longhands)\n", RARRAY_LEN(expanded));
                 } else if (strcmp(prop_cstr, "border-style") == 0) {
-                    expanded = cataract_expand_border_style(Qnil, value);
+                    expanded = cataract_expand_border_style(Qnil, value, Qfalse);
                     DEBUG_PRINTF("          -> Expanding border-style shorthand (%ld longhands)\n", RARRAY_LEN(expanded));
                 } else if (strcmp(prop_cstr, "border-width") == 0) {
-                    expanded = cataract_expand_border_width(Qnil, value);
+                    expanded = cataract_expand_border_width(Qnil, value, Qfalse);
                     DEBUG_PRINTF("          -> Expanding border-width shorthand (%ld longhands)\n", RARRAY_LEN(expanded));
                 } else if (strcmp(prop_cstr, "list-style") == 0) {
-                    expanded = cataract_expand_list_style(Qnil, value);
+                    expanded = cataract_expand_list_style(Qnil, value, Qfalse);
                     DEBUG_PRINTF("          -> Expanding list-style shorthand (%ld longhands)\n", RARRAY_LEN(expanded));
                 } else if (strcmp(prop_cstr, "border-top") == 0) {
-                    expanded = cataract_expand_border_side(Qnil, STR_NEW_CSTR("top"), value);
+                    expanded = cataract_expand_border_side(Qnil, STR_NEW_CSTR("top"), value, Qfalse);
                     DEBUG_PRINTF("          -> Expanding border-top shorthand (%ld longhands)\n", RARRAY_LEN(expanded));
                 } else if (strcmp(prop_cstr, "border-right") == 0) {
-                    expanded = cataract_expand_border_side(Qnil, STR_NEW_CSTR("right"), value);
+                    expanded = cataract_expand_border_side(Qnil, STR_NEW_CSTR("right"), value, Qfalse);
                     DEBUG_PRINTF("          -> Expanding border-right shorthand (%ld longhands)\n", RARRAY_LEN(expanded));
                 } else if (strcmp(prop_cstr, "border-bottom") == 0) {
-                    expanded = cataract_expand_border_side(Qnil, STR_NEW_CSTR("bottom"), value);
+                    expanded = cataract_expand_border_side(Qnil, STR_NEW_CSTR("bottom"), value, Qfalse);
                     DEBUG_PRINTF("          -> Expanding border-bottom shorthand (%ld longhands)\n", RARRAY_LEN(expanded));
                 } else if (strcmp(prop_cstr, "border-left") == 0) {
-                    expanded = cataract_expand_border_side(Qnil, STR_NEW_CSTR("left"), value);
+                    expanded = cataract_expand_border_side(Qnil, STR_NEW_CSTR("left"), value, Qfalse);
                     DEBUG_PRINTF("          -> Expanding border-left shorthand (%ld longhands)\n", RARRAY_LEN(expanded));
                 }
             }

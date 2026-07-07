@@ -72,45 +72,45 @@ static VALUE expand_dimensions(VALUE parts, const char *property, const char *su
  * Expand margin shorthand: "10px 20px 30px 40px"
  * Returns array of Declaration structs
  */
-VALUE cataract_expand_margin(VALUE self, VALUE value) {
+VALUE cataract_expand_margin(VALUE self, VALUE value, VALUE important) {
     VALUE parts = cataract_split_value(self, value);
-    return expand_dimensions(parts, "margin", NULL, Qfalse);
+    return expand_dimensions(parts, "margin", NULL, important);
 }
 
 /*
  * Expand padding shorthand: "10px 20px 30px 40px"
  * Returns array of Declaration structs
  */
-VALUE cataract_expand_padding(VALUE self, VALUE value) {
+VALUE cataract_expand_padding(VALUE self, VALUE value, VALUE important) {
     VALUE parts = cataract_split_value(self, value);
-    return expand_dimensions(parts, "padding", NULL, Qfalse);
+    return expand_dimensions(parts, "padding", NULL, important);
 }
 
 /*
  * Expand border-color shorthand: "red green blue yellow"
  * Returns array of Declaration structs
  */
-VALUE cataract_expand_border_color(VALUE self, VALUE value) {
+VALUE cataract_expand_border_color(VALUE self, VALUE value, VALUE important) {
     VALUE parts = cataract_split_value(self, value);
-    return expand_dimensions(parts, "border", "color", Qfalse);
+    return expand_dimensions(parts, "border", "color", important);
 }
 
 /*
  * Expand border-style shorthand: "solid dashed dotted double"
  * Returns array of Declaration structs
  */
-VALUE cataract_expand_border_style(VALUE self, VALUE value) {
+VALUE cataract_expand_border_style(VALUE self, VALUE value, VALUE important) {
     VALUE parts = cataract_split_value(self, value);
-    return expand_dimensions(parts, "border", "style", Qfalse);
+    return expand_dimensions(parts, "border", "style", important);
 }
 
 /*
  * Expand border-width shorthand: "1px 2px 3px 4px"
  * Returns array of Declaration structs
  */
-VALUE cataract_expand_border_width(VALUE self, VALUE value) {
+VALUE cataract_expand_border_width(VALUE self, VALUE value, VALUE important) {
     VALUE parts = cataract_split_value(self, value);
-    return expand_dimensions(parts, "border", "width", Qfalse);
+    return expand_dimensions(parts, "border", "width", important);
 }
 
 /*
@@ -140,7 +140,7 @@ static int is_border_style(const char *str) {
  * Expand border shorthand: "1px solid red"
  * Returns array of Declaration structs (up to 12: 4 sides × 3 properties)
  */
-VALUE cataract_expand_border(VALUE self, VALUE value) {
+VALUE cataract_expand_border(VALUE self, VALUE value, VALUE important) {
     VALUE parts = cataract_split_value(self, value);
     long len = RARRAY_LEN(parts);
 
@@ -169,19 +169,19 @@ VALUE cataract_expand_border(VALUE self, VALUE value) {
         if (width != Qnil) {
             char prop[64];
             snprintf(prop, sizeof(prop), "border-%s-width", sides[i]);
-            VALUE decl = rb_struct_new(cDeclaration, STR_NEW_CSTR(prop), width, Qfalse);
+            VALUE decl = rb_struct_new(cDeclaration, STR_NEW_CSTR(prop), width, important);
             rb_ary_push(result, decl);
         }
         if (style != Qnil) {
             char prop[64];
             snprintf(prop, sizeof(prop), "border-%s-style", sides[i]);
-            VALUE decl = rb_struct_new(cDeclaration, STR_NEW_CSTR(prop), style, Qfalse);
+            VALUE decl = rb_struct_new(cDeclaration, STR_NEW_CSTR(prop), style, important);
             rb_ary_push(result, decl);
         }
         if (color != Qnil) {
             char prop[64];
             snprintf(prop, sizeof(prop), "border-%s-color", sides[i]);
-            VALUE decl = rb_struct_new(cDeclaration, STR_NEW_CSTR(prop), color, Qfalse);
+            VALUE decl = rb_struct_new(cDeclaration, STR_NEW_CSTR(prop), color, important);
             rb_ary_push(result, decl);
         }
     }
@@ -193,7 +193,7 @@ VALUE cataract_expand_border(VALUE self, VALUE value) {
  * Expand border-{side} shorthand: "2px dashed blue"
  * Returns array of Declaration structs (up to 3: width, style, color)
  */
-VALUE cataract_expand_border_side(VALUE self, VALUE side, VALUE value) {
+VALUE cataract_expand_border_side(VALUE self, VALUE side, VALUE value, VALUE important) {
     VALUE parts = cataract_split_value(self, value);
     long len = RARRAY_LEN(parts);
     const char *side_str = StringValueCStr(side);
@@ -234,19 +234,19 @@ VALUE cataract_expand_border_side(VALUE self, VALUE side, VALUE value) {
     if (width != Qnil) {
         char prop[64];
         snprintf(prop, sizeof(prop), "border-%s-width", side_str);
-        VALUE decl = rb_struct_new(cDeclaration, STR_NEW_CSTR(prop), width, Qfalse);
+        VALUE decl = rb_struct_new(cDeclaration, STR_NEW_CSTR(prop), width, important);
         rb_ary_push(result, decl);
     }
     if (style != Qnil) {
         char prop[64];
         snprintf(prop, sizeof(prop), "border-%s-style", side_str);
-        VALUE decl = rb_struct_new(cDeclaration, STR_NEW_CSTR(prop), style, Qfalse);
+        VALUE decl = rb_struct_new(cDeclaration, STR_NEW_CSTR(prop), style, important);
         rb_ary_push(result, decl);
     }
     if (color != Qnil) {
         char prop[64];
         snprintf(prop, sizeof(prop), "border-%s-color", side_str);
-        VALUE decl = rb_struct_new(cDeclaration, STR_NEW_CSTR(prop), color, Qfalse);
+        VALUE decl = rb_struct_new(cDeclaration, STR_NEW_CSTR(prop), color, important);
         rb_ary_push(result, decl);
     }
 
@@ -258,7 +258,7 @@ VALUE cataract_expand_border_side(VALUE self, VALUE side, VALUE value) {
  * Font syntax: [style] [variant] [weight] [size]/[line-height] [family]
  * Only size and family are required
  */
-VALUE cataract_expand_font(VALUE self, VALUE value) {
+VALUE cataract_expand_font(VALUE self, VALUE value, VALUE important) {
     // Font is complex - need to handle / separator for line-height
     // Split on / first to separate size from line-height
     const char *str = StringValueCStr(value);
@@ -398,15 +398,15 @@ VALUE cataract_expand_font(VALUE self, VALUE value) {
 
     // Create array of Declaration structs
     VALUE result = rb_ary_new_capa(6);
-    rb_ary_push(result, rb_struct_new(cDeclaration, STR_NEW_CSTR("font-style"), style, Qfalse));
-    rb_ary_push(result, rb_struct_new(cDeclaration, STR_NEW_CSTR("font-variant"), variant, Qfalse));
-    rb_ary_push(result, rb_struct_new(cDeclaration, STR_NEW_CSTR("font-weight"), weight, Qfalse));
+    rb_ary_push(result, rb_struct_new(cDeclaration, STR_NEW_CSTR("font-style"), style, important));
+    rb_ary_push(result, rb_struct_new(cDeclaration, STR_NEW_CSTR("font-variant"), variant, important));
+    rb_ary_push(result, rb_struct_new(cDeclaration, STR_NEW_CSTR("font-weight"), weight, important));
     if (size != Qnil) {
-        rb_ary_push(result, rb_struct_new(cDeclaration, STR_NEW_CSTR("font-size"), size, Qfalse));
+        rb_ary_push(result, rb_struct_new(cDeclaration, STR_NEW_CSTR("font-size"), size, important));
     }
-    rb_ary_push(result, rb_struct_new(cDeclaration, STR_NEW_CSTR("line-height"), line_height, Qfalse));
+    rb_ary_push(result, rb_struct_new(cDeclaration, STR_NEW_CSTR("line-height"), line_height, important));
     if (family != Qnil) {
-        rb_ary_push(result, rb_struct_new(cDeclaration, STR_NEW_CSTR("font-family"), family, Qfalse));
+        rb_ary_push(result, rb_struct_new(cDeclaration, STR_NEW_CSTR("font-family"), family, important));
     }
 
     return result;
@@ -415,7 +415,7 @@ VALUE cataract_expand_font(VALUE self, VALUE value) {
 /*
  * Expand list-style shorthand: "square inside"
  */
-VALUE cataract_expand_list_style(VALUE self, VALUE value) {
+VALUE cataract_expand_list_style(VALUE self, VALUE value, VALUE important) {
     VALUE parts = cataract_split_value(self, value);
     long len = RARRAY_LEN(parts);
 
@@ -459,13 +459,13 @@ VALUE cataract_expand_list_style(VALUE self, VALUE value) {
     // Create array of Declaration structs
     VALUE result = rb_ary_new_capa(3);
     if (type != Qnil) {
-        rb_ary_push(result, rb_struct_new(cDeclaration, STR_NEW_CSTR("list-style-type"), type, Qfalse));
+        rb_ary_push(result, rb_struct_new(cDeclaration, STR_NEW_CSTR("list-style-type"), type, important));
     }
     if (position != Qnil) {
-        rb_ary_push(result, rb_struct_new(cDeclaration, STR_NEW_CSTR("list-style-position"), position, Qfalse));
+        rb_ary_push(result, rb_struct_new(cDeclaration, STR_NEW_CSTR("list-style-position"), position, important));
     }
     if (image != Qnil) {
-        rb_ary_push(result, rb_struct_new(cDeclaration, STR_NEW_CSTR("list-style-image"), image, Qfalse));
+        rb_ary_push(result, rb_struct_new(cDeclaration, STR_NEW_CSTR("list-style-image"), image, important));
     }
 
     return result;
@@ -475,7 +475,7 @@ VALUE cataract_expand_list_style(VALUE self, VALUE value) {
  * Expand background shorthand: "url(img.png) no-repeat center / cover"
  * This is complex - background has many sub-properties and / separator for size
  */
-VALUE cataract_expand_background(VALUE self, VALUE value) {
+VALUE cataract_expand_background(VALUE self, VALUE value, VALUE important) {
     DEBUG_PRINTF("[cataract_expand_background] input value: '%s'\n", RSTRING_PTR(value));
 
     // First, check if there's a / separator for background-size
@@ -596,17 +596,17 @@ VALUE cataract_expand_background(VALUE self, VALUE value) {
     // Create array of Declaration structs
     VALUE result = rb_ary_new_capa(6);
     rb_ary_push(result, rb_struct_new(cDeclaration, STR_NEW_CSTR("background-color"),
-                                      color != Qnil ? color : STR_NEW_CSTR("transparent"), Qfalse));
+                                      color != Qnil ? color : STR_NEW_CSTR("transparent"), important));
     rb_ary_push(result, rb_struct_new(cDeclaration, STR_NEW_CSTR("background-image"),
-                                      image != Qnil ? image : STR_NEW_CSTR("none"), Qfalse));
+                                      image != Qnil ? image : STR_NEW_CSTR("none"), important));
     rb_ary_push(result, rb_struct_new(cDeclaration, STR_NEW_CSTR("background-repeat"),
-                                      repeat != Qnil ? repeat : STR_NEW_CSTR("repeat"), Qfalse));
+                                      repeat != Qnil ? repeat : STR_NEW_CSTR("repeat"), important));
     rb_ary_push(result, rb_struct_new(cDeclaration, STR_NEW_CSTR("background-attachment"),
-                                      attachment != Qnil ? attachment : STR_NEW_CSTR("scroll"), Qfalse));
+                                      attachment != Qnil ? attachment : STR_NEW_CSTR("scroll"), important));
     rb_ary_push(result, rb_struct_new(cDeclaration, STR_NEW_CSTR("background-position"),
-                                      position != Qnil ? position : STR_NEW_CSTR("0% 0%"), Qfalse));
+                                      position != Qnil ? position : STR_NEW_CSTR("0% 0%"), important));
     if (size != Qnil) {
-        rb_ary_push(result, rb_struct_new(cDeclaration, STR_NEW_CSTR("background-size"), size, Qfalse));
+        rb_ary_push(result, rb_struct_new(cDeclaration, STR_NEW_CSTR("background-size"), size, important));
     }
 
     return result;
@@ -616,26 +616,10 @@ VALUE cataract_expand_background(VALUE self, VALUE value) {
 // SHORTHAND CREATION (Inverse of expansion)
 // ============================================================================
 
-// Helper: Create dimension shorthand (margin or padding)
-// Input: hash with "#{base}-top", "#{base}-right", "#{base}-bottom", "#{base}-left"
-// Output: optimized shorthand string, or Qnil if not all sides present
-static VALUE create_dimension_shorthand(VALUE properties, const char *base) {
-    char key_top[32], key_right[32], key_bottom[32], key_left[32];
-    snprintf(key_top, sizeof(key_top), "%s-top", base);
-    snprintf(key_right, sizeof(key_right), "%s-right", base);
-    snprintf(key_bottom, sizeof(key_bottom), "%s-bottom", base);
-    snprintf(key_left, sizeof(key_left), "%s-left", base);
-
-    VALUE top = rb_hash_aref(properties, STR_NEW_CSTR(key_top));
-    VALUE right = rb_hash_aref(properties, STR_NEW_CSTR(key_right));
-    VALUE bottom = rb_hash_aref(properties, STR_NEW_CSTR(key_bottom));
-    VALUE left = rb_hash_aref(properties, STR_NEW_CSTR(key_left));
-
-    // All four sides must be present
-    if (NIL_P(top) || NIL_P(right) || NIL_P(bottom) || NIL_P(left)) {
-        return Qnil;
-    }
-
+// Helper: Collapse 4 box-model side values into optimized CSS shorthand
+// syntax (1, 2, 3, or 4 values), per the standard top/right/bottom/left
+// collapsing rules shared by margin/padding/border-{width,style,color}.
+static VALUE collapse_box_values(VALUE top, VALUE right, VALUE bottom, VALUE left) {
     const char *top_str = StringValueCStr(top);
     const char *right_str = StringValueCStr(right);
     const char *bottom_str = StringValueCStr(bottom);
@@ -660,6 +644,29 @@ static VALUE create_dimension_shorthand(VALUE properties, const char *base) {
 
     // All different: use four values
     return rb_sprintf("%s %s %s %s", top_str, right_str, bottom_str, left_str);
+}
+
+// Helper: Create dimension shorthand (margin or padding)
+// Input: hash with "#{base}-top", "#{base}-right", "#{base}-bottom", "#{base}-left"
+// Output: optimized shorthand string, or Qnil if not all sides present
+static VALUE create_dimension_shorthand(VALUE properties, const char *base) {
+    char key_top[32], key_right[32], key_bottom[32], key_left[32];
+    snprintf(key_top, sizeof(key_top), "%s-top", base);
+    snprintf(key_right, sizeof(key_right), "%s-right", base);
+    snprintf(key_bottom, sizeof(key_bottom), "%s-bottom", base);
+    snprintf(key_left, sizeof(key_left), "%s-left", base);
+
+    VALUE top = rb_hash_aref(properties, STR_NEW_CSTR(key_top));
+    VALUE right = rb_hash_aref(properties, STR_NEW_CSTR(key_right));
+    VALUE bottom = rb_hash_aref(properties, STR_NEW_CSTR(key_bottom));
+    VALUE left = rb_hash_aref(properties, STR_NEW_CSTR(key_left));
+
+    // All four sides must be present
+    if (NIL_P(top) || NIL_P(right) || NIL_P(bottom) || NIL_P(left)) {
+        return Qnil;
+    }
+
+    return collapse_box_values(top, right, bottom, left);
 }
 
 // Create margin shorthand from longhand properties
@@ -699,31 +706,7 @@ static VALUE create_border_dimension_shorthand(VALUE properties, const char *suf
         return Qnil;
     }
 
-    // Extract C strings directly (no intermediate storage)
-    const char *top_str = StringValueCStr(top);
-    const char *right_str = StringValueCStr(right);
-    const char *bottom_str = StringValueCStr(bottom);
-    const char *left_str = StringValueCStr(left);
-
-    // Optimize: if all same, return single value
-    if (strcmp(top_str, right_str) == 0 &&
-        strcmp(top_str, bottom_str) == 0 &&
-        strcmp(top_str, left_str) == 0) {
-        return rb_str_dup(top);
-    }
-
-    // Optimize: if top==bottom and left==right, use two values
-    if (strcmp(top_str, bottom_str) == 0 && strcmp(left_str, right_str) == 0) {
-        return rb_sprintf("%s %s", top_str, right_str);
-    }
-
-    // Optimize: if left==right, use three values
-    if (strcmp(left_str, right_str) == 0) {
-        return rb_sprintf("%s %s %s", top_str, right_str, bottom_str);
-    }
-
-    // All different: use four values
-    return rb_sprintf("%s %s %s %s", top_str, right_str, bottom_str, left_str);
+    return collapse_box_values(top, right, bottom, left);
 }
 
 // Create border-width shorthand from individual sides
@@ -1023,42 +1006,37 @@ VALUE cataract_expand_shorthand(VALUE self, VALUE decl) {
         return result;
     }
 
-    VALUE expanded_hash = Qnil;
-
-    // Try to expand based on property name - return array of Declarations directly
+    // Try to expand based on property name, calling the same public
+    // cataract_expand_* functions used directly by callers (and by
+    // flatten.c) - return array of Declarations directly
     VALUE result = Qnil;
 
     if (strcmp(prop, "margin") == 0) {
-        VALUE parts = cataract_split_value(Qnil, value);
-        result = expand_dimensions(parts, "margin", NULL, important);
+        result = cataract_expand_margin(Qnil, value, important);
     } else if (strcmp(prop, "padding") == 0) {
-        VALUE parts = cataract_split_value(Qnil, value);
-        result = expand_dimensions(parts, "padding", NULL, important);
+        result = cataract_expand_padding(Qnil, value, important);
     } else if (strcmp(prop, "border-color") == 0) {
-        VALUE parts = cataract_split_value(Qnil, value);
-        result = expand_dimensions(parts, "border", "color", important);
+        result = cataract_expand_border_color(Qnil, value, important);
     } else if (strcmp(prop, "border-style") == 0) {
-        VALUE parts = cataract_split_value(Qnil, value);
-        result = expand_dimensions(parts, "border", "style", important);
+        result = cataract_expand_border_style(Qnil, value, important);
     } else if (strcmp(prop, "border-width") == 0) {
-        VALUE parts = cataract_split_value(Qnil, value);
-        result = expand_dimensions(parts, "border", "width", important);
+        result = cataract_expand_border_width(Qnil, value, important);
     } else if (strcmp(prop, "border") == 0) {
-        result = cataract_expand_border(Qnil, value);
+        result = cataract_expand_border(Qnil, value, important);
     } else if (strcmp(prop, "border-top") == 0) {
-        result = cataract_expand_border_side(Qnil, STR_NEW_CSTR("top"), value);
+        result = cataract_expand_border_side(Qnil, STR_NEW_CSTR("top"), value, important);
     } else if (strcmp(prop, "border-right") == 0) {
-        result = cataract_expand_border_side(Qnil, STR_NEW_CSTR("right"), value);
+        result = cataract_expand_border_side(Qnil, STR_NEW_CSTR("right"), value, important);
     } else if (strcmp(prop, "border-bottom") == 0) {
-        result = cataract_expand_border_side(Qnil, STR_NEW_CSTR("bottom"), value);
+        result = cataract_expand_border_side(Qnil, STR_NEW_CSTR("bottom"), value, important);
     } else if (strcmp(prop, "border-left") == 0) {
-        result = cataract_expand_border_side(Qnil, STR_NEW_CSTR("left"), value);
+        result = cataract_expand_border_side(Qnil, STR_NEW_CSTR("left"), value, important);
     } else if (strcmp(prop, "font") == 0) {
-        result = cataract_expand_font(Qnil, value);
+        result = cataract_expand_font(Qnil, value, important);
     } else if (strcmp(prop, "background") == 0) {
-        result = cataract_expand_background(Qnil, value);
+        result = cataract_expand_background(Qnil, value, important);
     } else if (strcmp(prop, "list-style") == 0) {
-        result = cataract_expand_list_style(Qnil, value);
+        result = cataract_expand_list_style(Qnil, value, important);
     }
 
     // If not a shorthand (or expansion failed), return array with original declaration

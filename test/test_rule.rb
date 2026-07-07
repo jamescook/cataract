@@ -64,6 +64,61 @@ class TestRule < Minitest::Test
     refute_equal rule1, rule2
   end
 
+  # Equality expands shorthands into longhands before comparing (see
+  # test_hash_contract_shorthand_vs_longhand below), so the !important flag
+  # on a shorthand property must survive that expansion - two rules that
+  # only differ by !important on an otherwise-identical shorthand value must
+  # not compare equal.
+  def test_equality_distinguishes_important_border_shorthand
+    important = [Cataract::Declaration.new('border', '1px solid red', true)]
+    plain = [Cataract::Declaration.new('border', '1px solid red', false)]
+
+    rule1 = Cataract::Rule.new(0, '.foo', important, 10, nil, nil)
+    rule2 = Cataract::Rule.new(0, '.foo', plain, 10, nil, nil)
+
+    refute_equal rule1, rule2
+  end
+
+  def test_equality_distinguishes_important_border_side_shorthand
+    important = [Cataract::Declaration.new('border-top', '1px solid red', true)]
+    plain = [Cataract::Declaration.new('border-top', '1px solid red', false)]
+
+    rule1 = Cataract::Rule.new(0, '.foo', important, 10, nil, nil)
+    rule2 = Cataract::Rule.new(0, '.foo', plain, 10, nil, nil)
+
+    refute_equal rule1, rule2
+  end
+
+  def test_equality_distinguishes_important_font_shorthand
+    important = [Cataract::Declaration.new('font', '12px Arial', true)]
+    plain = [Cataract::Declaration.new('font', '12px Arial', false)]
+
+    rule1 = Cataract::Rule.new(0, '.foo', important, 10, nil, nil)
+    rule2 = Cataract::Rule.new(0, '.foo', plain, 10, nil, nil)
+
+    refute_equal rule1, rule2
+  end
+
+  def test_equality_distinguishes_important_background_shorthand
+    important = [Cataract::Declaration.new('background', 'red', true)]
+    plain = [Cataract::Declaration.new('background', 'red', false)]
+
+    rule1 = Cataract::Rule.new(0, '.foo', important, 10, nil, nil)
+    rule2 = Cataract::Rule.new(0, '.foo', plain, 10, nil, nil)
+
+    refute_equal rule1, rule2
+  end
+
+  def test_equality_distinguishes_important_list_style_shorthand
+    important = [Cataract::Declaration.new('list-style', 'square inside', true)]
+    plain = [Cataract::Declaration.new('list-style', 'square inside', false)]
+
+    rule1 = Cataract::Rule.new(0, '.foo', important, 10, nil, nil)
+    rule2 = Cataract::Rule.new(0, '.foo', plain, 10, nil, nil)
+
+    refute_equal rule1, rule2
+  end
+
   def test_equality_with_non_rule
     decls = [Cataract::Declaration.new('color', 'red', false)]
     rule = Cataract::Rule.new(0, '.foo', decls, 10, nil, nil)

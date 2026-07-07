@@ -1456,7 +1456,7 @@ static VALUE expand_property_if_needed(VALUE property_name, VALUE value) {
 
     // Check if this is a shorthand property that needs expansion
     if (strcmp(prop, "background") == 0) {
-        return cataract_expand_background(Qnil, value);
+        return cataract_expand_background(Qnil, value, Qfalse);
     }
     // Add other shorthands if needed (margin, padding, border, font, list-style)
 
