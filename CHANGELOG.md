@@ -1,6 +1,22 @@
 ## [Unreleased]
 
 - Security/Breaking: `Stylesheet#load_uri` and `#load_file` now reject `file://` paths under `/etc/`, `/proc/`, `/sys/`, and `/dev/` by default (override with `dangerous_path_prefixes: []`). Previously these methods used a separate, unvalidated fetch implementation; they now reuse `ImportResolver` (the same validation and fetching `@import` resolution already uses), which also fixes `load_uri` not following HTTP redirects.
+- Fix: rules nested 3+ levels deep, or nested inside a top-level `@media`/`@supports`/`@container`/`@scope` block, could serialize incorrectly (silently flattened, or printed as an unrelated top-level rule) in the pure Ruby backend.
+- Fix: a bare type selector nested without `&` (invalid CSS nesting) no longer corrupts serialized output with unbalanced braces, in both the C and pure Ruby parsers.
+- Fix: `@keyframes` parsing no longer pollutes the outer rule list with its own inner selectors.
+- Fix: at-rules (`@keyframes`, `@font-face`, etc.) nested inside `@media` blocks now correctly keep their media context across parsing, merging (`add_block`, `concat`/`+`), `@import` resolution, and serialization - previously this could be lost, misattributed, or (combined with CSS nesting) raise `NoMethodError` in the pure Ruby serializer.
+- Fix: `remove_rules!` and the `-` operator no longer desync media query ids from the rules that reference them.
+- Fix: resolving `@import`s no longer leaves duplicate/colliding rule ids.
+- Fix: a plain `@import "file.css";` (no media qualifier) no longer loses that file's own `@media` rules.
+- Fix: `Stylesheet#concat`/`+` now merges the other stylesheet's media queries and selector-list groupings too - previously this silently dropped `h1, h2`-style grouping and corrupted media attribution.
+- Fix: `@import` media queries with a type keyword (e.g. `"screen and (min-width: 500px)"`) no longer keep a stray `"and"` in the parsed conditions.
+- Fix: `to_s`/`to_formatted_s` media filtering is now consistent between the two - both include base (non-media) rules when filtering to a specific media type; previously `to_s` excluded them while `to_formatted_s` included them.
+- Fix: values containing `url(...;...)` no longer lose everything after the first semicolon when the rule also uses CSS nesting.
+- Fix: `!important` now parses correctly with whitespace between `!` and `important`, per the CSS grammar.
+- Fix: expanding `border`, `border-{top,right,bottom,left}`, `font`, `background`, and `list-style` shorthands (used when comparing rules for equality) no longer silently drops `!important`.
+- Fix: `Declarations`/`Stylesheet` `#dup`/`#clone` now produce fully independent copies; previously mutating a copy could mutate the original.
+- Performance: CSS selector specificity calculation is ~30% faster (no longer re-allocates an internal lookup array on every call).
+- Performance: native (C extension) CSS flattening is ~1-5% faster (fewer string allocations when recreating shorthand properties).
 
 ## [0.2.5 - 2025-11-25]
 
