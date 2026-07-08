@@ -22,6 +22,15 @@ class TestStylesheetFlatten < Minitest::Test
     refute_same sheet, result, 'flatten should return new stylesheet'
   end
 
+  def test_flatten_does_not_mutate_original_shorthand_declarations
+    sheet = Cataract.parse_css('.box { margin: 0; }')
+
+    sheet.flatten
+
+    assert_has_property({ margin: '0' }, sheet.rules.first,
+                        'flatten (no bang) must not expand shorthands on the original stylesheet')
+  end
+
   def test_flatten_bang_mutates_stylesheet
     sheet = Cataract.parse_css('.box { color: red; } .box { color: blue; }')
     original_object_id = sheet.object_id

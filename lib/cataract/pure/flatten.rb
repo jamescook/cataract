@@ -195,7 +195,11 @@ module Cataract
         end
 
         # Separate AtRules (pass-through, unaffected by cascade) from regular
-        # Rules (to merge).
+        # Rules (to merge). Regular rules are duped (including their
+        # declarations array) since expand_all_shorthands! mutates
+        # declarations in place - without this, the caller's stylesheet
+        # would get its shorthand properties silently expanded even when
+        # flatten (not flatten!) was called.
         #
         # @param rules [Array<Rule, AtRule>]
         # @return [Array(Array<AtRule>, Array<Rule>)]
@@ -207,7 +211,9 @@ module Cataract
             if rule.at_rule?
               at_rules << rule
             else
-              regular_rules << rule
+              copy = rule.dup
+              copy.declarations = rule.declarations.dup
+              regular_rules << copy
             end
           end
 
