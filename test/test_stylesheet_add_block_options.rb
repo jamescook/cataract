@@ -6,34 +6,6 @@ require 'webmock/minitest'
 
 class TestStylesheetAddBlockOptions < Minitest::Test
   # ============================================================================
-  # Constructor defaults for base_uri, base_dir, absolute_paths
-  # ============================================================================
-
-  def test_constructor_accepts_base_uri_option
-    sheet = Cataract::Stylesheet.new(base_uri: 'https://example.com/css/main.css')
-
-    assert_equal 'https://example.com/css/main.css', sheet.instance_variable_get(:@options)[:base_uri]
-  end
-
-  def test_constructor_accepts_base_dir_option
-    sheet = Cataract::Stylesheet.new(base_dir: '/var/www/assets/css')
-
-    assert_equal '/var/www/assets/css', sheet.instance_variable_get(:@options)[:base_dir]
-  end
-
-  def test_constructor_accepts_absolute_paths_option
-    sheet = Cataract::Stylesheet.new(absolute_paths: true)
-
-    assert sheet.instance_variable_get(:@options)[:absolute_paths]
-  end
-
-  def test_constructor_defaults_absolute_paths_to_false
-    sheet = Cataract::Stylesheet.new
-
-    refute sheet.instance_variable_get(:@options)[:absolute_paths]
-  end
-
-  # ============================================================================
   # URL conversion with absolute_paths: true
   # ============================================================================
 

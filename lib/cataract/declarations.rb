@@ -300,7 +300,7 @@ module Cataract
     # @param source [Declarations] Source Declarations being copied
     def initialize_copy(source)
       super
-      @values = source.instance_variable_get(:@values).dup
+      @values = source.to_a.dup
     end
 
     # Compare this Declarations with another object.

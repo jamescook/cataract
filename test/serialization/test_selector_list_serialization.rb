@@ -327,7 +327,7 @@ class TestSelectorListSerialization < Minitest::Test
     sheet = Cataract::Stylesheet.parse(css)
 
     # Remove first two rules (the h1, h2 group)
-    sheet.instance_variable_get(:@rules).shift(2)
+    sheet.rules.shift(2)
 
     # Should only serialize the remaining rule
     expected = "p { margin: 0; }\n"
@@ -340,8 +340,8 @@ class TestSelectorListSerialization < Minitest::Test
     sheet = Cataract::Stylesheet.parse(css)
 
     # Remove h2 and h3
-    sheet.instance_variable_get(:@rules).delete_at(2)
-    sheet.instance_variable_get(:@rules).delete_at(1)
+    sheet.rules.delete_at(2)
+    sheet.rules.delete_at(1)
 
     # Single remaining rule should serialize without comma
     expected = "h1 { color: red; }\n"

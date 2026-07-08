@@ -33,26 +33,6 @@ class TestSelectorLists < Minitest::Test
     refute_nil list_ids.first, 'Selector list ID should not be nil'
   end
 
-  def test_simple_selector_list_tracked_in_selector_lists_hash
-    css = 'h1, h2, h3 { color: red; }'
-    sheet = Cataract.parse_css(css)
-
-    selector_lists = sheet.instance_variable_get(:@_selector_lists)
-
-    refute_empty selector_lists, 'Should have selector list entries'
-
-    # Should have one list entry
-    assert_equal 1, selector_lists.size
-
-    # Get the list ID and rule IDs
-    _, rule_ids = selector_lists.first
-
-    assert_equal 3, rule_ids.size, 'List should contain 3 rule IDs'
-
-    # Verify rule IDs match actual rules
-    assert_equal rule_ids.sort, sheet.rules.map(&:id).sort
-  end
-
   def test_two_selector_list_creates_six_rules
     css = 'h1, h2 { color: red; } h3, h4 { color: blue; }'
     sheet = Cataract.parse_css(css)
@@ -71,10 +51,6 @@ class TestSelectorLists < Minitest::Test
     rule = sheet.rules.first
 
     assert_nil rule.selector_list_id, 'Single selector should have nil selector_list_id'
-
-    selector_lists = sheet.instance_variable_get(:@_selector_lists)
-
-    assert_empty selector_lists, 'Single selectors should not create list entries'
   end
 
   def test_mixed_single_and_list_selectors
@@ -98,10 +74,10 @@ class TestSelectorLists < Minitest::Test
     refute_nil h1.selector_list_id
     assert_equal h1.selector_list_id, h2.selector_list_id
 
-    # Should have exactly one list entry
-    selector_lists = sheet.instance_variable_get(:@_selector_lists)
+    # Should have exactly one shared list_id
+    list_ids = rules.map(&:selector_list_id).compact.uniq
 
-    assert_equal 1, selector_lists.size
+    assert_equal 1, list_ids.size
   end
 
   # ============================================================================
@@ -183,9 +159,9 @@ class TestSelectorLists < Minitest::Test
 
     assert_selector_count 4, sheet
 
-    selector_lists = sheet.instance_variable_get(:@_selector_lists)
+    list_ids = sheet.rules.map(&:selector_list_id).compact.uniq
 
-    assert_equal 2, selector_lists.size, 'Should have two independent selector lists'
+    assert_equal 2, list_ids.size, 'Should have two independent selector lists'
 
     # Get rules for each list
     h1 = sheet.rules.find { |r| r.selector == 'h1' }
@@ -207,13 +183,15 @@ class TestSelectorLists < Minitest::Test
 
     assert_selector_count 6, sheet
 
-    selector_lists = sheet.instance_variable_get(:@_selector_lists)
+    list_ids = sheet.rules.map(&:selector_list_id).compact.uniq
 
-    assert_equal 3, selector_lists.size, 'Should have three independent selector lists'
+    assert_equal 3, list_ids.size, 'Should have three independent selector lists'
 
     # Each list should have 2 rules
-    selector_lists.each_value do |rule_ids|
-      assert_equal 2, rule_ids.size
+    sheet.rules.group_by(&:selector_list_id).each do |list_id, rules_in_list|
+      next if list_id.nil?
+
+      assert_equal 2, rules_in_list.size
     end
   end
 
@@ -292,20 +270,16 @@ class TestSelectorLists < Minitest::Test
 
     assert_equal 1, list_ids.size
 
-    selector_lists = sheet.instance_variable_get(:@_selector_lists)
+    rule_count = sheet.rules.count { |r| r.selector_list_id == list_ids.first }
 
-    assert_equal 1, selector_lists.size
-    _list_id, rule_ids = selector_lists.first
-
-    assert_equal 20, rule_ids.size
+    assert_equal 20, rule_count
   end
 
   def test_selector_list_id_counter_increments
     css = 'h1, h2 { color: red; } h3, h4 { color: blue; }'
     sheet = Cataract.parse_css(css)
 
-    selector_lists = sheet.instance_variable_get(:@_selector_lists)
-    list_ids = selector_lists.keys.sort
+    list_ids = sheet.rules.map(&:selector_list_id).compact.uniq.sort
 
     # Should have list IDs 0 and 1
     assert_equal [0, 1], list_ids
@@ -348,9 +322,9 @@ class TestSelectorLists < Minitest::Test
 
     assert_selector_count 4, sheet
 
-    selector_lists = sheet.instance_variable_get(:@_selector_lists)
+    list_ids = sheet.rules.map(&:selector_list_id).compact.uniq
 
-    assert_equal 2, selector_lists.size, 'Should have two selector lists (one in base, one in @media)'
+    assert_equal 2, list_ids.size, 'Should have two selector lists (one in base, one in @media)'
   end
 
   # ============================================================================
@@ -365,76 +339,44 @@ class TestSelectorLists < Minitest::Test
     # Should have same structure
     assert_equal sheet1.rules.size, sheet2.rules.size
 
-    # Selector lists should be duplicated
-    selector_lists1 = sheet1.instance_variable_get(:@_selector_lists)
-    selector_lists2 = sheet2.instance_variable_get(:@_selector_lists)
+    # Selector list assignment should be duplicated identically...
+    assert_equal sheet1.rules.map(&:selector_list_id), sheet2.rules.map(&:selector_list_id)
 
-    assert_equal selector_lists1.keys, selector_lists2.keys
-    refute_same selector_lists1, selector_lists2, 'Should be a different object'
-  end
-
-  def test_selector_list_counter_tracks_correctly
-    css = 'h1, h2 { color: red; }'
-    sheet = Cataract.parse_css(css)
-
-    counter = sheet.instance_variable_get(:@_next_selector_list_id)
-
-    assert_equal 1, counter, 'Counter should be 1 after creating one list (IDs are 0-indexed)'
+    # ...but as fully independent state, not shared with the source
+    assert_no_shared_mutable_state(sheet1, sheet2)
   end
 
   # ============================================================================
   # Parser Options - Disable Selector Lists
   # ============================================================================
 
-  def test_selector_lists_disabled_does_not_populate_hash
+  def test_selector_lists_disabled_leaves_selector_list_id_nil
     css = 'h1, h2, h3 { color: red; }'
     sheet = Cataract::Stylesheet.parse(css, parser: { selector_lists: false })
 
     # Should still create 3 rules
     assert_selector_count 3, sheet
 
-    # But selector_lists hash should be empty
-    selector_lists = sheet.instance_variable_get(:@_selector_lists)
-
-    assert_empty selector_lists, 'Selector lists should be empty when disabled'
-
-    # All rules should have nil selector_list_id
+    # All rules should have nil selector_list_id when disabled
     sheet.rules.each do |rule|
       assert_nil rule.selector_list_id, "Rule '#{rule.selector}' should have nil selector_list_id when disabled"
     end
-
-    # Counter should not increment
-    counter = sheet.instance_variable_get(:@_next_selector_list_id)
-
-    assert_equal 0, counter, 'Counter should stay at 0 when selector lists disabled'
   end
 
   def test_selector_lists_enabled_by_default
     css = 'h1, h2 { color: red; }'
     sheet = Cataract::Stylesheet.parse(css)
 
-    # Parser options should have selector_lists: true by default
-    parser_options = sheet.instance_variable_get(:@parser_options)
-
-    assert parser_options[:selector_lists], 'selector_lists should be enabled by default'
-
-    # Should track selector lists
-    selector_lists = sheet.instance_variable_get(:@_selector_lists)
-
-    refute_empty selector_lists, 'Selector lists should be tracked by default'
+    # selector_lists is enabled by default, so comma-separated rules should
+    # share a selector_list_id
+    refute_nil sheet.rules.first.selector_list_id, 'selector_lists should be enabled by default'
   end
 
   def test_selector_lists_explicitly_enabled
     css = 'h1, h2 { color: red; }'
     sheet = Cataract::Stylesheet.parse(css, parser: { selector_lists: true })
 
-    # Should track selector lists
-    selector_lists = sheet.instance_variable_get(:@_selector_lists)
-
-    refute_empty selector_lists, 'Selector lists should be tracked when explicitly enabled'
-
-    # Rules should have selector_list_id
-    refute_nil sheet.rules.first.selector_list_id
+    refute_nil sheet.rules.first.selector_list_id, 'selector_lists should be tracked when explicitly enabled'
   end
 
   def test_selector_lists_inside_media_query
@@ -461,16 +403,18 @@ class TestSelectorLists < Minitest::Test
     end
 
     # Verify selector_lists were tracked
-    selector_lists = sheet.instance_variable_get(:@_selector_lists)
+    list_ids = sheet.rules.map(&:selector_list_id).compact.uniq
 
-    refute_empty selector_lists, 'Should have tracked selector lists inside @media'
+    refute_empty list_ids, 'Should have tracked selector lists inside @media'
 
     # Should have 2 selector lists (one for h1,h2,h3 and one for buttons)
-    assert_equal 2, selector_lists.size
+    assert_equal 2, list_ids.size
 
     # Verify each list has correct number of rule IDs
-    selector_lists.each_value do |rule_ids|
-      assert_operator rule_ids.size, :>=, 2, 'Each selector list should have at least 2 rules'
+    sheet.rules.group_by(&:selector_list_id).each do |list_id, rules_in_list|
+      next if list_id.nil?
+
+      assert_operator rules_in_list.size, :>=, 2, 'Each selector list should have at least 2 rules'
     end
 
     # Verify all rules have sequential IDs
@@ -502,16 +446,18 @@ class TestSelectorLists < Minitest::Test
     assert_has_selector '.panel', sheet
 
     # Verify selector_lists were tracked
-    selector_lists = sheet.instance_variable_get(:@_selector_lists)
+    list_ids = sheet.rules.map(&:selector_list_id).compact.uniq
 
-    refute_empty selector_lists, 'Should have tracked selector lists inside @supports'
+    refute_empty list_ids, 'Should have tracked selector lists inside @supports'
 
     # Should have 2 selector lists
-    assert_equal 2, selector_lists.size
+    assert_equal 2, list_ids.size
 
     # Verify each list has correct number of rule IDs
-    selector_lists.each_value do |rule_ids|
-      assert_operator rule_ids.size, :>=, 2, 'Each selector list should have at least 2 rules'
+    sheet.rules.group_by(&:selector_list_id).each do |list_id, rules_in_list|
+      next if list_id.nil?
+
+      assert_operator rules_in_list.size, :>=, 2, 'Each selector list should have at least 2 rules'
     end
   end
 

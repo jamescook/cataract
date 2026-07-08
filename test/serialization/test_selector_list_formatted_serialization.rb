@@ -456,7 +456,7 @@ class TestSelectorListFormattedSerialization < Minitest::Test
     sheet = Cataract::Stylesheet.parse(css)
 
     # Remove first two rules (the h1, h2 group)
-    sheet.instance_variable_get(:@rules).shift(2)
+    sheet.rules.shift(2)
 
     expected = <<~CSS
       p {
@@ -472,8 +472,8 @@ class TestSelectorListFormattedSerialization < Minitest::Test
     sheet = Cataract::Stylesheet.parse(css)
 
     # Remove h2 and h3
-    sheet.instance_variable_get(:@rules).delete_at(2)
-    sheet.instance_variable_get(:@rules).delete_at(1)
+    sheet.rules.delete_at(2)
+    sheet.rules.delete_at(1)
 
     expected = <<~CSS
       h1 {

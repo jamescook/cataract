@@ -186,7 +186,7 @@ module Cataract
           # Add passthrough AtRules to output
           merged_rules.concat(at_rules)
 
-          media_queries = stylesheet.instance_variable_get(:@media_queries)
+          media_queries = stylesheet.media_queries
           media_query_lists = stylesheet.instance_variable_get(:@_media_query_lists)
           new_media_index = rebuild_media_index(merged_rules, media_queries, media_query_lists)
 

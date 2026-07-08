@@ -436,15 +436,25 @@ body { color: red; }"
     Dir.mktmpdir do |dir|
       main_file = File.join(dir, 'main.css')
       File.write(main_file, 'body { color: red; }')
+      File.write(File.join(dir, 'other.css'), '.other { color: blue; }')
 
       original = Cataract::Stylesheet.new(import: { allowed_schemes: ['file'] })
       copy = original.dup
 
       copy.load_file(main_file)
 
-      assert_equal dir, copy.instance_variable_get(:@options)[:import][:base_path]
-      assert_nil original.instance_variable_get(:@options)[:import][:base_path],
-                 "loading a file on the copy must not set base_path on the original's options"
+      # copy picked up a base_path from load_file, so a later relative
+      # @import resolves against it
+      copy.add_block('@import "other.css";')
+
+      assert_has_selector '.other', copy
+
+      # original never called load_file, so the same relative @import must
+      # NOT resolve - if base_path had leaked via a shared options Hash,
+      # this would succeed too
+      assert_raises(Cataract::ImportError) do
+        original.add_block('@import "other.css";')
+      end
     end
   end
 
@@ -1237,13 +1247,15 @@ body { color: red; }"
       assert_has_selector '.main', sheet
 
       # Verify selector_lists were tracked
-      selector_lists = sheet.instance_variable_get(:@_selector_lists)
+      list_ids = sheet.rules.map(&:selector_list_id).compact.uniq
 
-      refute_empty selector_lists, 'Should have tracked selector lists from imported file'
+      refute_empty list_ids, 'Should have tracked selector lists from imported file'
 
       # Each selector list should have multiple rule IDs
-      selector_lists.each_value do |rule_ids|
-        assert_operator rule_ids.size, :>=, 2, 'Selector lists should have at least 2 rules'
+      sheet.rules.group_by(&:selector_list_id).each do |list_id, rules_in_list|
+        next if list_id.nil?
+
+        assert_operator rules_in_list.size, :>=, 2, 'Selector lists should have at least 2 rules'
       end
 
       # Verify all rules have sequential IDs

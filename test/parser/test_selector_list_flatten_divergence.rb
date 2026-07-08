@@ -27,15 +27,10 @@ class TestSelectorListFlattenDivergence < Minitest::Test
     assert_equal a_rule.selector_list_id, d_rule.selector_list_id
     assert_equal a_rule.selector_list_id, e_rule.selector_list_id
 
-    # Should be in selector_lists hash
-    selector_lists = flat.instance_variable_get(:@_selector_lists)
-    list_id = a_rule.selector_list_id
+    # Selector list should contain all 5 rules
+    rule_count = flat.rules.count { |r| r.selector_list_id == a_rule.selector_list_id }
 
-    assert selector_lists.key?(list_id), "Selector list #{list_id} should exist in @_selector_lists"
-
-    rule_ids = selector_lists[list_id]
-
-    assert_equal 5, rule_ids.length, 'Selector list should contain 5 rules'
+    assert_equal 5, rule_count, 'Selector list should contain 5 rules'
   end
 
   # Test the specific bootstrap.css case that was failing
@@ -69,15 +64,10 @@ class TestSelectorListFlattenDivergence < Minitest::Test
     assert_equal thead_rule.selector_list_id, td_rule.selector_list_id
     assert_equal thead_rule.selector_list_id, th_rule.selector_list_id
 
-    # Should be in selector_lists hash
-    selector_lists = flat.instance_variable_get(:@_selector_lists)
-    list_id = thead_rule.selector_list_id
+    # Selector list should contain all 6 rules
+    rule_count = flat.rules.count { |r| r.selector_list_id == thead_rule.selector_list_id }
 
-    assert selector_lists.key?(list_id), "Selector list #{list_id} should exist in @_selector_lists"
-
-    rule_ids = selector_lists[list_id]
-
-    assert_equal 6, rule_ids.length, 'Selector list should contain 6 rules'
+    assert_equal 6, rule_count, 'Selector list should contain 6 rules'
   end
 
   # Test actual divergence case from bootstrap where one rule gets different declarations
@@ -130,10 +120,8 @@ class TestSelectorListFlattenDivergence < Minitest::Test
     assert_has_property({ 'text-align': 'left' }, th_rule)
 
     # Selector list should contain 5 rules (not 6)
-    selector_lists = flat.instance_variable_get(:@_selector_lists)
-    list_id = thead_rule.selector_list_id
-    rule_ids = selector_lists[list_id]
+    rule_count = flat.rules.count { |r| r.selector_list_id == thead_rule.selector_list_id }
 
-    assert_equal 5, rule_ids.length, 'Selector list should contain 5 rules (th diverged)'
+    assert_equal 5, rule_count, 'Selector list should contain 5 rules (th diverged)'
   end
 end

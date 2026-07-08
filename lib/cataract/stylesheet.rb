@@ -803,7 +803,7 @@ module Cataract
     # @return [Stylesheet] New stylesheet with cascade applied
     def flatten
       result = @backend.flatten(self)
-      result.instance_variable_set(:@backend, @backend)
+      result.backend = @backend
       result
     end
     alias cascade flatten
@@ -939,7 +939,8 @@ module Cataract
     # (notably #media_index, which lazily rebuilds rather than exposing the
     # raw cache these need).
 
-    attr_reader :options, :parser_options, :backend
+    attr_reader :options, :parser_options
+    attr_accessor :backend
 
     def next_media_query_id
       @_next_media_query_id

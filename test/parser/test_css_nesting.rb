@@ -1357,7 +1357,7 @@ class TestCssNesting < Minitest::Test
     CSS
 
     sheet = Cataract::Stylesheet.parse(css)
-    rules = sheet.instance_variable_get(:@rules)
+    rules = sheet.rules
 
     # Find indices
     parent_idx = rules.index { |r| r.selector == '.parent' }
