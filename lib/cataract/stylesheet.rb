@@ -29,6 +29,9 @@ module Cataract
     # @return [Array<MediaQuery>] Array of media query objects
     attr_reader :media_queries
 
+    # @return [Array<ConditionalGroup>] Array of conditional-group objects (@supports/@layer/@container/@scope)
+    attr_reader :conditional_groups
+
     # @return [Hash<Symbol, Array<Integer>>] Cached index mapping media query text to rule IDs
     # Lazily build and return media_index.
     # Only builds the index when first accessed, not eagerly during parse.
@@ -160,6 +163,8 @@ module Cataract
       @_next_selector_list_id = 0 # Counter for selector list IDs
       @_media_query_lists = {} # Hash: list_id => Array of MediaQuery IDs (for "screen, print" grouping)
       @_next_media_query_list_id = 0 # Counter for media query list IDs
+      @conditional_groups = [] # Array of ConditionalGroup objects (@supports/@layer/@container/@scope)
+      @_next_conditional_group_id = 0 # Counter for ConditionalGroup IDs
       @charset = nil
       @imports = [] # Array of ImportStatement objects
       @_has_nesting = nil # Set by parser (nil or boolean)
@@ -187,6 +192,8 @@ module Cataract
       @_next_selector_list_id = source.next_selector_list_id
       @_media_query_lists = source.media_query_lists.transform_values(&:dup)
       @_next_media_query_list_id = source.next_media_query_list_id
+      @conditional_groups = source.conditional_groups.dup
+      @_next_conditional_group_id = source.next_conditional_group_id
       @parser_options = source.parser_options.dup
       clear_memoized_caches
       @_hash = nil # Clear cached hash
@@ -474,7 +481,8 @@ module Cataract
     # @example Filter to multiple media types
     #   sheet.to_s(media: [:screen, :print])  # => "@media screen { ... } @media print { ... }"
     def to_s(media: :all)
-      @backend.stylesheet_to_s(filter_rules_by_media(media), @charset, @_has_nesting || false, @_selector_lists, @media_queries, @_media_query_lists)
+      @backend.stylesheet_to_s(filter_rules_by_media(media), @charset, @_has_nesting || false, @_selector_lists, @media_queries, @_media_query_lists,
+                               @conditional_groups)
     end
     alias to_css to_s
 
@@ -500,7 +508,8 @@ module Cataract
     #
     # @see #to_s For compact single-line output
     def to_formatted_s(media: :all)
-      @backend.stylesheet_to_formatted_s(filter_rules_by_media(media), @charset, @_has_nesting || false, @_selector_lists, @media_queries, @_media_query_lists)
+      @backend.stylesheet_to_formatted_s(filter_rules_by_media(media), @charset, @_has_nesting || false, @_selector_lists, @media_queries, @_media_query_lists,
+                                         @conditional_groups)
     end
 
     # Get number of rules
@@ -769,8 +778,9 @@ module Cataract
     # Compare stylesheets for equality.
     #
     # Two stylesheets are equal if they have the same rules in the same order
-    # and the same media queries. Rule equality uses shorthand-aware comparison.
-    # Order matters because CSS cascade depends on rule order.
+    # and the same media queries and conditional groups. Rule equality uses
+    # shorthand-aware comparison. Order matters because CSS cascade depends
+    # on rule order.
     #
     # Charset is ignored since it's file encoding metadata, not semantic content.
     #
@@ -780,6 +790,7 @@ module Cataract
       return false unless other.is_a?(Stylesheet)
       return false unless rules == other.rules
       return false unless @media_queries == other.media_queries
+      return false unless @conditional_groups == other.conditional_groups
 
       true
     end
@@ -787,11 +798,12 @@ module Cataract
 
     # Generate hash code for this stylesheet.
     #
-    # Hash is based on rules and media_queries to match equality semantics.
+    # Hash is based on rules, media_queries, and conditional_groups to match
+    # equality semantics.
     #
     # @return [Integer] hash code
     def hash
-      @_hash ||= [self.class, rules, @media_queries].hash # rubocop:disable Naming/MemoizedInstanceVariableName
+      @_hash ||= [self.class, rules, @media_queries, @conditional_groups].hash # rubocop:disable Naming/MemoizedInstanceVariableName
     end
 
     # Flatten all rules in this stylesheet according to CSS cascade rules.
@@ -852,11 +864,13 @@ module Cataract
       list_id_offset = merge_selector_lists!(other.selector_lists, rule_id_offset: offset)
       mq_id_offset = merge_media_queries!(other.media_queries)
       merge_media_query_lists!(other.media_query_lists, mq_id_offset: mq_id_offset)
+      cg_id_offset = merge_conditional_groups!(other.conditional_groups)
 
       # Add rules with updated IDs and cross-references
       other.rules.each do |rule|
         new_rule = rule.dup
-        rebase_rule!(new_rule, rule_id_offset: offset, list_id_offset: list_id_offset, mq_id_offset: mq_id_offset)
+        rebase_rule!(new_rule, rule_id_offset: offset, list_id_offset: list_id_offset, mq_id_offset: mq_id_offset,
+                               cg_id_offset: cg_id_offset)
         @rules << new_rule
       end
 
@@ -946,6 +960,10 @@ module Cataract
       @_next_media_query_id
     end
 
+    def next_conditional_group_id
+      @_next_conditional_group_id
+    end
+
     def next_selector_list_id
       @_next_selector_list_id
     end
@@ -996,6 +1014,28 @@ module Cataract
       @_next_media_query_id += source_media_queries.size
 
       mq_id_offset
+    end
+
+    # Offset and append ConditionalGroup objects into @conditional_groups,
+    # without mutating the source objects. Unlike merge_media_queries!,
+    # each group's own parent_id (pointing at another ConditionalGroup, for
+    # nesting) must also be rebased by the same offset.
+    #
+    # @param source_groups [Array<ConditionalGroup>, nil]
+    # @return [Integer] id offset applied to each merged ConditionalGroup
+    def merge_conditional_groups!(source_groups)
+      cg_id_offset = @_next_conditional_group_id
+      return cg_id_offset if source_groups.nil? || source_groups.empty?
+
+      source_groups.each do |group|
+        new_group = group.dup
+        new_group.id += cg_id_offset
+        new_group.parent_id += cg_id_offset if new_group.parent_id
+        @conditional_groups << new_group
+      end
+      @_next_conditional_group_id += source_groups.size
+
+      cg_id_offset
     end
 
     # Offset and merge a selector_lists hash (list_id => [rule_ids]) into
@@ -1056,18 +1096,21 @@ module Cataract
     end
 
     # Rebase a rule/at-rule's own id and its cross-references (Rule's
-    # selector_list_id, and media_query_id on both Rule and AtRule) by the
-    # given offsets, mutating it in place. Callers merging from a live
-    # Stylesheet they don't own (e.g. concat) must dup the rule first.
+    # selector_list_id, and media_query_id/conditional_group_id on both Rule
+    # and AtRule) by the given offsets, mutating it in place. Callers
+    # merging from a live Stylesheet they don't own (e.g. concat) must dup
+    # the rule first.
     #
     # @param rule [Rule, AtRule]
     # @param rule_id_offset [Integer]
     # @param list_id_offset [Integer]
     # @param mq_id_offset [Integer]
+    # @param cg_id_offset [Integer]
     # @return [void]
-    def rebase_rule!(rule, rule_id_offset:, list_id_offset: 0, mq_id_offset: 0)
+    def rebase_rule!(rule, rule_id_offset:, list_id_offset: 0, mq_id_offset: 0, cg_id_offset: 0)
       rule.id += rule_id_offset
       rule.media_query_id += mq_id_offset if rule.media_query_id
+      rule.conditional_group_id += cg_id_offset if rule.conditional_group_id
       return unless rule.is_a?(Rule)
 
       rule.selector_list_id += list_id_offset if rule.selector_list_id
@@ -1099,10 +1142,12 @@ module Cataract
       list_id_offset = merge_selector_lists!(result[:_selector_lists], rule_id_offset: offset)
       mq_id_offset = merge_media_queries!(result[:media_queries])
       merge_media_query_lists!(result[:_media_query_lists], mq_id_offset: mq_id_offset)
+      cg_id_offset = merge_conditional_groups!(result[:conditional_groups])
 
       new_rules = result[:rules]
       new_rules.each do |rule|
-        rebase_rule!(rule, rule_id_offset: offset, list_id_offset: list_id_offset, mq_id_offset: mq_id_offset)
+        rebase_rule!(rule, rule_id_offset: offset, list_id_offset: list_id_offset, mq_id_offset: mq_id_offset,
+                           cg_id_offset: cg_id_offset)
         @rules << rule
       end
       @_last_rule_id = offset + new_rules.length
@@ -1313,7 +1358,8 @@ module Cataract
     # @return [void]
     def merge_imported_sheet!(imported_sheet, import)
       mq_id_offset = merge_media_queries!(imported_sheet.media_queries)
-      rebase_imported_rules_media_query!(imported_sheet.rules, mq_id_offset, import.media_query_id)
+      cg_id_offset = merge_conditional_groups!(imported_sheet.conditional_groups)
+      rebase_imported_rules!(imported_sheet.rules, mq_id_offset, cg_id_offset, import.media_query_id)
 
       insert_position = import.id
       imported_sheet.rules.each_with_index do |rule, idx|
@@ -1324,15 +1370,16 @@ module Cataract
       merge_media_query_lists!(imported_sheet.media_query_lists, mq_id_offset: mq_id_offset)
     end
 
-    # Rebase every imported rule/at-rule's media_query_id onto this
-    # stylesheet's own @media_queries (now that the imported sheet's own
-    # media queries have been merged in), then, if the @import statement
-    # itself had a media qualifier, combine it with (or assign it to) each
-    # rule's media context.
+    # Rebase every imported rule/at-rule's media_query_id and
+    # conditional_group_id onto this stylesheet's own @media_queries/
+    # @conditional_groups (now that the imported sheet's own copies have
+    # been merged in), then, if the @import statement itself had a media
+    # qualifier, combine it with (or assign it to) each rule's media
+    # context.
     #
     # @return [void]
-    def rebase_imported_rules_media_query!(imported_rules, mq_id_offset, import_media_query_id)
-      imported_rules.each { |rule| rebase_rule!(rule, rule_id_offset: 0, mq_id_offset: mq_id_offset) }
+    def rebase_imported_rules!(imported_rules, mq_id_offset, cg_id_offset, import_media_query_id)
+      imported_rules.each { |rule| rebase_rule!(rule, rule_id_offset: 0, mq_id_offset: mq_id_offset, cg_id_offset: cg_id_offset) }
 
       return unless import_media_query_id
 

@@ -8,7 +8,6 @@ module Cataract
   # The content field varies by at-rule type:
   # - `@keyframes`: Array of Rule (keyframe percentage blocks like "0%", "100%")
   # - `@font-face`: Array of Declaration (font property declarations)
-  # - `@supports`: Array of Rule (conditional rules)
   #
   # @example Parse @keyframes
   #   css = "@keyframes fade { 0% { opacity: 0; } 100% { opacity: 1; } }"
@@ -29,7 +28,10 @@ module Cataract
   # @attr [Array<Rule>, Array<Declaration>] content Nested rules or declarations
   # @attr [nil] specificity Always nil for at-rules (they don't have CSS specificity)
   # @attr [Integer, nil] media_query_id ID of MediaQuery if inside @media block, nil otherwise
-  AtRule = Struct.new(:id, :selector, :content, :specificity, :media_query_id) unless const_defined?(:AtRule)
+  # @attr [Integer, nil] conditional_group_id ID of ConditionalGroup if inside @supports/@layer/@container/@scope, nil otherwise
+  unless const_defined?(:AtRule)
+    AtRule = Struct.new(:id, :selector, :content, :specificity, :media_query_id, :conditional_group_id)
+  end
 
   class AtRule
     # Check if this is a selector-based rule (vs an at-rule like @keyframes).

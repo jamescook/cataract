@@ -1,3 +1,7 @@
+## [Unreleased]
+
+- Feature: `@supports (condition) { ... }` now preserves its condition and the rules it wraps through parse -> serialize, in both backends - previously the condition was discarded entirely and the wrapped rules were silently flattened into the surrounding document with no trace of ever being conditional.
+
 ## [0.4.0] - 2026-07-08
 
 - Fix: `Declarations.new(some_string)` (standalone CSS declaration-block parsing) now works under the pure Ruby backend (`CATARACT_PURE=1`) - previously raised `NoMethodError`.

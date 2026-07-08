@@ -26,9 +26,11 @@ typedef struct {
     VALUE imports_array;      // Array of ImportStatement structs
     VALUE media_queries;      // Array of MediaQuery structs
     VALUE media_query_lists;  // Hash: list_id => Array of MediaQuery IDs
+    VALUE conditional_groups; // Array of ConditionalGroup structs (@supports/@layer/@container/@scope)
     int rule_id_counter;      // Next rule ID (0-indexed)
     int next_selector_list_id; // Next selector list ID (0-indexed)
     int media_query_id_counter; // Next MediaQuery ID (0-indexed)
+    int conditional_group_id_counter; // Next ConditionalGroup ID (0-indexed)
     int next_media_query_list_id; // Next media query list ID (0-indexed)
     int media_query_count;    // Safety limit for media queries
     BOOLEAN has_nesting;      // Set to 1 if any nested rules are created
@@ -62,6 +64,7 @@ static inline ParserContext init_child_context(ParserContext *parent) {
     child.imports_array = rb_ary_new();
     child.media_queries = rb_ary_new();
     child.media_query_lists = rb_hash_new();
+    child.conditional_groups = rb_ary_new();
 
     child.selector_lists_enabled = parent->selector_lists_enabled;
 
@@ -885,7 +888,8 @@ static VALUE parse_declarations(const char *start, const char *end, ParserContex
 
 // Forward declarations
 static void parse_css_recursive(ParserContext *ctx, const char *css, const char *pe,
-                                 VALUE parent_media_sym, VALUE parent_selector, VALUE parent_rule_id, int parent_media_query_id);
+                                 VALUE parent_media_sym, VALUE parent_selector, VALUE parent_rule_id, int parent_media_query_id,
+                                 int parent_conditional_group_id);
 static VALUE combine_media_queries(VALUE parent, VALUE child);
 
 /*
@@ -1032,7 +1036,8 @@ static void parse_single_media_query(const char *query_start, const char *query_
  * Returns: Array of declarations (only the declarations, not nested rules)
  */
 static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char *end,
-                                VALUE parent_selector, VALUE parent_rule_id, VALUE parent_media_sym, int parent_media_query_id) {
+                                VALUE parent_selector, VALUE parent_rule_id, VALUE parent_media_sym, int parent_media_query_id,
+                                int parent_conditional_group_id) {
     // Check recursion depth to prevent stack overflow
     if (ctx->depth > MAX_PARSE_DEPTH) {
         rb_raise(eDepthError,
@@ -1156,11 +1161,13 @@ static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char
             // Parse mixed block (may contain declarations and/or nested @media)
             ctx->depth++;
             VALUE media_declarations = parse_mixed_block(ctx, media_block_start, media_block_end,
-                                                        parent_selector, INT2FIX(media_rule_id), Qnil, combined_media_query_id);
+                                                        parent_selector, INT2FIX(media_rule_id), Qnil, combined_media_query_id,
+                                                        parent_conditional_group_id);
             ctx->depth--;
 
             // Create rule with the parent selector and declarations, associated with combined media query
             VALUE media_query_id_val = INT2FIX(combined_media_query_id);
+            VALUE conditional_group_id_val = (parent_conditional_group_id >= 0) ? INT2FIX(parent_conditional_group_id) : Qnil;
             VALUE rule = rb_struct_new(cRule,
                 INT2FIX(media_rule_id),
                 parent_selector,
@@ -1169,7 +1176,8 @@ static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char
                 parent_rule_id,  // Link to parent for nested @media serialization
                 Qnil,  // nesting_style (nil for @media nesting)
                 Qnil,  // selector_list_id
-                media_query_id_val  // media_query_id from parent context
+                media_query_id_val,  // media_query_id from parent context
+                conditional_group_id_val  // conditional_group_id from parent context
             );
 
             // Mark that we have nesting (only set once)
@@ -1251,11 +1259,13 @@ static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char
                         // Recursively parse nested block
                         ctx->depth++;
                         VALUE nested_declarations = parse_mixed_block(ctx, nested_block_start, nested_block_end,
-                                                                     resolved_selector, INT2FIX(rule_id), parent_media_sym, parent_media_query_id);
+                                                                     resolved_selector, INT2FIX(rule_id), parent_media_sym, parent_media_query_id,
+                                                                     parent_conditional_group_id);
                         ctx->depth--;
 
                         // Create rule for nested selector
                         VALUE media_query_id_val = (parent_media_query_id >= 0) ? INT2FIX(parent_media_query_id) : Qnil;
+                        VALUE conditional_group_id_val = (parent_conditional_group_id >= 0) ? INT2FIX(parent_conditional_group_id) : Qnil;
                         VALUE rule = rb_struct_new(cRule,
                             INT2FIX(rule_id),
                             resolved_selector,
@@ -1264,7 +1274,8 @@ static VALUE parse_mixed_block(ParserContext *ctx, const char *start, const char
                             parent_rule_id,
                             nesting_style,
                             Qnil,  // selector_list_id
-                            media_query_id_val  // media_query_id from parent context
+                            media_query_id_val,  // media_query_id from parent context
+                            conditional_group_id_val  // conditional_group_id from parent context
                         );
 
                         // Mark that we have nesting (only set once)
@@ -1508,7 +1519,8 @@ static void parse_import_statement(ParserContext *ctx, const char **p_ptr, const
  * "@media ... { ... }" construct (including its closing '}', if found).
  */
 static void handle_media_at_rule(ParserContext *ctx, const char **p_ptr, const char *pe,
-                                  VALUE parent_media_sym, int parent_media_query_id) {
+                                  VALUE parent_media_sym, int parent_media_query_id,
+                                  int parent_conditional_group_id) {
     const char *p = *p_ptr;
     p += 6;  // Skip "@media"
 
@@ -1541,7 +1553,8 @@ static void handle_media_at_rule(ParserContext *ctx, const char **p_ptr, const c
 
         // Parse block contents with NO media query context
         ctx->depth++;
-        parse_css_recursive(ctx, block_start, block_end, parent_media_sym, NO_PARENT_SELECTOR, NO_PARENT_RULE_ID, parent_media_query_id);
+        parse_css_recursive(ctx, block_start, block_end, parent_media_sym, NO_PARENT_SELECTOR, NO_PARENT_RULE_ID, parent_media_query_id,
+                            parent_conditional_group_id);
         ctx->depth--;
 
         if (p < pe && *p == '}') p++;
@@ -1645,7 +1658,8 @@ static void handle_media_at_rule(ParserContext *ctx, const char **p_ptr, const c
 
     // Recursively parse @media block with new media query context
     ctx->depth++;
-    parse_css_recursive(ctx, block_start, block_end, combined_media_sym, NO_PARENT_SELECTOR, NO_PARENT_RULE_ID, current_media_query_id);
+    parse_css_recursive(ctx, block_start, block_end, combined_media_sym, NO_PARENT_SELECTOR, NO_PARENT_RULE_ID, current_media_query_id,
+                        parent_conditional_group_id);
     ctx->depth--;
 
     if (p < pe && *p == '}') p++;
@@ -1660,14 +1674,23 @@ static void handle_media_at_rule(ParserContext *ctx, const char **p_ptr, const c
  * '@'; at_start/at_name_end/at_name_len describe the already-scanned
  * at-rule name. Advances *p_ptr past the entire construct (including its
  * closing '}', if found).
+ *
+ * Only @supports currently builds a real ConditionalGroup and tags its
+ * child rules with a conditional_group_id - @layer/@container/@scope still
+ * just recurse with parent_conditional_group_id passed through unchanged
+ * (their condition/name text is extracted below only for the missing-
+ * condition validation, same as before). Each gets its own faithful
+ * representation in its own follow-up bead.
  */
 static void handle_conditional_group_at_rule(ParserContext *ctx, const char **p_ptr, const char *pe,
                                               const char *at_start, const char *at_name_end, long at_name_len,
                                               VALUE parent_media_sym, VALUE parent_selector, VALUE parent_rule_id,
-                                              int parent_media_query_id) {
+                                              int parent_media_query_id, int parent_conditional_group_id) {
+    BOOLEAN is_supports = (at_name_len == 8 && strncmp(at_start, "supports", 8) == 0);
+
     // Check if this rule requires a condition
     BOOLEAN requires_condition =
-        (at_name_len == 8 && strncmp(at_start, "supports", 8) == 0) ||
+        is_supports ||
         (at_name_len == 9 && strncmp(at_start, "container", 9) == 0);
 
     // Extract condition (between at-rule name and opening brace)
@@ -1701,9 +1724,31 @@ static void handle_conditional_group_at_rule(ParserContext *ctx, const char **p_
     const char *block_end = find_matching_brace_strict(p, pe, ctx->check_unclosed_blocks);
     p = block_end;
 
+    // For @supports, build a ConditionalGroup (nested inside the enclosing
+    // one, if any) and tag every rule parsed inside this block with it.
+    // @layer/@container/@scope pass parent_conditional_group_id through
+    // unchanged until their own beads give them the same treatment.
+    int child_conditional_group_id = parent_conditional_group_id;
+    if (is_supports && cond_end > cond_start) {
+        VALUE condition = rb_utf8_str_new(cond_start, cond_end - cond_start);
+        VALUE parent_id_val = (parent_conditional_group_id >= 0) ? INT2FIX(parent_conditional_group_id) : Qnil;
+        VALUE group = rb_struct_new(cConditionalGroup,
+            INT2FIX(ctx->conditional_group_id_counter),
+            ID2SYM(rb_intern("supports")),
+            Qnil,  // name (@supports has no name)
+            condition,
+            parent_id_val
+        );
+        rb_ary_push(ctx->conditional_groups, group);
+        child_conditional_group_id = ctx->conditional_group_id_counter;
+        ctx->conditional_group_id_counter++;
+        RB_GC_GUARD(condition);
+    }
+
     // Recursively parse block content (preserve parent media context)
     ctx->depth++;
-    parse_css_recursive(ctx, block_start, block_end, parent_media_sym, parent_selector, parent_rule_id, parent_media_query_id);
+    parse_css_recursive(ctx, block_start, block_end, parent_media_sym, parent_selector, parent_rule_id, parent_media_query_id,
+                        child_conditional_group_id);
     ctx->depth--;
 
     if (p < pe && *p == '}') p++;
@@ -1717,7 +1762,8 @@ static void handle_conditional_group_at_rule(ParserContext *ctx, const char **p_
  * entire construct (including its closing '}', if found).
  */
 static void handle_keyframes_at_rule(ParserContext *ctx, const char **p_ptr, const char *pe,
-                                      const char *at_name_end, VALUE parent_media_sym, int parent_media_query_id) {
+                                      const char *at_name_end, VALUE parent_media_sym, int parent_media_query_id,
+                                      int parent_conditional_group_id) {
     // Build full selector string: "@keyframes fade"
     const char *selector_start = *p_ptr;  // Points to '@'
     const char *p = at_name_end;
@@ -1746,19 +1792,22 @@ static void handle_keyframes_at_rule(ParserContext *ctx, const char **p_ptr, con
     // NOT land in ctx->rules_array — they need their own array to become this
     // AtRule's `content` below, so parse into an isolated child context instead.
     ParserContext nested_ctx = init_child_context(ctx);
-    parse_css_recursive(&nested_ctx, block_start, block_end, NO_PARENT_MEDIA, NO_PARENT_SELECTOR, NO_PARENT_RULE_ID, NO_MEDIA_QUERY_ID);
+    parse_css_recursive(&nested_ctx, block_start, block_end, NO_PARENT_MEDIA, NO_PARENT_SELECTOR, NO_PARENT_RULE_ID, NO_MEDIA_QUERY_ID,
+                        NO_CONDITIONAL_GROUP_ID);
 
     // Get rule ID and increment
     int rule_id = ctx->rule_id_counter++;
 
     // Create AtRule with nested rules
     VALUE media_query_id_val = (parent_media_query_id >= 0) ? INT2FIX(parent_media_query_id) : Qnil;
+    VALUE conditional_group_id_val = (parent_conditional_group_id >= 0) ? INT2FIX(parent_conditional_group_id) : Qnil;
     VALUE at_rule = rb_struct_new(cAtRule,
         INT2FIX(rule_id),
         selector,
         nested_ctx.rules_array,  // Array of Rule (keyframe blocks)
         Qnil,  // specificity
-        media_query_id_val  // media_query_id from parent context
+        media_query_id_val,  // media_query_id from parent context
+        conditional_group_id_val  // conditional_group_id from parent context
     );
 
     // Add to rules array
@@ -1785,7 +1834,8 @@ static void handle_keyframes_at_rule(ParserContext *ctx, const char **p_ptr, con
  * closing '}', if found).
  */
 static void handle_font_face_at_rule(ParserContext *ctx, const char **p_ptr, const char *pe,
-                                      const char *at_name_end, VALUE parent_media_sym, int parent_media_query_id) {
+                                      const char *at_name_end, VALUE parent_media_sym, int parent_media_query_id,
+                                      int parent_conditional_group_id) {
     // Build selector string: "@font-face"
     const char *selector_start = *p_ptr;  // Points to '@'
     const char *p = at_name_end;
@@ -1817,12 +1867,14 @@ static void handle_font_face_at_rule(ParserContext *ctx, const char **p_ptr, con
 
     // Create AtRule with declarations
     VALUE media_query_id_val = (parent_media_query_id >= 0) ? INT2FIX(parent_media_query_id) : Qnil;
+    VALUE conditional_group_id_val = (parent_conditional_group_id >= 0) ? INT2FIX(parent_conditional_group_id) : Qnil;
     VALUE at_rule = rb_struct_new(cAtRule,
         INT2FIX(rule_id),
         selector,
         declarations,  // Array of Declaration
         Qnil,  // specificity
-        media_query_id_val  // media_query_id from parent context
+        media_query_id_val,  // media_query_id from parent context
+        conditional_group_id_val  // conditional_group_id from parent context
     );
 
     // Add to rules array
@@ -1852,7 +1904,8 @@ static void handle_font_face_at_rule(ParserContext *ctx, const char **p_ptr, con
  * selector_start/decl_start - the caller does that once this returns.
  */
 static void finish_rule_block(ParserContext *ctx, const char *selector_start, const char *decl_start, const char *p,
-                               VALUE parent_selector, VALUE parent_rule_id, VALUE parent_media_sym, int parent_media_query_id) {
+                               VALUE parent_selector, VALUE parent_rule_id, VALUE parent_media_sym, int parent_media_query_id,
+                               int parent_conditional_group_id) {
     // We've found a complete CSS rule block - now determine if it has nesting
     // Example: .parent { color: red; & .child { font-size: 14px; } }
     //          ^selector_start    ^decl_start                    ^p (at })
@@ -2006,6 +2059,7 @@ static void finish_rule_block(ParserContext *ctx, const char *selector_start, co
 
                     // Create Rule
                     VALUE media_query_id_val = (parent_media_query_id >= 0) ? INT2FIX(parent_media_query_id) : Qnil;
+                    VALUE conditional_group_id_val = (parent_conditional_group_id >= 0) ? INT2FIX(parent_conditional_group_id) : Qnil;
                     VALUE rule = rb_struct_new(cRule,
                         INT2FIX(rule_id),
                         resolved_selector,
@@ -2014,7 +2068,8 @@ static void finish_rule_block(ParserContext *ctx, const char *selector_start, co
                         parent_id_val,
                         nesting_style_val,
                         selector_list_id_val,
-                        media_query_id_val  // media_query_id from parent context
+                        media_query_id_val,  // media_query_id from parent context
+                        conditional_group_id_val  // conditional_group_id from parent context
                     );
 
                     // Track rule in selector list if applicable
@@ -2119,7 +2174,8 @@ static void finish_rule_block(ParserContext *ctx, const char *selector_start, co
                     // Nested rules will be added AFTER the placeholder
                     ctx->depth++;
                     VALUE parent_declarations = parse_mixed_block(ctx, decl_start, p,
-                                                                 resolved_current, INT2FIX(current_rule_id), parent_media_sym, parent_media_query_id);
+                                                                 resolved_current, INT2FIX(current_rule_id), parent_media_sym, parent_media_query_id,
+                                                                 parent_conditional_group_id);
                     ctx->depth--;
 
                     // Determine selector_list_id value
@@ -2128,6 +2184,7 @@ static void finish_rule_block(ParserContext *ctx, const char *selector_start, co
                     // Create parent rule and replace placeholder
                     // Always create the rule (even if empty) to avoid edge cases
                     VALUE media_query_id_val = (parent_media_query_id >= 0) ? INT2FIX(parent_media_query_id) : Qnil;
+                    VALUE conditional_group_id_val = (parent_conditional_group_id >= 0) ? INT2FIX(parent_conditional_group_id) : Qnil;
                     VALUE rule = rb_struct_new(cRule,
                         INT2FIX(current_rule_id),
                         resolved_current,
@@ -2136,7 +2193,8 @@ static void finish_rule_block(ParserContext *ctx, const char *selector_start, co
                         current_parent_id,
                         current_nesting_style,
                         selector_list_id_val,
-                        media_query_id_val  // media_query_id from parent context
+                        media_query_id_val,  // media_query_id from parent context
+                        conditional_group_id_val  // conditional_group_id from parent context
                     );
 
                     // Track rule in selector list if applicable
@@ -2169,7 +2227,8 @@ static void finish_rule_block(ParserContext *ctx, const char *selector_start, co
  * parent_rule_id:   Parent rule ID (Fixnum) for nested rules (or Qnil for top-level)
  */
 static void parse_css_recursive(ParserContext *ctx, const char *css, const char *pe,
-                                 VALUE parent_media_sym, VALUE parent_selector, VALUE parent_rule_id, int parent_media_query_id) {
+                                 VALUE parent_media_sym, VALUE parent_selector, VALUE parent_rule_id, int parent_media_query_id,
+                                 int parent_conditional_group_id) {
     // Check recursion depth to prevent stack overflow
     if (ctx->depth > MAX_PARSE_DEPTH) {
         rb_raise(eDepthError,
@@ -2218,7 +2277,7 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
         // Check for @media at-rule (only at depth 0)
         if (RB_UNLIKELY(brace_depth == 0 && p + 6 < pe && *p == '@' &&
             strncmp(p + 1, "media", 5) == 0 && IS_WHITESPACE(p[6]))) {
-            handle_media_at_rule(ctx, &p, pe, parent_media_sym, parent_media_query_id);
+            handle_media_at_rule(ctx, &p, pe, parent_media_sym, parent_media_query_id, parent_conditional_group_id);
             continue;
         }
 
@@ -2245,7 +2304,8 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
 
             if (is_conditional_group) {
                 handle_conditional_group_at_rule(ctx, &p, pe, at_start, at_name_end, at_name_len,
-                                                  parent_media_sym, parent_selector, parent_rule_id, parent_media_query_id);
+                                                  parent_media_sym, parent_selector, parent_rule_id, parent_media_query_id,
+                                                  parent_conditional_group_id);
                 continue;
             }
 
@@ -2257,7 +2317,7 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
                 (at_name_len == 13 && strncmp(at_start, "-moz-keyframes", 13) == 0);
 
             if (is_keyframes) {
-                handle_keyframes_at_rule(ctx, &p, pe, at_name_end, parent_media_sym, parent_media_query_id);
+                handle_keyframes_at_rule(ctx, &p, pe, at_name_end, parent_media_sym, parent_media_query_id, parent_conditional_group_id);
                 continue;
             }
 
@@ -2265,7 +2325,7 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
             BOOLEAN is_font_face = (at_name_len == 9 && strncmp(at_start, "font-face", 9) == 0);
 
             if (is_font_face) {
-                handle_font_face_at_rule(ctx, &p, pe, at_name_end, parent_media_sym, parent_media_query_id);
+                handle_font_face_at_rule(ctx, &p, pe, at_name_end, parent_media_sym, parent_media_query_id, parent_conditional_group_id);
                 continue;
             }
         }
@@ -2289,7 +2349,8 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
             brace_depth--;
             if (brace_depth == 0 && selector_start != NULL && decl_start != NULL) {
                 finish_rule_block(ctx, selector_start, decl_start, p,
-                                   parent_selector, parent_rule_id, parent_media_sym, parent_media_query_id);
+                                   parent_selector, parent_rule_id, parent_media_sym, parent_media_query_id,
+                                   parent_conditional_group_id);
                 selector_start = NULL;
                 decl_start = NULL;
             }
@@ -2406,9 +2467,11 @@ VALUE parse_css_new_impl(VALUE css_string, VALUE parser_options, int rule_id_off
     ctx.imports_array = rb_ary_new();
     ctx.media_queries = rb_ary_new();
     ctx.media_query_lists = rb_hash_new();
+    ctx.conditional_groups = rb_ary_new();
     ctx.rule_id_counter = rule_id_offset;  // Start from offset
     ctx.next_selector_list_id = 0;  // Start from 0
     ctx.media_query_id_counter = 0;  // Start from 0
+    ctx.conditional_group_id_counter = 0;  // Start from 0
     ctx.next_media_query_list_id = 0;  // Start from 0
     ctx.media_query_count = 0;
     ctx.has_nesting = 0;  // Will be set to 1 if any nested rules are created
@@ -2429,7 +2492,7 @@ VALUE parse_css_new_impl(VALUE css_string, VALUE parser_options, int rule_id_off
 
     // Parse CSS (top-level, no parent context)
     DEBUG_PRINTF("[PARSE] Starting parse_css_recursive from: %.80s\n", p);
-    parse_css_recursive(&ctx, p, pe, NO_PARENT_MEDIA, NO_PARENT_SELECTOR, NO_PARENT_RULE_ID, NO_MEDIA_QUERY_ID);
+    parse_css_recursive(&ctx, p, pe, NO_PARENT_MEDIA, NO_PARENT_SELECTOR, NO_PARENT_RULE_ID, NO_MEDIA_QUERY_ID, NO_CONDITIONAL_GROUP_ID);
 
     // Build result hash
     VALUE result = rb_hash_new();
@@ -2438,6 +2501,7 @@ VALUE parse_css_new_impl(VALUE css_string, VALUE parser_options, int rule_id_off
     rb_hash_aset(result, ID2SYM(rb_intern("media_queries")), ctx.media_queries);
     rb_hash_aset(result, ID2SYM(rb_intern("_selector_lists")), ctx.selector_lists);
     rb_hash_aset(result, ID2SYM(rb_intern("_media_query_lists")), ctx.media_query_lists);
+    rb_hash_aset(result, ID2SYM(rb_intern("conditional_groups")), ctx.conditional_groups);
     rb_hash_aset(result, ID2SYM(rb_intern("imports")), ctx.imports_array);
     rb_hash_aset(result, ID2SYM(rb_intern("charset")), charset);
     rb_hash_aset(result, ID2SYM(rb_intern("last_rule_id")), INT2FIX(ctx.rule_id_counter));
@@ -2449,6 +2513,7 @@ VALUE parse_css_new_impl(VALUE css_string, VALUE parser_options, int rule_id_off
     RB_GC_GUARD(ctx.media_queries);
     RB_GC_GUARD(ctx.selector_lists);
     RB_GC_GUARD(ctx.media_query_lists);
+    RB_GC_GUARD(ctx.conditional_groups);
     RB_GC_GUARD(ctx.imports_array);
     RB_GC_GUARD(ctx.base_uri);
     RB_GC_GUARD(ctx.uri_resolver);

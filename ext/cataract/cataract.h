@@ -14,6 +14,7 @@ extern VALUE cAtRule;
 extern VALUE cStylesheet;
 extern VALUE cImportStatement;
 extern VALUE cMediaQuery;
+extern VALUE cConditionalGroup;
 
 // Error class references
 extern VALUE eCataractError;
@@ -25,7 +26,7 @@ extern VALUE eParseError;
 // Struct field indices
 // ============================================================================
 
-// Rule struct field indices (id, selector, declarations, specificity, parent_rule_id, nesting_style, selector_list_id, media_query_id)
+// Rule struct field indices (id, selector, declarations, specificity, parent_rule_id, nesting_style, selector_list_id, media_query_id, conditional_group_id)
 #define RULE_ID 0
 #define RULE_SELECTOR 1
 #define RULE_DECLARATIONS 2
@@ -34,6 +35,7 @@ extern VALUE eParseError;
 #define RULE_NESTING_STYLE 5
 #define RULE_SELECTOR_LIST_ID 6
 #define RULE_MEDIA_QUERY_ID 7
+#define RULE_CONDITIONAL_GROUP_ID 8
 
 // Nesting style constants
 #define NESTING_STYLE_IMPLICIT 0  // .parent { .child { } } - no &
@@ -45,13 +47,14 @@ extern VALUE eParseError;
 #define NO_PARENT_SELECTOR Qnil
 #define NO_PARENT_RULE_ID Qnil
 #define NO_MEDIA_QUERY_ID (-1)
+#define NO_CONDITIONAL_GROUP_ID (-1)
 
 // Declaration struct field indices (property, value, important)
 #define DECL_PROPERTY 0
 #define DECL_VALUE 1
 #define DECL_IMPORTANT 2
 
-// AtRule struct field indices (id, selector, content, specificity, media_query_id)
+// AtRule struct field indices (id, selector, content, specificity, media_query_id, conditional_group_id)
 // Matches Rule interface for duck-typing, but AtRule has fewer members - its
 // indices do NOT line up with Rule's past AT_RULE_SPECIFICITY (e.g. index 4
 // is media_query_id here but parent_rule_id on Rule), so never read a field
@@ -61,6 +64,14 @@ extern VALUE eParseError;
 #define AT_RULE_CONTENT 2
 #define AT_RULE_SPECIFICITY 3
 #define AT_RULE_MEDIA_QUERY_ID 4
+#define AT_RULE_CONDITIONAL_GROUP_ID 5
+
+// ConditionalGroup struct field indices (id, type, name, condition, parent_id)
+#define CONDITIONAL_GROUP_ID 0
+#define CONDITIONAL_GROUP_TYPE 1
+#define CONDITIONAL_GROUP_NAME 2
+#define CONDITIONAL_GROUP_CONDITION 3
+#define CONDITIONAL_GROUP_PARENT_ID 4
 
 // ============================================================================
 // Macros

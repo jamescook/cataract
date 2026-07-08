@@ -9,6 +9,7 @@ VALUE cAtRule;
 VALUE cStylesheet;
 VALUE cImportStatement;
 VALUE cMediaQuery;
+VALUE cConditionalGroup;
 
 // Error class definitions (shared with main extension)
 VALUE eCataractError;
@@ -408,6 +409,66 @@ static VALUE build_rules_by_id(VALUE rules_array) {
     return rules_by_id;
 }
 
+// A rule's conditional-group wrapping chain, outermost first, found by
+// walking parent_id from its own conditional_group_id up to the root. Only
+// @supports currently populates conditional_group_id (see the parser), but
+// this walks whatever's there generically.
+static VALUE conditional_group_chain(VALUE conditional_groups, VALUE conditional_group_id) {
+    VALUE chain = rb_ary_new();
+    VALUE id = conditional_group_id;
+    while (!NIL_P(id)) {
+        VALUE group = rb_ary_entry(conditional_groups, FIX2INT(id));
+        if (NIL_P(group)) break;
+
+        rb_ary_unshift(chain, group);
+        id = rb_struct_aref(group, INT2FIX(CONDITIONAL_GROUP_PARENT_ID));
+    }
+    return chain;
+}
+
+// Reconcile the currently-open conditional-group blocks with the ones a
+// rule needs, like diffing two paths down a tree: close whatever's open
+// past where the chains diverge (innermost first), then open whatever the
+// target chain adds from that point on. Nested entirely inside whatever
+// media block is currently open (conditional groups don't affect media
+// context). Returns target_chain, for the caller to track as current.
+static VALUE sync_conditional_group_chain(VALUE result, VALUE current_chain, VALUE target_chain, const char *indent) {
+    long current_len = RARRAY_LEN(current_chain);
+    long target_len = RARRAY_LEN(target_chain);
+    long common = 0;
+    while (common < current_len && common < target_len) {
+        VALUE cur_id = rb_struct_aref(rb_ary_entry(current_chain, common), INT2FIX(CONDITIONAL_GROUP_ID));
+        VALUE tgt_id = rb_struct_aref(rb_ary_entry(target_chain, common), INT2FIX(CONDITIONAL_GROUP_ID));
+        if (!rb_equal(cur_id, tgt_id)) break;
+
+        common++;
+    }
+
+    for (long i = current_len - 1; i >= common; i--) {
+        rb_str_cat2(result, indent);
+        rb_str_cat2(result, "}\n");
+    }
+
+    for (long i = common; i < target_len; i++) {
+        VALUE group = rb_ary_entry(target_chain, i);
+        rb_str_cat2(result, indent);
+        rb_str_cat2(result, "@");
+        rb_str_append(result, rb_sym2str(rb_struct_aref(group, INT2FIX(CONDITIONAL_GROUP_TYPE))));
+        rb_str_cat2(result, " ");
+        rb_str_append(result, rb_struct_aref(group, INT2FIX(CONDITIONAL_GROUP_CONDITION)));
+        rb_str_cat2(result, " {\n");
+    }
+
+    return target_chain;
+}
+
+static void close_conditional_groups(VALUE result, long count, const char *indent) {
+    for (long i = 0; i < count; i++) {
+        rb_str_cat2(result, indent);
+        rb_str_cat2(result, "}\n");
+    }
+}
+
 // Rule and AtRule don't share a member layout past their first few fields
 // (see the AT_RULE_* comment in cataract.h), so reading parent_rule_id or
 // media_query_id off a rule of unknown type needs to dispatch on which
@@ -423,6 +484,12 @@ static inline VALUE rule_media_query_id_of(VALUE rule) {
     return rb_obj_is_kind_of(rule, cAtRule)
         ? rb_struct_aref(rule, INT2FIX(AT_RULE_MEDIA_QUERY_ID))
         : rb_struct_aref(rule, INT2FIX(RULE_MEDIA_QUERY_ID));
+}
+
+static inline VALUE rule_conditional_group_id_of(VALUE rule) {
+    return rb_obj_is_kind_of(rule, cAtRule)
+        ? rb_struct_aref(rule, INT2FIX(AT_RULE_CONDITIONAL_GROUP_ID))
+        : rb_struct_aref(rule, INT2FIX(RULE_CONDITIONAL_GROUP_ID));
 }
 
 // Formatting options for stylesheet serialization
@@ -564,6 +631,7 @@ static VALUE serialize_stylesheet_with_grouping(
     VALUE media_query_lists,
     VALUE result,
     VALUE selector_lists,
+    VALUE conditional_groups,
     const struct format_opts *opts
 ) {
     long total_rules = RARRAY_LEN(rules_array);
@@ -589,6 +657,7 @@ static VALUE serialize_stylesheet_with_grouping(
     // Iterate through rules in insertion order, grouping consecutive media queries
     VALUE current_media = Qnil;
     int in_media_block = 0;
+    VALUE current_cg_chain = rb_ary_new();
 
     for (long i = 0; i < total_rules; i++) {
         VALUE rule = rb_ary_entry(rules_array, i);
@@ -606,10 +675,12 @@ static VALUE serialize_stylesheet_with_grouping(
             rule_media = rb_ary_entry(media_queries, FIX2INT(rule_media_query_id));
         }
         int is_first_rule = (i == 0);
+        VALUE rule_cg_chain = conditional_group_chain(conditional_groups, rule_conditional_group_id_of(rule));
 
         if (NIL_P(rule_media)) {
             // Not in any media query - close any open media block first
             if (in_media_block) {
+                current_cg_chain = sync_conditional_group_chain(result, current_cg_chain, rb_ary_new(), opts->media_indent);
                 rb_str_cat2(result, "}\n");
                 in_media_block = 0;
                 current_media = Qnil;
@@ -620,11 +691,15 @@ static VALUE serialize_stylesheet_with_grouping(
                 rb_str_cat2(result, "\n");
             }
 
-            serialize_rule_in_group(result, rule, rule_id, rule_media_query_id, &group_ctx, 0);
+            current_cg_chain = sync_conditional_group_chain(result, current_cg_chain, rule_cg_chain, "");
+
+            serialize_rule_in_group(result, rule, rule_id, rule_media_query_id, &group_ctx, RARRAY_LEN(current_cg_chain) > 0);
         } else {
             // This rule is in a media query
             // Check if media query changed from previous rule (compare MediaQuery objects by value)
             if (NIL_P(current_media) || !rb_equal(current_media, rule_media)) {
+                current_cg_chain = sync_conditional_group_chain(result, current_cg_chain, rb_ary_new(), opts->media_indent);
+
                 // Close previous media block if open
                 if (in_media_block) {
                     rb_str_cat2(result, "}\n");
@@ -648,19 +723,23 @@ static VALUE serialize_stylesheet_with_grouping(
                 in_media_block = 1;
             }
 
+            current_cg_chain = sync_conditional_group_chain(result, current_cg_chain, rule_cg_chain, opts->media_indent);
+
             serialize_rule_in_group(result, rule, rule_id, rule_media_query_id, &group_ctx, 1);
         }
     }
 
-    // Close final media block if still open
+    // Close final conditional-group and media blocks if still open
+    close_conditional_groups(result, RARRAY_LEN(current_cg_chain), in_media_block ? opts->media_indent : "");
     if (in_media_block) {
         rb_str_cat2(result, "}\n");
     }
 
-    // Guard hash objects we created and used throughout
+    // Guard hash/array objects we created and used throughout
     RB_GC_GUARD(mq_id_to_list_id);
     RB_GC_GUARD(rules_by_id);
     RB_GC_GUARD(processed_rule_ids);
+    RB_GC_GUARD(current_cg_chain);
     return result;
 }
 
@@ -1010,11 +1089,12 @@ static VALUE serialize_stylesheet_with_nesting(
 // this, differing only in which format_opts they select. Dispatches on has_nesting
 // to pick the selector-list-grouping serializer (no nesting - zero overhead) or the
 // parent/child lookahead serializer (has nesting).
-static VALUE stylesheet_serialize_impl(VALUE rules_array, VALUE charset, VALUE has_nesting, VALUE selector_lists, VALUE media_queries, VALUE media_query_lists, int formatted) {
+static VALUE stylesheet_serialize_impl(VALUE rules_array, VALUE charset, VALUE has_nesting, VALUE selector_lists, VALUE media_queries, VALUE media_query_lists, VALUE conditional_groups, int formatted) {
     Check_Type(rules_array, T_ARRAY);
     Check_Type(media_queries, T_ARRAY);
     if (!NIL_P(media_query_lists)) Check_Type(media_query_lists, T_HASH);
     if (!NIL_P(selector_lists)) Check_Type(selector_lists, T_HASH);
+    if (!NIL_P(conditional_groups)) Check_Type(conditional_groups, T_ARRAY);
 
     VALUE result = rb_str_new_cstr("");
 
@@ -1048,22 +1128,23 @@ static VALUE stylesheet_serialize_impl(VALUE rules_array, VALUE charset, VALUE h
 
     // Fast path: if no nesting, use the selector-list-grouping serializer (zero overhead)
     if (!RTEST(has_nesting)) {
-        return serialize_stylesheet_with_grouping(rules_array, media_queries, media_query_lists, result, selector_lists, &opts);
+        return serialize_stylesheet_with_grouping(rules_array, media_queries, media_query_lists, result, selector_lists, conditional_groups, &opts);
     }
 
     // Has nesting - use the parent/child lookahead serializer
     // TODO: Phase 2 - use selector_lists for grouping on the nesting path too
+    // TODO: conditional_groups (@supports etc.) aren't reconstructed on this path yet
     return serialize_stylesheet_with_nesting(rules_array, media_queries, media_query_lists, result, &opts);
 }
 
 // New stylesheet serialization entry point - checks for nesting and delegates
-static VALUE stylesheet_to_s(VALUE self, VALUE rules_array, VALUE charset, VALUE has_nesting, VALUE selector_lists, VALUE media_queries, VALUE media_query_lists) {
-    return stylesheet_serialize_impl(rules_array, charset, has_nesting, selector_lists, media_queries, media_query_lists, 0);
+static VALUE stylesheet_to_s(VALUE self, VALUE rules_array, VALUE charset, VALUE has_nesting, VALUE selector_lists, VALUE media_queries, VALUE media_query_lists, VALUE conditional_groups) {
+    return stylesheet_serialize_impl(rules_array, charset, has_nesting, selector_lists, media_queries, media_query_lists, conditional_groups, 0);
 }
 
 // Formatted version with indentation and newlines (with nesting support)
-static VALUE stylesheet_to_formatted_s(VALUE self, VALUE rules_array, VALUE charset, VALUE has_nesting, VALUE selector_lists, VALUE media_queries, VALUE media_query_lists) {
-    return stylesheet_serialize_impl(rules_array, charset, has_nesting, selector_lists, media_queries, media_query_lists, 1);
+static VALUE stylesheet_to_formatted_s(VALUE self, VALUE rules_array, VALUE charset, VALUE has_nesting, VALUE selector_lists, VALUE media_queries, VALUE media_query_lists, VALUE conditional_groups) {
+    return stylesheet_serialize_impl(rules_array, charset, has_nesting, selector_lists, media_queries, media_query_lists, conditional_groups, 1);
 }
 
 /*
@@ -1207,6 +1288,12 @@ void Init_native_extension(void) {
         rb_raise(rb_eLoadError, "Cataract::MediaQuery not defined. Do not require 'cataract/native_extension' directly, use require 'cataract'");
     }
 
+    if (rb_const_defined(mCataract, rb_intern("ConditionalGroup"))) {
+        cConditionalGroup = rb_const_get(mCataract, rb_intern("ConditionalGroup"));
+    } else {
+        rb_raise(rb_eLoadError, "Cataract::ConditionalGroup not defined. Do not require 'cataract/native_extension' directly, use require 'cataract'");
+    }
+
     // Define Stylesheet class (Ruby will add instance methods like each_selector).
     // Declarations is left alone here - it's a plain Ruby class (declarations.rb)
     // with its own #to_s, not something this backend attaches methods to.
@@ -1219,8 +1306,8 @@ void Init_native_extension(void) {
     VALUE mNative = rb_define_module_under(mBackends, "Native");
 
     rb_define_module_function(mNative, "parse", parse_css_new, -1);
-    rb_define_module_function(mNative, "stylesheet_to_s", stylesheet_to_s, 6);
-    rb_define_module_function(mNative, "stylesheet_to_formatted_s", stylesheet_to_formatted_s, 6);
+    rb_define_module_function(mNative, "stylesheet_to_s", stylesheet_to_s, 7);
+    rb_define_module_function(mNative, "stylesheet_to_formatted_s", stylesheet_to_formatted_s, 7);
     rb_define_module_function(mNative, "parse_declarations", new_parse_declarations, 1);
     rb_define_module_function(mNative, "flatten", cataract_flatten, 1);
     rb_define_module_function(mNative, "calculate_specificity", calculate_specificity, 1);

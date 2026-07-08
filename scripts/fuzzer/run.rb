@@ -114,6 +114,10 @@ CLEAN_CORPUS = [
   '.button { color: blue; &:hover { color: red; } }',
   '.parent { margin: 0; .child { padding: 10px; } }',
   '@supports (display: flex) { div { display: flex; } }',
+  # @supports/@media nested in both directions - exercises conditional_group_id
+  # and media_query_id being merged back correctly regardless of which wraps which
+  '@media screen { @supports (display: grid) { .foo { display: grid; } } }',
+  '@supports (display: grid) { @media screen { .foo { display: grid; } } }',
   "@font-face { font-family: 'Custom'; src: url('font.woff'); }",
   '@keyframes fade { from { opacity: 0; } to { opacity: 1; } }',
   'h1 + *[rel=up] { border: 1px solid red; }',

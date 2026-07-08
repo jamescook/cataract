@@ -12,13 +12,15 @@ module Cataract
       # compact-vs-formatted knobs all live on ivars instead of being threaded
       # through every helper as parameters.
       class Serializer
-        def initialize(rules, charset, has_nesting, selector_lists, media_queries, media_query_lists, formatted:)
+        def initialize(rules, charset, has_nesting, selector_lists, media_queries, media_query_lists, formatted:,
+                       conditional_groups: [])
           @rules = rules
           @charset = charset
           @has_nesting = has_nesting
           @selector_lists = selector_lists || {}
           @media_queries = media_queries || []
           @media_query_lists = media_query_lists || {}
+          @conditional_groups = conditional_groups || []
           @formatted = formatted
           @result = +''
 
@@ -121,6 +123,55 @@ module Cataract
           else
             media_query.type.to_s
           end
+        end
+
+        # A rule's conditional-group wrapping chain, outermost first, found
+        # by walking parent_id from its own conditional_group_id up to the
+        # root. Only @supports currently populates conditional_group_id (see
+        # the parser), but this walks whatever's there generically.
+        #
+        # @param conditional_group_id [Integer, nil]
+        # @return [Array<ConditionalGroup>] empty if not in any conditional group
+        def conditional_group_chain(conditional_group_id)
+          chain = []
+          id = conditional_group_id
+          while id
+            group = @conditional_groups[id]
+            break unless group
+
+            chain.unshift(group)
+            id = group.parent_id
+          end
+          chain
+        end
+
+        # Reconcile the currently-open conditional-group blocks with the
+        # ones a rule needs, like diffing two paths down a tree: close
+        # whatever's open past where the chains diverge (innermost first),
+        # then open whatever the target chain adds from that point on.
+        # Nested entirely inside whatever media block is currently open
+        # (conditional groups don't affect media context).
+        #
+        # @param current_chain [Array<ConditionalGroup>] currently-open chain, outermost first
+        # @param target_chain [Array<ConditionalGroup>] the chain the next rule needs
+        # @param indent [String]
+        # @return [Array<ConditionalGroup>] target_chain, for the caller to track as current
+        def sync_conditional_group_chain!(current_chain, target_chain, indent)
+          common = 0
+          common += 1 while common < current_chain.size && common < target_chain.size &&
+                            current_chain[common].id == target_chain[common].id
+
+          close_conditional_groups!(current_chain.size - common, indent)
+
+          target_chain[common..].each do |group|
+            @result << indent << "@#{group.type} #{group.condition} {\n"
+          end
+
+          target_chain
+        end
+
+        def close_conditional_groups!(count, indent)
+          count.times { @result << indent << "}\n" }
         end
 
         # Does the rule's media query differ from the currently open media
@@ -286,6 +337,7 @@ module Cataract
           current_media_query_list_id = nil
           current_media_query = nil
           in_media_block = false
+          current_cg_chain = []
           rule_index = 0
 
           @rules.each do |rule|
@@ -295,9 +347,11 @@ module Cataract
             rule_media_query = rule_media_query_id ? @media_queries[rule_media_query_id] : nil
             rule_media_query_list_id = rule_media_query_id ? @mq_id_to_list_id[rule_media_query_id] : nil
             is_first_rule = (rule_index == 0)
+            rule_cg_chain = conditional_group_chain(rule.conditional_group_id)
 
             if rule_media_query.nil?
               if in_media_block
+                current_cg_chain = sync_conditional_group_chain!(current_cg_chain, [], @media_indent)
                 @result << "}\n"
                 in_media_block = false
                 current_media_query = nil
@@ -306,19 +360,22 @@ module Cataract
 
               @result << "\n" if @add_blank_lines && !is_first_rule
 
+              current_cg_chain = sync_conditional_group_chain!(current_cg_chain, rule_cg_chain, '')
+              indent = current_cg_chain.empty? ? '' : @media_indent
+
               if grouping_enabled && rule.is_a?(Rule) && rule.selector_list_id
                 selectors = find_groupable_selectors(rule, rule_media_query_id)
 
-                @result << selectors.join(', ') << @opening_brace
+                @result << indent << selectors.join(', ') << @opening_brace
                 if @decl_indent_base
                   serialize_declarations_formatted(rule.declarations, @decl_indent_base)
                 else
                   serialize_declarations(rule.declarations)
                 end
-                @result << @closing_brace
+                @result << indent << @closing_brace
               else
                 if @decl_indent_base
-                  serialize_rule_formatted(rule, '', true)
+                  serialize_rule_formatted(rule, indent, true)
                 else
                   serialize_rule(rule)
                 end
@@ -329,6 +386,7 @@ module Cataract
                                                        rule_media_query, rule_media_query_list_id)
 
               if needs_new_block
+                current_cg_chain = sync_conditional_group_chain!(current_cg_chain, [], @media_indent)
                 @result << "}\n" if in_media_block
                 @result << "\n" if @add_blank_lines && !is_first_rule
 
@@ -339,6 +397,8 @@ module Cataract
                 @result << "@media #{media_query_string} {\n"
                 in_media_block = true
               end
+
+              current_cg_chain = sync_conditional_group_chain!(current_cg_chain, rule_cg_chain, @media_indent)
 
               if grouping_enabled && rule.is_a?(Rule) && rule.selector_list_id
                 selectors = find_groupable_selectors(rule, rule_media_query_id)
@@ -362,6 +422,8 @@ module Cataract
 
             rule_index += 1
           end
+
+          close_conditional_groups!(current_cg_chain.size, in_media_block ? @media_indent : '')
 
           @result << "}\n" if in_media_block
         end
@@ -637,9 +699,12 @@ module Cataract
       # @param selector_lists [Hash] Selector list ID => array of rule IDs (for grouping)
       # @param media_queries [Array<MediaQuery>] Array of MediaQuery objects
       # @param media_query_lists [Hash] List ID => array of MediaQuery IDs (for comma-separated queries)
+      # @param conditional_groups [Array<ConditionalGroup>] Array of ConditionalGroup objects (@supports/@layer/@container/@scope)
       # @return [String] Compact CSS string
-      def stylesheet_to_s(rules, charset, has_nesting, selector_lists = {}, media_queries = [], media_query_lists = {})
-        Serializer.new(rules, charset, has_nesting, selector_lists, media_queries, media_query_lists, formatted: false).to_s
+      def stylesheet_to_s(rules, charset, has_nesting, selector_lists = {}, media_queries = [], media_query_lists = {},
+                          conditional_groups = [])
+        Serializer.new(rules, charset, has_nesting, selector_lists, media_queries, media_query_lists,
+                       formatted: false, conditional_groups: conditional_groups).to_s
       end
 
       # Serialize stylesheet to formatted CSS string (with indentation).
@@ -650,11 +715,12 @@ module Cataract
       # @param selector_lists [Hash] Selector list ID => array of rule IDs (for grouping)
       # @param media_queries [Array<MediaQuery>] Array of MediaQuery objects
       # @param media_query_lists [Hash] List ID => array of MediaQuery IDs (for comma-separated queries)
+      # @param conditional_groups [Array<ConditionalGroup>] Array of ConditionalGroup objects (@supports/@layer/@container/@scope)
       # @return [String] Formatted CSS string
       def stylesheet_to_formatted_s(rules, charset, has_nesting, selector_lists = {}, media_queries = [],
-                                    media_query_lists = {})
+                                    media_query_lists = {}, conditional_groups = [])
         Serializer.new(rules, charset, has_nesting, selector_lists, media_queries, media_query_lists,
-                       formatted: true).to_s
+                       formatted: true, conditional_groups: conditional_groups).to_s
       end
     end
   end

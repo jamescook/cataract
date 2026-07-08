@@ -644,12 +644,15 @@ static int flatten_selector_group_callback(VALUE group_key, VALUE group_indices,
 
     int new_rule_id = *ctx->rule_id_counter;
 
-    // Extract media_query_id from first rule in group (all should have same media_query_id)
+    // Extract media_query_id/conditional_group_id from first rule in group
+    // (all should share both, same as selector_list_id above)
     VALUE media_query_id = Qnil;
+    VALUE conditional_group_id = Qnil;
     if (RARRAY_LEN(group_indices) > 0) {
         long first_rule_idx = FIX2LONG(RARRAY_AREF(group_indices, 0));
         VALUE first_rule = RARRAY_AREF(ctx->rules_array, first_rule_idx);
         media_query_id = rb_struct_aref(first_rule, INT2FIX(RULE_MEDIA_QUERY_ID));
+        conditional_group_id = rb_struct_aref(first_rule, INT2FIX(RULE_CONDITIONAL_GROUP_ID));
     }
 
     // Track old rule IDs to new rule ID mapping (only for rules in media queries)
@@ -672,7 +675,8 @@ static int flatten_selector_group_callback(VALUE group_key, VALUE group_indices,
         Qnil,  // parent_rule_id
         Qnil,  // nesting_style
         selector_list_id,  // Preserve selector_list_id if all rules in group share same ID
-        media_query_id  // Preserve media_query_id from source rules
+        media_query_id,  // Preserve media_query_id from source rules
+        conditional_group_id  // Preserve conditional_group_id from source rules
     );
     rb_ary_push(ctx->merged_rules, new_rule);
 

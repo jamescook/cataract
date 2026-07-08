@@ -26,6 +26,7 @@ module Cataract
   # @attr [Integer, nil] nesting_style 0=implicit, 1=explicit, nil=not nested
   # @attr [Integer, nil] selector_list_id ID linking rules from same selector list (e.g., "h1, h2")
   # @attr [Integer, nil] media_query_id ID of the MediaQuery this rule belongs to (nil if not in media query)
+  # @attr [Integer, nil] conditional_group_id ID of the ConditionalGroup (@supports/@layer/@container/@scope) this rule belongs to (nil if not in one)
   Rule = Struct.new(
     :id,
     :selector,
@@ -34,7 +35,8 @@ module Cataract
     :parent_rule_id,
     :nesting_style,
     :selector_list_id,
-    :media_query_id
+    :media_query_id,
+    :conditional_group_id
   )
 
   class Rule
@@ -49,6 +51,7 @@ module Cataract
     # @param nesting_style [Integer, nil] Nesting style (0=implicit, 1=explicit, nil=not nested)
     # @param selector_list_id [Integer, nil] Selector list ID for grouping
     # @param media_query_id [Integer, nil] MediaQuery ID for rules in media queries
+    # @param conditional_group_id [Integer, nil] ConditionalGroup ID for rules in @supports/@layer/@container/@scope
     # @return [Rule] New rule instance
     #
     # @example Create a rule with keyword arguments
@@ -60,10 +63,11 @@ module Cataract
     #     parent_rule_id: nil,
     #     nesting_style: nil,
     #     selector_list_id: nil,
-    #     media_query_id: nil
+    #     media_query_id: nil,
+    #     conditional_group_id: nil
     #   )
-    def self.make(id:, selector:, declarations:, specificity: nil, parent_rule_id: nil, nesting_style: nil, selector_list_id: nil, media_query_id: nil)
-      new(id, selector, declarations, specificity, parent_rule_id, nesting_style, selector_list_id, media_query_id)
+    def self.make(id:, selector:, declarations:, specificity: nil, parent_rule_id: nil, nesting_style: nil, selector_list_id: nil, media_query_id: nil, conditional_group_id: nil)
+      new(id, selector, declarations, specificity, parent_rule_id, nesting_style, selector_list_id, media_query_id, conditional_group_id)
     end
 
     # Silence warning about method redefinition. We redefine below to lazily calculate

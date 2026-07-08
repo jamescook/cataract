@@ -19,6 +19,7 @@ require_relative 'declaration'
 require_relative 'rule'
 require_relative 'at_rule'
 require_relative 'media_query'
+require_relative 'conditional_group'
 require_relative 'import_statement'
 
 require_relative 'native_extension'

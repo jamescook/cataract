@@ -61,7 +61,8 @@ module Cataract
           true
         end
 
-        def initialize(css_string, parser_options: {}, parent_media_sym: nil, parent_media_query_id: nil, depth: 0)
+        def initialize(css_string, parser_options: {}, parent_media_sym: nil, parent_media_query_id: nil,
+                       parent_conditional_group_id: nil, depth: 0)
           # Type validation
           raise TypeError, "css_string must be a String, got #{css_string.class}" unless css_string.is_a?(String)
 
@@ -71,6 +72,7 @@ module Cataract
           @_len = @_css.bytesize
           @_parent_media_sym = parent_media_sym
           @_parent_media_query_id = parent_media_query_id
+          @_parent_conditional_group_id = parent_conditional_group_id
           @_depth = depth # Current recursion depth (passed from parent parser)
 
           # Private: Parser options with defaults
@@ -120,6 +122,7 @@ module Cataract
           @_media_query_id_counter = 0   # Next MediaQuery ID (0-indexed)
           @_next_selector_list_id = 0    # Counter for selector list IDs
           @_next_media_query_list_id = 0 # Counter for media query list IDs
+          @_conditional_group_id_counter = 0 # Next ConditionalGroup ID (0-indexed)
           @_rule_id_counter = 0          # Next rule ID (0-indexed)
           @_media_query_count = 0        # Safety limit
 
@@ -127,6 +130,7 @@ module Cataract
           @rules = []                    # Flat array of Rule structs
           @media_queries = []            # Array of MediaQuery objects
           @media_index = {}              # Symbol => Array of rule IDs (for backwards compat/caching)
+          @conditional_groups = []       # Array of ConditionalGroup objects (@supports/@layer/@container/@scope)
           @imports = []                  # Array of ImportStatement structs
           @charset = nil                 # @charset declaration
 
@@ -261,6 +265,7 @@ module Cataract
             media_queries: @media_queries,
             _selector_lists: @_selector_lists,
             _media_query_lists: @_media_query_lists,
+            conditional_groups: @conditional_groups,
             imports: @imports,
             charset: @charset,
             _has_nesting: @_has_nesting
@@ -743,7 +748,8 @@ module Cataract
                 parent_rule_id,
                 nil,  # nesting_style (nil for @media nesting)
                 nil,  # selector_list_id
-                nested_media_query_id # media_query_id
+                nested_media_query_id, # media_query_id
+                @_parent_conditional_group_id # conditional_group_id (inherited, not created here)
               )
 
               # Mark that we have nesting
@@ -1035,6 +1041,38 @@ module Cataract
           @_has_nesting ||= nested_result[:_has_nesting] # rubocop:disable Naming/MemoizedInstanceVariableName -- not memoization, propagating a flag from the nested parse
         end
 
+        # Merge nested ConditionalGroup objects into @conditional_groups,
+        # renumbering ids and rebasing each one's own parent_id.
+        #
+        # A group's parent_id is either (a) another group ALSO present in
+        # nested_result[:conditional_groups] - a local sibling created within
+        # the same nested Parser, needing the same renumbering - or (b) the
+        # external parent context that was passed into that nested Parser's
+        # constructor, which already refers to a real id in THIS parser's own
+        # numbering scheme and must NOT be touched. Both a local sibling's id
+        # and the external context can be small, overlapping numbers (each
+        # fresh Parser instance's own ids start at 0), so this is resolved by
+        # membership in old_to_new (built as we go, since parents are always
+        # discovered before their children) rather than by comparing values.
+        #
+        # @param nested_result [Hash] Result hash from a nested Parser#parse call
+        # @return [Hash{Integer => Integer}] old (local) id => new (merged) id,
+        #   for callers to also remap rules' conditional_group_id with
+        def merge_nested_conditional_groups(nested_result)
+          old_to_new = {}
+          return old_to_new unless nested_result[:conditional_groups] && !nested_result[:conditional_groups].empty?
+
+          nested_result[:conditional_groups].each do |group|
+            new_id = @_conditional_group_id_counter
+            new_parent_id = old_to_new.key?(group.parent_id) ? old_to_new[group.parent_id] : group.parent_id
+            old_to_new[group.id] = new_id
+            @conditional_groups << Cataract::ConditionalGroup.new(new_id, group.type, group.name, group.condition, new_parent_id)
+            @_conditional_group_id_counter += 1
+          end
+
+          old_to_new
+        end
+
         # Parse at-rule (@media, @supports, @charset, @keyframes, @font-face, etc)
         # Translated from C: see ext/cataract/css_parser.c lines 962-1128
         def parse_at_rule
@@ -1115,9 +1153,17 @@ module Cataract
         end
 
         # @supports, @layer, @container, @scope - behave like @media but don't
-        # affect media context, so unlike parse_media_at_rule there's no media
-        # query/media_query_id merging to do on top of the shared nested-parser
-        # result merge.
+        # affect media context (so no combining, unlike parse_media_at_rule -
+        # a nested @media's MediaQuery objects just need to be re-housed in
+        # this parser's own @media_queries with offset ids, same as any other
+        # nested-parser result).
+        #
+        # Only @supports currently builds a real ConditionalGroup and tags its
+        # child rules with a conditional_group_id - @layer/@container/@scope
+        # still just recurse and pass the parent context through unchanged
+        # (their condition/name text is only used for the missing-condition
+        # validation below, same as before). Each gets its own faithful
+        # representation in its own follow-up bead.
         #
         # @param at_rule_name [String] The at-rule name (e.g. "supports"), used
         #   to decide whether a condition is required and for error messages
@@ -1136,13 +1182,12 @@ module Cataract
 
           return if eof? || peek_byte != BYTE_LBRACE
 
+          condition_str = byteslice_encoded(condition_start, condition_end - condition_start).strip
+
           # Validate condition (strict mode) - @supports, @container, @scope require conditions
-          if @_check_malformed_at_rules && (at_rule_name == 'supports' || at_rule_name == 'container' || at_rule_name == 'scope')
-            condition_str = byteslice_encoded(condition_start, condition_end - condition_start).strip
-            if condition_str.empty?
-              raise ParseError.new("Malformed @#{at_rule_name}: missing condition",
-                                   css: @_css, pos: condition_start, type: :malformed_at_rule)
-            end
+          if @_check_malformed_at_rules && (at_rule_name == 'supports' || at_rule_name == 'container' || at_rule_name == 'scope') && condition_str.empty?
+            raise ParseError.new("Malformed @#{at_rule_name}: missing condition",
+                                 css: @_css, pos: condition_start, type: :malformed_at_rule)
           end
 
           @_pos += 1 # skip '{'
@@ -1156,11 +1201,24 @@ module Cataract
             raise DepthError, "CSS nesting too deep: exceeded maximum depth of #{MAX_PARSE_DEPTH}"
           end
 
+          # For @supports, build a ConditionalGroup (nested inside the
+          # enclosing one, if any) and tag every rule parsed inside this
+          # block with it.
+          child_conditional_group_id = @_parent_conditional_group_id
+          if at_rule_name == 'supports' && !condition_str.empty?
+            group = Cataract::ConditionalGroup.new(@_conditional_group_id_counter, :supports, nil, condition_str,
+                                                   @_parent_conditional_group_id)
+            @conditional_groups << group
+            child_conditional_group_id = @_conditional_group_id_counter
+            @_conditional_group_id_counter += 1
+          end
+
           # Recursively parse block content (preserve parent media context)
           nested_parser = Parser.new(
             byteslice_encoded(block_start, block_end - block_start),
             parser_options: @_parser_options,
             parent_media_sym: @_parent_media_sym,
+            parent_conditional_group_id: child_conditional_group_id,
             depth: @_depth + 1
           )
 
@@ -1169,7 +1227,41 @@ module Cataract
           # NOTE: We no longer build media_index during parse
           # It will be built from MediaQuery objects after import resolution
           list_id_offset = merge_nested_selector_lists(nested_result)
-          merge_nested_rules(nested_result, list_id_offset)
+
+          # Merge nested MediaQuery objects/lists with offsetted ids - a
+          # @media discovered inside this block needs to land in OUR
+          # @media_queries, not just the nested parser's own local one
+          # (parse_media_at_rule does the equivalent for its own nesting).
+          mq_id_offset = @_media_query_id_counter
+          if nested_result[:media_queries] && !nested_result[:media_queries].empty?
+            nested_result[:media_queries].each do |mq|
+              @media_queries << Cataract::MediaQuery.new(mq.id + mq_id_offset, mq.type, mq.conditions)
+            end
+            @_media_query_id_counter += nested_result[:media_queries].size
+          end
+
+          if nested_result[:_media_query_lists] && !nested_result[:_media_query_lists].empty?
+            nested_result[:_media_query_lists].each do |list_id, mq_ids|
+              new_list_id = list_id + @_next_media_query_list_id
+              @_media_query_lists[new_list_id] = mq_ids.map { |mq_id| mq_id + mq_id_offset }
+            end
+            @_next_media_query_list_id += nested_result[:_media_query_lists].size
+          end
+
+          # Merge nested ConditionalGroup objects (for @supports nested
+          # inside @supports).
+          old_to_new_cg_id = merge_nested_conditional_groups(nested_result)
+
+          merge_nested_rules(nested_result, list_id_offset) do |rule|
+            rule.media_query_id += mq_id_offset if rule.media_query_id
+            if rule.conditional_group_id.nil?
+              rule.conditional_group_id = child_conditional_group_id if rule.respond_to?(:conditional_group_id=)
+            elsif old_to_new_cg_id.key?(rule.conditional_group_id)
+              rule.conditional_group_id = old_to_new_cg_id[rule.conditional_group_id]
+            end
+            # else: already an external reference (e.g. == child_conditional_group_id,
+            # inherited via pass-through from an intermediate @media), leave unchanged
+          end
 
           # Move position past the closing brace
           @_pos = block_end
@@ -1259,11 +1351,15 @@ module Cataract
 
           # Parse the content with the combined media context
           # Note: We don't pass parent_media_query_id because MediaQuery IDs are local to each parser
-          # The nested parser will create its own MediaQueries, which we'll merge with offsetted IDs
+          # The nested parser will create its own MediaQueries, which we'll merge with offsetted IDs.
+          # parent_conditional_group_id IS passed through unchanged (@media doesn't create or affect
+          # conditional-group context) so a @supports nested inside this @media computes the right
+          # parent_id chain if this @media is itself nested inside an outer @supports.
           nested_parser = Parser.new(
             byteslice_encoded(block_start, block_end - block_start),
             parser_options: @_parser_options,
             parent_media_sym: combined_media_sym,
+            parent_conditional_group_id: @_parent_conditional_group_id,
             depth: @_depth + 1
           )
 
@@ -1297,6 +1393,10 @@ module Cataract
           # Note: We no longer build media_index during parse
           # It will be built from MediaQuery objects after import resolution
 
+          # Merge nested ConditionalGroup objects (for a @supports discovered
+          # inside this @media block).
+          old_to_new_cg_id = merge_nested_conditional_groups(nested_result)
+
           merge_nested_rules(nested_result, list_id_offset) do |rule|
             # Update media_query_id if applicable (both Rule and AtRule can have media_query_id)
             if rule.media_query_id
@@ -1325,6 +1425,14 @@ module Cataract
               # (applies to both Rule and AtRule)
               rule.media_query_id = combined_media_query_id
             end
+
+            # @media doesn't create or affect conditional-group context. Only
+            # remap an id that matches a group we just merged above (a
+            # @supports nested inside this @media) - anything else (nil, or
+            # an external reference) is left alone, for whichever conditional
+            # group actually encloses this @media (if any) to assign at its
+            # own merge step. Assigning it here too would double-process it.
+            rule.conditional_group_id = old_to_new_cg_id[rule.conditional_group_id] if old_to_new_cg_id.key?(rule.conditional_group_id)
           end
 
           # Move position past the closing brace
@@ -1369,7 +1477,7 @@ module Cataract
           @_rule_id_counter += 1
 
           # Create AtRule with nested rules
-          at_rule = AtRule.new(rule_id, selector, content, nil, @_parent_media_query_id)
+          at_rule = AtRule.new(rule_id, selector, content, nil, @_parent_media_query_id, @_parent_conditional_group_id)
           @rules << at_rule
         end
 
@@ -1398,7 +1506,7 @@ module Cataract
           @_rule_id_counter += 1
 
           # Create AtRule with declarations
-          at_rule = AtRule.new(rule_id, selector, content, nil, @_parent_media_query_id)
+          at_rule = AtRule.new(rule_id, selector, content, nil, @_parent_media_query_id, @_parent_conditional_group_id)
           @rules << at_rule
         end
 

@@ -438,6 +438,11 @@ module Cataract
           # All rules being merged have the same media_query_id (they were grouped by it)
           media_query_id = rules.first.media_query_id
 
+          # Extract conditional_group_id from first rule in group (mirrors
+          # media_query_id above - not part of the grouping key, but should
+          # be uniform in practice for any group actually worth merging)
+          conditional_group_id = rules.first.conditional_group_id
+
           # Create merged rule
           Rule.new(
             0, # ID will be updated later
@@ -447,7 +452,8 @@ module Cataract
             nil,  # No parent after flattening
             nil,  # No nesting style after flattening
             selector_list_id, # Preserve if all rules share same ID
-            media_query_id # Preserve media context
+            media_query_id, # Preserve media context
+            conditional_group_id # Preserve conditional-group context
           )
         end
 
