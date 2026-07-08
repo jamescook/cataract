@@ -1,4 +1,4 @@
-## [Unreleased]
+## [0.4.0] - 2026-07-08
 
 - Fix: `Declarations.new(some_string)` (standalone CSS declaration-block parsing) now works under the pure Ruby backend (`CATARACT_PURE=1`) - previously raised `NoMethodError`.
 - Fix: a compound `@media` list (e.g. `@media screen, print { ... }`) no longer silently collapses to just its first member when the document also contains CSS nesting elsewhere.
