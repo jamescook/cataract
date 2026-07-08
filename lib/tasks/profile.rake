@@ -35,7 +35,7 @@ namespace :profile do
     puts "CSS size: #{css_content.bytesize} bytes"
     puts
 
-    require_relative '../../lib/cataract/pure'
+    require_relative '../../lib/cataract'
     require 'json'
 
     # Use higher sampling rate (interval in microseconds, default is 1000)
@@ -74,6 +74,9 @@ namespace :profile do
       abort('stackprof gem not found. Install with: gem install stackprof')
     end
 
+    # Ensure we're using pure Ruby implementation
+    ENV['CATARACT_PURE'] = '1'
+
     fixture_path = File.expand_path('../../test/fixtures/bootstrap.css', __dir__)
     unless File.exist?(fixture_path)
       abort("Fixture not found: #{fixture_path}")
@@ -94,7 +97,7 @@ namespace :profile do
     puts "CSS size: #{css_content.bytesize} bytes"
     puts
 
-    require_relative '../../lib/cataract/pure'
+    require_relative '../../lib/cataract'
     require 'json'
 
     # Parse once outside profiling to get stylesheet
@@ -162,7 +165,7 @@ namespace :profile do
     puts "CSS size: #{css_content.bytesize} bytes"
     puts
 
-    require_relative '../../lib/cataract/pure'
+    require_relative '../../lib/cataract'
     require 'json'
 
     # Parse once outside profiling to get stylesheet

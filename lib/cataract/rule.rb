@@ -87,8 +87,11 @@ module Cataract
     def specificity
       return self[:specificity] unless self[:specificity].nil?
 
-      # Calculate and cache
-      calculated = Cataract.calculate_specificity(selector)
+      # Calculate and cache. Specificity is a pure function of the selector
+      # string, identical across backends by design, so this always goes
+      # through the process's active backend regardless of which backend
+      # actually produced this Rule.
+      calculated = Cataract::Backends.active.calculate_specificity(selector)
       self[:specificity] = calculated
       calculated
     end
@@ -215,7 +218,7 @@ module Cataract
     # rubocop:disable Naming/MemoizedInstanceVariableName
     def expanded_declarations
       @_expanded_declarations ||= begin
-        expanded = declarations.flat_map { |decl| Cataract.expand_shorthand(decl) }
+        expanded = declarations.flat_map { |decl| Cataract::Backends.active.expand_shorthand(decl) }
         expanded.sort_by! { |d| [d.property, d.value, d.important ? 1 : 0] }
         expanded
       end

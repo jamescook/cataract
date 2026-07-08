@@ -112,6 +112,13 @@ module Cataract
       # Type validation
       raise TypeError, "options must be a Hash, got #{options.class}" unless options.is_a?(Hash)
 
+      # Which backend (Cataract::Backends::Native / ::Pure) produced this
+      # stylesheet - defaults to whichever this process picked as active.
+      # Not part of the public options contract (used internally by
+      # Backends::Native.parse / Backends::Pure.parse), so it's popped off
+      # before @options is built.
+      @backend = options.delete(:backend) || Cataract::Backends.active
+
       # Support :imports as alias for :import (backwards compatibility)
       options[:import] = options.delete(:imports) if options.key?(:imports) && !options.key?(:import)
 
@@ -169,6 +176,7 @@ module Cataract
     # @param source [Stylesheet] Source stylesheet being copied
     def initialize_copy(source)
       super
+      @backend = source.backend
       @options = source.options.dup
       @rules = source.rules.dup
       @media_queries = source.media_queries.dup
@@ -466,7 +474,7 @@ module Cataract
     # @example Filter to multiple media types
     #   sheet.to_s(media: [:screen, :print])  # => "@media screen { ... } @media print { ... }"
     def to_s(media: :all)
-      Cataract.stylesheet_to_s(filter_rules_by_media(media), @charset, @_has_nesting || false, @_selector_lists, @media_queries, @_media_query_lists)
+      @backend.stylesheet_to_s(filter_rules_by_media(media), @charset, @_has_nesting || false, @_selector_lists, @media_queries, @_media_query_lists)
     end
     alias to_css to_s
 
@@ -492,7 +500,7 @@ module Cataract
     #
     # @see #to_s For compact single-line output
     def to_formatted_s(media: :all)
-      Cataract.stylesheet_to_formatted_s(filter_rules_by_media(media), @charset, @_has_nesting || false, @_selector_lists, @media_queries, @_media_query_lists)
+      @backend.stylesheet_to_formatted_s(filter_rules_by_media(media), @charset, @_has_nesting || false, @_selector_lists, @media_queries, @_media_query_lists)
     end
 
     # Get number of rules
@@ -718,7 +726,7 @@ module Cataract
       parse_options = build_parse_options(effective_base_uri, effective_absolute_paths)
 
       # Parse CSS first (this extracts @import statements into result[:imports])
-      result = Cataract._parse_css(css, parse_options)
+      result = @backend.parse(css, parse_options)
 
       merge_parsed_block!(result, effective_base_uri, effective_base_dir)
 
@@ -794,7 +802,9 @@ module Cataract
     #
     # @return [Stylesheet] New stylesheet with cascade applied
     def flatten
-      Cataract.flatten(self)
+      result = @backend.flatten(self)
+      result.instance_variable_set(:@backend, @backend)
+      result
     end
     alias cascade flatten
 
@@ -813,7 +823,7 @@ module Cataract
     #
     # @return [self] Returns self for method chaining
     def flatten!
-      flattened = Cataract.flatten(self)
+      flattened = @backend.flatten(self)
       @rules = flattened.rules
       @media_index = flattened.media_index_cache
       @_has_nesting = flattened.has_nesting
@@ -929,7 +939,7 @@ module Cataract
     # (notably #media_index, which lazily rebuilds rather than exposing the
     # raw cache these need).
 
-    attr_reader :options, :parser_options
+    attr_reader :options, :parser_options, :backend
 
     def next_media_query_id
       @_next_media_query_id
@@ -1080,7 +1090,7 @@ module Cataract
     # rules, media queries, selector/media-query lists, and index, then
     # resolve any @import statements it contained.
     #
-    # @param result [Hash] Return value of Cataract._parse_css
+    # @param result [Hash] Return value of the backend's parse
     # @return [void]
     def merge_parsed_block!(result, effective_base_uri, effective_base_dir)
       offset = @_last_rule_id || 0
@@ -1263,7 +1273,8 @@ module Cataract
       # Build parse options for imported CSS
       parse_opts = {
         import: opts.merge(imported_urls: imported_urls_copy, depth: depth + 1, base_uri: imported_base_uri),
-        parser: @parser_options.dup # Inherit parent's parser options (including selector_lists)
+        parser: @parser_options.dup, # Inherit parent's parser options (including selector_lists)
+        backend: @backend # Imported stylesheets are produced by the same backend as their parent
       }
 
       # If URL conversion is enabled (base_uri present), enable it for imported files too

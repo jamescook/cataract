@@ -2313,24 +2313,6 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
 }
 
 /*
- * Parse media query string and extract media types (Ruby-facing function)
- * Example: "screen, print" => [:screen, :print]
- * Example: "screen and (min-width: 768px)" => [:screen]
- *
- * @param media_query_sym [Symbol] Media query as symbol
- * @return [Array<Symbol>] Array of media type symbols
- */
-VALUE parse_media_types(VALUE self, VALUE media_query_sym) {
-    Check_Type(media_query_sym, T_SYMBOL);
-
-    VALUE query_string = rb_sym2str(media_query_sym);
-    const char *query_str = RSTRING_PTR(query_string);
-    long query_len = RSTRING_LEN(query_string);
-
-    return extract_media_types(query_str, query_len);
-}
-
-/*
  * Main parse entry point
  * Returns: { rules: [...], media_index: {...}, charset: "..." | nil, last_rule_id: N }
  */

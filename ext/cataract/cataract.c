@@ -377,6 +377,37 @@ static int build_mq_reverse_map_callback(VALUE list_id, VALUE mq_ids, VALUE arg)
     return ST_CONTINUE;
 }
 
+// Build the media_query_id => list_id reverse map used by both stylesheet
+// serializers (grouping and nesting) to detect when a rule's media query is
+// part of a comma-separated list (e.g. "@media screen, print").
+static VALUE build_mq_id_to_list_id(VALUE media_query_lists) {
+    VALUE mq_id_to_list_id = rb_hash_new();
+    if (!NIL_P(media_query_lists) && TYPE(media_query_lists) == T_HASH) {
+        struct build_mq_reverse_map_ctx ctx = { mq_id_to_list_id };
+        rb_hash_foreach(media_query_lists, build_mq_reverse_map_callback, (VALUE)&ctx);
+    }
+    return mq_id_to_list_id;
+}
+
+// Build a rule_id => rule lookup. rules_array is NOT guaranteed to satisfy
+// rules[i].id == i here - that invariant only holds for the full,
+// freshly-parsed rules array; Stylesheet#to_s(media: ...) passes a filtered
+// subset whenever the media filter isn't :all, so a plain array index would
+// silently fetch the wrong rule (or even an AtRule, which doesn't share
+// Rule's struct layout) once any rule has been filtered out. Both Rule and
+// AtRule keep id at field index 0, so a single RULE_ID read is safe for
+// either struct type.
+static VALUE build_rules_by_id(VALUE rules_array) {
+    VALUE rules_by_id = rb_hash_new();
+    long len = RARRAY_LEN(rules_array);
+    for (long i = 0; i < len; i++) {
+        VALUE rule = rb_ary_entry(rules_array, i);
+        VALUE rule_id = rb_struct_aref(rule, INT2FIX(RULE_ID));
+        rb_hash_aset(rules_by_id, rule_id, rule);
+    }
+    return rules_by_id;
+}
+
 // Rule and AtRule don't share a member layout past their first few fields
 // (see the AT_RULE_* comment in cataract.h), so reading parent_rule_id or
 // media_query_id off a rule of unknown type needs to dispatch on which
@@ -421,7 +452,7 @@ static inline void emit_rule(VALUE result, VALUE rule, const char *decl_indent, 
 // each match as processed. Returns an array of their selectors (does not
 // include the current rule's own selector or mark it processed - the
 // caller's rule_id is handled by serialize_rule_in_group).
-static VALUE collect_matching_selectors(VALUE rule_ids_in_list, VALUE rule_media_query_id, VALUE rule_declarations, VALUE rules_array, VALUE processed_rule_ids) {
+static VALUE collect_matching_selectors(VALUE rule_ids_in_list, VALUE rule_media_query_id, VALUE rule_declarations, VALUE rules_by_id, VALUE processed_rule_ids) {
     VALUE matching_selectors = rb_ary_new();
     long list_len = RARRAY_LEN(rule_ids_in_list);
 
@@ -434,7 +465,7 @@ static VALUE collect_matching_selectors(VALUE rule_ids_in_list, VALUE rule_media
         }
 
         // Find the rule by ID
-        VALUE other_rule = rb_ary_entry(rules_array, FIX2INT(other_rule_id));
+        VALUE other_rule = rb_hash_aref(rules_by_id, other_rule_id);
         if (NIL_P(other_rule)) continue;
 
         // Check same media context (compare media_query_id directly)
@@ -481,7 +512,7 @@ static void emit_grouped_rule(VALUE result, VALUE rule, VALUE matching_selectors
 struct rule_group_ctx {
     VALUE selector_lists;
     int grouping_enabled;
-    VALUE rules_array;
+    VALUE rules_by_id;
     VALUE processed_rule_ids;
     const struct format_opts *opts;
 };
@@ -512,7 +543,7 @@ static void serialize_rule_in_group(
 
             if (!NIL_P(rule_ids_in_list) && RARRAY_LEN(rule_ids_in_list) > 1) {
                 VALUE rule_declarations = rb_struct_aref(rule, INT2FIX(RULE_DECLARATIONS));
-                VALUE matching_selectors = collect_matching_selectors(rule_ids_in_list, rule_media_query_id, rule_declarations, ctx->rules_array, ctx->processed_rule_ids);
+                VALUE matching_selectors = collect_matching_selectors(rule_ids_in_list, rule_media_query_id, rule_declarations, ctx->rules_by_id, ctx->processed_rule_ids);
                 emit_grouped_rule(result, rule, matching_selectors, rule_declarations, ctx->opts, decl_indent, rule_prefix);
                 return;
             }
@@ -542,16 +573,18 @@ static VALUE serialize_stylesheet_with_grouping(
 
     // Build reverse map: media_query_id => list_id
     // This allows us to detect when multiple rules share a comma-separated media query list
-    VALUE mq_id_to_list_id = rb_hash_new();
-    if (!NIL_P(media_query_lists) && TYPE(media_query_lists) == T_HASH) {
-        struct build_mq_reverse_map_ctx ctx = { mq_id_to_list_id };
-        rb_hash_foreach(media_query_lists, build_mq_reverse_map_callback, (VALUE)&ctx);
-    }
+    VALUE mq_id_to_list_id = build_mq_id_to_list_id(media_query_lists);
+
+    // Only needed by the grouping path - rules_array here may already be
+    // filtered (Stylesheet#to_s(media: ...) for anything but :all), so
+    // looking up "other rules in this selector list" needs a real id => rule
+    // map rather than indexing directly into rules_array.
+    VALUE rules_by_id = grouping_enabled ? build_rules_by_id(rules_array) : Qnil;
 
     // Track processed rules to avoid duplicates when grouping
     VALUE processed_rule_ids = rb_hash_new();
 
-    struct rule_group_ctx group_ctx = { selector_lists, grouping_enabled, rules_array, processed_rule_ids, opts };
+    struct rule_group_ctx group_ctx = { selector_lists, grouping_enabled, rules_by_id, processed_rule_ids, opts };
 
     // Iterate through rules in insertion order, grouping consecutive media queries
     VALUE current_media = Qnil;
@@ -626,6 +659,7 @@ static VALUE serialize_stylesheet_with_grouping(
 
     // Guard hash objects we created and used throughout
     RB_GC_GUARD(mq_id_to_list_id);
+    RB_GC_GUARD(rules_by_id);
     RB_GC_GUARD(processed_rule_ids);
     return result;
 }
@@ -846,11 +880,17 @@ static void serialize_rule_with_children(VALUE result, VALUE rules_array, long r
 static VALUE serialize_stylesheet_with_nesting(
     VALUE rules_array,
     VALUE media_queries,
+    VALUE media_query_lists,
     VALUE result,
     const struct format_opts *opts
 ) {
     int formatted = (opts->decl_indent_base != NULL);
     long total_rules = RARRAY_LEN(rules_array);
+
+    // Reverse map: media_query_id => list_id, so a rule whose media query is
+    // part of a comma-separated list (e.g. "@media screen, print") renders
+    // the full list, not just its own single media query.
+    VALUE mq_id_to_list_id = build_mq_id_to_list_id(media_query_lists);
 
     // Build parent_to_children map (parent_rule_id -> array of child indices)
     // This allows O(1) lookup of children when serializing each parent
@@ -930,7 +970,7 @@ static VALUE serialize_stylesheet_with_nesting(
                 // Open new media block - store the MediaQuery object for comparison
                 current_media = rule_media;
                 rb_str_cat2(result, "@media ");
-                append_media_query_text(result, rule_media);
+                append_media_query_string(result, rule_media_query_id, mq_id_to_list_id, media_query_lists, media_queries);
                 rb_str_cat2(result, " {\n");
                 in_media_block = 1;
             }
@@ -1013,7 +1053,7 @@ static VALUE stylesheet_serialize_impl(VALUE rules_array, VALUE charset, VALUE h
 
     // Has nesting - use the parent/child lookahead serializer
     // TODO: Phase 2 - use selector_lists for grouping on the nesting path too
-    return serialize_stylesheet_with_nesting(rules_array, media_queries, result, &opts);
+    return serialize_stylesheet_with_nesting(rules_array, media_queries, media_query_lists, result, &opts);
 }
 
 // New stylesheet serialization entry point - checks for nesting and delegates
@@ -1075,78 +1115,6 @@ static VALUE new_parse_declarations_string(const char *start, const char *end) {
     }
 
     return declarations;
-}
-
-/*
- * Convert array of Declaration structs to CSS string
- * Format: "prop: value; prop2: value2 !important; "
- *
- * This is a copy of declarations_array_to_s from cataract.c,
- * but works with Declaration structs instead of Declaration structs
- */
-static VALUE new_declarations_array_to_s(VALUE declarations_array) {
-    Check_Type(declarations_array, T_ARRAY);
-
-    long len = RARRAY_LEN(declarations_array);
-    if (len == 0) {
-        return rb_str_new_cstr("");
-    }
-
-    // Use rb_str_buf_new for efficient string building
-    VALUE result = rb_str_buf_new(len * 32); // Estimate 32 chars per declaration
-
-    for (long i = 0; i < len; i++) {
-        VALUE decl = rb_ary_entry(declarations_array, i);
-
-        // Validate this is a Declaration struct
-        if (!RB_TYPE_P(decl, T_STRUCT) || rb_obj_class(decl) != cDeclaration) {
-            rb_raise(rb_eTypeError,
-                     "Expected array of Declaration structs, got %s at index %ld",
-                     rb_obj_classname(decl), i);
-        }
-
-        // Extract struct fields
-        VALUE property = rb_struct_aref(decl, INT2FIX(DECL_PROPERTY));
-        VALUE value = rb_struct_aref(decl, INT2FIX(DECL_VALUE));
-        VALUE important = rb_struct_aref(decl, INT2FIX(DECL_IMPORTANT));
-
-        // Append: "property: value"
-        rb_str_buf_append(result, property);
-        rb_str_buf_cat2(result, ": ");
-        rb_str_buf_append(result, value);
-
-        // Append " !important" if needed
-        if (RTEST(important)) {
-            rb_str_buf_cat2(result, " !important");
-        }
-
-        rb_str_buf_cat2(result, "; ");
-
-        RB_GC_GUARD(decl);
-        RB_GC_GUARD(property);
-        RB_GC_GUARD(value);
-        RB_GC_GUARD(important);
-    }
-
-    // Strip trailing space
-    rb_str_set_len(result, RSTRING_LEN(result) - 1);
-
-    RB_GC_GUARD(result);
-    return result;
-}
-
-/*
- * Instance method: Declarations#to_s
- * Converts declarations to CSS string
- *
- * @return [String] CSS declarations like "color: red; margin: 10px !important;"
- */
-static VALUE new_declarations_to_s_method(VALUE self) {
-    // Get @values instance variable (array of Declaration structs)
-    VALUE values = rb_ivar_get(self, rb_intern("@values"));
-
-    // Call core serialization function
-    return new_declarations_array_to_s(values);
 }
 
 /*
@@ -1239,23 +1207,24 @@ void Init_native_extension(void) {
         rb_raise(rb_eLoadError, "Cataract::MediaQuery not defined. Do not require 'cataract/native_extension' directly, use require 'cataract'");
     }
 
-    // Define Declarations class and add to_s method
-    VALUE cDeclarations = rb_define_class_under(mCataract, "Declarations", rb_cObject);
-    rb_define_method(cDeclarations, "to_s", new_declarations_to_s_method, 0);
-
-    // Define Stylesheet class (Ruby will add instance methods like each_selector)
+    // Define Stylesheet class (Ruby will add instance methods like each_selector).
+    // Declarations is left alone here - it's a plain Ruby class (declarations.rb)
+    // with its own #to_s, not something this backend attaches methods to.
     cStylesheet = rb_define_class_under(mCataract, "Stylesheet", rb_cObject);
 
-    // Define module functions
-    rb_define_module_function(mCataract, "_parse_css", parse_css_new, -1);
-    rb_define_module_function(mCataract, "stylesheet_to_s", stylesheet_to_s, 6);
-    rb_define_module_function(mCataract, "stylesheet_to_formatted_s", stylesheet_to_formatted_s, 6);
-    rb_define_module_function(mCataract, "parse_media_types", parse_media_types, 1);
-    rb_define_module_function(mCataract, "parse_declarations", new_parse_declarations, 1);
-    rb_define_module_function(mCataract, "flatten", cataract_flatten, 1);
-    rb_define_module_function(mCataract, "merge", cataract_flatten, 1); // Deprecated alias for backwards compatibility
-    rb_define_module_function(mCataract, "calculate_specificity", calculate_specificity, 1);
-    rb_define_module_function(mCataract, "expand_shorthand", cataract_expand_shorthand, 1);
+    // Every native-specific entry point lives under Cataract::Backends::Native,
+    // never directly on Cataract itself, so the pure Ruby backend can be loaded
+    // in the same process without either backend clobbering the other's methods.
+    VALUE mBackends = rb_define_module_under(mCataract, "Backends");
+    VALUE mNative = rb_define_module_under(mBackends, "Native");
+
+    rb_define_module_function(mNative, "parse", parse_css_new, -1);
+    rb_define_module_function(mNative, "stylesheet_to_s", stylesheet_to_s, 6);
+    rb_define_module_function(mNative, "stylesheet_to_formatted_s", stylesheet_to_formatted_s, 6);
+    rb_define_module_function(mNative, "parse_declarations", new_parse_declarations, 1);
+    rb_define_module_function(mNative, "flatten", cataract_flatten, 1);
+    rb_define_module_function(mNative, "calculate_specificity", calculate_specificity, 1);
+    rb_define_module_function(mNative, "expand_shorthand", cataract_expand_shorthand, 1);
 
     // Initialize flatten constants (cached property strings)
     init_flatten_constants();
@@ -1275,11 +1244,11 @@ void Init_native_extension(void) {
         rb_hash_aset(compile_flags, ID2SYM(rb_intern("str_buf_optimization")), Qtrue);
     #endif
 
-    rb_define_const(mCataract, "COMPILE_FLAGS", compile_flags);
+    rb_define_const(mNative, "COMPILE_FLAGS", compile_flags);
 
-    // Flag to indicate native extension is loaded (for pure Ruby fallback detection)
-    rb_define_const(mCataract, "NATIVE_EXTENSION_LOADED", Qtrue);
+    // Flag to indicate the native backend is loaded (for pure Ruby fallback detection)
+    rb_define_const(mNative, "NATIVE_EXTENSION_LOADED", Qtrue);
 
     // Implementation type constant
-    rb_define_const(mCataract, "IMPLEMENTATION", ID2SYM(rb_intern("native")));
+    rb_define_const(mNative, "IMPLEMENTATION", ID2SYM(rb_intern("native")));
 }

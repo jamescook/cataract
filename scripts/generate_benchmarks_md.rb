@@ -21,13 +21,12 @@ class BenchmarkDocGenerator
     @serialization_data = load_benchmark_data('serialization')
     @specificity_data = load_benchmark_data('specificity')
     @flattening_data = load_benchmark_data('flattening')
-    @yjit_data = load_benchmark_data('yjit')
   end
 
   def generate
     # Check if we have any data to generate
     if !@parsing_data && !@serialization_data &&
-       !@specificity_data && !@flattening_data && !@yjit_data
+       !@specificity_data && !@flattening_data
       # :nocov:
       if @verbose
         puts 'Warning: No benchmark data found. Run benchmarks first: rake benchmark'
@@ -54,14 +53,12 @@ class BenchmarkDocGenerator
     puts '    - Serialization' if @serialization_data
     puts '    - Specificity' if @specificity_data
     puts '    - Merging' if @flattening_data
-    puts '    - YJIT' if @yjit_data
 
     missing = []
     missing << 'Parsing' unless @parsing_data
     missing << 'Serialization' unless @serialization_data
     missing << 'Specificity' unless @specificity_data
     missing << 'Flattening' unless @flattening_data
-    missing << 'YJIT' unless @yjit_data
 
     return unless missing.any?
 
@@ -197,7 +194,7 @@ class BenchmarkDocGenerator
 
   # Access instance variables for ERB
   attr_reader :metadata, :parsing_data, :serialization_data,
-              :specificity_data, :flattening_data, :yjit_data
+              :specificity_data, :flattening_data
 end
 
 # Run if called directly

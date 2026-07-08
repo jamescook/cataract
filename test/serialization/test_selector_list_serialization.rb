@@ -381,4 +381,35 @@ class TestSelectorListSerialization < Minitest::Test
 
     assert_equal expected, flattened.to_s
   end
+
+  # ============================================================================
+  # Interaction with media filtering
+  # ============================================================================
+
+  # to_s(media: ...) for anything but :all passes a FILTERED rules array to
+  # the serializer, so rule ids no longer match their position in that array
+  # (some earlier rule may have been excluded, shifting every later rule's
+  # index down). Selector-list grouping used to look up "other rules in this
+  # list" by indexing directly into the rules array with their id - correct
+  # only for the unfiltered array. Once filtered, that could land on a
+  # completely unrelated rule, including an AtRule (which has no
+  # #declarations), crashing instead of grouping.
+  def test_selector_list_grouping_survives_media_filtering
+    css = <<~CSS
+      @media screen { .drop { color: green; } }
+      .a, .b { color: red; }
+      @font-face { font-family: "Foo"; src: url(foo.woff); }
+    CSS
+
+    sheet = Cataract::Stylesheet.parse(css)
+
+    expected = <<~CSS
+      .a, .b { color: red; }
+      @font-face {
+        font-family: "Foo"; src: url(foo.woff);
+      }
+    CSS
+
+    assert_equal expected, sheet.to_s(media: :print)
+  end
 end

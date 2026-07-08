@@ -6,13 +6,15 @@
 
 require 'fileutils'
 
-# Load pure Ruby or C extension based on ENV var
-PURE_RUBY = ENV['CATARACT_PURE'] == '1'
+# Always go through lib/cataract.rb (the one entry point that sets up
+# Cataract::Backends.active and the identity constants correctly) - it
+# already branches on CATARACT_PURE itself, so this just has to be set
+# before requiring, not routed around by requiring cataract/pure directly.
+require 'cataract'
+PURE_RUBY = Cataract::IMPLEMENTATION == :ruby
 if PURE_RUBY
-  require_relative '../../lib/cataract/pure'
   COLOR_AVAILABLE = false
 else
-  require 'cataract'
   require 'cataract/color_conversion'
   COLOR_AVAILABLE = true
 end

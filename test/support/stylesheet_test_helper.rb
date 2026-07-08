@@ -323,8 +323,10 @@ module StylesheetTestHelper
   # Assert that dup/clone produced a truly independent copy - no instance
   # variable holding mutable state (Hash, Array, or other object) points at
   # the exact same object as the source. Skips ivars that are safe to share
-  # by reference (nil, true/false, Symbols, Numerics, or anything frozen),
-  # since none of those can be mutated in place either way.
+  # by reference (nil, true/false, Symbols, Numerics, Modules/Classes, or
+  # anything frozen), since none of those can be mutated in place either way
+  # - a Module (e.g. a Stylesheet's @backend) is a singleton by nature, not
+  # per-instance state, so sharing the identical object is correct.
   #
   # @param original [Object] The source object that was dup'd/cloned
   # @param copy [Object] The object returned by original.dup or original.clone
@@ -336,7 +338,7 @@ module StylesheetTestHelper
     shared = original.instance_variables.filter_map do |ivar|
       orig_val = original.instance_variable_get(ivar)
       next if orig_val.nil? || orig_val.frozen? || orig_val.is_a?(Numeric) || orig_val.is_a?(Symbol) ||
-              orig_val == true || orig_val == false
+              orig_val.is_a?(Module) || orig_val == true || orig_val == false
 
       copy_val = copy.instance_variable_get(ivar)
       "#{ivar} (#{orig_val.class})" if orig_val.equal?(copy_val)

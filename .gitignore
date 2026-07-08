@@ -4,9 +4,6 @@ tmp/
 *.so
 *.o
 
-# Generated C code from Ragel
-ext/**/cataract.c
-
 # Compiled extensions
 lib/**/*.so
 lib/**/*.bundle

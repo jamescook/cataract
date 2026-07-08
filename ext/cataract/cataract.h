@@ -262,7 +262,6 @@ static inline VALUE strip_string(const char *str, long len) {
 // CSS parser (css_parser_new.c)
 VALUE parse_css_new(int argc, VALUE *argv, VALUE self);
 VALUE parse_css_new_impl(VALUE css_string, VALUE parser_options, int rule_id_offset);
-VALUE parse_media_types(VALUE self, VALUE media_query_sym);
 
 // Flatten (flatten.c)
 VALUE cataract_flatten(VALUE self, VALUE rules_array);

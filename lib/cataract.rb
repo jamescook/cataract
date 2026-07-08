@@ -1,33 +1,17 @@
 # frozen_string_literal: true
 
-require_relative 'cataract/version'
-require_relative 'cataract/error'
-require_relative 'cataract/constants'
-
-# Load struct definitions first (before C extension or pure Ruby)
-require_relative 'cataract/declaration'
-require_relative 'cataract/rule'
-require_relative 'cataract/at_rule'
-require_relative 'cataract/media_query'
-require_relative 'cataract/import_statement'
-
-# Load pure Ruby or C extension based on ENV var
-if %w[1 true].include?(ENV.fetch('CATARACT_PURE', nil)) || RUBY_ENGINE == 'jruby'
-  require_relative 'cataract/pure'
-else
-  require_relative 'cataract/native_extension'
-end
-
-# Load supporting Ruby files (used by both implementations)
-require_relative 'cataract/stylesheet_scope'
-require_relative 'cataract/stylesheet'
-require_relative 'cataract/declarations'
-require_relative 'cataract/import_resolver'
-
 # Cataract is a high-performance CSS parser written in C with a Ruby interface.
 #
 # It provides fast CSS parsing, rule querying, cascade merging, and serialization.
 # Designed for performance-critical applications that need to process large amounts of CSS.
+#
+# Pure Ruby and native each live entirely under their own Backends::Pure /
+# Backends::Native namespace (no shared method/constant is ever defined by
+# a backend directly on Cataract or on a shared value type), so both can be
+# required in the same process - e.g. to compare their output directly.
+# Backends.active is the one this process picked by default (below); it's
+# what shared value types (Stylesheet, Declarations, Rule) fall back to
+# when they aren't otherwise told which backend produced them.
 #
 # @example Basic usage
 #   require 'cataract'
@@ -44,6 +28,33 @@ require_relative 'cataract/import_resolver'
 # @see Stylesheet Main class for working with parsed CSS
 # @see Rule Represents individual CSS rules
 module Cataract
+  module Backends
+    class << self
+      attr_accessor :active
+    end
+  end
+end
+
+if %w[1 true].include?(ENV.fetch('CATARACT_PURE', nil)) || RUBY_ENGINE == 'jruby'
+  require_relative 'cataract/pure'
+  Cataract::Backends.active = Cataract::Backends::Pure
+else
+  require_relative 'cataract/native'
+  Cataract::Backends.active = Cataract::Backends::Native
+end
+
+module Cataract
+  # Mirror the active backend's identity constants at the top level.
+  #
+  # Native is a Module (IMPLEMENTATION/COMPILE_FLAGS live on it directly);
+  # Pure is a frozen instance (they live on its class instead), so reach
+  # through .class only when active isn't already a Module itself.
+  backend_const_holder = Backends.active.is_a?(Module) ? Backends.active : Backends.active.class
+  IMPLEMENTATION = backend_const_holder::IMPLEMENTATION
+  COMPILE_FLAGS = backend_const_holder::COMPILE_FLAGS
+  NATIVE_EXTENSION_LOADED = true if defined?(Backends::Native) && Backends.active == Backends::Native
+  PURE_RUBY_LOADED = true if defined?(Backends::Pure) && Backends.active == Backends::Pure
+
   class << self
     # Parse a CSS string into a Stylesheet object.
     #
@@ -75,10 +86,8 @@ module Cataract
     #
     # @see Stylesheet#parse
     # @see Stylesheet.parse
-    unless method_defined?(:parse_css)
-      def parse_css(css, **options)
-        Stylesheet.parse(css, **options)
-      end
+    def parse_css(css, **options)
+      Stylesheet.parse(css, **options)
     end
 
     # Flatten CSS rules according to CSS cascade rules.
@@ -113,9 +122,11 @@ module Cataract
     #
     # @note This is a module-level convenience method. The same functionality is available
     #   as an instance method: `stylesheet.flatten`
-    # @note Implemented in C (see ext/cataract/flatten.c)
     #
     # @see Stylesheet#flatten
-    # Cataract.flatten is defined in C via rb_define_module_function
+    def flatten(stylesheet_or_css)
+      stylesheet_or_css = Stylesheet.parse(stylesheet_or_css) if stylesheet_or_css.is_a?(String)
+      stylesheet_or_css.flatten
+    end
   end
 end

@@ -198,12 +198,22 @@ module Cataract
 
     # Convert declarations to CSS string.
     #
-    # Implemented in C for performance.
-    #
     # @return [String] CSS declaration block string
     #
     # @example
     #   decls.to_s #=> "color: red; margin: 10px !important;"
+    def to_s
+      result = +''
+      @values.each_with_index do |decl, i|
+        result << decl.property
+        result << ': '
+        result << decl.value
+        result << ' !important' if decl.important
+        result << ';'
+        result << ' ' if i < @values.length - 1 # Add space after semicolon except for last
+      end
+      result
+    end
 
     # Enable implicit string conversion for comparisons
     alias to_str to_s
@@ -331,7 +341,7 @@ module Cataract
 
     # Parse "color: red; background: blue" string into array of Declaration structs
     def parse_declaration_string(str)
-      Cataract.parse_declarations(str)
+      Cataract::Backends.active.parse_declarations(str)
     end
   end
 end

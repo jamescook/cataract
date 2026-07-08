@@ -29,8 +29,12 @@ class SpecificityBenchmark < BenchmarkHarness
   end
 
   def sanity_checks
-    # Verify both libraries work
-    raise 'Cataract sanity check failed' unless Cataract.calculate_specificity('div') == 1
+    # Verify both libraries work. calculate_specificity isn't public API - go
+    # through Rule#specificity like a real caller would. A fresh Rule each
+    # time means specificity is nil, so #specificity always calculates for
+    # real rather than returning a memoized value.
+    rule = Cataract::Rule.make(id: 0, selector: 'div', declarations: [])
+    raise 'Cataract sanity check failed' unless rule.specificity == 1
   end
 
   def call
@@ -45,7 +49,9 @@ class SpecificityBenchmark < BenchmarkHarness
     puts 'Testing implementations with YJIT variations where applicable'
     puts
 
-    # Define implementations to test
+    # Define implementations to test - run via subprocess (see BenchmarkHarness
+    # for why: in-process comparison measurably distorts pure Ruby's numbers
+    # under YJIT).
     implementations = [
       { name: 'Cataract pure Ruby', base_impl: :pure, env: { 'CATARACT_PURE' => '1' } },
       { name: 'Cataract C extension', base_impl: :native, env: { 'CATARACT_PURE' => nil } }

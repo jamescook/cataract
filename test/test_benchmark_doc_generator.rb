@@ -18,7 +18,6 @@ class TestBenchmarkDocGenerator < Minitest::Test
 
     # Copy fixtures to temp results directory
     FileUtils.cp(File.join(@fixtures_dir, 'parsing_sample.json'), File.join(@results_dir, 'parsing.json'))
-    FileUtils.cp(File.join(@fixtures_dir, 'yjit_sample.json'), File.join(@results_dir, 'yjit.json'))
 
     # Create minimal metadata.json
     metadata = {

@@ -42,6 +42,20 @@ require_relative 'speedup_calculator'
 #       end
 #     end
 #   end
+#
+# Why benchmarks that compare native vs pure Ruby (benchmark_parsing.rb and
+# siblings) spawn a separate `ruby` subprocess per implementation instead of
+# just requiring both backends and measuring them back-to-back in one
+# process: Stylesheet#add_block calls @backend.parse(...) - one call site
+# shared by both backends. Under YJIT, warming that call site up for one
+# backend first measurably slows down the OTHER backend's dispatch through
+# the now-polymorphic inline cache once it's called there too - confirmed
+# empirically as a ~2.3x regression for pure Ruby specifically when measured
+# in-process right after native, with NO such effect running each in its own
+# process (or with YJIT disabled entirely, where in-process measurement is
+# actually fine). Since these benchmarks need accurate YJIT-enabled numbers,
+# not just YJIT-disabled ones, per-implementation subprocess isolation stays
+# even though it could technically be done in-process.
 class BenchmarkHarness
   RESULTS_DIR = File.expand_path('.results', __dir__)
 
@@ -113,10 +127,17 @@ class BenchmarkHarness
     def setup
       FileUtils.mkdir_p(RESULTS_DIR)
 
-      # Collect system metadata once per run
-      unless File.exist?(File.join(RESULTS_DIR, 'metadata.json'))
-        SystemMetadata.collect
-      end
+      # Always refresh - each of the 4 benchmark scripts runs in its own
+      # subprocess, so metadata.json existing doesn't mean it reflects THIS
+      # run's Ruby version/machine. Previously guarded with `unless
+      # File.exist?(...)`, which meant metadata.json was captured once ever
+      # (whatever machine/Ruby version happened to run the very first
+      # benchmark) and then silently never refreshed again - BENCHMARKS.md
+      # kept reporting a Ruby version and date from months earlier while the
+      # actual numbers below it came from whatever's currently installed.
+      # The four sysctl/sw_vers shell calls this costs per full `rake
+      # benchmark` run are cheap; a stale, silently-wrong header is not.
+      SystemMetadata.collect
 
       # Print header
       puts "\n\n"

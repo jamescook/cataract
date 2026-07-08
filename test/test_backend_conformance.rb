@@ -5,10 +5,9 @@ require_relative 'test_helper'
 # Conformance test between the C extension and pure Ruby backends.
 #
 # This file doesn't compare the two backends directly - it can't, since only
-# one can be loaded per process (see lib/cataract/pure.rb's LoadError guard).
-# Instead it relies on the existing dual-pass test infrastructure: `rake
-# test:c` and `rake test:pure` each run the entire test suite, including
-# this file, against one backend per process. As long as the assertions
+# one is active per test run. Instead it relies on the dual-pass test
+# infrastructure: `rake test:c` and `rake test:pure` each run this entire
+# file against one backend per process. As long as the assertions
 # below are exact (not "at least contains"), a real divergence between
 # backends shows up as this file passing under one backend's run and
 # failing under the other's - without ever needing to know which backend
@@ -180,5 +179,49 @@ class TestBackendConformance < Minitest::Test
     reparsed = Cataract::Stylesheet.parse(@sheet.to_formatted_s)
 
     assert_equal canonical_rules(@sheet), canonical_rules(reparsed)
+  end
+
+  def test_to_s_produces_expected_serialization
+    expected = <<~CSS
+      @charset "UTF-8";
+      body { margin: 0; padding: 0; }
+      html { margin: 0; padding: 0; }
+      .container { --spacing: 16px; --primary-color: #336699; max-width: 1200px; margin: 0 auto; padding: var(--spacing); }
+      .container > .row { display: flex; }
+      .container + .footer { margin-top: 2rem; }
+      .container ~ .sibling { color: gray; }
+      .box { margin-top: 10px; margin-right: 10px; margin-bottom: 10px; margin-left: 10px; color: red; }
+      .box { color: blue; }
+      #special.box { color: green; }
+      .override { color: red !important; }
+      .override { color: blue; }
+      .card { background: white; border: 1px solid #ddd; .card-header { padding: 1rem; &.highlighted { background: #f0f0f0; } } &:hover { box-shadow: 0 0 4px rgba(0, 0, 0, 0.2); } .card-body { .card-title { font-size: 1.25rem; } } }
+      .urgent { color: red !important; }
+      .urgent-commented { color: green /* keep this */ !important; }
+      @media screen {
+      .visible-screen { display: block; }
+      }
+      @media print {
+      .visible-print { display: block; }
+      }
+      @media screen and (min-width: 768px) {
+      .responsive { width: 750px; }
+      }
+      @media screen, print {
+      .universal { color: black; }
+      }
+      .widget { padding: 1rem; @media (min-width: 1024px) { padding: 2rem; } }
+      @keyframes fade-in {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      @font-face {
+        font-family: "CustomFont"; src: url("custom-font.woff2") format("woff2"); font-weight: 400;
+      }
+      @page { margin: 1in; }
+      .background { background-image: url("images/bg.png"); content: "hello world"; }
+    CSS
+
+    assert_equal expected, @sheet.to_s
   end
 end

@@ -342,22 +342,84 @@ class TestDeclarations < Minitest::Test
   end
 
   def test_string_constructor_tracks_paren_depth_around_semicolons
-    # Cataract.parse_declarations (which backs this string constructor) is
-    # currently C-extension-only.
-    # Remove this guard once that's implemented.
-    skip 'Cataract.parse_declarations not yet implemented for pure Ruby' if ENV['CATARACT_PURE']
-
     # Unlike test_url_with_special_chars above (which uses the hash setter and
-    # never touches the C parser), constructing from a declaration-block
-    # string exercises the string parser directly - the embedded ';' inside
-    # url(...) must not be treated as a declaration terminator, and parsing
-    # must still pick up the next declaration afterward.
+    # never touches the string parser), constructing from a declaration-block
+    # string exercises the standalone declaration-string parser directly -
+    # the embedded ';' inside url(...) must not be treated as a declaration
+    # terminator, and parsing must still pick up the next declaration
+    # afterward.
     decl = Cataract::Declarations.new(
       'background: url(data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=); color: red'
     )
 
     assert_equal 'url(data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=)', decl['background']
     assert_equal 'red', decl['color']
+  end
+
+  def test_string_constructor_detects_important
+    decl = Cataract::Declarations.new('color: red !important; margin: 10px')
+
+    assert decl.important?('color')
+    refute decl.important?('margin')
+  end
+
+  def test_string_constructor_strips_outer_braces
+    decl = Cataract::Declarations.new('{ color: red; }')
+
+    assert_equal 'red', decl['color']
+  end
+
+  def test_string_constructor_downcases_even_custom_properties
+    # Unlike the main parser (which preserves custom-property case since
+    # they're case-sensitive per spec), the standalone declaration-string
+    # parser always forces US-ASCII + downcase, with no custom-property
+    # special-casing - matches the native implementation exactly.
+    decl = Cataract::Declarations.new('--Foo-Bar: red')
+
+    assert_equal 'red', decl['--foo-bar']
+    assert_equal ['--foo-bar'], decl.to_h.keys
+  end
+
+  def test_string_constructor_stops_entirely_on_missing_colon
+    # Unlike the main parser (which recovers by skipping to the next
+    # semicolon), the standalone declaration-string parser has no such
+    # recovery - a string with no colon anywhere yields nothing, rather
+    # than raising or attempting to salvage a later declaration. Matches
+    # the native implementation exactly.
+    decl = Cataract::Declarations.new('this has no colon at all')
+
+    assert_equal 0, decl.size
+  end
+
+  def test_string_constructor_with_empty_or_blank_input
+    assert_equal 0, Cataract::Declarations.new('').size
+    assert_equal 0, Cataract::Declarations.new('   ').size
+  end
+
+  def test_string_constructor_skips_empty_values
+    # A declaration with no value (just whitespace/nothing before the ';')
+    # is silently skipped, same as the hash setter does.
+    decl = Cataract::Declarations.new('color:   ;   margin: 5px')
+
+    refute decl.key?('color')
+    assert_equal '5px', decl['margin']
+  end
+
+  def test_string_constructor_important_without_surrounding_space
+    decl = Cataract::Declarations.new('color: red!important')
+
+    assert decl.important?('color')
+    assert_equal 'red !important', decl['color']
+  end
+
+  def test_string_constructor_important_requires_exact_trailing_match
+    # "!important" must be the literal end of the value (after trimming
+    # whitespace) - trailing text after "important" means it's just part
+    # of the value, not the marker.
+    decl = Cataract::Declarations.new('color: red ! important extra')
+
+    refute decl.important?('color')
+    assert_equal 'red ! important extra', decl['color']
   end
 
   def test_escaped_quotes_in_string

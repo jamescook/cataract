@@ -70,10 +70,18 @@ module SpecificityTests
     case base_impl_type
     when :pure, :native
       # Verify Cataract calculations
-      raise 'Cataract simple selector failed' unless Cataract.calculate_specificity('div') == 1
-      raise 'Cataract class selector failed' unless Cataract.calculate_specificity('.class') == 10
-      raise 'Cataract id selector failed' unless Cataract.calculate_specificity('#id') == 100
+      raise 'Cataract simple selector failed' unless specificity_of('div') == 1
+      raise 'Cataract class selector failed' unless specificity_of('.class') == 10
+      raise 'Cataract id selector failed' unless specificity_of('#id') == 100
     end
+  end
+
+  # calculate_specificity isn't public API - go through Rule#specificity like
+  # a real caller would. A fresh Rule each time means specificity is nil, so
+  # #specificity always calculates for real rather than returning a memoized
+  # value.
+  def specificity_of(selector)
+    Cataract::Rule.make(id: 0, selector: selector, declarations: []).specificity
   end
 
   def call
@@ -124,14 +132,14 @@ module SpecificityTests
       when :pure
         x.report("cataract pure: #{key}") do
           selectors.each_key do |selector|
-            Cataract.calculate_specificity(selector)
+            specificity_of(selector)
           end
         end
 
       when :native
         x.report("cataract: #{key}") do
           selectors.each_key do |selector|
-            Cataract.calculate_specificity(selector)
+            specificity_of(selector)
           end
         end
       end

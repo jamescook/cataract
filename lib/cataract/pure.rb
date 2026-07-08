@@ -7,16 +7,24 @@
 # NO REGEXP ALLOWED - consume chars one at a time like the C version.
 # ==================================================================
 #
-# Load this instead of the C extension with:
-#   require 'cataract/pure'
+# Load this instead of the C extension by setting CATARACT_PURE before
+# requiring 'cataract' (not by requiring this file directly - lib/cataract.rb
+# is what sets up Cataract::Backends.active and the top-level identity
+# constants like IMPLEMENTATION; this file alone does not):
+#   ENV['CATARACT_PURE'] = '1'
+#   require 'cataract'
 #
 # Or run tests with:
 #   CATARACT_PURE=1 rake test
-
-# Check if C extension is already loaded
-if defined?(Cataract::NATIVE_EXTENSION_LOADED)
-  raise LoadError, 'Cataract C extension is already loaded. Cannot load pure Ruby version.'
-end
+#
+# Everything backend-specific here lives under Cataract::Backends::Pure -
+# nothing is defined directly on Cataract itself, so this file can be loaded
+# in the same process as the native backend without either clobbering the
+# other. The one exception is Stylesheet#convert_colors! below: color
+# conversion has no pure-Ruby implementation at all, so the stub simply
+# raises - native's real implementation (ext/cataract_color, loaded
+# separately and only opt-in) defines its own convert_colors! and is
+# unaffected by this file being loaded or not.
 
 require_relative 'error'
 
@@ -24,7 +32,7 @@ require_relative 'version'
 require_relative 'constants'
 
 # Load struct definitions and supporting files
-# (These are also loaded by lib/cataract.rb, but we need them here for direct require)
+# (These are also loaded by lib/cataract/native.rb, but we need them here for direct require)
 require_relative 'declaration'
 require_relative 'rule'
 require_relative 'at_rule'
@@ -35,115 +43,79 @@ require_relative 'stylesheet'
 require_relative 'declarations'
 require_relative 'import_resolver'
 
-# Add to_s method to Declarations class for pure Ruby mode
-module Cataract
-  class Declarations
-    # Serialize declarations to CSS string
-    def to_s
-      result = String.new
-      @values.each_with_index do |decl, i|
-        result << decl.property
-        result << ': '
-        result << decl.value
-        result << ' !important' if decl.important
-        result << ';'
-        result << ' ' if i < @values.length - 1 # Add space after semicolon except for last
-      end
-      result
-    end
-  end
-end
-
 # Load pure Ruby implementation modules
 require_relative 'pure/byte_constants'
-require_relative 'pure/helpers'
 require_relative 'pure/specificity'
 require_relative 'pure/serializer'
 require_relative 'pure/parser'
 require_relative 'pure/flatten'
+require_relative 'pure/declarations'
 
 module Cataract
-  # Flag to indicate pure Ruby version is loaded
-  PURE_RUBY_LOADED = true
+  module Backends
+    class PureImpl
+      # Flag to indicate the pure Ruby backend is loaded
+      PURE_RUBY_LOADED = true
 
-  # Implementation type constant
-  IMPLEMENTATION = :ruby
+      # Implementation type constant
+      IMPLEMENTATION = :ruby
 
-  # Compile flags (mimic C version)
-  COMPILE_FLAGS = {
-    debug: false,
-    str_buf_optimization: false,
-    pure_ruby: true
-  }.freeze
+      # Compile flags (mimic C version)
+      COMPILE_FLAGS = {
+        debug: false,
+        str_buf_optimization: false,
+        pure_ruby: true
+      }.freeze
 
-  # Parse CSS string and return hash with rules, media_index, charset, etc.
-  #
-  # @api private
-  # @param css_string [String] CSS to parse
-  # @param parser_options [Hash] Parser configuration options
-  # @option parser_options [Boolean] :selector_lists (true) Track selector lists
-  # @return [Hash] {
-  #   rules: Array<Rule>,           # Flat array of Rule/AtRule structs
-  #   _media_index: Hash,           # Symbol => Array of rule IDs
-  #   charset: String|nil,          # @charset value if present
-  #   _has_nesting: Boolean         # Whether any nested rules exist
-  # }
-  def self._parse_css(css_string, parser_options = {})
-    parser = Parser.new(css_string, parser_options: parser_options)
-    parser.parse
+      # Parse CSS string and return hash with rules, media_index, charset, etc.
+      # Called by Stylesheet#add_block - not meant for direct use.
+      #
+      # @param css_string [String] CSS to parse
+      # @param parser_options [Hash] Parser configuration options
+      # @option parser_options [Boolean] :selector_lists (true) Track selector lists
+      # @return [Hash] {
+      #   rules: Array<Rule>,           # Flat array of Rule/AtRule structs
+      #   _media_index: Hash,           # Symbol => Array of rule IDs
+      #   charset: String|nil,          # @charset value if present
+      #   _has_nesting: Boolean         # Whether any nested rules exist
+      # }
+      def parse(css_string, parser_options = {})
+        parser = Parser.new(css_string, parser_options: parser_options)
+        parser.parse
+      end
+
+      # Flatten stylesheet rules according to CSS cascade rules
+      #
+      # @param stylesheet [Stylesheet] Stylesheet to flatten
+      # @return [Stylesheet] New stylesheet with flattened rules
+      def flatten(stylesheet)
+        Flatten.flatten(stylesheet, mutate: false)
+      end
+
+      # Expand a single shorthand declaration into longhand declarations.
+      # Called by Rule#expanded_declarations - not meant for direct use.
+      #
+      # @param decl [Declaration] Declaration to expand
+      # @return [Array<Declaration>] Array of expanded longhand declarations
+      def expand_shorthand(decl)
+        Flatten.expand_shorthand(decl)
+      end
+    end
+
+    # The active-facing constant is a single frozen instance, not the class
+    # itself - none of PureImpl's methods touch instance state, so one shared
+    # instance is exactly as safe as the bare module this replaces, while
+    # giving its methods genuine instance-level `private` instead of
+    # `private_class_method`.
+    Pure = PureImpl.new.freeze
   end
 
-  # NOTE: Copied from cataract.rb
-  # Need to untangle this eventually
-  def self.parse_css(css, **options)
-    Stylesheet.parse(css, **options)
-  end
-
-  # Flatten stylesheet rules according to CSS cascade rules
-  #
-  # @param stylesheet [Stylesheet] Stylesheet to flatten
-  # @return [Stylesheet] New stylesheet with flattened rules
-  def self.flatten(stylesheet)
-    Flatten.flatten(stylesheet, mutate: false)
-  end
-
-  # Flatten stylesheet rules in-place (mutates receiver)
-  #
-  # @param stylesheet [Stylesheet] Stylesheet to flatten
-  # @return [Stylesheet] Same stylesheet (mutated)
-  def self.flatten!(stylesheet)
-    Flatten.flatten(stylesheet, mutate: true)
-  end
-
-  # Deprecated: Use flatten instead
-  def self.merge(stylesheet)
-    warn 'Cataract.merge is deprecated, use Cataract.flatten instead', uplevel: 1
-    flatten(stylesheet)
-  end
-
-  # Deprecated: Use flatten! instead
-  def self.merge!(stylesheet)
-    warn 'Cataract.merge! is deprecated, use Cataract.flatten! instead', uplevel: 1
-    flatten!(stylesheet)
-  end
-
-  # Expand a single shorthand declaration into longhand declarations.
-  # Underscore prefix indicates semi-private API - use with caution.
-  #
-  # @param decl [Declaration] Declaration to expand
-  # @return [Array<Declaration>] Array of expanded longhand declarations
-  # @api private
-  def self.expand_shorthand(decl)
-    Flatten.expand_shorthand(decl)
-  end
-
-  # Add stub method to Stylesheet for pure Ruby implementation
   class Stylesheet
-    # Color conversion is only available in the native C extension
+    # Color conversion has no pure-Ruby implementation.
     #
-    # @raise [NotImplementedError] Always raises - color conversion requires C extension
+    # @raise [NotImplementedError] Always raises - not implemented for pure Ruby
     def convert_colors!(*_args)
-      raise NotImplementedError, 'convert_colors! is only available in the native C extension'
+      raise NotImplementedError, 'convert_colors! is not yet implemented in Cataract'
     end
   end
 end

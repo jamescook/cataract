@@ -21,7 +21,7 @@ class TestSpecificityComprehensive < Minitest::Test
     }
 
     tests.each do |selector, expected_specificity|
-      actual = Cataract.calculate_specificity(selector)
+      actual = Cataract::Backends.active.calculate_specificity(selector)
 
       assert_equal expected_specificity, actual,
                    "#{selector} should have specificity #{expected_specificity}, got #{actual}"
@@ -41,7 +41,7 @@ class TestSpecificityComprehensive < Minitest::Test
     }
 
     tests.each do |selector, expected_specificity|
-      actual = Cataract.calculate_specificity(selector)
+      actual = Cataract::Backends.active.calculate_specificity(selector)
 
       assert_equal expected_specificity, actual,
                    "#{selector} should have specificity #{expected_specificity}, got #{actual}"
@@ -59,7 +59,7 @@ class TestSpecificityComprehensive < Minitest::Test
     }
 
     tests.each do |selector, expected_specificity|
-      actual = Cataract.calculate_specificity(selector)
+      actual = Cataract::Backends.active.calculate_specificity(selector)
 
       assert_equal expected_specificity, actual,
                    "#{selector} should have specificity #{expected_specificity}, got #{actual}"
@@ -78,7 +78,7 @@ class TestSpecificityComprehensive < Minitest::Test
     }
 
     tests.each do |selector, expected_specificity|
-      actual = Cataract.calculate_specificity(selector)
+      actual = Cataract::Backends.active.calculate_specificity(selector)
 
       assert_equal expected_specificity, actual,
                    "#{selector} should have specificity #{expected_specificity}, got #{actual}"
@@ -95,7 +95,7 @@ class TestSpecificityComprehensive < Minitest::Test
     }
 
     tests.each do |selector, expected_specificity|
-      actual = Cataract.calculate_specificity(selector)
+      actual = Cataract::Backends.active.calculate_specificity(selector)
 
       assert_equal expected_specificity, actual,
                    "#{selector} should have specificity #{expected_specificity}, got #{actual}"
@@ -119,7 +119,7 @@ class TestSpecificityComprehensive < Minitest::Test
     }
 
     tests.each do |selector, expected_specificity|
-      actual = Cataract.calculate_specificity(selector)
+      actual = Cataract::Backends.active.calculate_specificity(selector)
 
       assert_equal expected_specificity, actual,
                    "W3C example: #{selector} should have specificity #{expected_specificity}, got #{actual}"

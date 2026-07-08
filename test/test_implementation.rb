@@ -39,13 +39,27 @@ class TestImplementation < Minitest::Test
       assert defined?(Cataract::PURE_RUBY_LOADED),
              'Pure Ruby implementation should define PURE_RUBY_LOADED constant'
     end
+  end
 
+  # convert_colors! only exists for real on native, and only once the
+  # optional cataract/color_conversion extension is loaded (see
+  # test_helper.rb) - it overrides Stylesheet's own NotImplementedError
+  # stub. Pure Ruby never had a real implementation, so the stub stands.
+  # Real conversion behavior itself is covered thoroughly in test/color/*.
+  if Cataract::IMPLEMENTATION == :ruby
     def test_convert_colors_raises_not_implemented
       sheet = Cataract::Stylesheet.parse('body { color: red; }')
       error = assert_raises(NotImplementedError) do
         sheet.convert_colors!
       end
-      assert_match(/only available in the native C extension/, error.message)
+      assert_equal 'convert_colors! is not yet implemented in Cataract', error.message
+    end
+  else
+    def test_convert_colors_is_implemented
+      sheet = Cataract::Stylesheet.parse('body { color: #ff0000; }')
+      sheet.convert_colors!(to: :rgb)
+
+      assert_has_property({ color: 'rgb(255 0 0)' }, sheet.rules.first)
     end
   end
 end

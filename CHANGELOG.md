@@ -1,3 +1,11 @@
+## [Unreleased]
+
+- Fix: `Declarations.new(some_string)` (standalone CSS declaration-block parsing) now works under the pure Ruby backend (`CATARACT_PURE=1`) - previously raised `NoMethodError`.
+- Fix: a compound `@media` list (e.g. `@media screen, print { ... }`) no longer silently collapses to just its first member when the document also contains CSS nesting elsewhere.
+- Fix: `to_s`/`to_formatted_s` with a specific `media:` filter (anything but `:all`) could crash while grouping comma-separated selector lists (e.g. `h1, h2 { ... }`), if an unrelated rule elsewhere in the document was excluded by the filter. Present in both backends since at least 0.3.0.
+- Breaking (minor): removed `Cataract.merge` (a long-deprecated alias for `.flatten`) and `Cataract.parse_media_types` (undocumented, no real callers) from the C extension's public surface. Use `Cataract.flatten`/`Stylesheet#flatten` instead of `.merge`.
+- Internal: `Cataract`'s own directly-callable methods are now just `.flatten` and `.parse_css`. Previously `Cataract` also exposed `calculate_specificity`, `expand_shorthand`, `parse_declarations`, `stylesheet_to_s`, `stylesheet_to_formatted_s`, and `_parse_css` directly - undocumented implementation leakage, not intended for direct use. The documented ways to reach this functionality (`Rule#specificity`, `Rule#expanded_declarations`, `Declarations.new(some_string)`, `Stylesheet#to_s`/`#to_formatted_s`) are unchanged. The native C extension and pure Ruby backend also now live under `Cataract::Backends::Native` / `Cataract::Backends::Pure`, resolved once per process and held per-`Stylesheet` - this lets both backends coexist in the same process (e.g. for direct comparison). Existing callers relying only on the documented public API should notice nothing.
+
 ## [0.3.0] - 2026-07-06
 
 - Security/Breaking: `Stylesheet#load_uri` and `#load_file` now reject `file://` paths under `/etc/`, `/proc/`, `/sys/`, and `/dev/` by default (override with `dangerous_path_prefixes: []`). Previously these methods used a separate, unvalidated fetch implementation; they now reuse `ImportResolver` (the same validation and fetching `@import` resolution already uses), which also fixes `load_uri` not following HTTP redirects.

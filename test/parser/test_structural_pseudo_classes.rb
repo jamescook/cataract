@@ -137,13 +137,13 @@ class TestStructuralPseudoClasses < Minitest::Test
   # Specificity tests
   def test_nth_child_specificity
     # Structural pseudo-classes count as class selectors (10 points)
-    assert_equal 11, Cataract.calculate_specificity('li:nth-child(2)') # element(1) + pseudo-class(10)
-    assert_equal 20, Cataract.calculate_specificity('.item:nth-child(odd)') # class(10) + pseudo-class(10)
-    assert_equal 21, Cataract.calculate_specificity('li.item:nth-child(odd)') # element(1) + class(10) + pseudo-class(10)
+    assert_equal 11, Cataract::Backends.active.calculate_specificity('li:nth-child(2)') # element(1) + pseudo-class(10)
+    assert_equal 20, Cataract::Backends.active.calculate_specificity('.item:nth-child(odd)') # class(10) + pseudo-class(10)
+    assert_equal 21, Cataract::Backends.active.calculate_specificity('li.item:nth-child(odd)') # element(1) + class(10) + pseudo-class(10)
   end
 
   def test_first_of_type_specificity
-    assert_equal 11, Cataract.calculate_specificity('p:first-of-type') # element(1) + pseudo-class(10)
+    assert_equal 11, Cataract::Backends.active.calculate_specificity('p:first-of-type') # element(1) + pseudo-class(10)
   end
 
   # UI pseudo-classes (CSS3)
@@ -170,8 +170,8 @@ class TestStructuralPseudoClasses < Minitest::Test
 
   def test_ui_pseudo_class_specificity
     # UI pseudo-classes count as class selectors (10 points)
-    assert_equal 11, Cataract.calculate_specificity('input:enabled') # element(1) + pseudo-class(10)
-    assert_equal 11, Cataract.calculate_specificity('input:disabled') # element(1) + pseudo-class(10)
-    assert_equal 11, Cataract.calculate_specificity('input:checked') # element(1) + pseudo-class(10)
+    assert_equal 11, Cataract::Backends.active.calculate_specificity('input:enabled') # element(1) + pseudo-class(10)
+    assert_equal 11, Cataract::Backends.active.calculate_specificity('input:disabled') # element(1) + pseudo-class(10)
+    assert_equal 11, Cataract::Backends.active.calculate_specificity('input:checked') # element(1) + pseudo-class(10)
   end
 end

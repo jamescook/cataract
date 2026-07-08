@@ -52,7 +52,9 @@ class SerializationBenchmark < BenchmarkHarness
     puts 'Testing implementations with YJIT variations where applicable'
     puts
 
-    # Define implementations to test
+    # Define implementations to test - run via subprocess (see BenchmarkHarness
+    # for why: in-process comparison measurably distorts pure Ruby's numbers
+    # under YJIT).
     implementations = [
       { name: 'Cataract pure Ruby', base_impl: :pure, env: { 'CATARACT_PURE' => '1' } },
       { name: 'Cataract C extension', base_impl: :native, env: { 'CATARACT_PURE' => nil } }
