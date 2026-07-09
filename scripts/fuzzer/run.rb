@@ -122,6 +122,16 @@ CLEAN_CORPUS = [
   '@container sidebar (min-width: 400px) { .foo { display: grid; } }',
   '@container (min-width: 400px) { .foo { display: grid; } }',
   '@supports (display: grid) { @container sidebar (min-width: 400px) { .foo { display: grid; } } }',
+  # @layer - named/anonymous/dotted-nested block form, statement form
+  # (no rules at all), and nested inside @supports
+  '@layer utilities { .foo { color: red; } }',
+  '@layer base, utilities;',
+  '@layer framework.layout { .foo { color: red; } }',
+  '@supports (display: grid) { @layer utilities { .foo { display: grid; } } }',
+  # Minified at-rules with no space before '(' - exercises the at-rule
+  # name/condition scanning fix (was silently corrupting these)
+  '@supports(display:grid){.foo{color:red}}',
+  '@media(min-width:500px){.foo{color:red}}',
   "@font-face { font-family: 'Custom'; src: url('font.woff'); }",
   '@keyframes fade { from { opacity: 0; } to { opacity: 1; } }',
   'h1 + *[rel=up] { border: 1px solid red; }',

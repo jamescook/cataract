@@ -164,7 +164,9 @@ module Cataract
           close_conditional_groups!(current_chain.size - common, indent)
 
           target_chain[common..].each do |group|
-            @result << indent << "@#{group.type} #{conditional_group_prelude(group)} {\n"
+            prelude = conditional_group_prelude(group)
+            prelude_part = prelude.empty? ? '' : " #{prelude}"
+            @result << indent << "@#{group.type}#{prelude_part} {\n"
           end
 
           target_chain
@@ -510,6 +512,11 @@ module Cataract
 
         # An at-rule (@keyframes, @font-face, etc), compact
         def serialize_at_rule(at_rule)
+          if at_rule.content.nil?
+            @result << "#{at_rule.selector};\n"
+            return
+          end
+
           @result << "#{at_rule.selector} {\n"
 
           if at_rule.content.length > 0
@@ -669,6 +676,13 @@ module Cataract
         end
 
         def serialize_at_rule_formatted(at_rule, indent)
+          if at_rule.content.nil?
+            @result << indent
+            @result << at_rule.selector
+            @result << ";\n"
+            return
+          end
+
           @result << indent
           @result << at_rule.selector
           @result << " {\n"

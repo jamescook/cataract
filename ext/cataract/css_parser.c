@@ -1734,6 +1734,7 @@ static void handle_conditional_group_at_rule(ParserContext *ctx, const char **p_
                                               int parent_media_query_id, int parent_conditional_group_id) {
     BOOLEAN is_supports = (at_name_len == 8 && strncmp(at_start, "supports", 8) == 0);
     BOOLEAN is_container = (at_name_len == 9 && strncmp(at_start, "container", 9) == 0);
+    BOOLEAN is_layer = (at_name_len == 5 && strncmp(at_start, "layer", 5) == 0);
 
     // Check if this rule requires a condition
     BOOLEAN requires_condition = is_supports || is_container;
@@ -1742,13 +1743,52 @@ static void handle_conditional_group_at_rule(ParserContext *ctx, const char **p_
     const char *cond_start = at_name_end;
     while (cond_start < pe && IS_WHITESPACE(*cond_start)) cond_start++;
 
-    // Skip to opening brace
+    // Skip to whichever terminator comes first: '{' (block form) or ';'
+    // (statement form - only valid for @layer, but we still stop there for
+    // the others rather than scanning straight through it into whatever
+    // rule happens to follow)
     const char *p = at_name_end;
-    while (p < pe && *p != '{') p++;
+    while (p < pe && *p != '{' && *p != ';') p++;
 
-    if (p >= pe || *p != '{') {
+    if (p >= pe) {
         *p_ptr = p;
         return;  // Malformed
+    }
+
+    if (*p == ';') {
+        // Trim trailing whitespace off the name list
+        const char *stmt_end = p;
+        while (stmt_end > cond_start && IS_WHITESPACE(*(stmt_end - 1))) stmt_end--;
+
+        if (is_layer && stmt_end > cond_start) {
+            VALUE selector = rb_utf8_str_new(at_start - 1, stmt_end - (at_start - 1));
+            int rule_id = ctx->rule_id_counter++;
+            VALUE media_query_id_val = (parent_media_query_id >= 0) ? INT2FIX(parent_media_query_id) : Qnil;
+            VALUE conditional_group_id_val = (parent_conditional_group_id >= 0) ? INT2FIX(parent_conditional_group_id) : Qnil;
+            VALUE at_rule = rb_struct_new(cAtRule,
+                INT2FIX(rule_id),
+                selector,
+                Qnil,  // content - statement form has no block
+                Qnil,  // specificity
+                media_query_id_val,
+                conditional_group_id_val
+            );
+            rb_ary_push(ctx->rules_array, at_rule);
+            RB_GC_GUARD(selector);
+
+            if (!NIL_P(parent_media_sym)) {
+                VALUE rule_ids = rb_hash_aref(ctx->media_index, parent_media_sym);
+                if (NIL_P(rule_ids)) {
+                    rule_ids = rb_ary_new();
+                    rb_hash_aset(ctx->media_index, parent_media_sym, rule_ids);
+                }
+                rb_ary_push(rule_ids, INT2FIX(rule_id));
+            }
+        }
+
+        p++;  // Skip ';'
+        *p_ptr = p;
+        return;
     }
 
     // Trim condition
@@ -1769,12 +1809,12 @@ static void handle_conditional_group_at_rule(ParserContext *ctx, const char **p_
     const char *block_end = find_matching_brace_strict(p, pe, ctx->check_unclosed_blocks);
     p = block_end;
 
-    // For @supports/@container, build a ConditionalGroup (nested inside the
-    // enclosing one, if any) and tag every rule parsed inside this block
-    // with it. @layer/@scope pass parent_conditional_group_id through
-    // unchanged until their own beads give them the same treatment.
+    // For @supports/@container/@layer, build a ConditionalGroup (nested
+    // inside the enclosing one, if any) and tag every rule parsed inside
+    // this block with it. @scope passes parent_conditional_group_id through
+    // unchanged until its own bead gives it the same treatment.
     int child_conditional_group_id = parent_conditional_group_id;
-    if ((is_supports || is_container) && cond_end > cond_start) {
+    if ((is_supports || is_container || is_layer) && (cond_end > cond_start || is_layer)) {
         VALUE name, condition;
         ID type_id;
 
@@ -1782,9 +1822,13 @@ static void handle_conditional_group_at_rule(ParserContext *ctx, const char **p_
             name = Qnil;
             condition = rb_utf8_str_new(cond_start, cond_end - cond_start);
             type_id = rb_intern("supports");
-        } else {
+        } else if (is_container) {
             split_container_prelude(cond_start, cond_end, &name, &condition);
             type_id = rb_intern("container");
+        } else {
+            name = (cond_end > cond_start) ? rb_utf8_str_new(cond_start, cond_end - cond_start) : Qnil;
+            condition = Qnil;
+            type_id = rb_intern("layer");
         }
 
         VALUE parent_id_val = (parent_conditional_group_id >= 0) ? INT2FIX(parent_conditional_group_id) : Qnil;

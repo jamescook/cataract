@@ -1100,7 +1100,7 @@ module Cataract
 
           # Handle conditional group at-rules: @supports, @layer, @container, @scope
           # These behave like @media but don't affect media context
-          return parse_conditional_group_at_rule(at_rule_name) if AT_RULE_TYPES.include?(at_rule_name)
+          return parse_conditional_group_at_rule(at_rule_name, at_rule_start) if AT_RULE_TYPES.include?(at_rule_name)
 
           # Handle @media specially - parse content and track in media_index
           return parse_media_at_rule if at_rule_name == 'media'
@@ -1185,27 +1185,41 @@ module Cataract
         # this parser's own @media_queries with offset ids, same as any other
         # nested-parser result).
         #
-        # @supports and @container build a real ConditionalGroup and tag
-        # their child rules with a conditional_group_id - @layer/@scope
-        # still just recurse and pass the parent context through unchanged
-        # (their condition/name text is only used for the missing-condition
-        # validation below, same as before). Each gets its own faithful
-        # representation in its own follow-up bead.
+        # @supports, @container, and @layer's block form build a real
+        # ConditionalGroup and tag their child rules with a
+        # conditional_group_id - @scope still just recurses and passes the
+        # parent context through unchanged (its condition/name text is only
+        # used for the missing-condition validation below, same as before).
+        # It gets its own faithful representation in its own follow-up bead.
+        #
+        # @layer also has a statement form (`@layer name, name;`, no block at
+        # all) - handled separately below, since there are no rules to wrap.
         #
         # @param at_rule_name [String] The at-rule name (e.g. "supports"), used
         #   to decide whether a condition is required and for error messages
-        def parse_conditional_group_at_rule(at_rule_name)
+        # @param at_rule_start [Integer] Position of the at-rule's leading '@',
+        #   used to build a verbatim selector for the statement form
+        def parse_conditional_group_at_rule(at_rule_name, at_rule_start)
           skip_ws_and_comments
 
           # Remember start of condition for error reporting
           condition_start = @_pos
 
-          # Skip to opening brace
-          while !eof? && peek_byte != BYTE_LBRACE
+          # Skip to whichever terminator comes first: '{' (block form) or ';'
+          # (statement form - only valid for @layer, but we still stop there
+          # for the others rather than scanning straight through it into
+          # whatever rule happens to follow)
+          while !eof? && peek_byte != BYTE_LBRACE && peek_byte != BYTE_SEMICOLON
             @_pos += 1
           end
 
-          return if eof? || peek_byte != BYTE_LBRACE
+          return if eof?
+
+          if peek_byte == BYTE_SEMICOLON
+            parse_layer_statement(at_rule_start, condition_start) if at_rule_name == 'layer'
+            @_pos += 1 # skip ';'
+            return
+          end
 
           condition_str = byteslice_encoded(condition_start, @_pos - condition_start).strip
 
@@ -1226,17 +1240,18 @@ module Cataract
             raise DepthError, "CSS nesting too deep: exceeded maximum depth of #{MAX_PARSE_DEPTH}"
           end
 
-          # For @supports/@container, build a ConditionalGroup (nested inside
-          # the enclosing one, if any) and tag every rule parsed inside this
-          # block with it.
+          # For @supports/@container/@layer, build a ConditionalGroup (nested
+          # inside the enclosing one, if any) and tag every rule parsed
+          # inside this block with it.
           child_conditional_group_id = @_parent_conditional_group_id
-          unless condition_str.empty?
+          if at_rule_name == 'layer' || !condition_str.empty?
             name, condition = case at_rule_name
                               when 'supports' then [nil, condition_str]
                               when 'container' then split_container_prelude(condition_str)
+                              when 'layer' then [condition_str.empty? ? nil : condition_str, nil]
                               end
 
-            if condition || name
+            if condition || name || at_rule_name == 'layer'
               group = Cataract::ConditionalGroup.new(@_conditional_group_id_counter, at_rule_name.to_sym, name,
                                                      condition, @_parent_conditional_group_id)
               @conditional_groups << group
@@ -1298,6 +1313,28 @@ module Cataract
           # Move position past the closing brace
           @_pos = block_end
           @_pos += 1 if @_pos < @_len && @_css.getbyte(@_pos) == BYTE_RBRACE
+        end
+
+        # @layer name, name; - the statement form declares layer order
+        # without wrapping any rules, so unlike the block form there's
+        # nothing to tag with a conditional_group_id. Represented as an
+        # AtRule instead (mirrors @keyframes/@font-face's "content varies by
+        # type" pattern), with content nil since there's no block to hold.
+        # Called with @_pos at the ';' that terminates the statement.
+        #
+        # @param at_rule_start [Integer] Position of the at-rule's leading '@'
+        # @param condition_start [Integer] Position where the name list
+        #   begins (right after "@layer" and any whitespace)
+        def parse_layer_statement(at_rule_start, condition_start)
+          content_end = @_pos
+          content_end -= 1 while content_end > condition_start && whitespace?(@_css.getbyte(content_end - 1))
+          return if content_end <= condition_start # "@layer;" / "@layer   ;" - no names, nothing to declare
+
+          selector = byteslice_encoded(at_rule_start, content_end - at_rule_start)
+
+          rule_id = @_rule_id_counter
+          @_rule_id_counter += 1
+          @rules << AtRule.new(rule_id, selector, nil, nil, @_parent_media_query_id, @_parent_conditional_group_id)
         end
 
         # @media - parses the media query, recurses into a nested Parser for the

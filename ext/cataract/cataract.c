@@ -169,6 +169,13 @@ static void serialize_at_rule(VALUE result, VALUE at_rule) {
     VALUE selector = rb_struct_aref(at_rule, INT2FIX(AT_RULE_SELECTOR));
     VALUE content = rb_struct_aref(at_rule, INT2FIX(AT_RULE_CONTENT));
 
+    if (NIL_P(content)) {
+        // Statement form (e.g. `@layer a, b;`) - no block to wrap.
+        rb_str_append(result, selector);
+        rb_str_cat2(result, ";\n");
+        return;
+    }
+
     rb_str_append(result, selector);
     rb_str_cat2(result, " {\n");
 
@@ -277,6 +284,14 @@ static void serialize_rule(VALUE result, VALUE rule) {
 static void serialize_at_rule_formatted(VALUE result, VALUE at_rule, const char *indent) {
     VALUE selector = rb_struct_aref(at_rule, INT2FIX(AT_RULE_SELECTOR));
     VALUE content = rb_struct_aref(at_rule, INT2FIX(AT_RULE_CONTENT));
+
+    if (NIL_P(content)) {
+        // Statement form (e.g. `@layer a, b;`) - no block to wrap.
+        rb_str_cat2(result, indent);
+        rb_str_append(result, selector);
+        rb_str_cat2(result, ";\n");
+        return;
+    }
 
     rb_str_cat2(result, indent);
     rb_str_append(result, selector);
@@ -457,13 +472,15 @@ static VALUE sync_conditional_group_chain(VALUE result, VALUE current_chain, VAL
         rb_str_cat2(result, indent);
         rb_str_cat2(result, "@");
         rb_str_append(result, rb_sym2str(rb_struct_aref(group, INT2FIX(CONDITIONAL_GROUP_TYPE))));
-        rb_str_cat2(result, " ");
-        if (!NIL_P(name)) {
-            rb_str_append(result, name);
-            if (!NIL_P(condition)) rb_str_cat2(result, " ");
-        }
-        if (!NIL_P(condition)) {
-            rb_str_append(result, condition);
+        if (!NIL_P(name) || !NIL_P(condition)) {
+            rb_str_cat2(result, " ");
+            if (!NIL_P(name)) {
+                rb_str_append(result, name);
+                if (!NIL_P(condition)) rb_str_cat2(result, " ");
+            }
+            if (!NIL_P(condition)) {
+                rb_str_append(result, condition);
+            }
         }
         rb_str_cat2(result, " {\n");
     }
