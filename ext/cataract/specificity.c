@@ -13,6 +13,8 @@
  *   - :not() doesn't count itself, but its content does
  *   - Legacy pseudo-elements with single colon (:before) count as pseudo-elements
  *   - Universal selector (*) has zero specificity
+ *   - A namespace prefix (ns|E, *|E, |E) contributes zero itself - only the
+ *     local name after '|' counts, same as a bare "E" would
  */
 
 #include "cataract.h"
@@ -188,14 +190,23 @@ VALUE calculate_specificity(VALUE self, VALUE selector_string) {
             continue;
         }
 
-        // Type selector (element name): div, span, etc.
+        // Type selector (element name): div, span, etc. - or a namespace
+        // prefix (css-namespaces-3 qname grammar: prefix? '|' ident). A
+        // prefix contributes nothing itself; only the local name after '|'
+        // is the real type selector, so don't count it here - just skip
+        // past it and the separator and let the next iteration count the
+        // local name instead.
         if ((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z')) {
-            element_count++;
             // Skip the identifier
             while (p < pe && ((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') ||
                               (*p >= '0' && *p <= '9') || *p == '-' || *p == '_')) {
                 p++;
             }
+            if (p < pe && *p == '|') {
+                p++; // skip namespace separator - prefix itself doesn't count
+                continue;
+            }
+            element_count++;
             continue;
         }
 

@@ -257,6 +257,70 @@ class TestCSS2Features < Minitest::Test
   end
 
   # ============================================================================
+  # Namespaced Selectors (CSS Namespaces Module - qname grammar)
+  # https://www.w3.org/TR/css-namespaces-3/#css-qnames
+  # ============================================================================
+
+  def test_namespace_prefixed_type_selector
+    css = 'svg|rect { fill: red }'
+    @sheet.add_block(css)
+
+    assert_has_selector 'svg|rect', @sheet
+  end
+
+  def test_namespace_any_type_selector
+    # *|E - matches E in any namespace, including no namespace
+    css = '*|rect { fill: red }'
+    @sheet.add_block(css)
+
+    assert_has_selector '*|rect', @sheet
+  end
+
+  def test_namespace_none_type_selector
+    # |E - matches E only with no namespace
+    css = '|rect { fill: red }'
+    @sheet.add_block(css)
+
+    assert_has_selector '|rect', @sheet
+  end
+
+  def test_namespace_prefixed_attribute_selector
+    css = '[xlink|href="foo.svg"] { fill: red }'
+    @sheet.add_block(css)
+
+    assert_has_selector '[xlink|href="foo.svg"]', @sheet
+  end
+
+  def test_namespace_any_attribute_selector
+    css = '[*|href] { fill: red }'
+    @sheet.add_block(css)
+
+    assert_has_selector '[*|href]', @sheet
+  end
+
+  def test_namespace_none_attribute_selector
+    css = '[|href] { fill: red }'
+    @sheet.add_block(css)
+
+    assert_has_selector '[|href]', @sheet
+  end
+
+  def test_namespaced_selector_in_comma_list
+    css = 'svg|rect, html|div { color: red }'
+    @sheet.add_block(css)
+
+    assert_has_selector 'svg|rect', @sheet
+    assert_has_selector 'html|div', @sheet
+  end
+
+  def test_namespaced_selector_round_trip
+    css = "svg|rect.icon#logo { color: red; }\n"
+    sheet = Cataract::Stylesheet.parse(css)
+
+    assert_equal css, sheet.to_s
+  end
+
+  # ============================================================================
   # !important flag (CSS2 - Already works but test for completeness)
   # ============================================================================
 

@@ -1079,13 +1079,15 @@ module Cataract
           at_rule_start = @_pos # Points to '@'
           @_pos += 1 # skip '@'
 
-          # Find end of at-rule name (stop at whitespace, '{', '(', or ';' -
-          # an ident naturally terminates at any of these even with no space,
-          # e.g. minified "@supports(display:grid){" or "@media(...){")
+          # Find end of at-rule name (stop at whitespace, '{', '(', ';', or a
+          # quote - an ident naturally terminates at any of these even with
+          # no space, e.g. minified "@supports(display:grid){" or
+          # "@media(...){" or "@namespace"http://...";)
           name_start = @_pos
           until eof?
             byte = peek_byte
-            break if whitespace?(byte) || byte == BYTE_LBRACE || byte == BYTE_LPAREN || byte == BYTE_SEMICOLON
+            break if whitespace?(byte) || byte == BYTE_LBRACE || byte == BYTE_LPAREN || byte == BYTE_SEMICOLON ||
+                     byte == BYTE_DQUOTE || byte == BYTE_SQUOTE
 
             @_pos += 1
           end
@@ -1097,6 +1099,11 @@ module Cataract
 
           # Handle @import - must come before rules (except @charset)
           return parse_import_at_rule if at_rule_name == 'import'
+
+          # Handle @namespace - purely a statement (never a block), so it's
+          # handled here rather than falling through to the conditional-group
+          # or unknown-at-rule paths below.
+          return parse_namespace_at_rule(at_rule_start) if at_rule_name == 'namespace'
 
           # Handle conditional group at-rules: @supports, @layer, @container, @scope
           # These behave like @media but don't affect media context
@@ -1152,6 +1159,64 @@ module Cataract
           end
 
           parse_import_statement
+        end
+
+        # @namespace [prefix] (url(...) | "..."); - declares a namespace
+        # prefix (or, with no prefix, the default namespace) mapped to a
+        # URI. Per css-namespaces-3 this is purely a statement - it never
+        # has a block - so, like @layer's statement form, it's captured
+        # verbatim as an AtRule with content nil rather than needing any
+        # dedicated struct. Multiple @namespace rules are legal (one
+        # default + any number of prefixed ones); nothing here computes
+        # resolution between them, callers read the prefix/URI back out of
+        # the raw text.
+        def parse_namespace_at_rule(at_rule_start)
+          skip_ws_and_comments
+          value_start = @_pos
+
+          # Scan to the terminating ';', honoring quoted strings and paren
+          # depth so a URI given as url(...) can't have a stray ';' inside
+          # it (e.g. a data: URI) end the statement early.
+          in_quote = nil
+          paren_depth = 0
+
+          until eof?
+            byte = peek_byte
+
+            if in_quote
+              if byte == in_quote
+                in_quote = nil
+              elsif byte == BYTE_BACKSLASH && @_pos + 1 < @_len
+                @_pos += 1
+              end
+            else
+              break if byte == BYTE_SEMICOLON && paren_depth == 0
+
+              if byte == BYTE_SQUOTE || byte == BYTE_DQUOTE # rubocop:disable Style/CaseLikeIf
+                in_quote = byte
+              elsif byte == BYTE_LPAREN
+                paren_depth += 1
+              elsif byte == BYTE_RPAREN
+                paren_depth -= 1
+              end
+            end
+
+            @_pos += 1
+          end
+
+          return if eof? # malformed: no terminating ';'
+
+          content_end = @_pos
+          content_end -= 1 while content_end > value_start && whitespace?(@_css.getbyte(content_end - 1))
+          @_pos += 1 # skip ';'
+
+          return if content_end <= value_start # "@namespace;" - nothing to declare
+
+          selector = byteslice_encoded(at_rule_start, content_end - at_rule_start)
+
+          rule_id = @_rule_id_counter
+          @_rule_id_counter += 1
+          @rules << AtRule.new(rule_id, selector, nil, nil, @_parent_media_query_id, @_parent_conditional_group_id)
         end
 
         # Split a raw @container prelude into [name, condition]:

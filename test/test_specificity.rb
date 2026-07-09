@@ -82,4 +82,22 @@ class TestSpecificity < Minitest::Test
     assert_equal 103, Cataract::Backends.active.calculate_specificity('#sidebar ul li a') # #sidebar(100) + ul(1) + li(1) + a(1) = 103
     assert_equal 121, Cataract::Backends.active.calculate_specificity('#nav .menu-item:hover a') # #nav(100) + .menu-item(10) + :hover(10) + a(1) = 121
   end
+
+  def test_specificity_with_namespace_prefixes
+    # A namespace prefix (css-namespaces-3 qname grammar: prefix? '|' ident)
+    # contributes nothing itself - only the local name after '|' counts as
+    # the type selector, same as a bare "div" would.
+    assert_equal 1, Cataract::Backends.active.calculate_specificity('svg|rect')
+    assert_equal 1, Cataract::Backends.active.calculate_specificity('*|rect')  # any namespace
+    assert_equal 1, Cataract::Backends.active.calculate_specificity('|rect')   # no namespace
+
+    # The rest of the qualified name still counts normally
+    assert_equal 111, Cataract::Backends.active.calculate_specificity('svg|rect.icon#logo')
+    assert_equal 2, Cataract::Backends.active.calculate_specificity('svg|rect html|div')
+
+    # Namespaced attribute selectors are unaffected (bracket contents are
+    # already opaque to specificity counting)
+    assert_equal 10, Cataract::Backends.active.calculate_specificity('[xlink|href]')
+    assert_equal 10, Cataract::Backends.active.calculate_specificity('[*|href]')
+  end
 end

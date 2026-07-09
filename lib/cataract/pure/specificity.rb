@@ -78,8 +78,16 @@ module Cataract
               end
             end
           elsif letter?(byte)
-            element_count += 1
-            i = skip_identifier(selector, i + 1, len)
+            ident_end = skip_identifier(selector, i + 1, len)
+            if ident_end < len && selector.getbyte(ident_end) == BYTE_PIPE
+              # Namespace prefix (ns|E, css-namespaces-3 qname grammar) -
+              # contributes nothing itself; the local name after '|' is the
+              # real type selector and gets counted on the next iteration.
+              i = ident_end + 1
+            else
+              element_count += 1
+              i = ident_end
+            end
           else
             # Whitespace, combinators, and the universal selector (*) all have
             # zero specificity - just skip a single byte.

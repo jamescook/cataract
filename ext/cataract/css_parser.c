@@ -1857,6 +1857,87 @@ static void handle_conditional_group_at_rule(ParserContext *ctx, const char **p_
 }
 
 /*
+ * Handle @namespace [prefix] (url(...) | "...") ; found at brace_depth 0.
+ * Per css-namespaces-3 this is purely a statement - it always ends in ';'
+ * and never has a block - so it's modeled exactly like @layer's statement
+ * form above: captured verbatim as an AtRule with content nil, since
+ * multiple @namespace declarations are legal (one default + any number of
+ * prefixed ones) and there's no resolution/merge semantics to compute.
+ *
+ * Called with *p_ptr pointing at the '@'. Advances *p_ptr past the
+ * statement (including the terminating ';').
+ */
+static void handle_namespace_at_rule(ParserContext *ctx, const char **p_ptr, const char *pe,
+                                      VALUE parent_media_sym, int parent_media_query_id,
+                                      int parent_conditional_group_id) {
+    const char *selector_start = *p_ptr;  // Points to '@'
+    const char *p = selector_start + 10;  // Skip "@namespace"
+
+    // Scan to the terminating ';', honoring quoted strings and paren depth
+    // so a URI given as url(...) can't have a stray ';' inside it (e.g. a
+    // data: URI) end the statement early.
+    char in_quote = 0;
+    int paren_depth = 0;
+    while (p < pe) {
+        char c = *p;
+        if (in_quote) {
+            if (c == in_quote) {
+                in_quote = 0;
+            } else if (c == '\\' && p + 1 < pe) {
+                p++;
+            }
+        } else if (c == ';' && paren_depth == 0) {
+            break;
+        } else if (c == '"' || c == '\'') {
+            in_quote = c;
+        } else if (c == '(') {
+            paren_depth++;
+        } else if (c == ')') {
+            paren_depth--;
+        }
+        p++;
+    }
+
+    if (p >= pe) {
+        *p_ptr = p;
+        return;  // Malformed - no terminating ';'
+    }
+
+    // Trim trailing whitespace off the captured text
+    const char *stmt_end = p;
+    while (stmt_end > selector_start + 10 && IS_WHITESPACE(*(stmt_end - 1))) stmt_end--;
+
+    if (stmt_end > selector_start + 10) {
+        VALUE selector = rb_utf8_str_new(selector_start, stmt_end - selector_start);
+        int rule_id = ctx->rule_id_counter++;
+        VALUE media_query_id_val = (parent_media_query_id >= 0) ? INT2FIX(parent_media_query_id) : Qnil;
+        VALUE conditional_group_id_val = (parent_conditional_group_id >= 0) ? INT2FIX(parent_conditional_group_id) : Qnil;
+        VALUE at_rule = rb_struct_new(cAtRule,
+            INT2FIX(rule_id),
+            selector,
+            Qnil,  // content - statement form has no block
+            Qnil,  // specificity
+            media_query_id_val,
+            conditional_group_id_val
+        );
+        rb_ary_push(ctx->rules_array, at_rule);
+        RB_GC_GUARD(selector);
+
+        if (!NIL_P(parent_media_sym)) {
+            VALUE rule_ids = rb_hash_aref(ctx->media_index, parent_media_sym);
+            if (NIL_P(rule_ids)) {
+                rule_ids = rb_ary_new();
+                rb_hash_aset(ctx->media_index, parent_media_sym, rule_ids);
+            }
+            rb_ary_push(rule_ids, INT2FIX(rule_id));
+        }
+    }
+
+    p++;  // Skip ';'
+    *p_ptr = p;
+}
+
+/*
  * Handle an @keyframes (or -webkit-/-moz- prefixed) at-rule found at
  * brace_depth 0. Called with *p_ptr pointing at the '@'; at_name_end marks
  * the end of the already-scanned at-rule name. Advances *p_ptr past the
@@ -2372,6 +2453,18 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
             p += 7;  // Skip "@import "
             parse_import_statement(ctx, &p, pe);
             DEBUG_PRINTF("[IMPORT] After parsing, imports_count=%ld\n", RARRAY_LEN(ctx->imports_array));
+            continue;
+        }
+
+        // Check for @namespace at-rule (statement-only - always ends in
+        // ';', never has a block; css-namespaces-3). A quote isn't a valid
+        // ident character, so a prefix or value can immediately follow
+        // with no whitespace (e.g. minified `@namespace"...";` or
+        // `@namespace svg"...";`) - accept that alongside whitespace/';'.
+        if (RB_UNLIKELY(brace_depth == 0 && p + 10 < pe && *p == '@' &&
+            strncmp(p + 1, "namespace", 9) == 0 &&
+            (IS_WHITESPACE(p[10]) || p[10] == ';' || p[10] == '"' || p[10] == '\''))) {
+            handle_namespace_at_rule(ctx, &p, pe, parent_media_sym, parent_media_query_id, parent_conditional_group_id);
             continue;
         }
 

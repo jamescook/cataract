@@ -132,6 +132,12 @@ CLEAN_CORPUS = [
   # name/condition scanning fix (was silently corrupting these)
   '@supports(display:grid){.foo{color:red}}',
   '@media(min-width:500px){.foo{color:red}}',
+  # @namespace - default/prefixed, url()/string forms, minified no-space
+  # forms, and namespaced selectors (ns|E, *|E, |E, [ns|attr])
+  '@namespace url(http://www.w3.org/1999/xhtml); svg|rect { fill: red; }',
+  '@namespace svg url(http://www.w3.org/2000/svg); svg|rect.icon { fill: red; }',
+  '@namespace"http://www.w3.org/1999/xhtml";.foo{color:red}',
+  '[xlink|href] { fill: red; } *|div { color: blue; } |span { color: green; }',
   "@font-face { font-family: 'Custom'; src: url('font.woff'); }",
   '@keyframes fade { from { opacity: 0; } to { opacity: 1; } }',
   'h1 + *[rel=up] { border: 1px solid red; }',

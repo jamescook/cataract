@@ -4,6 +4,7 @@
 - Feature: `@container name (condition) { ... }` (container queries) now preserves its name, condition, and wrapped rules the same way - handles named, anonymous, and name-only forms, and nests correctly with `@media`/`@supports`/itself.
 - Feature: `@layer` (cascade layers) now preserves its name and wrapped rules, both in block form (`@layer name { ... }`, including anonymous and dotted/nested names like `framework.layout`) and statement form (`@layer a, b;`, which declares layer order with no wrapped rules at all - previously silently corrupted parsing of whatever rule came right after it).
 - Fix: `@media`/`@supports`/`@container`/`@scope`/`@layer` with no whitespace before a following `(` (e.g. minified `@supports(display:grid){...}`) no longer misparses the at-rule name, which silently corrupted the rest of the block. Present in both backends since `@media`/`@supports` shipped.
+- Feature: `@namespace` (default and prefixed, e.g. `@namespace svg url(http://www.w3.org/2000/svg);`) is now preserved through parse -> serialize, in both backends - previously it wasn't modelled at all. Namespaced selectors (`ns|E`, `*|E`, `|E`, and the attribute-selector equivalents) already parsed as opaque text, but their specificity was miscounted - a namespace prefix was counted as its own type selector instead of contributing nothing, e.g. `svg|rect` computed as specificity 2 instead of 1. Both are fixed now.
 
 ## [0.4.0] - 2026-07-08
 
