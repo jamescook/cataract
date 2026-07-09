@@ -1,0 +1,9 @@
+--output-dir docs
+--readme README.md
+--title 'Cataract - Fast CSS Parser'
+--exclude lib/cataract/pure\.rb
+--exclude lib/cataract/pure/
+lib/**/*.rb
+ext/**/*.c
+-
+docs/files/EXAMPLE.md
