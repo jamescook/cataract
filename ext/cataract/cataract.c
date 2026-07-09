@@ -451,11 +451,20 @@ static VALUE sync_conditional_group_chain(VALUE result, VALUE current_chain, VAL
 
     for (long i = common; i < target_len; i++) {
         VALUE group = rb_ary_entry(target_chain, i);
+        VALUE name = rb_struct_aref(group, INT2FIX(CONDITIONAL_GROUP_NAME));
+        VALUE condition = rb_struct_aref(group, INT2FIX(CONDITIONAL_GROUP_CONDITION));
+
         rb_str_cat2(result, indent);
         rb_str_cat2(result, "@");
         rb_str_append(result, rb_sym2str(rb_struct_aref(group, INT2FIX(CONDITIONAL_GROUP_TYPE))));
         rb_str_cat2(result, " ");
-        rb_str_append(result, rb_struct_aref(group, INT2FIX(CONDITIONAL_GROUP_CONDITION)));
+        if (!NIL_P(name)) {
+            rb_str_append(result, name);
+            if (!NIL_P(condition)) rb_str_cat2(result, " ");
+        }
+        if (!NIL_P(condition)) {
+            rb_str_append(result, condition);
+        }
         rb_str_cat2(result, " {\n");
     }
 

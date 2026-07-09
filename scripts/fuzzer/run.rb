@@ -118,6 +118,10 @@ CLEAN_CORPUS = [
   # and media_query_id being merged back correctly regardless of which wraps which
   '@media screen { @supports (display: grid) { .foo { display: grid; } } }',
   '@supports (display: grid) { @media screen { .foo { display: grid; } } }',
+  # @container - named, anonymous, name-only, and mixed with @supports nesting
+  '@container sidebar (min-width: 400px) { .foo { display: grid; } }',
+  '@container (min-width: 400px) { .foo { display: grid; } }',
+  '@supports (display: grid) { @container sidebar (min-width: 400px) { .foo { display: grid; } } }',
   "@font-face { font-family: 'Custom'; src: url('font.woff'); }",
   '@keyframes fade { from { opacity: 0; } to { opacity: 1; } }',
   'h1 + *[rel=up] { border: 1px solid red; }',

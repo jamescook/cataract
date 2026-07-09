@@ -1152,14 +1152,39 @@ module Cataract
           parse_import_statement
         end
 
+        # Split a raw @container prelude into [name, condition]:
+        #   "sidebar (min-width: 400px)" -> ["sidebar", "(min-width: 400px)"]
+        #   "(min-width: 400px)"         -> [nil, "(min-width: 400px)"]
+        #   "sidebar"                   -> ["sidebar", nil]
+        #   "not (min-width: 400px)"    -> [nil, "not (min-width: 400px)"] (anonymous - "not" isn't a valid container-query name ident)
+        #   "sidebar not (min-width: 400px)" -> ["sidebar", "not (min-width: 400px)"]
+        def split_container_prelude(raw)
+          return [nil, raw] if raw.start_with?('(')
+
+          # (start, length) form avoids allocating a Range, unlike raw[(i+1)..]
+          space_idx = raw.index(' ')
+          first_word = space_idx ? raw[0, space_idx] : raw
+
+          return [nil, raw] if first_word.casecmp?('not') # allocation-free vs first_word.downcase == 'not'
+          return [first_word, nil] unless space_idx
+
+          # Caller already stripped raw's own leading/trailing whitespace, so
+          # only a leading gap between name and condition can remain here -
+          # lstrip! (in place, on this fresh slice) instead of strip (which
+          # would allocate a second string to also re-check the trailing end)
+          rest = raw[space_idx + 1, raw.length]
+          rest.lstrip!
+          [first_word, rest.empty? ? nil : rest]
+        end
+
         # @supports, @layer, @container, @scope - behave like @media but don't
         # affect media context (so no combining, unlike parse_media_at_rule -
         # a nested @media's MediaQuery objects just need to be re-housed in
         # this parser's own @media_queries with offset ids, same as any other
         # nested-parser result).
         #
-        # Only @supports currently builds a real ConditionalGroup and tags its
-        # child rules with a conditional_group_id - @layer/@container/@scope
+        # @supports and @container build a real ConditionalGroup and tag
+        # their child rules with a conditional_group_id - @layer/@scope
         # still just recurse and pass the parent context through unchanged
         # (their condition/name text is only used for the missing-condition
         # validation below, same as before). Each gets its own faithful
@@ -1201,16 +1226,23 @@ module Cataract
             raise DepthError, "CSS nesting too deep: exceeded maximum depth of #{MAX_PARSE_DEPTH}"
           end
 
-          # For @supports, build a ConditionalGroup (nested inside the
-          # enclosing one, if any) and tag every rule parsed inside this
+          # For @supports/@container, build a ConditionalGroup (nested inside
+          # the enclosing one, if any) and tag every rule parsed inside this
           # block with it.
           child_conditional_group_id = @_parent_conditional_group_id
-          if at_rule_name == 'supports' && !condition_str.empty?
-            group = Cataract::ConditionalGroup.new(@_conditional_group_id_counter, :supports, nil, condition_str,
-                                                   @_parent_conditional_group_id)
-            @conditional_groups << group
-            child_conditional_group_id = @_conditional_group_id_counter
-            @_conditional_group_id_counter += 1
+          unless condition_str.empty?
+            name, condition = case at_rule_name
+                              when 'supports' then [nil, condition_str]
+                              when 'container' then split_container_prelude(condition_str)
+                              end
+
+            if condition || name
+              group = Cataract::ConditionalGroup.new(@_conditional_group_id_counter, at_rule_name.to_sym, name,
+                                                     condition, @_parent_conditional_group_id)
+              @conditional_groups << group
+              child_conditional_group_id = @_conditional_group_id_counter
+              @_conditional_group_id_counter += 1
+            end
           end
 
           # Recursively parse block content (preserve parent media context)

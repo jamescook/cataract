@@ -1666,6 +1666,52 @@ static void handle_media_at_rule(ParserContext *ctx, const char **p_ptr, const c
     *p_ptr = p;
 }
 
+// Case-insensitive ASCII check for "not" - used to tell an anonymous
+// @container condition starting with "not" apart from a genuine
+// container-query name (CSS reserves "not"/"and"/"or" as condition
+// keywords, so they're never valid name idents).
+static BOOLEAN is_not_keyword(const char *start, long len) {
+    if (len != 3) return 0;
+
+    char c0 = start[0], c1 = start[1], c2 = start[2];
+    if (c0 >= 'A' && c0 <= 'Z') c0 += 32;
+    if (c1 >= 'A' && c1 <= 'Z') c1 += 32;
+    if (c2 >= 'A' && c2 <= 'Z') c2 += 32;
+    return c0 == 'n' && c1 == 'o' && c2 == 't';
+}
+
+/*
+ * Split a raw @container prelude into name/condition VALUEs (Qnil if
+ * absent):
+ *   "sidebar (min-width: 400px)" -> name="sidebar", condition="(min-width: 400px)"
+ *   "(min-width: 400px)"         -> name=nil, condition="(min-width: 400px)"
+ *   "sidebar"                    -> name="sidebar", condition=nil
+ *   "not (min-width: 400px)"     -> name=nil, condition="not (min-width: 400px)" (anonymous)
+ */
+static void split_container_prelude(const char *start, const char *end, VALUE *name_out, VALUE *condition_out) {
+    if (start >= end || *start == '(') {
+        *name_out = Qnil;
+        *condition_out = (start < end) ? rb_utf8_str_new(start, end - start) : Qnil;
+        return;
+    }
+
+    const char *space = start;
+    while (space < end && !IS_WHITESPACE(*space)) space++;
+
+    if (is_not_keyword(start, space - start)) {
+        *name_out = Qnil;
+        *condition_out = rb_utf8_str_new(start, end - start);
+        return;
+    }
+
+    *name_out = rb_utf8_str_new(start, space - start);
+
+    const char *rest_start = space;
+    while (rest_start < end && IS_WHITESPACE(*rest_start)) rest_start++;
+
+    *condition_out = (rest_start < end) ? rb_utf8_str_new(rest_start, end - rest_start) : Qnil;
+}
+
 /*
  * Handle a conditional-group at-rule (@supports/@layer/@container/@scope)
  * found at brace_depth 0. Behaves like @media but doesn't affect media
@@ -1675,23 +1721,22 @@ static void handle_media_at_rule(ParserContext *ctx, const char **p_ptr, const c
  * at-rule name. Advances *p_ptr past the entire construct (including its
  * closing '}', if found).
  *
- * Only @supports currently builds a real ConditionalGroup and tags its
- * child rules with a conditional_group_id - @layer/@container/@scope still
- * just recurse with parent_conditional_group_id passed through unchanged
- * (their condition/name text is extracted below only for the missing-
- * condition validation, same as before). Each gets its own faithful
- * representation in its own follow-up bead.
+ * @supports and @container build a real ConditionalGroup and tag their
+ * child rules with a conditional_group_id - @layer/@scope still just
+ * recurse with parent_conditional_group_id passed through unchanged (their
+ * condition/name text is extracted below only for the missing-condition
+ * validation, same as before). Each gets its own faithful representation
+ * in its own follow-up bead.
  */
 static void handle_conditional_group_at_rule(ParserContext *ctx, const char **p_ptr, const char *pe,
                                               const char *at_start, const char *at_name_end, long at_name_len,
                                               VALUE parent_media_sym, VALUE parent_selector, VALUE parent_rule_id,
                                               int parent_media_query_id, int parent_conditional_group_id) {
     BOOLEAN is_supports = (at_name_len == 8 && strncmp(at_start, "supports", 8) == 0);
+    BOOLEAN is_container = (at_name_len == 9 && strncmp(at_start, "container", 9) == 0);
 
     // Check if this rule requires a condition
-    BOOLEAN requires_condition =
-        is_supports ||
-        (at_name_len == 9 && strncmp(at_start, "container", 9) == 0);
+    BOOLEAN requires_condition = is_supports || is_container;
 
     // Extract condition (between at-rule name and opening brace)
     const char *cond_start = at_name_end;
@@ -1724,18 +1769,29 @@ static void handle_conditional_group_at_rule(ParserContext *ctx, const char **p_
     const char *block_end = find_matching_brace_strict(p, pe, ctx->check_unclosed_blocks);
     p = block_end;
 
-    // For @supports, build a ConditionalGroup (nested inside the enclosing
-    // one, if any) and tag every rule parsed inside this block with it.
-    // @layer/@container/@scope pass parent_conditional_group_id through
+    // For @supports/@container, build a ConditionalGroup (nested inside the
+    // enclosing one, if any) and tag every rule parsed inside this block
+    // with it. @layer/@scope pass parent_conditional_group_id through
     // unchanged until their own beads give them the same treatment.
     int child_conditional_group_id = parent_conditional_group_id;
-    if (is_supports && cond_end > cond_start) {
-        VALUE condition = rb_utf8_str_new(cond_start, cond_end - cond_start);
+    if ((is_supports || is_container) && cond_end > cond_start) {
+        VALUE name, condition;
+        ID type_id;
+
+        if (is_supports) {
+            name = Qnil;
+            condition = rb_utf8_str_new(cond_start, cond_end - cond_start);
+            type_id = rb_intern("supports");
+        } else {
+            split_container_prelude(cond_start, cond_end, &name, &condition);
+            type_id = rb_intern("container");
+        }
+
         VALUE parent_id_val = (parent_conditional_group_id >= 0) ? INT2FIX(parent_conditional_group_id) : Qnil;
         VALUE group = rb_struct_new(cConditionalGroup,
             INT2FIX(ctx->conditional_group_id_counter),
-            ID2SYM(rb_intern("supports")),
-            Qnil,  // name (@supports has no name)
+            ID2SYM(type_id),
+            name,
             condition,
             parent_id_val
         );
@@ -1743,6 +1799,7 @@ static void handle_conditional_group_at_rule(ParserContext *ctx, const char **p_
         child_conditional_group_id = ctx->conditional_group_id_counter;
         ctx->conditional_group_id_counter++;
         RB_GC_GUARD(condition);
+        RB_GC_GUARD(name);
     }
 
     // Recursively parse block content (preserve parent media context)

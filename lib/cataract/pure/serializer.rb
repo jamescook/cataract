@@ -164,10 +164,17 @@ module Cataract
           close_conditional_groups!(current_chain.size - common, indent)
 
           target_chain[common..].each do |group|
-            @result << indent << "@#{group.type} #{group.condition} {\n"
+            @result << indent << "@#{group.type} #{conditional_group_prelude(group)} {\n"
           end
 
           target_chain
+        end
+
+        # Reconstruct a group's prelude text - "name condition", "name", or
+        # "condition" depending on which are present (@supports only ever
+        # has condition; @container may have either or both).
+        def conditional_group_prelude(group)
+          [group.name, group.condition].compact.join(' ')
         end
 
         def close_conditional_groups!(count, indent)
