@@ -1079,11 +1079,13 @@ module Cataract
           at_rule_start = @_pos # Points to '@'
           @_pos += 1 # skip '@'
 
-          # Find end of at-rule name (stop at whitespace or opening brace)
+          # Find end of at-rule name (stop at whitespace, '{', '(', or ';' -
+          # an ident naturally terminates at any of these even with no space,
+          # e.g. minified "@supports(display:grid){" or "@media(...){")
           name_start = @_pos
           until eof?
             byte = peek_byte
-            break if whitespace?(byte) || byte == BYTE_LBRACE
+            break if whitespace?(byte) || byte == BYTE_LBRACE || byte == BYTE_LPAREN || byte == BYTE_SEMICOLON
 
             @_pos += 1
           end
@@ -1199,15 +1201,13 @@ module Cataract
           condition_start = @_pos
 
           # Skip to opening brace
-          condition_end = @_pos
           while !eof? && peek_byte != BYTE_LBRACE
-            condition_end = @_pos
             @_pos += 1
           end
 
           return if eof? || peek_byte != BYTE_LBRACE
 
-          condition_str = byteslice_encoded(condition_start, condition_end - condition_start).strip
+          condition_str = byteslice_encoded(condition_start, @_pos - condition_start).strip
 
           # Validate condition (strict mode) - @supports, @container, @scope require conditions
           if @_check_malformed_at_rules && (at_rule_name == 'supports' || at_rule_name == 'container' || at_rule_name == 'scope') && condition_str.empty?

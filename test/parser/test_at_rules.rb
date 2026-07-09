@@ -220,6 +220,33 @@ class TestAtRules < Minitest::Test
     assert_equal 1, @sheet.size
   end
 
+  # Minified at-rules: no whitespace between the at-rule keyword and a
+  # following '(' - valid CSS (the ident naturally terminates at '(', a
+  # non-ident character), but a regression risk since the name-scanning
+  # that decides "is this @media/@supports/etc" previously only looked for
+  # whitespace or '{' as the name's end.
+  def test_supports_minified_with_no_space_before_condition
+    @sheet.add_block('@supports(display:grid){.grid{display:grid}}')
+
+    assert_equal 1, @sheet.conditional_groups.size
+    group = @sheet.conditional_groups.first
+
+    assert_equal :supports, group.type
+    assert_equal '(display:grid)', group.condition
+    assert_has_selector '.grid', @sheet
+  end
+
+  def test_media_minified_with_no_space_before_condition
+    @sheet.add_block('@media(min-width:500px){.foo{color:red}}')
+
+    assert_equal 1, @sheet.media_queries.size
+    assert_has_selector '.foo', @sheet
+    rule = @sheet.with_selector('.foo').first
+
+    refute_nil rule.media_query_id
+    assert_equal '(min-width:500px)', @sheet.media_queries[rule.media_query_id].conditions
+  end
+
   # Nested @media tests
   def test_nested_media_queries
     @sheet.add_block(<<~CSS)

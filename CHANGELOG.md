@@ -2,6 +2,7 @@
 
 - Feature: `@supports (condition) { ... }` now preserves its condition and the rules it wraps through parse -> serialize, in both backends - previously the condition was discarded entirely and the wrapped rules were silently flattened into the surrounding document with no trace of ever being conditional.
 - Feature: `@container name (condition) { ... }` (container queries) now preserves its name, condition, and wrapped rules the same way - handles named, anonymous, and name-only forms, and nests correctly with `@media`/`@supports`/itself.
+- Fix: `@media`/`@supports`/`@container`/`@scope`/`@layer` with no whitespace before a following `(` (e.g. minified `@supports(display:grid){...}`) no longer misparses the at-rule name, which silently corrupted the rest of the block. Present in both backends since `@media`/`@supports` shipped.
 
 ## [0.4.0] - 2026-07-08
 

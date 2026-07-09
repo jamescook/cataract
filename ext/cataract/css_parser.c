@@ -2333,7 +2333,7 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
 
         // Check for @media at-rule (only at depth 0)
         if (RB_UNLIKELY(brace_depth == 0 && p + 6 < pe && *p == '@' &&
-            strncmp(p + 1, "media", 5) == 0 && IS_WHITESPACE(p[6]))) {
+            strncmp(p + 1, "media", 5) == 0 && (IS_WHITESPACE(p[6]) || p[6] == '('))) {
             handle_media_at_rule(ctx, &p, pe, parent_media_sym, parent_media_query_id, parent_conditional_group_id);
             continue;
         }
@@ -2345,8 +2345,11 @@ static void parse_css_recursive(ParserContext *ctx, const char *css, const char 
             const char *at_start = p + 1;
             const char *at_name_end = at_start;
 
-            // Find end of at-rule name (stop at whitespace or opening brace)
-            while (at_name_end < pe && !IS_WHITESPACE(*at_name_end) && *at_name_end != '{') {
+            // Find end of at-rule name (stop at whitespace, '{', '(', or ';' -
+            // an ident naturally terminates at any of these even with no
+            // space, e.g. minified "@supports(display:grid){")
+            while (at_name_end < pe && !IS_WHITESPACE(*at_name_end) && *at_name_end != '{' &&
+                   *at_name_end != '(' && *at_name_end != ';') {
                 at_name_end++;
             }
 
