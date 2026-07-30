@@ -4,7 +4,7 @@
 module FlatteningTests
   # Determines if YJIT testing is applicable for a given implementation
   def self.yjit_applicable?(impl_type)
-    base_impl = impl_type.to_s.sub(/_with_yjit|_without_yjit/, '').to_sym
+    base_impl = impl_type.to_s.sub(/_with_yjit|_without_yjit|_with_zjit/, '').to_sym
     base_impl != :native
   end
 
@@ -58,7 +58,7 @@ module FlatteningTests
   attr_accessor :impl_type
 
   def base_impl_type
-    impl_type.to_s.sub(/_with_yjit|_without_yjit/, '').to_sym
+    impl_type.to_s.sub(/_with_yjit|_without_yjit|_with_zjit/, '').to_sym
   end
 
   def sanity_checks
@@ -93,7 +93,11 @@ module FlatteningTests
                  end
 
     yjit_suffix = if FlatteningTests.yjit_applicable?(impl_type)
-                    impl_type.to_s.include?('with_yjit') ? ' (YJIT)' : ' (no YJIT)'
+                    case impl_type.to_s
+                    when /with_yjit/ then ' (YJIT)'
+                    when /with_zjit/ then ' (ZJIT)'
+                    else ' (no YJIT)'
+                    end
                   else
                     ''
                   end

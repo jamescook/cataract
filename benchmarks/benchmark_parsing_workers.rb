@@ -30,7 +30,7 @@ class ParsingCataractPureBenchmark < BenchmarkHarness
 
   def initialize
     super
-    self.impl_type = determine_impl_type_with_yjit(:pure, ParsingTests)
+    self.impl_type = determine_impl_type(:pure, ParsingTests)
   end
 end
 
@@ -57,7 +57,7 @@ class ParsingCataractNativeBenchmark < BenchmarkHarness
 
   def initialize
     super
-    self.impl_type = determine_impl_type_with_yjit(:native, ParsingTests)
+    self.impl_type = determine_impl_type(:native, ParsingTests)
   end
 end
 

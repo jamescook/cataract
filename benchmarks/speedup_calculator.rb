@@ -81,6 +81,10 @@ class SpeedupCalculator
       ->(result) { result['implementation'] == 'pure_with_yjit' }
     end
 
+    def self.cataract_pure_with_zjit
+      ->(result) { result['implementation'] == 'pure_with_zjit' }
+    end
+
     def self.cataract_native
       ->(result) { base_implementation(result) == 'native' }
     end
@@ -91,6 +95,10 @@ class SpeedupCalculator
 
     def self.without_yjit
       ->(result) { result['implementation']&.include?('without_yjit') }
+    end
+
+    def self.with_zjit
+      ->(result) { result['implementation']&.include?('with_zjit') }
     end
 
     def self.pure_ruby
@@ -105,7 +113,7 @@ class SpeedupCalculator
 
     # Extract base implementation from impl_type (strips YJIT suffixes)
     def self.base_implementation(result)
-      result['implementation']&.to_s&.sub(/_with_yjit|_without_yjit/, '')
+      result['implementation']&.to_s&.sub(/_with_yjit|_without_yjit|_with_zjit/, '')
     end
   end
 end

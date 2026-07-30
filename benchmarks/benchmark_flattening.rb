@@ -45,7 +45,7 @@ class FlatteningBenchmark < BenchmarkHarness
     Dir.glob(File.join(RESULTS_DIR, 'flattening_*.json')).each { |f| FileUtils.rm_f(f) }
 
     puts 'Running flattening benchmarks via subprocesses...'
-    puts 'Testing implementations with YJIT variations where applicable'
+    puts 'Testing implementations with JIT variations (none/YJIT/ZJIT) where applicable'
     puts
 
     # Define implementations to test - run via subprocess (see BenchmarkHarness
@@ -58,10 +58,15 @@ class FlatteningBenchmark < BenchmarkHarness
 
     implementations.each do |config|
       if FlatteningTests.yjit_applicable?(config[:base_impl])
-        # Run both YJIT variants
+        # Run all JIT variants. CATARACT_BENCH_JIT tells the worker which
+        # mode we intended (see WorkerHelpers#verify_jit_mode!) so it can
+        # raise loudly if the actual JIT active doesn't match - e.g. a Ruby
+        # build without YJIT/ZJIT support silently falling back to the
+        # interpreter instead of honoring --yjit/--zjit.
         puts "→ Running #{config[:name]} without YJIT..."
         puts
-        _, status = run_subprocess(['ruby', '--disable-yjit', worker_script], env: config[:env])
+        _, status = run_subprocess(['ruby', '--disable-yjit', worker_script],
+                                   env: config[:env].merge('CATARACT_BENCH_JIT' => 'none'))
         raise "#{config[:name]} (no YJIT) benchmark failed" unless status.success?
 
         puts
@@ -69,8 +74,18 @@ class FlatteningBenchmark < BenchmarkHarness
 
         puts "→ Running #{config[:name]} with YJIT..."
         puts
-        _, status = run_subprocess(['ruby', '--yjit', worker_script], env: config[:env])
+        _, status = run_subprocess(['ruby', '--yjit', worker_script],
+                                   env: config[:env].merge('CATARACT_BENCH_JIT' => 'yjit'))
         raise "#{config[:name]} (YJIT) benchmark failed" unless status.success?
+
+        puts
+        puts
+
+        puts "→ Running #{config[:name]} with ZJIT..."
+        puts
+        _, status = run_subprocess(['ruby', '--zjit', worker_script],
+                                   env: config[:env].merge('CATARACT_BENCH_JIT' => 'zjit'))
+        raise "#{config[:name]} (ZJIT) benchmark failed" unless status.success?
 
       else
         # Run without YJIT flags (YJIT not applicable)

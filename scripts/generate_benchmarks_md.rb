@@ -127,7 +127,9 @@ class BenchmarkDocGenerator
 
   def format_speedup(speedup)
     return "N/A" if speedup.nil?
-    "#{speedup.round(2)}x faster"
+    return "#{speedup.round(2)}x faster" if speedup >= 1
+
+    "#{(1.0 / speedup).round(2)}x slower"
   end
 
   def format_number(num)
@@ -180,6 +182,15 @@ class BenchmarkDocGenerator
     )
     rows << "| Native vs Pure (YJIT) | #{format_speedup(native_vs_pure_yjit)} (avg) |" if native_vs_pure_yjit
 
+    # Native vs Pure (ZJIT)
+    native_vs_pure_zjit = calculate_speedup(
+      data,
+      baseline_matcher: SpeedupCalculator::Matchers.cataract_pure_with_zjit,
+      comparison_matcher: SpeedupCalculator::Matchers.cataract_native,
+      test_case_key: test_case_key
+    )
+    rows << "| Native vs Pure (ZJIT) | #{format_speedup(native_vs_pure_zjit)} (avg) |" if native_vs_pure_zjit
+
     # YJIT impact on Pure Ruby
     yjit_impact = calculate_speedup(
       data,
@@ -188,6 +199,24 @@ class BenchmarkDocGenerator
       test_case_key: test_case_key
     )
     rows << "| YJIT impact on Pure Ruby | #{format_speedup(yjit_impact)} (avg) |" if yjit_impact
+
+    # ZJIT impact on Pure Ruby
+    zjit_impact = calculate_speedup(
+      data,
+      baseline_matcher: SpeedupCalculator::Matchers.cataract_pure_without_yjit,
+      comparison_matcher: SpeedupCalculator::Matchers.cataract_pure_with_zjit,
+      test_case_key: test_case_key
+    )
+    rows << "| ZJIT impact on Pure Ruby | #{format_speedup(zjit_impact)} (avg) |" if zjit_impact
+
+    # ZJIT vs YJIT - the capstone comparison: does the new JIT close the gap?
+    zjit_vs_yjit = calculate_speedup(
+      data,
+      baseline_matcher: SpeedupCalculator::Matchers.cataract_pure_with_yjit,
+      comparison_matcher: SpeedupCalculator::Matchers.cataract_pure_with_zjit,
+      test_case_key: test_case_key
+    )
+    rows << "| ZJIT vs YJIT | #{format_speedup(zjit_vs_yjit)} (avg) |" if zjit_vs_yjit
 
     rows.join("\n")
   end

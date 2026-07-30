@@ -4,7 +4,7 @@
 
 # Performance Benchmarks
 
-Performance comparison between Cataract's C extension and pure Ruby implementations.
+Performance comparison between Cataract's C extension and pure Ruby implementations, including pure Ruby under the interpreter, YJIT, and ZJIT.
 
 ## Test Environment
 
@@ -19,14 +19,15 @@ Performance comparison between Cataract's C extension and pure Ruby implementati
 
 <%= parsing_data['description'] %>
 
-| Test Case | Native | Pure (no YJIT) | Pure (YJIT) |
-|-----------|--------|----------------|-------------|
+| Test Case | Native | Pure (no YJIT) | Pure (YJIT) | Pure (ZJIT) |
+|-----------|--------|----------------|-------------|-------------|
 <%- parsing_data['metadata']['test_cases'].each do |test_case| -%>
 <%- results = parsing_data['results'].select { |r| r['name'].include?(test_case['fixture']) } -%>
 <%- pure_no_yjit = results.find { |r| r['implementation'] == 'pure_without_yjit' } -%>
 <%- pure_with_yjit = results.find { |r| r['implementation'] == 'pure_with_yjit' } -%>
+<%- pure_with_zjit = results.find { |r| r['implementation'] == 'pure_with_zjit' } -%>
 <%- native = results.find { |r| r['implementation'] == 'native' } -%>
-| <%= test_case['name'] %> | <%= native ? format_ips(native, short: true) : 'N/A' %> | <%= pure_no_yjit ? format_ips(pure_no_yjit, short: true) : 'N/A' %> | <%= pure_with_yjit ? format_ips(pure_with_yjit, short: true) : 'N/A' %> |
+| <%= test_case['name'] %> | <%= native ? format_ips(native, short: true) : 'N/A' %> | <%= pure_no_yjit ? format_ips(pure_no_yjit, short: true) : 'N/A' %> | <%= pure_with_yjit ? format_ips(pure_with_yjit, short: true) : 'N/A' %> | <%= pure_with_zjit ? format_ips(pure_with_zjit, short: true) : 'N/A' %> |
 <%- end -%>
 
 ### Speedups
@@ -39,8 +40,8 @@ Performance comparison between Cataract's C extension and pure Ruby implementati
 
 Parse error detection can be enabled with `raise_parse_errors: true`. This compares performance impact:
 
-| Configuration | Native | Pure (no YJIT) | Pure (YJIT) |
-|---------------|--------|----------------|-------------|
+| Configuration | Native | Pure (no YJIT) | Pure (YJIT) | Pure (ZJIT) |
+|---------------|--------|----------------|-------------|-------------|
 <%- if parsing_data['metadata']['error_checking'] -%>
 <%- parsing_data['metadata']['error_checking'].each do |test_case| -%>
 <%-
@@ -49,9 +50,10 @@ Parse error detection can be enabled with `raise_parse_errors: true`. This compa
   results = parsing_data['results'].select { |r| r['name'].include?(search_term) }
   pure_no_yjit = results.find { |r| r['implementation'] == 'pure_without_yjit' }
   pure_with_yjit = results.find { |r| r['implementation'] == 'pure_with_yjit' }
+  pure_with_zjit = results.find { |r| r['implementation'] == 'pure_with_zjit' }
   native = results.find { |r| r['implementation'] == 'native' }
 -%>
-| <%= test_case['name'] %> | <%= native ? format_ips(native, short: true) : 'N/A' %> | <%= pure_no_yjit ? format_ips(pure_no_yjit, short: true) : 'N/A' %> | <%= pure_with_yjit ? format_ips(pure_with_yjit, short: true) : 'N/A' %> |
+| <%= test_case['name'] %> | <%= native ? format_ips(native, short: true) : 'N/A' %> | <%= pure_no_yjit ? format_ips(pure_no_yjit, short: true) : 'N/A' %> | <%= pure_with_yjit ? format_ips(pure_with_yjit, short: true) : 'N/A' %> | <%= pure_with_zjit ? format_ips(pure_with_zjit, short: true) : 'N/A' %> |
 <%- end -%>
 
 **Overhead Analysis:**
@@ -69,6 +71,9 @@ Parse error detection can be enabled with `raise_parse_errors: true`. This compa
 
   pure_with_yjit_off = off_results.find { |r| r['implementation'] == 'pure_with_yjit' }
   pure_with_yjit_on = on_results.find { |r| r['implementation'] == 'pure_with_yjit' }
+
+  pure_with_zjit_off = off_results.find { |r| r['implementation'] == 'pure_with_zjit' }
+  pure_with_zjit_on = on_results.find { |r| r['implementation'] == 'pure_with_zjit' }
 -%>
 
 | Implementation | Overhead |
@@ -112,6 +117,19 @@ Parse error detection can be enabled with `raise_parse_errors: true`. This compa
 -%>
 | Pure (YJIT) | <%= overhead_text %> |
 <%- end -%>
+<%- if pure_with_zjit_off && pure_with_zjit_on -%>
+<%-
+  slowdown = ((pure_with_zjit_off['ips'] / pure_with_zjit_on['ips']) - 1) * 100
+  overhead_text = if slowdown.abs < 1.0
+    "~0% (within noise)"
+  elsif slowdown < 0
+    "%.1f%% faster (unexpected)" % slowdown.abs
+  else
+    "%.1f%% slower" % slowdown
+  end
+-%>
+| Pure (ZJIT) | <%= overhead_text %> |
+<%- end -%>
 <%- end -%>
 
 ---
@@ -122,14 +140,15 @@ Parse error detection can be enabled with `raise_parse_errors: true`. This compa
 
 <%= serialization_data['description'] %>
 
-| Test Case | Native | Pure (no YJIT) | Pure (YJIT) |
-|-----------|--------|----------------|-------------|
+| Test Case | Native | Pure (no YJIT) | Pure (YJIT) | Pure (ZJIT) |
+|-----------|--------|----------------|-------------|-------------|
 <%- serialization_data['metadata']['test_cases'].each do |test_case| -%>
 <%- results = serialization_data['results'].select { |r| r['name'].include?(test_case['key']) } -%>
 <%- pure_no_yjit = results.find { |r| r['implementation'] == 'pure_without_yjit' } -%>
 <%- pure_with_yjit = results.find { |r| r['implementation'] == 'pure_with_yjit' } -%>
+<%- pure_with_zjit = results.find { |r| r['implementation'] == 'pure_with_zjit' } -%>
 <%- native = results.find { |r| r['implementation'] == 'native' } -%>
-| <%= test_case['name'] %> | <%= native ? format_ips(native, short: true) : 'N/A' %> | <%= pure_no_yjit ? format_ips(pure_no_yjit, short: true) : 'N/A' %> | <%= pure_with_yjit ? format_ips(pure_with_yjit, short: true) : 'N/A' %> |
+| <%= test_case['name'] %> | <%= native ? format_ips(native, short: true) : 'N/A' %> | <%= pure_no_yjit ? format_ips(pure_no_yjit, short: true) : 'N/A' %> | <%= pure_with_yjit ? format_ips(pure_with_yjit, short: true) : 'N/A' %> | <%= pure_with_zjit ? format_ips(pure_with_zjit, short: true) : 'N/A' %> |
 <%- end -%>
 
 ### Speedups
@@ -146,14 +165,15 @@ Parse error detection can be enabled with `raise_parse_errors: true`. This compa
 
 <%= specificity_data['description'] %>
 
-| Test Case | Native | Pure (no YJIT) | Pure (YJIT) |
-|-----------|--------|----------------|-------------|
+| Test Case | Native | Pure (no YJIT) | Pure (YJIT) | Pure (ZJIT) |
+|-----------|--------|----------------|-------------|-------------|
 <%- specificity_data['metadata']['test_cases'].each do |test_case| -%>
 <%- results = specificity_data['results'].select { |r| r['name'].include?(test_case['key']) } -%>
 <%- pure_no_yjit = results.find { |r| r['implementation'] == 'pure_without_yjit' } -%>
 <%- pure_with_yjit = results.find { |r| r['implementation'] == 'pure_with_yjit' } -%>
+<%- pure_with_zjit = results.find { |r| r['implementation'] == 'pure_with_zjit' } -%>
 <%- native = results.find { |r| r['implementation'] == 'native' } -%>
-| <%= test_case['name'] %> | <%= native ? format_ips(native, short: true) : 'N/A' %> | <%= pure_no_yjit ? format_ips(pure_no_yjit, short: true) : 'N/A' %> | <%= pure_with_yjit ? format_ips(pure_with_yjit, short: true) : 'N/A' %> |
+| <%= test_case['name'] %> | <%= native ? format_ips(native, short: true) : 'N/A' %> | <%= pure_no_yjit ? format_ips(pure_no_yjit, short: true) : 'N/A' %> | <%= pure_with_yjit ? format_ips(pure_with_yjit, short: true) : 'N/A' %> | <%= pure_with_zjit ? format_ips(pure_with_zjit, short: true) : 'N/A' %> |
 <%- end -%>
 
 ### Speedups
@@ -170,14 +190,15 @@ Parse error detection can be enabled with `raise_parse_errors: true`. This compa
 
 <%= flattening_data['description'] %>
 
-| Test Case | Native | Pure (no YJIT) | Pure (YJIT) |
-|-----------|--------|----------------|-------------|
+| Test Case | Native | Pure (no YJIT) | Pure (YJIT) | Pure (ZJIT) |
+|-----------|--------|----------------|-------------|-------------|
 <%- flattening_data['metadata']['test_cases'].each do |test_case| -%>
 <%- results = flattening_data['results'].select { |r| r['name'].include?(test_case['key']) } -%>
 <%- pure_no_yjit = results.find { |r| r['implementation'] == 'pure_without_yjit' } -%>
 <%- pure_with_yjit = results.find { |r| r['implementation'] == 'pure_with_yjit' } -%>
+<%- pure_with_zjit = results.find { |r| r['implementation'] == 'pure_with_zjit' } -%>
 <%- native = results.find { |r| r['implementation'] == 'native' } -%>
-| <%= test_case['name'] %> | <%= native ? format_ips(native, short: true) : 'N/A' %> | <%= pure_no_yjit ? format_ips(pure_no_yjit, short: true) : 'N/A' %> | <%= pure_with_yjit ? format_ips(pure_with_yjit, short: true) : 'N/A' %> |
+| <%= test_case['name'] %> | <%= native ? format_ips(native, short: true) : 'N/A' %> | <%= pure_no_yjit ? format_ips(pure_no_yjit, short: true) : 'N/A' %> | <%= pure_with_yjit ? format_ips(pure_with_yjit, short: true) : 'N/A' %> | <%= pure_with_zjit ? format_ips(pure_with_zjit, short: true) : 'N/A' %> |
 <%- end -%>
 
 ### Speedups
@@ -209,4 +230,5 @@ rake benchmark:generate_docs
 
 - Benchmarks use benchmark-ips with 1-2s warmup and 2-5s measurement periods
 - Measurements show median iterations per second (i/s)
-- YJIT is enabled/disabled per subprocess for accurate comparison
+- YJIT/ZJIT are enabled per subprocess (one JIT per process - Ruby only allows one to be active at a time) for accurate comparison
+- ZJIT is an experimental, method-based JIT introduced in Ruby 4.0. It is not enabled by default and is not yet expected to outperform YJIT; it's included here to track its progress release over release

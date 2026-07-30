@@ -30,7 +30,7 @@ class SerializationCataractPureBenchmark < BenchmarkHarness
 
   def initialize
     super
-    self.impl_type = determine_impl_type_with_yjit(:pure, SerializationTests)
+    self.impl_type = determine_impl_type(:pure, SerializationTests)
   end
 end
 
@@ -57,7 +57,7 @@ class SerializationCataractNativeBenchmark < BenchmarkHarness
 
   def initialize
     super
-    self.impl_type = determine_impl_type_with_yjit(:native, SerializationTests)
+    self.impl_type = determine_impl_type(:native, SerializationTests)
   end
 end
 

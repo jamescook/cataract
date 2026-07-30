@@ -55,7 +55,17 @@ class TestBenchmarkDocGenerator < Minitest::Test
     # Check parsing section exists
     assert_includes content, '## CSS Parsing'
     assert_includes content, 'Pure (no YJIT)'
+    assert_includes content, 'Pure (ZJIT)'
     assert_includes content, 'faster'
+  end
+
+  def test_renders_slower_speedup_as_slower_not_faster
+    generator = BenchmarkDocGenerator.new(results_dir: @results_dir, output_path: @output_path, verbose: false)
+
+    # A speedup < 1 (comparison slower than baseline) must never be reported as "faster"
+    refute_includes generator.send(:format_speedup, 0.8), 'faster'
+    assert_includes generator.send(:format_speedup, 0.8), 'slower'
+    assert_includes generator.send(:format_speedup, 2.0), 'faster'
   end
 
   def test_handles_missing_benchmarks

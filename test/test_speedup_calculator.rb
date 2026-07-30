@@ -144,5 +144,39 @@ class TestSpeedupCalculator < Minitest::Test
 
     assert SpeedupCalculator::Matchers.without_yjit.call({ 'implementation' => 'pure_without_yjit' })
     refute SpeedupCalculator::Matchers.without_yjit.call({ 'implementation' => 'pure_with_yjit' })
+
+    # Test ZJIT matchers
+    assert SpeedupCalculator::Matchers.cataract_pure_with_zjit.call({ 'implementation' => 'pure_with_zjit' })
+    refute SpeedupCalculator::Matchers.cataract_pure_with_zjit.call({ 'implementation' => 'pure_with_yjit' })
+
+    assert SpeedupCalculator::Matchers.with_zjit.call({ 'implementation' => 'pure_with_zjit' })
+    refute SpeedupCalculator::Matchers.with_zjit.call({ 'implementation' => 'pure_with_yjit' })
+    refute SpeedupCalculator::Matchers.with_zjit.call({ 'implementation' => 'pure_without_yjit' })
+
+    # base_implementation (used by cataract_pure/cataract_native/pure_ruby/native_extension)
+    # must strip the ZJIT suffix too, so a ZJIT result is still recognized as "pure"
+    assert SpeedupCalculator::Matchers.cataract_pure.call({ 'implementation' => 'pure_with_zjit' })
+    refute SpeedupCalculator::Matchers.cataract_native.call({ 'implementation' => 'pure_with_zjit' })
+  end
+
+  def test_zjit_vs_yjit_speedup_calculation
+    results = [
+      { 'name' => 'pure_with_yjit: test1', 'implementation' => 'pure_with_yjit', 'central_tendency' => 100.0 },
+      { 'name' => 'pure_with_zjit: test1', 'implementation' => 'pure_with_zjit', 'central_tendency' => 80.0 }
+    ]
+
+    calculator = SpeedupCalculator.new(
+      results: results,
+      test_cases: [],
+      baseline_matcher: SpeedupCalculator::Matchers.cataract_pure_with_yjit,
+      comparison_matcher: SpeedupCalculator::Matchers.cataract_pure_with_zjit,
+      test_case_key: nil
+    )
+
+    speedups = calculator.calculate
+
+    # ZJIT (80) is slower than YJIT (100) here - speedup should reflect that as < 1
+    assert speedups, 'Speedups should not be nil'
+    assert_in_delta(0.8, speedups['avg'])
   end
 end

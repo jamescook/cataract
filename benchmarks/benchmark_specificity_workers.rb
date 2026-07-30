@@ -30,7 +30,7 @@ class SpecificityCataractPureBenchmark < BenchmarkHarness
 
   def initialize
     super
-    self.impl_type = determine_impl_type_with_yjit(:pure, SpecificityTests)
+    self.impl_type = determine_impl_type(:pure, SpecificityTests)
   end
 end
 
@@ -57,7 +57,7 @@ class SpecificityCataractNativeBenchmark < BenchmarkHarness
 
   def initialize
     super
-    self.impl_type = determine_impl_type_with_yjit(:native, SpecificityTests)
+    self.impl_type = determine_impl_type(:native, SpecificityTests)
   end
 end
 

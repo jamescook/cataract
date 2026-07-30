@@ -30,7 +30,7 @@ class MergingCataractPureBenchmark < BenchmarkHarness
 
   def initialize
     super
-    self.impl_type = determine_impl_type_with_yjit(:pure, FlatteningTests)
+    self.impl_type = determine_impl_type(:pure, FlatteningTests)
   end
 end
 
@@ -57,7 +57,7 @@ class MergingCataractNativeBenchmark < BenchmarkHarness
 
   def initialize
     super
-    self.impl_type = determine_impl_type_with_yjit(:native, FlatteningTests)
+    self.impl_type = determine_impl_type(:native, FlatteningTests)
   end
 end
 
