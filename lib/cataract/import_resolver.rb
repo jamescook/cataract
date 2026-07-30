@@ -158,7 +158,6 @@ module Cataract
 
       # Additional security checks for file:// scheme
       if uri.scheme == 'file'
-        # Resolve to absolute path to prevent directory traversal
         file_path = uri.path
 
         # Check file exists and is readable
@@ -166,9 +165,18 @@ module Cataract
           raise ImportError, "Import file not found or not readable: #{file_path}"
         end
 
+        # Resolve to a canonical, "..".-free path before the prefix check below -
+        # otherwise a path like '/var/../etc/hosts' doesn't literally start with
+        # '/etc/' and would slip past it, even though File.exist?/File.read above
+        # resolve it to the same file '/etc/hosts' would. Use expand_path (lexical
+        # only) rather than realpath: realpath also follows symlinks, and on
+        # macOS '/etc' itself is a symlink to '/private/etc', which would make
+        # every real path fail to start with '/etc/' and defeat this check entirely.
+        canonical_file_path = File.expand_path(file_path)
+
         # Prevent reading sensitive files (basic check, configurable via
         # options[:dangerous_path_prefixes] - pass [] to disable)
-        if options[:dangerous_path_prefixes]&.any? { |prefix| file_path.start_with?(prefix) }
+        if options[:dangerous_path_prefixes]&.any? { |prefix| canonical_file_path.start_with?(prefix) }
           raise ImportError, "Import of sensitive system files not allowed: #{file_path}"
         end
       end

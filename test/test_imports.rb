@@ -172,6 +172,18 @@ body { color: red; }"
     end
   end
 
+  def test_import_with_file_scheme_blocks_traversal_into_sensitive_paths
+    # '/var/../etc/hosts' never literally starts with '/etc/', so a
+    # dangerous_path_prefixes check that only compares the raw path string
+    # would miss it - even though the OS (and File.read) resolve the '..'
+    # and land on the same blocked file as 'file:///etc/hosts' would.
+    css = "@import url('file:///var/../etc/hosts');"
+
+    assert_raises(Cataract::ImportError) do
+      Cataract.parse_css(css, import: { allowed_schemes: ['file'] })
+    end
+  end
+
   def test_import_with_custom_max_depth
     Dir.mktmpdir do |dir|
       # Create nested import: level1.css -> level2.css -> level3.css

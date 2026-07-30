@@ -441,6 +441,16 @@ body { color: red; }'
     assert_instance_of Cataract::Stylesheet, sheet
   end
 
+  def test_load_uri_file_scheme_blocks_traversal_into_sensitive_paths
+    # '/var/../etc/hosts' never literally starts with '/etc/', so a
+    # dangerous_path_prefixes check that only compares the raw path string
+    # would miss it - even though the OS (and File.read) resolve the '..'
+    # and land on the same blocked file as 'file:///etc/hosts'.
+    assert_raises(IOError) do
+      Cataract::Stylesheet.load_uri('file:///var/../etc/hosts')
+    end
+  end
+
   # ============================================================================
   # Stylesheet equality and hash tests
   # ============================================================================
