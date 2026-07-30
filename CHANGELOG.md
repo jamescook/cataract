@@ -1,3 +1,8 @@
+## [0.6.0] - 2026-07-30
+
+- Security: `ImportResolver.validate_url`'s `dangerous_path_prefixes` check now canonicalizes the `file://` path (via `File.expand_path`) before comparing against blocked prefixes, instead of comparing the raw path string. Previously a path containing `..` that didn't literally start with a blocked prefix (e.g. `file:///var/../etc/passwd`) bypassed the check entirely, even though the file was actually read from the resolved location. Reachable via `Stylesheet#load_uri`/`#load_file` (file scheme allowed by default) and via `@import` when a caller opts `file` into `allowed_schemes`.
+- Security/Breaking: `@import` and `Stylesheet#load_uri`/`#load_file` HTTP(S) fetches are now validated with the [ssrf_filter](https://rubygems.org/gems/ssrf_filter) gem, which blocks loopback, private-network, link-local, and cloud metadata addresses by default and re-validates on every redirect hop. Previously only URL scheme and file extension were checked, so an allowed `https://` URL (or a redirect target) could still reach an internal-only host. Set `allow_local_network: true` to restore the old, unfiltered behavior. Adds `ssrf_filter` as a new runtime dependency.
+
 ## [0.5.0] - 2026-07-09
 
 - Feature: `@supports (condition) { ... }` now preserves its condition and the rules it wraps through parse -> serialize, in both backends - previously the condition was discarded entirely and the wrapped rules were silently flattened into the surrounding document with no trace of ever being conditional.
