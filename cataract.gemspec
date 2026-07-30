@@ -27,6 +27,8 @@ Gem::Specification.new do |spec|
     end
   end
 
+  spec.add_dependency 'ssrf_filter', '~> 1.5'
+
   spec.bindir        = 'exe'
   spec.executables   = spec.files.grep(%r{^exe/}) { |f| File.basename(f) }
   spec.require_paths = ['lib']

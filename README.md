@@ -14,7 +14,6 @@ A performant CSS parser for accurate parsing of complex CSS structures.
 - **CSS Color Level 4**: Parses and preserves modern color formats (hex, rgb, hsl, hwb, oklab, oklch, lab, lch, named colors). Optional color conversion utility for transforming between formats.
 - **Specificity Calculation**: Automatic CSS specificity computation
 - **Media Query Filtering**: Query rules by media type
-- **Zero Runtime Dependencies**: Pure C extension with no runtime gem dependencies
 
 ## Installation
 
@@ -269,7 +268,8 @@ sheet = Cataract::Stylesheet.parse(css, import: {
   extensions: ['css'],                   # Default: ['css']
   max_depth: 3,                          # Default: 5
   timeout: 10,                           # Default: 10 seconds
-  follow_redirects: true                 # Default: true
+  follow_redirects: true,                # Default: true
+  allow_local_network: false             # Default: false
 })
 ```
 
@@ -278,6 +278,7 @@ sheet = Cataract::Stylesheet.parse(css, import: {
 - Non-CSS file extensions
 - Circular references
 - Excessive nesting depth
+- SSRF - HTTP(S) fetches are validated with the [ssrf_filter](https://rubygems.org/gems/ssrf_filter) gem, which blocks loopback, private-network, link-local, and cloud metadata addresses by default (re-checked on every redirect hop). Set `allow_local_network: true` to opt out.
 
 ## Development
 

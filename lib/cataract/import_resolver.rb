@@ -2,6 +2,7 @@
 
 require 'uri'
 require 'open-uri'
+require 'ssrf_filter'
 
 module Cataract
   # Error raised during import resolution
@@ -38,6 +39,8 @@ module Cataract
         raise ImportError, "HTTP error fetching import: #{url} (#{e.message})"
       rescue SocketError => e
         raise ImportError, "Network error fetching import: #{url} (#{e.message})"
+      rescue SsrfFilter::Error => e
+        raise ImportError, "Import blocked by SSRF protection: #{url} (#{e.message})"
       rescue StandardError => e
         raise ImportError, "Error fetching import: #{url} (#{e.class}: #{e.message})"
       end
@@ -46,7 +49,16 @@ module Cataract
 
       # Fetch content via HTTP/HTTPS
       def fetch_http(uri, options)
-        # Use open-uri with timeout
+        if options[:allow_local_network]
+          fetch_http_unfiltered(uri, options)
+        else
+          fetch_http_ssrf_safe(uri, options)
+        end
+      end
+
+      # Plain open-uri fetch, no SSRF protection - only reachable when the
+      # caller explicitly opted in via allow_local_network: true.
+      def fetch_http_unfiltered(uri, options)
         open_uri_options = {
           read_timeout: options[:timeout],
           redirect: options[:follow_redirects]
@@ -54,6 +66,23 @@ module Cataract
 
         # Use uri.open instead of URI.open to avoid shell command injection
         uri.open(open_uri_options, &:read)
+      end
+
+      # Fetch via the ssrf_filter gem, which resolves the hostname and rejects
+      # loopback/private/link-local/metadata addresses (re-checked on every
+      # redirect hop, since a redirect can point anywhere) before connecting.
+      def fetch_http_ssrf_safe(uri, options)
+        response = SsrfFilter.get(
+          uri,
+          http_options: { read_timeout: options[:timeout], open_timeout: options[:timeout] },
+          max_redirects: options[:follow_redirects] ? SsrfFilter::DEFAULT_MAX_REDIRECTS : 0
+        )
+
+        unless response.is_a?(Net::HTTPSuccess)
+          raise OpenURI::HTTPError.new("#{response.code} #{response.message}", response)
+        end
+
+        response.body
       end
     end
 
@@ -68,7 +97,8 @@ module Cataract
       base_path: nil,                    # Base path for resolving relative file imports
       base_uri: nil,                     # Base URI for resolving relative HTTP imports
       fetcher: nil,                      # Custom fetcher (defaults to DefaultFetcher)
-      dangerous_path_prefixes: ['/etc/', '/proc/', '/sys/', '/dev/'] # Blocked file:// path prefixes
+      dangerous_path_prefixes: ['/etc/', '/proc/', '/sys/', '/dev/'], # Blocked file:// path prefixes
+      allow_local_network: false # Block loopback/private/link-local/metadata addresses (via ssrf_filter)
     }.freeze
 
     # Default options for an explicitly caller-invoked load (Stylesheet#load_uri

@@ -151,6 +151,35 @@ body { color: red; }'
   end
 
   # ============================================================================
+  # SSRF protection (allow_local_network: false by default, via ssrf_filter) -
+  # only proving cataract's own wiring/default/override here; ssrf_filter's own
+  # test suite already covers which IP ranges are unsafe and redirect
+  # revalidation, so we don't re-test those here.
+  # ============================================================================
+
+  def test_import_blocks_loopback_address_by_default
+    stub_request(:get, 'https://127.0.0.1/style.css')
+      .to_return(status: 200, body: '.imported { color: blue; }')
+
+    css = '@import url("https://127.0.0.1/style.css");'
+
+    assert_raises(Cataract::ImportError) do
+      Cataract.parse_css(css, import: true)
+    end
+  end
+
+  def test_import_allows_loopback_with_allow_local_network_override
+    stub_request(:get, 'https://127.0.0.1/style.css')
+      .to_return(status: 200, body: '.imported { color: blue; }')
+
+    css = '@import url("https://127.0.0.1/style.css");'
+
+    sheet = Cataract.parse_css(css, import: { allow_local_network: true })
+
+    assert_has_selector '.imported', sheet
+  end
+
+  # ============================================================================
   # import: { ... } (custom options)
   # ============================================================================
 

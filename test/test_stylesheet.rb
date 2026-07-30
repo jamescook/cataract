@@ -441,6 +441,25 @@ body { color: red; }'
     assert_instance_of Cataract::Stylesheet, sheet
   end
 
+  def test_load_uri_blocks_loopback_address_by_default
+    stub_request(:get, 'https://127.0.0.1/style.css')
+      .to_return(status: 200, body: '.link { color: red; }')
+
+    assert_raises(IOError) do
+      Cataract::Stylesheet.load_uri('https://127.0.0.1/style.css')
+    end
+  end
+
+  def test_load_uri_allows_loopback_with_allow_local_network_override
+    stub_request(:get, 'https://127.0.0.1/style.css')
+      .to_return(status: 200, body: '.link { color: red; }')
+
+    sheet = Cataract::Stylesheet.load_uri('https://127.0.0.1/style.css', allow_local_network: true)
+
+    assert_instance_of Cataract::Stylesheet, sheet
+    assert_equal 1, sheet.size
+  end
+
   def test_load_uri_file_scheme_blocks_traversal_into_sensitive_paths
     # '/var/../etc/hosts' never literally starts with '/etc/', so a
     # dangerous_path_prefixes check that only compares the raw path string
