@@ -3,6 +3,7 @@
 require 'benchmark/ips'
 require 'json'
 require 'fileutils'
+require 'time' # Time#iso8601 - core only carries it from Ruby 4.0 on
 
 # Unified benchmark runner that outputs both human-readable console output
 # and structured JSON for documentation generation.

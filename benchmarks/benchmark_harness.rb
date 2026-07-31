@@ -4,6 +4,7 @@ require 'benchmark/ips'
 require 'json'
 require 'fileutils'
 require 'open3'
+require 'time' # Time#iso8601 - core only carries it from Ruby 4.0 on
 require_relative 'system_metadata'
 require_relative 'speedup_calculator'
 require_relative 'implementation'
@@ -117,8 +118,10 @@ class BenchmarkHarness
       instance.call
       finalize(instance) unless skip_finalize
     rescue StandardError => e
-      puts "❌ Benchmark failed: #{e.message}"
-      puts e.backtrace.first(5).join("\n")
+      # stderr, not stdout: a parent process collects this to explain why a
+      # worker died, and stdout is where benchmark-ips results go.
+      warn "❌ Benchmark failed: #{e.message}"
+      warn e.backtrace.first(5).join("\n")
       exit 1
     end
 
@@ -273,8 +276,8 @@ class BenchmarkHarness
       # results location survives the process boundary.
       env = implementation.env.merge(results.env)
       command = implementation.ruby_command(worker_script)
-      _, stderr, status = run_subprocess(command, env: env)
-      raise variant_failure(implementation, command, env, stderr, status) unless status.success?
+      stdout, stderr, status = run_subprocess(command, env: env)
+      raise variant_failure(implementation, command_line(command, env), stdout, stderr, status) unless status.success?
 
       puts
       puts
@@ -295,22 +298,25 @@ class BenchmarkHarness
   # extension arrives as a signal with no Ruby backtrace anywhere. The command
   # and the JIT/backend variables are included because the variant is only
   # reproducible with them.
-  def variant_failure(implementation, command, env, stderr, status)
+  def variant_failure(implementation, command_line, stdout, stderr, status)
     cause = if status.signaled?
               "killed by SIG#{Signal.signame(status.termsig) || status.termsig}"
             else
               "exited #{status.exitstatus}"
             end
 
-    selected = env.compact.map { |name, value| "#{name}=#{value}" }.join(' ')
-    output = stderr.strip.empty? ? '  (worker wrote nothing to stderr)' : indent(stderr.lines.last(20))
+    # Falls back to stdout because a worker's last words don't always land on
+    # stderr, and an empty report is the one thing worse than a wrong guess.
+    stream, output = stderr.strip.empty? ? ['stdout (stderr was empty)', stdout] : ['stderr', stderr]
+    tail = output.strip.empty? ? '    (worker produced no output)' : indent(output.lines.last(20))
 
-    [
-      "#{implementation} benchmark failed - #{cause}",
-      "  command: #{selected} #{command.join(' ')}",
-      '  stderr:',
-      output
-    ].join("\n")
+    ["#{implementation} benchmark failed - #{cause}", "  command: #{command_line}", "  #{stream}:", tail].join("\n")
+  end
+
+  # The variant's selecting variables belong with the command; without them it
+  # reproduces a different run.
+  def command_line(command, env)
+    [*env.compact.map { |name, value| "#{name}=#{value}" }, *command].join(' ')
   end
 
   def indent(lines)

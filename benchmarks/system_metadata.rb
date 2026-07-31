@@ -2,6 +2,7 @@
 
 require 'json'
 require 'fileutils'
+require 'time' # Time#iso8601 - core only carries it from Ruby 4.0 on
 require_relative 'results_directory'
 
 # Collects system metadata for benchmark runs
