@@ -4,13 +4,25 @@
 require 'json'
 require 'erb'
 require 'fileutils'
+require_relative '../benchmarks/benchmark_formatting'
+require_relative '../benchmarks/implementation'
+require_relative '../benchmarks/result_table'
 require_relative '../benchmarks/speedup_calculator'
 
-# Generate BENCHMARKS.md from benchmark JSON results
+# Generate BENCHMARKS.md from benchmark JSON results.
+#
+# The template describes layout; the objects describe meaning. Column
+# headings, which implementations exist, and which comparisons are worth
+# reporting all come from Implementation, so the doc can only ever claim what
+# was actually measured.
 class BenchmarkDocGenerator
+  include BenchmarkFormatting
+
   RESULTS_DIR = File.expand_path('../benchmarks/.results', __dir__)
   TEMPLATE_PATH = File.expand_path('../benchmarks/templates/benchmarks.md.erb', __dir__)
   OUTPUT_PATH = File.expand_path('../BENCHMARKS.md', __dir__)
+
+  BENCHMARKS = %w[parsing serialization specificity flattening].freeze
 
   def initialize(results_dir: RESULTS_DIR, output_path: OUTPUT_PATH, verbose: true)
     @results_dir = results_dir
@@ -24,61 +36,55 @@ class BenchmarkDocGenerator
   end
 
   def generate
-    # Check if we have any data to generate
-    if !@parsing_data && !@serialization_data &&
-       !@specificity_data && !@flattening_data
+    if all_data.compact.empty?
       # :nocov:
-      if @verbose
-        puts 'Warning: No benchmark data found. Run benchmarks first: rake benchmark'
-        puts 'Available data files:'
-        Dir.glob(File.join(@results_dir, '*.json')).each do |file|
-          puts "  - #{File.basename(file)}"
-        end
-      end
+      report_no_data if @verbose
       # :nocov:
       return
     end
 
     template = ERB.new(File.read(TEMPLATE_PATH), trim_mode: '-')
-    output = template.result(binding)
+    File.write(@output_path, template.result(binding))
 
-    File.write(@output_path, output)
+    report_coverage if @verbose
+  end
 
-    return unless @verbose
+  # Comparisons reported under each benchmark's "Speedups" heading, in order.
+  # Each entry is [label, baseline, comparison]; the figure shown is
+  # comparison / baseline, so a ratio below 1 reads as "slower".
+  def self.speedup_comparisons
+    native = Implementation.find(:native, :none)
+    interpreted = Implementation.find(:pure, :none)
+    yjit = Implementation.find(:pure, :yjit)
+    zjit = Implementation.find(:pure, :zjit)
 
-    # :nocov:
-    puts 'Generated BENCHMARKS.md'
-    puts '  Included benchmarks:'
-    puts '    - Parsing' if @parsing_data
-    puts '    - Serialization' if @serialization_data
-    puts '    - Specificity' if @specificity_data
-    puts '    - Merging' if @flattening_data
-
-    missing = []
-    missing << 'Parsing' unless @parsing_data
-    missing << 'Serialization' unless @serialization_data
-    missing << 'Specificity' unless @specificity_data
-    missing << 'Flattening' unless @flattening_data
-
-    return unless missing.any?
-
-    puts '  Missing benchmarks:'
-    missing.each { |name| puts "    - #{name}" }
-    # :nocov:
+    [
+      ["Native vs #{interpreted.column_label}", interpreted, native],
+      ["Native vs #{yjit.column_label}", yjit, native],
+      ["Native vs #{zjit.column_label}", zjit, native],
+      ['YJIT impact on Pure Ruby', interpreted, yjit],
+      ['ZJIT impact on Pure Ruby', interpreted, zjit],
+      ['ZJIT vs YJIT', yjit, zjit]
+    ]
   end
 
   private
 
+  # Read by the ERB template.
+  attr_reader :metadata, :parsing_data, :serialization_data, :specificity_data, :flattening_data
+
+  def all_data
+    [@parsing_data, @serialization_data, @specificity_data, @flattening_data]
+  end
+
   def load_metadata
     metadata_path = File.join(@results_dir, 'metadata.json')
-    if File.exist?(metadata_path)
-      JSON.parse(File.read(metadata_path))
-    else
-      # :nocov:
-      warn 'Warning: metadata.json not found. Run benchmarks first.'
-      {}
-      # :nocov:
-    end
+    return JSON.parse(File.read(metadata_path)) if File.exist?(metadata_path)
+
+    # :nocov:
+    warn 'Warning: metadata.json not found. Run benchmarks first.'
+    {}
+    # :nocov:
   end
 
   def load_benchmark_data(name)
@@ -93,108 +99,70 @@ class BenchmarkDocGenerator
     # :nocov:
   end
 
-  # Formatting helpers for ERB template
+  # Template helpers
 
-  def format_ips(result, short: false)
-    ips = result['central_tendency']
-
-    formatted = if ips >= 1_000_000
-                  "#{(ips / 1_000_000.0).round(2)}M"
-                elsif ips >= 1_000
-                  "#{(ips / 1_000.0).round(2)}K"
-                else
-                  ips.round(1).to_s
-                end
-
-    if short
-      "#{formatted} i/s"
-    else
-      time_per_op = format_time_per_op(result)
-      "#{formatted} i/s (#{time_per_op})"
-    end
-  end
-
-  def format_time_per_op(result)
-    ips = result['central_tendency']
-    time_us = 1_000_000.0 / ips
-
-    if time_us >= 1_000
-      "#{(time_us / 1_000).round(2)} ms"
-    else
-      "#{time_us.round(2)} μs"
-    end
-  end
-
-  def format_speedup(speedup)
-    return "N/A" if speedup.nil?
-    "#{speedup.round(2)}x faster"
-  end
-
-  def format_number(num)
-    num.to_s.reverse.gsub(/(\d{3})(?=\d)/, '\\1,').reverse
-  end
-
-  # Calculate speedup using SpeedupCalculator (proper per-test-case averaging)
-  # @param data [Hash] Benchmark data with 'results' and 'metadata'
-  # @param baseline_matcher [Proc] Matcher for baseline results
-  # @param comparison_matcher [Proc] Matcher for comparison results
-  # @param test_case_key [Symbol] Key in test_cases to match test case IDs
-  # @return [Float, nil] Average speedup or nil if no matches
-  def calculate_speedup(data, baseline_matcher:, comparison_matcher:, test_case_key: nil)
-    return nil unless data && data['results'] && data['metadata']
-
-    test_cases = data['metadata']['test_cases'] || []
-
-    calculator = SpeedupCalculator.new(
+  # One row per test case, one column per implementation that produced
+  # measurements.
+  def result_table(data, test_cases: nil, row_header: 'Test Case')
+    ResultTable.new(
       results: data['results'],
-      test_cases: test_cases,
-      baseline_matcher: baseline_matcher,
-      comparison_matcher: comparison_matcher,
-      test_case_key: test_case_key
-    )
-
-    speedup_stats = calculator.calculate
-    speedup_stats ? speedup_stats['avg'] : nil
+      test_cases: test_cases || data['metadata']['test_cases'],
+      implementations: Implementation.all,
+      row_header: row_header
+    ).to_markdown
   end
 
-  # Generate speedup table for a benchmark
-  # @param data [Hash] Benchmark data with 'results' and 'metadata'
-  # @param test_case_key [Symbol] Key in test_cases to match test case IDs
-  # @return [String] Markdown table rows for speedups
-  def speedup_rows(data, test_case_key:)
+  # What turning a feature on costs, per implementation.
+  def overhead_table(data, without_id:, with_id:)
+    OverheadTable.new(
+      results: data['results'],
+      implementations: Implementation.all,
+      without_id: without_id,
+      with_id: with_id
+    ).to_markdown
+  end
+
+  def speedup_rows(data)
     return '' unless data
 
-    rows = []
-
-    # Native vs Pure (no YJIT) - from pre-calculated metadata if available
-    if data['metadata'] && data['metadata']['speedups']
-      rows << "| Native vs Pure (no YJIT) | #{format_speedup(data['metadata']['speedups']['avg'])} (avg) |"
-    end
-
-    # Native vs Pure (YJIT)
-    native_vs_pure_yjit = calculate_speedup(
-      data,
-      baseline_matcher: SpeedupCalculator::Matchers.cataract_pure_with_yjit,
-      comparison_matcher: SpeedupCalculator::Matchers.cataract_native,
-      test_case_key: test_case_key
-    )
-    rows << "| Native vs Pure (YJIT) | #{format_speedup(native_vs_pure_yjit)} (avg) |" if native_vs_pure_yjit
-
-    # YJIT impact on Pure Ruby
-    yjit_impact = calculate_speedup(
-      data,
-      baseline_matcher: SpeedupCalculator::Matchers.cataract_pure_without_yjit,
-      comparison_matcher: SpeedupCalculator::Matchers.cataract_pure_with_yjit,
-      test_case_key: test_case_key
-    )
-    rows << "| YJIT impact on Pure Ruby | #{format_speedup(yjit_impact)} (avg) |" if yjit_impact
-
-    rows.join("\n")
+    self.class.speedup_comparisons.filter_map do |label, baseline, comparison|
+      speedup = average_speedup(data, baseline: baseline, comparison: comparison)
+      "| #{label} | #{format_speedup(speedup)} (avg) |" if speedup
+    end.join("\n")
   end
 
-  # Access instance variables for ERB
-  attr_reader :metadata, :parsing_data, :serialization_data,
-              :specificity_data, :flattening_data
+  # @return [Float, nil] mean speedup across the test cases both
+  #   implementations measured, or nil if they share none
+  def average_speedup(data, baseline:, comparison:)
+    return nil unless data && data['results'] && data['metadata']
+
+    SpeedupCalculator.new(
+      results: data['results'],
+      test_cases: data['metadata']['test_cases'] || [],
+      baseline: baseline,
+      comparison: comparison
+    ).calculate&.fetch('avg')
+  end
+
+  # :nocov:
+  def report_no_data
+    puts 'Warning: No benchmark data found. Run benchmarks first: rake benchmark'
+    puts 'Available data files:'
+    Dir.glob(File.join(@results_dir, '*.json')).each { |file| puts "  - #{File.basename(file)}" }
+  end
+
+  def report_coverage
+    included, missing = BENCHMARKS.zip(all_data).partition(&:last)
+
+    puts 'Generated BENCHMARKS.md'
+    puts '  Included benchmarks:'
+    included.map(&:first).each { |name| puts "    - #{name.capitalize}" }
+    return if missing.empty?
+
+    puts '  Missing benchmarks:'
+    missing.map(&:first).each { |name| puts "    - #{name.capitalize}" }
+  end
+  # :nocov:
 end
 
 # Run if called directly
@@ -206,7 +174,6 @@ if __FILE__ == $PROGRAM_NAME
     exit 1
   end
 
-  generator = BenchmarkDocGenerator.new
-  generator.generate
+  BenchmarkDocGenerator.new.generate
 end
 # :nocov:

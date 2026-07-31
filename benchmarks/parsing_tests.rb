@@ -2,12 +2,6 @@
 
 # Shared test definitions for parsing benchmarks
 module ParsingTests
-  # Determines if YJIT testing is applicable for a given implementation
-  def self.yjit_applicable?(impl_type)
-    base_impl = impl_type.to_s.sub(/_with_yjit|_without_yjit/, '').to_sym
-    base_impl != :native
-  end
-
   def self.metadata
     # Create a temporary instance to access fixture data
     instance = Class.new do
@@ -33,19 +27,19 @@ module ParsingTests
       'test_cases' => [
         {
           'name' => "Small CSS (#{instance.css1.lines.count} lines, #{(instance.css1.length / 1024.0).round(1)}KB)",
-          'fixture' => 'small',
+          'id' => 'small',
           'lines' => instance.css1.lines.count,
           'bytes' => instance.css1.length
         },
         {
           'name' => "Medium CSS with @media (#{instance.css2.lines.count} lines, #{(instance.css2.length / 1024.0).round(1)}KB)",
-          'fixture' => 'medium with @media',
+          'id' => 'medium with @media',
           'lines' => instance.css2.lines.count,
           'bytes' => instance.css2.length
         },
         {
           'name' => "Selector lists (#{instance.selector_lists_css.lines.count} lines, #{(instance.selector_lists_css.length / 1024.0).round(1)}KB, 500 lists)",
-          'fixture' => 'selector lists',
+          'id' => 'selector lists',
           'lines' => instance.selector_lists_css.lines.count,
           'bytes' => instance.selector_lists_css.length
         }
@@ -53,31 +47,18 @@ module ParsingTests
       'error_checking' => [
         {
           'name' => "Medium CSS (#{instance.css2.lines.count} lines) - no error checking",
-          'key' => 'error_checking_off'
+          'id' => 'error checking off'
         },
         {
           'name' => "Medium CSS (#{instance.css2.lines.count} lines) - with error checking",
-          'key' => 'error_checking_on'
+          'id' => 'error checking on'
         }
       ]
     }
   end
 
-  def self.speedup_config
-    # Compare cataract pure without YJIT (baseline) vs cataract native (comparison)
-    # For fair comparison, compare both without YJIT optimizations
-    {
-      baseline_matcher: SpeedupCalculator::Matchers.cataract_pure_without_yjit,
-      comparison_matcher: SpeedupCalculator::Matchers.cataract_native,
-      test_case_key: :fixture
-    }
-  end
-
-  # Must be set by including class before calling methods
-  attr_accessor :impl_type
-
   def sanity_checks
-    case base_impl_type
+    case implementation.backend.id
     when :pure, :native
       # Verify fixtures parse correctly with Cataract
       parser = Cataract::Stylesheet.new
@@ -88,10 +69,6 @@ module ParsingTests
       parser.add_block(css2)
       raise 'CSS2 sanity check failed: expected rules' if parser.rules_count.zero?
     end
-  end
-
-  def base_impl_type
-    impl_type.to_s.sub(/_with_yjit|_without_yjit/, '').to_sym
   end
 
   def call
@@ -119,87 +96,56 @@ module ParsingTests
     @fixtures_dir ||= File.expand_path('../test/fixtures', __dir__)
   end
 
-  def implementation_label
-    base_label = case base_impl_type
-                 when :pure
-                   'cataract pure'
-                 when :native
-                   'cataract'
-                 end
-
-    yjit_suffix = if ParsingTests.yjit_applicable?(impl_type)
-                    impl_type.to_s.include?('with_yjit') ? ' (YJIT)' : ' (no YJIT)'
-                  else
-                    ''
-                  end
-
-    "#{base_label}#{yjit_suffix}"
-  end
+  # Both backends run identical code below; which one is exercised was
+  # decided when `require 'cataract'` picked a backend.
 
   def run_css1_benchmark
     puts '=' * 80
-    puts "TEST: Small CSS (#{css1.lines.count} lines, #{css1.length} chars) - #{implementation_label}"
+    puts "TEST: Small CSS (#{css1.lines.count} lines, #{css1.length} chars) - #{implementation.label}"
     puts '=' * 80
 
     benchmark('css1') do |x|
       x.config(time: 5, warmup: 2)
 
-      case base_impl_type
-      when :pure
-        x.report('cataract pure: small') do
-          parser = Cataract::Stylesheet.new
-          parser.add_block(css1)
-        end
-      when :native
-        x.report('cataract: small') do
-          parser = Cataract::Stylesheet.new
-          parser.add_block(css1)
-        end
+      x.report(result_name('small')) do
+        parser = Cataract::Stylesheet.new
+        parser.add_block(css1)
       end
     end
   end
 
   def run_css2_benchmark
     puts "\n#{'=' * 80}"
-    puts "TEST: Medium CSS with @media (#{css2.lines.count} lines, #{css2.length} chars) - #{implementation_label}"
+    puts "TEST: Medium CSS with @media (#{css2.lines.count} lines, #{css2.length} chars) - #{implementation.label}"
     puts '=' * 80
 
     benchmark('css2') do |x|
       x.config(time: 5, warmup: 2)
 
-      case base_impl_type
-      when :pure
-        x.report('cataract pure: medium with @media') do
-          parser = Cataract::Stylesheet.new
-          parser.add_block(css2)
-        end
-      when :native
-        x.report('cataract: medium with @media') do
-          parser = Cataract::Stylesheet.new
-          parser.add_block(css2)
-        end
+      x.report(result_name('medium with @media')) do
+        parser = Cataract::Stylesheet.new
+        parser.add_block(css2)
       end
     end
   end
 
   def run_selector_lists_benchmark
     puts "\n#{'=' * 80}"
-    puts "TEST: Selector lists (#{selector_lists_css.lines.count} lines, #{selector_lists_css.length} chars) - #{implementation_label}"
+    puts "TEST: Selector lists (#{selector_lists_css.lines.count} lines, #{selector_lists_css.length} chars) - " \
+         "#{implementation.label}"
     puts '=' * 80
 
     benchmark('selector_lists') do |x|
       x.config(time: 5, warmup: 2)
 
-      impl_label = base_impl_type == :pure ? 'cataract pure' : 'cataract'
-
       # Test WITH selector_lists enabled (default, feature overhead included)
-      x.report("#{impl_label}: selector lists") do
+      x.report(result_name('selector lists')) do
         parser = Cataract::Stylesheet.new(parser: { selector_lists: true })
         parser.add_block(selector_lists_css)
       end
 
       # Test WITHOUT selector_lists (baseline, no feature overhead)
-      x.report("#{impl_label}: selector lists (disabled)") do
+      x.report(result_name('selector lists (disabled)')) do
         parser = Cataract::Stylesheet.new(parser: { selector_lists: false })
         parser.add_block(selector_lists_css)
       end
@@ -210,22 +156,20 @@ module ParsingTests
 
   def run_error_checking_overhead_benchmark
     puts "\n#{'=' * 80}"
-    puts "TEST: Error Checking Overhead (#{css2.lines.count} lines, #{css2.length} chars) - #{implementation_label}"
+    puts "TEST: Error Checking Overhead (#{css2.lines.count} lines, #{css2.length} chars) - #{implementation.label}"
     puts '=' * 80
 
     benchmark('error_checking') do |x|
       x.config(time: 5, warmup: 2)
 
-      impl_label = base_impl_type == :pure ? 'cataract pure' : 'cataract'
-
       # Test WITHOUT error checking (baseline)
-      x.report("#{impl_label}: error checking off") do
+      x.report(result_name('error checking off')) do
         parser = Cataract::Stylesheet.new
         parser.add_block(css2)
       end
 
       # Test WITH error checking enabled (overhead)
-      x.report("#{impl_label}: error checking on") do
+      x.report(result_name('error checking on')) do
         parser = Cataract::Stylesheet.new(parser: { raise_parse_errors: true })
         parser.add_block(css2)
       end

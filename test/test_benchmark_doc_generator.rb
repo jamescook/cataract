@@ -54,8 +54,40 @@ class TestBenchmarkDocGenerator < Minitest::Test
 
     # Check parsing section exists
     assert_includes content, '## CSS Parsing'
-    assert_includes content, 'Pure (no YJIT)'
+    assert_includes content, 'Pure (no JIT)'
+    assert_includes content, 'Pure (YJIT)'
+    assert_includes content, 'Pure (ZJIT)'
     assert_includes content, 'faster'
+  end
+
+  def test_column_headings_come_from_the_implementations
+    generator = BenchmarkDocGenerator.new(results_dir: @results_dir, output_path: @output_path, verbose: false)
+    generator.generate
+
+    expected = "| #{Implementation.all.map(&:column_label).join(' | ')} |"
+
+    assert_includes File.read(@output_path), expected
+  end
+
+  def test_reports_the_zjit_versus_yjit_comparison
+    generator = BenchmarkDocGenerator.new(results_dir: @results_dir, output_path: @output_path, verbose: false)
+    generator.generate
+
+    content = File.read(@output_path)
+
+    # The fixture has ZJIT at half YJIT's rate throughout.
+    assert_includes content, '| ZJIT vs YJIT | 2.0x slower (avg) |'
+  end
+
+  def test_reports_error_checking_overhead_per_implementation
+    generator = BenchmarkDocGenerator.new(results_dir: @results_dir, output_path: @output_path, verbose: false)
+    generator.generate
+
+    content = File.read(@output_path)
+
+    assert_includes content, '| Implementation | Overhead |'
+    assert_includes content, '| Native | 2.0% slower |'
+    assert_includes content, '| Pure (no JIT) | 11.1% slower |'
   end
 
   def test_handles_missing_benchmarks

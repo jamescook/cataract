@@ -2,12 +2,12 @@
 
 require 'json'
 require 'fileutils'
+require_relative 'results_directory'
 
 # Collects system metadata for benchmark runs
 class SystemMetadata
-  RESULTS_DIR = File.expand_path('.results', __dir__)
-
-  def self.collect
+  # @param results [ResultsDirectory] where metadata.json is written
+  def self.collect(results = ResultsDirectory.from_env(ENV))
     metadata = {
       'ruby_version' => RUBY_VERSION,
       'ruby_description' => RUBY_DESCRIPTION,
@@ -18,8 +18,7 @@ class SystemMetadata
       'timestamp' => Time.now.iso8601
     }
 
-    FileUtils.mkdir_p(RESULTS_DIR)
-    File.write(File.join(RESULTS_DIR, 'metadata.json'), JSON.pretty_generate(metadata))
+    results.create.write('metadata.json', metadata)
 
     metadata
   end

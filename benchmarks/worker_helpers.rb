@@ -1,36 +1,30 @@
 # frozen_string_literal: true
 
-# Shared helper module for benchmark workers
+require_relative 'implementation'
+
+# Mixed into the worker benchmark classes that run inside a subprocess.
 #
-# Provides common helpers for workers including:
-# - YJIT-aware impl_type determination
-# - Unique benchmark filenames to avoid overwriting results
+# The worker reads its backend and JIT off the running VM and verifies them
+# against what the parent asked for, so measurements can only be labeled with
+# the configuration that produced them.
 module WorkerHelpers
-  # Override benchmark_name to include impl_type suffix
-  # This prevents different YJIT variants from overwriting each other's results
-  def benchmark_name
-    "#{self.class.benchmark_name}_#{impl_type}"
+  # This process's configuration. Verified on first use, before any
+  # measurement is taken.
+  def implementation
+    @implementation ||= Implementation.current
   end
 
-  private
+  # Gives each variant its own result file so the JIT runs of one benchmark
+  # don't overwrite each other.
+  def benchmark_name
+    "#{self.class.benchmark_name}_#{implementation.id}"
+  end
 
-  # Determines implementation type with YJIT suffix based on actual YJIT status
-  #
-  # @param base_impl [Symbol] Base implementation (:pure, :native)
-  # @param test_module [Module] Test module that provides yjit_applicable? method
-  # @return [Symbol] Implementation type with YJIT suffix if applicable
-  #
-  # Examples:
-  #   determine_impl_type_with_yjit(:pure, ParsingTests)
-  #   # => :pure_with_yjit (if YJIT enabled)
-  #   # => :pure_without_yjit (if YJIT disabled)
-  #
-  #   determine_impl_type_with_yjit(:native, ParsingTests)
-  #   # => :native (YJIT not applicable to C extensions)
-  def determine_impl_type_with_yjit(base_impl, test_module)
-    return base_impl unless test_module.yjit_applicable?(base_impl)
-
-    yjit_enabled = defined?(RubyVM::YJIT.enabled?) && RubyVM::YJIT.enabled?
-    yjit_enabled ? :"#{base_impl}_with_yjit" : :"#{base_impl}_without_yjit"
+  # Names a benchmark-ips report "label: test_case_id". The id must match the
+  # benchmark metadata exactly - that is how a measurement finds its row in
+  # BENCHMARKS.md. The label names only the backend; the JIT is recorded in
+  # the row's own fields.
+  def result_name(test_case_id)
+    "#{implementation.backend.label}: #{test_case_id}"
   end
 end

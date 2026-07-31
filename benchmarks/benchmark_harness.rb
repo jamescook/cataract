@@ -3,8 +3,11 @@
 require 'benchmark/ips'
 require 'json'
 require 'fileutils'
+require 'open3'
 require_relative 'system_metadata'
 require_relative 'speedup_calculator'
+require_relative 'implementation'
+require_relative 'results_directory'
 
 # Base class for all benchmarks. Provides structure and automatic JSON output.
 #
@@ -57,7 +60,13 @@ require_relative 'speedup_calculator'
 # not just YJIT-disabled ones, per-implementation subprocess isolation stays
 # even though it could technically be done in-process.
 class BenchmarkHarness
-  RESULTS_DIR = File.expand_path('.results', __dir__)
+  # Where this run's result JSON lives. Passed in rather than looked up, so a
+  # test can redirect it without touching global state.
+  attr_reader :results
+
+  def initialize(results:)
+    @results = results
+  end
 
   class << self
     # Abstract methods - must be implemented by subclasses
@@ -81,31 +90,22 @@ class BenchmarkHarness
       raise NotImplementedError, "#{self} must implement .call"
     end
 
-    # Optional: Define how to calculate speedups for this benchmark
-    # Override this to customize speedup calculation
+    # The pair compared by the headline "speedups" figure in this benchmark's
+    # metadata. Both sides run without a JIT, isolating the C extension's
+    # advantage from anything a JIT contributed.
     #
-    # IMPORTANT: Result names must follow convention "tool_name: test_case_id"
-    #
-    # @return [Hash] Configuration for SpeedupCalculator
-    #   {
-    #     baseline_matcher: Proc,      # Returns true for baseline results
-    #     comparison_matcher: Proc,    # Returns true for comparison results
-    #     test_case_key: Symbol        # Key in test_cases metadata matching test_case_id
-    #   }
+    # @return [Hash] { baseline: Implementation, comparison: Implementation }
     def speedup_config
-      # Default: compare cataract pure without YJIT (baseline) vs cataract native (comparison)
-      # Match to test_cases by 'fixture' key
       {
-        baseline_matcher: SpeedupCalculator::Matchers.cataract_pure_without_yjit,
-        comparison_matcher: SpeedupCalculator::Matchers.cataract_native,
-        test_case_key: :fixture
+        baseline: Implementation.find(:pure, :none),
+        comparison: Implementation.find(:native, :none)
       }
     end
 
     # Main entry point - handles setup, execution, and cleanup
-    def run(skip_finalize: false)
-      instance = new
-      setup
+    def run(skip_finalize: false, results: ResultsDirectory.from_env(ENV))
+      instance = new(results: results)
+      setup(results)
       instance.sanity_checks if instance.respond_to?(:sanity_checks, true)
 
       # Warm up the VM before benchmarking for stable, reproducible results
@@ -122,10 +122,26 @@ class BenchmarkHarness
       exit 1
     end
 
+    # Fills in metadata['speedups'] (and each test case's own 'speedup') from
+    # the pair named by speedup_config.
+    def annotate_speedups(combined_data)
+      config = speedup_config
+      return unless config
+
+      stats = SpeedupCalculator.new(
+        results: combined_data['results'],
+        test_cases: combined_data['metadata']['test_cases'],
+        baseline: config[:baseline],
+        comparison: config[:comparison]
+      ).calculate
+
+      combined_data['metadata']['speedups'] = stats if stats
+    end
+
     private
 
-    def setup
-      FileUtils.mkdir_p(RESULTS_DIR)
+    def setup(results)
+      results.create
 
       # Always refresh - each of the 4 benchmark scripts runs in its own
       # subprocess, so metadata.json existing doesn't mean it reflects THIS
@@ -137,7 +153,7 @@ class BenchmarkHarness
       # actual numbers below it came from whatever's currently installed.
       # The four sysctl/sw_vers shell calls this costs per full `rake
       # benchmark` run are cheap; a stale, silently-wrong header is not.
-      SystemMetadata.collect
+      SystemMetadata.collect(results)
 
       # Print header
       puts "\n\n"
@@ -164,38 +180,22 @@ class BenchmarkHarness
 
       # Read all the individual JSON files
       json_files.each do |filename|
-        path = File.join(RESULTS_DIR, filename)
-        next unless File.exist?(path)
+        next unless instance.results.exist?(filename)
 
-        data = JSON.parse(File.read(path))
+        data = instance.results.read(filename)
         combined_data['results'].concat(data) if data.is_a?(Array)
       end
 
-      # Calculate speedups using configured strategy
-      config = speedup_config
-      if config
-        calculator = SpeedupCalculator.new(
-          results: combined_data['results'],
-          test_cases: combined_data['metadata']['test_cases'],
-          baseline_matcher: config[:baseline_matcher],
-          comparison_matcher: config[:comparison_matcher],
-          test_case_key: config[:test_case_key]
-        )
-
-        speedup_stats = calculator.calculate
-        combined_data['metadata']['speedups'] = speedup_stats if speedup_stats
-      end
+      annotate_speedups(combined_data)
 
       # Write combined file
-      combined_path = File.join(RESULTS_DIR, "#{benchmark_name}.json")
-      File.write(combined_path, JSON.pretty_generate(combined_data))
+      combined_file = "#{benchmark_name}.json"
+      instance.results.write(combined_file, combined_data)
 
       # Clean up individual files
-      json_files.each do |filename|
-        File.delete(File.join(RESULTS_DIR, filename))
-      end
+      json_files.each { |filename| File.delete(instance.results.join(filename)) }
 
-      puts "\n✓ Results saved to #{combined_path}"
+      puts "\n✓ Results saved to #{instance.results.join(combined_file)}"
     end
   end
 
@@ -211,7 +211,7 @@ class BenchmarkHarness
 
   def benchmark(test_case_name)
     json_filename = "#{benchmark_name}_#{test_case_name}.json"
-    json_path = File.join(RESULTS_DIR, json_filename)
+    json_path = results.join(json_filename)
 
     Benchmark.ips do |x|
       # Automatically enable JSON output
@@ -221,10 +221,13 @@ class BenchmarkHarness
       yield x
     end
 
-    # Add implementation metadata to each result in the JSON file
-    if File.exist?(json_path) && respond_to?(:impl_type) && impl_type
+    # Tag each measurement with the implementation that produced it and the
+    # JIT stats at that point. Stats are cumulative for the process, so the
+    # last test case's snapshot is the run's total.
+    if File.exist?(json_path) && respond_to?(:implementation) && implementation
+      fields = implementation.result_fields.merge('jit_stats' => implementation.mode.stats)
       results = JSON.parse(File.read(json_path))
-      results.each { |result| result['implementation'] = impl_type.to_s }
+      results.each { |result| result.merge!(fields) }
       File.write(json_path, JSON.pretty_generate(results))
     end
 
@@ -236,7 +239,7 @@ class BenchmarkHarness
   # Helper to read and combine worker result files
   # Worker files are raw arrays from benchmark-ips, not hashes with 'results' key
   def read_worker_results(pattern)
-    worker_paths = Dir.glob(File.join(RESULTS_DIR, pattern))
+    worker_paths = results.glob(pattern)
     raise 'No worker results found' if worker_paths.empty?
 
     all_results = []
@@ -249,6 +252,80 @@ class BenchmarkHarness
 
   # Helper to clean up worker result files
   def cleanup_worker_results(pattern)
-    Dir.glob(File.join(RESULTS_DIR, pattern)).each { |p| File.delete(p) }
+    results.delete(pattern)
+  end
+
+  def announce_variants
+    puts "Running #{self.class.benchmark_name} benchmarks via subprocesses..."
+    puts "Variants: #{Implementation.available.map(&:label).join(', ')}"
+    puts
+  end
+
+  # Runs a worker script once per Implementation, each in its own process,
+  # then merges their output into this benchmark's combined results file.
+  def run_all_variants(worker_script)
+    cleanup_worker_results(worker_glob)
+
+    Implementation.available.each do |implementation|
+      puts "→ Running #{implementation}..."
+      puts
+      # Workers write into the same directory as their parent, so a redirected
+      # results location survives the process boundary.
+      env = implementation.env.merge(results.env)
+      _, status = run_subprocess(implementation.ruby_command(worker_script), env: env)
+      raise "#{implementation} benchmark failed" unless status.success?
+
+      puts
+      puts
+    end
+
+    combine_worker_results
+  end
+
+  private
+
+  def worker_glob
+    "#{self.class.benchmark_name}_*.json"
+  end
+
+  def run_subprocess(command, env: {})
+    stdout_lines = []
+
+    Open3.popen3(env, *command) do |stdin, stdout, stderr, wait_thr|
+      stdin.close
+
+      # Stream both streams as they arrive so a long benchmark isn't silent
+      readers = [
+        Thread.new do
+          stdout.each_line do |line|
+            puts line
+            stdout_lines << line
+          end
+        end,
+        Thread.new { stderr.each_line { |line| warn "⚠️  #{line}" } }
+      ]
+      readers.each(&:join)
+
+      return [stdout_lines.join, wait_thr.value]
+    end
+  end
+
+  def combine_worker_results
+    combined = {
+      'name' => self.class.benchmark_name,
+      'description' => self.class.description,
+      'metadata' => self.class.metadata,
+      'results' => read_worker_results(worker_glob)
+    }
+    self.class.annotate_speedups(combined)
+
+    combined_file = "#{self.class.benchmark_name}.json"
+    results.write(combined_file, combined)
+    cleanup_worker_results(worker_glob)
+
+    puts '=' * 80
+    puts "✓ All #{self.class.benchmark_name} benchmarks complete"
+    puts "Results saved to: #{results.join(combined_file)}"
+    puts '=' * 80
   end
 end

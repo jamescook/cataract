@@ -2,147 +2,83 @@
 
 require 'test_helper'
 require_relative '../benchmarks/speedup_calculator'
-require 'json'
+require_relative '../benchmarks/implementation'
 
 class TestSpeedupCalculator < Minitest::Test
   def setup
-    @fixtures_dir = File.expand_path('fixtures/benchmarks', __dir__)
+    @native = Implementation.find(:native, :none)
+    @interpreted = Implementation.find(:pure, :none)
+    @yjit = Implementation.find(:pure, :yjit)
+    @zjit = Implementation.find(:pure, :zjit)
   end
 
-  def test_parsing_speedup_calculation
-    # Load real parsing benchmark results
-    data = JSON.parse(File.read(File.join(@fixtures_dir, 'parsing_sample.json')))
-
-    calculator = SpeedupCalculator.new(
-      results: data['results'],
-      test_cases: data['metadata']['test_cases'],
-      baseline_matcher: SpeedupCalculator::Matchers.cataract_pure_without_yjit,
-      comparison_matcher: SpeedupCalculator::Matchers.cataract_native,
-      test_case_key: :fixture
-    )
-
-    speedups = calculator.calculate
-
-    # Verify speedup stats structure
-    assert speedups, 'Speedups should not be nil'
-    assert_includes speedups.keys, 'min'
-    assert_includes speedups.keys, 'max'
-    assert_includes speedups.keys, 'avg'
-
-    # Verify speedup values are positive and reasonable
-    assert_operator speedups['min'], :>, 1.0, 'Min speedup should be > 1x'
-    assert_operator speedups['max'], :>=, speedups['min'], 'Max speedup should be >= min'
-    assert_operator speedups['avg'], :>=, speedups['min'], 'Avg speedup should be >= min'
-    assert_operator speedups['avg'], :<=, speedups['max'], 'Avg speedup should be <= max'
-
-    # Verify test cases were annotated with speedups
-    data['metadata']['test_cases'].each do |test_case|
-      assert test_case.key?('speedup'), "Test case '#{test_case['name']}' should have speedup annotated"
-      assert_operator test_case['speedup'], :>, 1.0, "Speedup for '#{test_case['name']}' should be > 1x"
-    end
+  def row(id, implementation, ips)
+    { 'name' => "#{implementation.backend.label}: #{id}", 'implementation' => implementation.id.to_s,
+      'central_tendency' => ips }
   end
 
-  def test_yjit_speedup_calculation
-    # Load real YJIT benchmark results (no test_cases array, just operations)
-    data = JSON.parse(File.read(File.join(@fixtures_dir, 'yjit_sample.json')))
-
-    calculator = SpeedupCalculator.new(
-      results: data['results'],
-      test_cases: data['metadata']['operations'],
-      baseline_matcher: SpeedupCalculator::Matchers.without_yjit,
-      comparison_matcher: SpeedupCalculator::Matchers.with_yjit,
-      test_case_key: nil # No test_case_key for operations array
-    )
-
-    speedups = calculator.calculate
-
-    # Verify speedup stats
-    assert speedups, 'Speedups should not be nil'
-    assert_operator speedups['min'], :>, 0.0, 'Min speedup should be positive'
-    assert_operator speedups['max'], :>=, speedups['min']
-    assert_operator speedups['avg'], :>=, speedups['min']
-    assert_operator speedups['avg'], :<=, speedups['max']
+  def calculate(results, baseline:, comparison:, test_cases: [])
+    SpeedupCalculator.new(results: results, test_cases: test_cases,
+                          baseline: baseline, comparison: comparison).calculate
   end
 
-  def test_speedup_calculation_with_sample_data
-    # Create minimal sample data for testing pure Ruby vs native
-    results = [
-      { 'name' => 'pure_without_yjit: test1', 'implementation' => 'pure_without_yjit', 'central_tendency' => 100.0 },
-      { 'name' => 'native: test1', 'implementation' => 'native', 'central_tendency' => 500.0 },
-      { 'name' => 'pure_without_yjit: test2', 'implementation' => 'pure_without_yjit', 'central_tendency' => 200.0 },
-      { 'name' => 'native: test2', 'implementation' => 'native', 'central_tendency' => 800.0 }
-    ]
+  def test_reports_the_spread_across_test_cases
+    results = [row('small', @interpreted, 100.0), row('small', @native, 1000.0),
+               row('large', @interpreted, 100.0), row('large', @native, 500.0)]
 
-    test_cases = [
-      { 'name' => 'Test 1', 'key' => 'test1' },
-      { 'name' => 'Test 2', 'key' => 'test2' }
-    ]
+    stats = calculate(results, baseline: @interpreted, comparison: @native)
 
-    calculator = SpeedupCalculator.new(
-      results: results,
-      test_cases: test_cases,
-      baseline_matcher: SpeedupCalculator::Matchers.cataract_pure_without_yjit,
-      comparison_matcher: SpeedupCalculator::Matchers.cataract_native,
-      test_case_key: :key
-    )
-
-    speedups = calculator.calculate
-
-    # Verify calculations
-    # test1: 500/100 = 5.0x
-    # test2: 800/200 = 4.0x
-    assert_in_delta(4.0, speedups['min'])
-    assert_in_delta(5.0, speedups['max'])
-    assert_in_delta(4.5, speedups['avg'])
-
-    # Verify test cases were annotated
-    assert_in_delta(5.0, test_cases[0]['speedup'])
-    assert_in_delta(4.0, test_cases[1]['speedup'])
+    assert_in_delta(5.0, stats['min'])
+    assert_in_delta(10.0, stats['max'])
+    assert_in_delta(7.5, stats['avg'])
   end
 
-  def test_speedup_calculation_with_no_matches
-    # No matching baseline/comparison pairs
-    results = [
-      { 'name' => 'pure_without_yjit: test1', 'implementation' => 'pure_without_yjit', 'central_tendency' => 100.0 },
-      { 'name' => 'other_tool: test2', 'implementation' => 'other', 'central_tendency' => 200.0 }
-    ]
+  def test_a_comparison_that_lost_yields_a_ratio_below_one
+    results = [row('small', @yjit, 100.0), row('small', @zjit, 80.0)]
 
-    calculator = SpeedupCalculator.new(
-      results: results,
-      test_cases: [],
-      baseline_matcher: SpeedupCalculator::Matchers.cataract_pure_without_yjit,
-      comparison_matcher: SpeedupCalculator::Matchers.cataract_native,
-      test_case_key: nil
-    )
-
-    speedups = calculator.calculate
-
-    # Should return nil when no pairs found
-    assert_nil speedups
+    assert_in_delta(0.8, calculate(results, baseline: @yjit, comparison: @zjit)['avg'])
   end
 
-  def test_matchers
-    # Test cataract pure matchers
-    assert SpeedupCalculator::Matchers.cataract_pure_without_yjit.call({ 'implementation' => 'pure_without_yjit' })
-    refute SpeedupCalculator::Matchers.cataract_pure_without_yjit.call({ 'implementation' => 'pure_with_yjit' })
-    refute SpeedupCalculator::Matchers.cataract_pure_without_yjit.call({ 'implementation' => 'native' })
+  def test_annotates_each_test_case_with_its_own_speedup
+    results = [row('small', @interpreted, 100.0), row('small', @native, 1000.0)]
+    test_cases = [{ 'id' => 'small', 'name' => 'Small CSS' }]
 
-    assert SpeedupCalculator::Matchers.cataract_pure_with_yjit.call({ 'implementation' => 'pure_with_yjit' })
-    refute SpeedupCalculator::Matchers.cataract_pure_with_yjit.call({ 'implementation' => 'pure_without_yjit' })
+    calculate(results, test_cases: test_cases, baseline: @interpreted, comparison: @native)
 
-    # Test cataract native matcher
-    assert SpeedupCalculator::Matchers.cataract_native.call({ 'implementation' => 'native' })
-    refute SpeedupCalculator::Matchers.cataract_native.call({ 'implementation' => 'pure_without_yjit' })
+    assert_in_delta(10.0, test_cases.first['speedup'])
+  end
 
-    # Test cataract matcher (backwards compatibility - matches native)
-    assert SpeedupCalculator::Matchers.cataract.call({ 'implementation' => 'native' })
-    refute SpeedupCalculator::Matchers.cataract.call({ 'implementation' => 'pure_without_yjit' })
+  def test_skips_test_cases_only_one_side_measured
+    results = [row('small', @interpreted, 100.0), row('small', @native, 1000.0),
+               row('large', @interpreted, 100.0)]
 
-    # Test YJIT matchers
-    assert SpeedupCalculator::Matchers.with_yjit.call({ 'implementation' => 'pure_with_yjit' })
-    refute SpeedupCalculator::Matchers.with_yjit.call({ 'implementation' => 'pure_without_yjit' })
+    assert_in_delta(10.0, calculate(results, baseline: @interpreted, comparison: @native)['avg'])
+  end
 
-    assert SpeedupCalculator::Matchers.without_yjit.call({ 'implementation' => 'pure_without_yjit' })
-    refute SpeedupCalculator::Matchers.without_yjit.call({ 'implementation' => 'pure_with_yjit' })
+  def test_returns_nil_when_the_two_share_no_test_case
+    results = [row('small', @interpreted, 100.0), row('large', @native, 1000.0)]
+
+    assert_nil calculate(results, baseline: @interpreted, comparison: @native)
+  end
+
+  def test_returns_nil_when_there_are_no_results
+    assert_nil calculate([], baseline: @interpreted, comparison: @native)
+  end
+
+  def test_the_two_jits_are_told_apart_by_implementation_not_by_report_name
+    # Both JIT rows carry the same report label; only the stamped
+    # implementation distinguishes them.
+    results = [row('small', @yjit, 214.8), row('small', @zjit, 127.3)]
+
+    assert_in_delta(0.59, calculate(results, baseline: @yjit, comparison: @zjit)['avg'], 0.01)
+    assert_in_delta(1.69, calculate(results, baseline: @zjit, comparison: @yjit)['avg'], 0.01)
+  end
+
+  def test_a_test_case_id_containing_a_colon_is_split_at_the_last_one
+    results = [{ 'name' => 'cataract pure: a: b', 'implementation' => @interpreted.id.to_s,
+                 'central_tendency' => 100.0 },
+               { 'name' => 'cataract: a: b', 'implementation' => @native.id.to_s, 'central_tendency' => 200.0 }]
+
+    assert_in_delta(2.0, calculate(results, baseline: @interpreted, comparison: @native)['avg'])
   end
 end

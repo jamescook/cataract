@@ -2,12 +2,6 @@
 
 # Shared test definitions for serialization benchmarks
 module SerializationTests
-  # Determines if YJIT testing is applicable for a given implementation
-  def self.yjit_applicable?(impl_type)
-    base_impl = impl_type.to_s.sub(/_with_yjit|_without_yjit/, '').to_sym
-    base_impl != :native
-  end
-
   def self.metadata
     # Create a temporary instance to access fixture data
     instance = Class.new do
@@ -48,54 +42,38 @@ module SerializationTests
       'test_cases' => [
         {
           'name' => "to_s (Bootstrap - #{(instance.bootstrap_css.length / 1024.0).round}KB)",
-          'key' => 'bootstrap_compact',
+          'id' => 'bootstrap_compact',
           'bytes' => instance.bootstrap_css.length,
           'method' => 'to_s'
         },
         {
           'name' => "to_s (Compact utilities - #{(instance.compact_css.length / 1024.0).round(1)}KB)",
-          'key' => 'compact',
+          'id' => 'compact',
           'bytes' => instance.compact_css.length,
           'method' => 'to_s'
         },
         {
           'name' => "to_formatted_s (Nested CSS - #{(instance.nested_css.length / 1024.0).round(1)}KB)",
-          'key' => 'formatted_nested',
+          'id' => 'formatted_nested',
           'bytes' => instance.nested_css.length,
           'method' => 'to_formatted_s'
         },
         {
           'name' => "to_s with selector_lists (#{(instance.selector_lists_css.length / 1024.0).round(1)}KB)",
-          'key' => 'selector_lists',
+          'id' => 'selector_lists',
           'bytes' => instance.selector_lists_css.length,
           'method' => 'to_s',
           'selector_lists' => true
         },
         {
           'name' => 'Media filtering (Bootstrap print only)',
-          'key' => 'media_print',
+          'id' => 'media_print',
           'bytes' => instance.bootstrap_css.length,
           'method' => 'to_s',
           'media' => 'print'
         }
       ]
     }
-  end
-
-  def self.speedup_config
-    # Compare cataract pure without YJIT (baseline) vs cataract native (comparison)
-    {
-      baseline_matcher: SpeedupCalculator::Matchers.cataract_pure_without_yjit,
-      comparison_matcher: SpeedupCalculator::Matchers.cataract_native,
-      test_case_key: :key
-    }
-  end
-
-  # Must be set by including class before calling methods
-  attr_accessor :impl_type
-
-  def base_impl_type
-    impl_type.to_s.sub(/_with_yjit|_without_yjit/, '').to_sym
   end
 
   def sanity_checks
@@ -105,7 +83,7 @@ module SerializationTests
     raise "Nested CSS fixture not found at #{nested_path}" unless File.exist?(nested_path)
     raise "Selector lists CSS fixture not found at #{selector_lists_path}" unless File.exist?(selector_lists_path)
 
-    case base_impl_type
+    case implementation.backend.id
     when :pure, :native
       # Verify parsing and serialization work
       cataract_sheet = Cataract.parse_css(bootstrap_css)
@@ -166,26 +144,9 @@ module SerializationTests
     @selector_lists_path ||= File.expand_path('../test/fixtures/serialization_selector_lists.css', __dir__)
   end
 
-  def implementation_label
-    base_label = case base_impl_type
-                 when :pure
-                   'cataract pure'
-                 when :native
-                   'cataract'
-                 end
-
-    yjit_suffix = if SerializationTests.yjit_applicable?(impl_type)
-                    impl_type.to_s.include?('with_yjit') ? ' (YJIT)' : ' (no YJIT)'
-                  else
-                    ''
-                  end
-
-    "#{base_label}#{yjit_suffix}"
-  end
-
   def run_bootstrap_compact_benchmark
     puts '=' * 80
-    puts "TEST: to_s (Bootstrap) - #{implementation_label}"
+    puts "TEST: to_s (Bootstrap) - #{implementation.label}"
     puts '=' * 80
     puts '(Parsing done once before benchmark, not included in measurements)'
 
@@ -195,7 +156,7 @@ module SerializationTests
       # Pre-parse CSS once
       cataract_parsed = Cataract.parse_css(bootstrap_css)
 
-      x.report("#{base_impl_type}: bootstrap_compact") do
+      x.report(result_name('bootstrap_compact')) do
         cataract_parsed.to_s
       end
     end
@@ -203,7 +164,7 @@ module SerializationTests
 
   def run_compact_benchmark
     puts "\n#{'=' * 80}"
-    puts "TEST: to_s (Compact utilities) - #{implementation_label}"
+    puts "TEST: to_s (Compact utilities) - #{implementation.label}"
     puts '=' * 80
     puts '(Many simple rules, minimal whitespace when serialized)'
 
@@ -213,7 +174,7 @@ module SerializationTests
       # Pre-parse CSS once
       cataract_parsed = Cataract.parse_css(compact_css)
 
-      x.report("#{base_impl_type}: compact") do
+      x.report(result_name('compact')) do
         cataract_parsed.to_s
       end
     end
@@ -221,7 +182,7 @@ module SerializationTests
 
   def run_formatted_nested_benchmark
     puts "\n#{'=' * 80}"
-    puts "TEST: to_formatted_s (Nested CSS) - #{implementation_label}"
+    puts "TEST: to_formatted_s (Nested CSS) - #{implementation.label}"
     puts '=' * 80
     puts '(Nested selectors and media queries, formatted with indentation)'
 
@@ -231,7 +192,7 @@ module SerializationTests
       # Pre-parse CSS once
       cataract_parsed = Cataract.parse_css(nested_css)
 
-      x.report("#{base_impl_type}: formatted_nested") do
+      x.report(result_name('formatted_nested')) do
         cataract_parsed.to_formatted_s
       end
     end
@@ -239,7 +200,7 @@ module SerializationTests
 
   def run_selector_lists_benchmark
     puts "\n#{'=' * 80}"
-    puts "TEST: to_s with selector_lists tracking - #{implementation_label}"
+    puts "TEST: to_s with selector_lists tracking - #{implementation.label}"
     puts '=' * 80
     puts '(Many comma-separated selector lists to test tracking overhead)'
 
@@ -249,7 +210,7 @@ module SerializationTests
       # Pre-parse CSS once with selector_lists enabled
       cataract_parsed = Cataract::Stylesheet.parse(selector_lists_css, parser: { selector_lists: true })
 
-      x.report("#{base_impl_type}: selector_lists") do
+      x.report(result_name('selector_lists')) do
         cataract_parsed.to_s
       end
     end
@@ -257,7 +218,7 @@ module SerializationTests
 
   def run_media_filtering_benchmark
     puts "\n#{'=' * 80}"
-    puts "TEST: Media filtering - to_s(media: :print) - #{implementation_label}"
+    puts "TEST: Media filtering - to_s(media: :print) - #{implementation.label}"
     puts '=' * 80
     puts '(Bootstrap CSS filtered to print media only)'
 
@@ -268,7 +229,7 @@ module SerializationTests
       cataract_parser = Cataract::Stylesheet.new
       cataract_parser.add_block(bootstrap_css)
 
-      x.report("#{base_impl_type}: media_print") do
+      x.report(result_name('media_print')) do
         cataract_parser.to_s(media: :print)
       end
     end
