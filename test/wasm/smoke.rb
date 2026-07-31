@@ -7,10 +7,12 @@
 # ruby.wasm distribution ships - gem resolution is its own source of failure
 # and isn't what this is measuring.
 #
-# WASI has no sockets, so the C extension can't be built and open-uri,
-# net/http and resolv can't be loaded. What must work is everything that
-# doesn't need them: parsing, serializing, flattening, specificity, and
-# import resolution through a caller-supplied fetcher or the filesystem.
+# WASI 0.2 defines wasi:sockets, but ruby.wasm's prebuilt binaries target
+# preview1, which has no connect or DNS, and they ship no socket extension
+# either - so net/http and resolv can't load, and the C extension isn't built
+# for wasm at all. What must work is everything that doesn't need them:
+# parsing, serializing, flattening, specificity, and import resolution through
+# a caller-supplied fetcher or the filesystem.
 
 require 'cataract'
 

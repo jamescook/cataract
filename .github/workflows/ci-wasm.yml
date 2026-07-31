@@ -2,7 +2,7 @@ name: CI - WebAssembly
 
 # Manual only. This pulls a ~40MB prebuilt Ruby and a wasm runtime, covers the
 # pure Ruby backend alone, and answers a question that changes rarely: does the
-# library still work where there are no sockets and no C extension?
+# library still work with no socket extension and no C extension?
 on:
   workflow_dispatch:
     inputs:
