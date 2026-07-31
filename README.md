@@ -31,7 +31,7 @@ gem install cataract
 
 ### Requirements
 
-- Ruby >= 3.1.0
+- Ruby >= 3.3.0
 
 ### Pure Ruby Implementation
 
