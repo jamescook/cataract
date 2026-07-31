@@ -7,67 +7,29 @@ require_relative 'worker_helpers'
 # Load the local development version, not installed gem
 $LOAD_PATH.unshift File.expand_path('../lib', __dir__)
 
-# Worker benchmark: Cataract pure Ruby
-class SpecificityCataractPureBenchmark < BenchmarkHarness
+# Measures specificity calculation for whichever configuration this process
+# was launched as. One class covers every variant: WorkerHelpers reads the
+# backend and JIT off the running VM and verifies them, so there is nothing
+# per-variant to subclass.
+class SpecificityWorkerBenchmark < BenchmarkHarness
   include SpecificityTests
   include WorkerHelpers
 
   def self.benchmark_name
-    'specificity_cataract_pure'
+    'specificity'
   end
 
   def self.description
-    'CSS specificity calculation with Cataract pure Ruby'
+    'CSS selector specificity calculation'
   end
 
   def self.metadata
     SpecificityTests.metadata
   end
-
-  def self.speedup_config
-    SpecificityTests.speedup_config
-  end
-
-  def initialize
-    super
-    self.impl_type = determine_impl_type(:pure, SpecificityTests)
-  end
 end
 
-# Worker benchmark: Cataract C extension
-class SpecificityCataractNativeBenchmark < BenchmarkHarness
-  include SpecificityTests
-  include WorkerHelpers
-
-  def self.benchmark_name
-    'specificity_cataract_native'
-  end
-
-  def self.description
-    'CSS specificity calculation with Cataract C extension'
-  end
-
-  def self.metadata
-    SpecificityTests.metadata
-  end
-
-  def self.speedup_config
-    SpecificityTests.speedup_config
-  end
-
-  def initialize
-    super
-    self.impl_type = determine_impl_type(:native, SpecificityTests)
-  end
-end
-
-# CLI entry point - run the appropriate worker
+# CLI entry point
 if __FILE__ == $PROGRAM_NAME
   require 'cataract'
-
-  if Cataract::IMPLEMENTATION == :ruby
-    SpecificityCataractPureBenchmark.run(skip_finalize: true)
-  else
-    SpecificityCataractNativeBenchmark.run(skip_finalize: true)
-  end
+  SpecificityWorkerBenchmark.run(skip_finalize: true)
 end

@@ -5,70 +5,137 @@
     "test_cases": [
       {
         "name": "Small CSS (64 lines, 1.0KB)",
-        "fixture": "CSS1",
+        "id": "small",
         "lines": 64,
-        "bytes": 1061,
-        "speedup": 10.85
+        "bytes": 1061
       },
       {
         "name": "Medium CSS with @media (139 lines, 1.6KB)",
-        "fixture": "CSS2",
+        "id": "medium with @media",
         "lines": 139,
-        "bytes": 1679,
-        "speedup": 12.87
+        "bytes": 1679
       }
     ],
-    "speedups": {
-      "min": 10.85,
-      "max": 12.87,
-      "avg": 11.86
-    }
+    "error_checking": [
+      {
+        "name": "Medium CSS (139 lines) - no error checking",
+        "id": "error checking off"
+      },
+      {
+        "name": "Medium CSS (139 lines) - with error checking",
+        "id": "error checking on"
+      }
+    ]
   },
   "timestamp": "2025-10-30T16:01:43-05:00",
   "results": [
     {
-      "name": "pure_without_yjit: CSS1",
-      "implementation": "pure_without_yjit",
-      "central_tendency": 6253.617340248006,
-      "ips": 6253.617340248006,
-      "error": 63,
-      "stddev": 63,
-      "microseconds": 5069278.0,
-      "iterations": 31698,
-      "cycles": 587
-    },
-    {
-      "name": "native: CSS1",
-      "implementation": "native",
+      "name": "cataract: small",
+      "implementation": "native_none",
+      "backend": "native",
+      "jit": "none",
       "central_tendency": 67860.26856079814,
       "ips": 67860.26856079814,
-      "error": 536,
-      "stddev": 536,
-      "microseconds": 5023642.0,
-      "iterations": 340884,
-      "cycles": 6684
+      "jit_stats": {}
     },
     {
-      "name": "pure_without_yjit: CSS2",
-      "implementation": "pure_without_yjit",
-      "central_tendency": 3446.4007088523126,
-      "ips": 3446.4007088523126,
-      "error": 33,
-      "stddev": 33,
-      "microseconds": 5076214.0,
-      "iterations": 17493,
-      "cycles": 343
+      "name": "cataract pure: small",
+      "implementation": "pure_none",
+      "backend": "pure",
+      "jit": "none",
+      "central_tendency": 6253.617340248006,
+      "ips": 6253.617340248006,
+      "jit_stats": {}
     },
     {
-      "name": "native: CSS2",
-      "implementation": "native",
+      "name": "cataract pure: small",
+      "implementation": "pure_yjit",
+      "backend": "pure",
+      "jit": "yjit",
+      "central_tendency": 25014.46936099202,
+      "ips": 25014.46936099202,
+      "jit_stats": { "compiled_iseq_count": 412, "failed_iseq_count": 0 }
+    },
+    {
+      "name": "cataract pure: small",
+      "implementation": "pure_zjit",
+      "backend": "pure",
+      "jit": "zjit",
+      "central_tendency": 12507.234680496012,
+      "ips": 12507.234680496012,
+      "jit_stats": { "compiled_iseq_count": 208, "failed_iseq_count": 3 }
+    },
+    {
+      "name": "cataract: medium with @media",
+      "implementation": "native_none",
+      "backend": "native",
+      "jit": "none",
       "central_tendency": 44357.90385806872,
       "ips": 44357.90385806872,
-      "error": 404,
-      "stddev": 404,
-      "microseconds": 5069630.0,
-      "iterations": 224859,
-      "cycles": 4409
+      "jit_stats": {}
+    },
+    {
+      "name": "cataract pure: medium with @media",
+      "implementation": "pure_none",
+      "backend": "pure",
+      "jit": "none",
+      "central_tendency": 3446.4007088523126,
+      "ips": 3446.4007088523126,
+      "jit_stats": {}
+    },
+    {
+      "name": "cataract pure: medium with @media",
+      "implementation": "pure_yjit",
+      "backend": "pure",
+      "jit": "yjit",
+      "central_tendency": 13785.60283540925,
+      "ips": 13785.60283540925,
+      "jit_stats": { "compiled_iseq_count": 412, "failed_iseq_count": 0 }
+    },
+    {
+      "name": "cataract pure: medium with @media",
+      "implementation": "pure_zjit",
+      "backend": "pure",
+      "jit": "zjit",
+      "central_tendency": 6892.801417704625,
+      "ips": 6892.801417704625,
+      "jit_stats": { "compiled_iseq_count": 208, "failed_iseq_count": 3 }
+    },
+    {
+      "name": "cataract: error checking off",
+      "implementation": "native_none",
+      "backend": "native",
+      "jit": "none",
+      "central_tendency": 44000.0,
+      "ips": 44000.0,
+      "jit_stats": {}
+    },
+    {
+      "name": "cataract: error checking on",
+      "implementation": "native_none",
+      "backend": "native",
+      "jit": "none",
+      "central_tendency": 43120.0,
+      "ips": 43120.0,
+      "jit_stats": {}
+    },
+    {
+      "name": "cataract pure: error checking off",
+      "implementation": "pure_none",
+      "backend": "pure",
+      "jit": "none",
+      "central_tendency": 3400.0,
+      "ips": 3400.0,
+      "jit_stats": {}
+    },
+    {
+      "name": "cataract pure: error checking on",
+      "implementation": "pure_none",
+      "backend": "pure",
+      "jit": "none",
+      "central_tendency": 3060.0,
+      "ips": 3060.0,
+      "jit_stats": {}
     }
   ]
 }

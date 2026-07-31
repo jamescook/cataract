@@ -178,5 +178,12 @@ Cataract/BanAssertIncludes:
     - 'test/color/**/*.rb'
     - 'test/test_benchmark_doc_generator.rb'
     - 'test/test_speedup_calculator.rb'
+    # Benchmark harness tests assert on generated markdown and on the wording
+    # of mismatch errors, not on parsed CSS.
+    - 'test/test_ruby_mode.rb'
+    - 'test/test_backend.rb'
+    - 'test/test_benchmark_implementation.rb'
+    - 'test/test_result_table.rb'
+    - 'test/test_benchmark_plumbing.rb'
     - 'test/test_parse_errors.rb'  # Parse error tests check error messages with assert_match
     - 'test/support/**/*'  # Support files define assert_contains which uses assert_includes internally

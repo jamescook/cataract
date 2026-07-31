@@ -4,59 +4,37 @@ require 'test_helper'
 require_relative '../benchmarks/worker_helpers'
 
 class TestWorkerHelpers < Minitest::Test
-  class DummyTestModule
-    def self.yjit_applicable?(base_impl)
-      base_impl != :native
+  class Worker
+    include WorkerHelpers
+
+    def self.benchmark_name
+      'serialization'
+    end
+
+    def initialize(implementation)
+      @implementation = implementation
     end
   end
 
-  class DummyWorker
-    include WorkerHelpers
-
-    attr_accessor :impl_type
-
-    public :determine_impl_type, :verify_jit_mode!
-  end
-
   def setup
-    @worker = DummyWorker.new
+    @zjit = Worker.new(Implementation.find(:pure, :zjit))
+    @native = Worker.new(Implementation.find(:native, :none))
   end
 
-  def teardown
-    ENV.delete('CATARACT_BENCH_JIT')
+  def test_result_filename_is_scoped_to_the_variant
+    assert_equal 'serialization_pure_zjit', @zjit.benchmark_name
+    assert_equal 'serialization_native_none', @native.benchmark_name
   end
 
-  def test_native_is_never_checked_regardless_of_env
-    ENV['CATARACT_BENCH_JIT'] = 'zjit' # deliberately mismatched - native ignores it
-
-    assert_equal :native, @worker.determine_impl_type(:native, DummyTestModule)
+  def test_report_names_follow_the_label_colon_id_convention
+    assert_equal 'cataract pure: bootstrap_compact', @zjit.result_name('bootstrap_compact')
+    assert_equal 'cataract: bootstrap_compact', @native.result_name('bootstrap_compact')
   end
 
-  def test_verify_jit_mode_skips_when_no_expectation_set
-    ENV.delete('CATARACT_BENCH_JIT')
-    @worker.verify_jit_mode!(:none) # standalone/debug run - no error
-  end
+  def test_report_names_omit_the_jit_because_results_carry_it_as_a_field
+    id = 'selector lists'
 
-  def test_verify_jit_mode_passes_when_actual_matches_expected
-    ENV['CATARACT_BENCH_JIT'] = 'zjit'
-    @worker.verify_jit_mode!(:zjit) # no error
-  end
-
-  def test_verify_jit_mode_raises_when_actual_falls_back_to_none
-    # This is the exact failure this check exists to catch: we asked for
-    # ZJIT but the process silently fell back to the plain interpreter
-    # (e.g. a Ruby build without ZJIT support ignoring --zjit).
-    ENV['CATARACT_BENCH_JIT'] = 'zjit'
-
-    error = assert_raises(RuntimeError) { @worker.verify_jit_mode!(:none) }
-    expected_message = 'JIT mode mismatch: expected CATARACT_BENCH_JIT=zjit but RubyVM reports ' \
-                       "none is active (#{RUBY_DESCRIPTION}) - was this Ruby built with YJIT/ZJIT support?"
-
-    assert_equal expected_message, error.message
-  end
-
-  def test_verify_jit_mode_raises_when_actual_is_the_other_jit
-    ENV['CATARACT_BENCH_JIT'] = 'yjit'
-    assert_raises(RuntimeError) { @worker.verify_jit_mode!(:zjit) }
+    assert_equal Worker.new(Implementation.find(:pure, :yjit)).result_name(id),
+                 Worker.new(Implementation.find(:pure, :zjit)).result_name(id)
   end
 end
