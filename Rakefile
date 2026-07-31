@@ -34,7 +34,7 @@ namespace :test do
     t.libs << 'test'
     t.libs << 'lib'
     t.ruby_opts << '-rtest_helper'
-    t.test_files = FileList['test/**/test_*.rb'].exclude('test/css_parser_compat/**/*', 'test/color/**/*')
+    t.test_files = FileList['test/**/test_*.rb'].exclude('test/color/**/*')
   end
 
   desc 'Run tests with pure Ruby implementation'
