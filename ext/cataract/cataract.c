@@ -1325,6 +1325,26 @@ void Init_native_extension(void) {
     // with its own #to_s, not something this backend attaches methods to.
     cStylesheet = rb_define_class_under(mCataract, "Stylesheet", rb_cObject);
 
+    // Register the cached class and exception VALUEs with the GC.
+    //
+    // Keeping them alive isn't the concern - the constants above do that. GC
+    // compaction is: it moves objects, and an unregistered C global is left
+    // pointing at the old address. rb_struct_new(cRule, ...) on a stale
+    // pointer then fails with "uninitialized class", so any caller that
+    // compacts the heap - Process.warmup and GC.compact both do - breaks
+    // every subsequent parse.
+    rb_global_variable(&cRule);
+    rb_global_variable(&cDeclaration);
+    rb_global_variable(&cAtRule);
+    rb_global_variable(&cStylesheet);
+    rb_global_variable(&cImportStatement);
+    rb_global_variable(&cMediaQuery);
+    rb_global_variable(&cConditionalGroup);
+    rb_global_variable(&eCataractError);
+    rb_global_variable(&eDepthError);
+    rb_global_variable(&eSizeError);
+    rb_global_variable(&eParseError);
+
     // Every native-specific entry point lives under Cataract::Backends::Native,
     // never directly on Cataract itself, so the pure Ruby backend can be loaded
     // in the same process without either backend clobbering the other's methods.
