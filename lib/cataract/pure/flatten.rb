@@ -166,6 +166,13 @@ module Cataract
         BACKGROUND_ATTACHMENT_KEYWORDS = %w[scroll fixed local].freeze
         BACKGROUND_POSITION_KEYWORDS = %w[left right center top bottom].freeze
 
+        # Gradient functions that set background-image. Mirrors the set the C
+        # extension recognizes, so both backends classify the same tokens.
+        BACKGROUND_IMAGE_FUNCTIONS = %w[
+          linear-gradient( radial-gradient( conic-gradient(
+          repeating-linear-gradient( repeating-radial-gradient(
+        ].freeze
+
         # Merge stylesheet according to CSS cascade rules
         #
         # @param stylesheet [Stylesheet] Stylesheet to merge
@@ -830,8 +837,17 @@ module Cataract
           position = nil
 
           parts.each do |part|
-            if starts_with_url?(part) || part == 'none'
-              image = part
+            if background_image?(part)
+              # Layered backgrounds are comma-separated and arrive as one part
+              # per layer. Assigning would keep only the last and silently drop
+              # the rest, so append instead. split_on_whitespace builds each
+              # part fresh, so appending mutates a string we own - no
+              # allocation, and nothing else references it.
+              if image
+                image << ' ' << part
+              else
+                image = part
+              end
             elsif BACKGROUND_REPEAT_KEYWORDS.include?(part)
               repeat = part
             elsif BACKGROUND_ATTACHMENT_KEYWORDS.include?(part)
@@ -856,6 +872,17 @@ module Cataract
           result << Declaration.new(PROP_BACKGROUND_POSITION, position || '0% 0%', decl.important)
 
           result
+        end
+
+        # Value tokens that set background-image: a url, any of the gradient
+        # functions, or the `none` keyword. Gradients count as images; left out
+        # they fall through to the position and color branches and end up
+        # filed as neither.
+        def background_image?(value)
+          return true if value == 'none'
+          return true if starts_with_url?(value)
+
+          BACKGROUND_IMAGE_FUNCTIONS.any? { |function| value.start_with?(function) }
         end
 
         # Check if value starts with 'url('

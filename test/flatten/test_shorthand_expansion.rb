@@ -234,6 +234,28 @@ class TestShorthandExpansion < Minitest::Test
     assert_match(/radial-gradient/, decls['background'])
   end
 
+  # Layered backgrounds are comma-separated and reach the expander one part per
+  # layer. Every layer has to survive: assigning rather than appending kept only
+  # the last one and dropped the rest without any error.
+
+  def test_background_layered_urls_keep_every_layer
+    decls = parse_and_flatten('.test { background: url(a.png), url(b.png) }')
+
+    assert_equal 'url(a.png), url(b.png)', decls['background']
+  end
+
+  def test_background_three_layers_keep_every_layer
+    decls = parse_and_flatten('.test { background: url(a.png), url(b.png), url(c.png) }')
+
+    assert_equal 'url(a.png), url(b.png), url(c.png)', decls['background']
+  end
+
+  def test_background_layered_gradients_expand_to_a_single_image
+    decls = parse_and_flatten('.test { background: linear-gradient(#fff, #000), url(a.png) }')
+
+    assert_equal 'linear-gradient(#fff, #000), url(a.png)', decls['background']
+  end
+
   # ===========================================================================
   # Specificity - Different Selectors Stay Separate
   # ===========================================================================
