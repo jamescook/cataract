@@ -42,7 +42,10 @@ require_relative 'import_statement'
 require_relative 'stylesheet_scope'
 require_relative 'stylesheet'
 require_relative 'declarations'
-require_relative 'import_resolver'
+
+# import_resolver is not required here. Stylesheet#load_uri and
+# #resolve_imports require it on entry, so parsing CSS pulls in no networking
+# stdlib and the library loads on hosts without sockets.
 
 # Load pure Ruby implementation modules
 require_relative 'pure/byte_constants'

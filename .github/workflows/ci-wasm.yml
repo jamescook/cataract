@@ -1,0 +1,52 @@
+name: CI - WebAssembly
+
+# Manual only. This pulls a ~40MB prebuilt Ruby and a wasm runtime, covers the
+# pure Ruby backend alone, and answers a question that changes rarely: does the
+# library still work where there are no sockets and no C extension?
+on:
+  workflow_dispatch:
+    inputs:
+      ruby:
+        description: Which ruby.wasm build to test against
+        required: true
+        default: '4.0'
+        type: choice
+        options: ['3.3', '3.4', '4.0', 'head']
+
+jobs:
+  wasi:
+    name: wasm32-unknown-wasip1 (ruby ${{ inputs.ruby }})
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install wasmtime
+      uses: bytecodealliance/actions/wasmtime/setup@v1
+
+    - name: Download prebuilt ruby.wasm
+      run: |
+        set -euo pipefail
+        build="ruby-${{ inputs.ruby }}-wasm32-unknown-wasip1-full"
+        curl -fsSL -o ruby-wasm.tar.gz \
+          "https://github.com/ruby/ruby.wasm/releases/latest/download/${build}.tar.gz"
+        tar xzf ruby-wasm.tar.gz
+        echo "RUBY_WASM_ROOT=${PWD}/${build}" >> "$GITHUB_ENV"
+
+    - name: Show the wasm Ruby it will run
+      run: |
+        wasmtime run --dir "${RUBY_WASM_ROOT}/usr::/usr" \
+          "${RUBY_WASM_ROOT}/usr/local/bin/ruby" -- --version
+
+    # CATARACT_PURE is set because the C extension can't be cross-compiled to
+    # wasm; the smoke script asserts the pure backend actually loaded rather
+    # than trusting the variable. /usr carries the wasm Ruby's own stdlib,
+    # /app is this checkout - WASI grants no filesystem access without these.
+    - name: Run the WASI smoke checks
+      run: |
+        wasmtime run \
+          --env CATARACT_PURE=1 \
+          --dir "${RUBY_WASM_ROOT}/usr::/usr" \
+          --dir ".::/app" \
+          "${RUBY_WASM_ROOT}/usr/local/bin/ruby" \
+          -- -I/app/lib /app/test/wasm/smoke.rb

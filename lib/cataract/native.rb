@@ -28,4 +28,6 @@ require_relative 'native_extension'
 require_relative 'stylesheet_scope'
 require_relative 'stylesheet'
 require_relative 'declarations'
-require_relative 'import_resolver'
+
+# import_resolver is required on entry to Stylesheet#load_uri and
+# #resolve_imports rather than here - see the note in pure.rb.

@@ -1,8 +1,12 @@
 # frozen_string_literal: true
 
 require 'uri'
-require 'open-uri'
-require 'ssrf_filter'
+
+# open-uri and ssrf_filter load in DefaultFetcher#fetch_http, not here: they
+# pull in net/http and resolv, which need the socket extension. Everything else
+# in this file - option validation, URL normalization, file:// fetching, and
+# any caller-supplied fetcher - works without them, and so works on hosts that
+# have no sockets. `uri` is pure Ruby.
 
 module Cataract
   # Error raised during import resolution
@@ -29,31 +33,42 @@ module Cataract
           File.read(uri.path)
         when 'http', 'https'
           # Fetch from network
-          fetch_http(uri, options)
+          fetch_http(uri, options, url)
         else
           raise ImportError, "Unsupported scheme: #{uri.scheme}"
         end
       rescue Errno::ENOENT
         raise ImportError, "Import file not found: #{url}"
-      rescue OpenURI::HTTPError => e
-        raise ImportError, "HTTP error fetching import: #{url} (#{e.message})"
-      rescue SocketError => e
-        raise ImportError, "Network error fetching import: #{url} (#{e.message})"
-      rescue SsrfFilter::Error => e
-        raise ImportError, "Import blocked by SSRF protection: #{url} (#{e.message})"
+      rescue ImportError
+        raise # already specific; re-wrapping nests it inside a vaguer message
       rescue StandardError => e
         raise ImportError, "Error fetching import: #{url} (#{e.class}: #{e.message})"
       end
 
       private
 
-      # Fetch content via HTTP/HTTPS
-      def fetch_http(uri, options)
+      # Fetch content via HTTP/HTTPS.
+      #
+      # Loads the HTTP libraries and translates their errors here, so that no
+      # rescue above this point names a constant that may not be loadable.
+      #
+      # @param url [String] the URL as written; `uri` may have been resolved
+      #   against a base and no longer match what the stylesheet requested
+      def fetch_http(uri, options, url)
+        require 'open-uri'
+        require 'ssrf_filter'
+
         if options[:allow_local_network]
           fetch_http_unfiltered(uri, options)
         else
           fetch_http_ssrf_safe(uri, options)
         end
+      rescue OpenURI::HTTPError => e
+        raise ImportError, "HTTP error fetching import: #{url} (#{e.message})"
+      rescue SocketError => e
+        raise ImportError, "Network error fetching import: #{url} (#{e.message})"
+      rescue SsrfFilter::Error => e
+        raise ImportError, "Import blocked by SSRF protection: #{url} (#{e.message})"
       end
 
       # Plain open-uri fetch, no SSRF protection - only reachable when the
