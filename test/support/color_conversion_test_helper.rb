@@ -18,9 +18,9 @@ module ColorConversionTestHelper
   #     from: :hex, to: :rgb
   #   )
   #   assert_equal 'rgb(255, 0, 0)', decls['background-color']
-  def convert_and_get_declarations(css, **options)
+  def convert_and_get_declarations(css, **)
     sheet = Cataract.parse_css(css)
-    sheet.convert_colors!(**options)
+    sheet.convert_colors!(**)
 
     # Flatten all rules to get final cascaded declarations
     flattened = sheet.flatten

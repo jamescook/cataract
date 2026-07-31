@@ -176,8 +176,6 @@ class TestRule < Minitest::Test
   end
 
   def test_rules_in_set
-    require 'set'
-
     sheet1 = Cataract.parse_css('.box { margin: 10px; }')
     sheet2 = Cataract.parse_css('.box { margin-top: 10px; margin-right: 10px; margin-bottom: 10px; margin-left: 10px; }')
 
@@ -367,8 +365,6 @@ class TestRule < Minitest::Test
   end
 
   def test_selector_list_id_works_in_set
-    require 'set'
-
     decls = [Cataract::Declaration.new('color', 'red', false)]
 
     rule1 = Cataract::Rule.make(

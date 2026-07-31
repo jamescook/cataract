@@ -177,16 +177,17 @@ class TestMediaQueryListSerialization < Minitest::Test
     css = '@media screen, print { body { color: red; } } @media handheld { p { margin: 0; } }'
     sheet = Cataract::Stylesheet.parse(css)
 
-    # When filtering to :screen, should only output the screen rule
-    # But since original was "screen, print", we might serialize as just "@media screen"
-    # This is acceptable - we only preserve the list when ALL members are included
     output = sheet.to_s(media: :screen)
+    reparsed = Cataract::Stylesheet.parse(output)
 
-    # Should contain screen rule but NOT handheld
-    assert_match(/@media screen/, output)
-    assert_match(/body \{ color: red; \}/, output)
-    refute_match(/handheld/, output)
-    refute_match(/p \{ margin: 0; \}/, output)
+    # Filtering to :screen keeps the rule, and its "screen, print" list is
+    # carried through intact rather than narrowed to just the media asked for.
+    assert_has_selector 'body', reparsed, media: :screen
+    assert_has_selector 'body', reparsed, media: :print
+    assert_has_property({ color: 'red' }, reparsed.with_media(:screen).with_selector('body').first)
+
+    # The handheld rule is dropped entirely.
+    assert_empty reparsed.with_selector('p').to_a
   end
 
   def test_to_s_with_multiple_media_filter_preserves_list

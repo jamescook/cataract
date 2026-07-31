@@ -537,8 +537,6 @@ body { color: red; }'
   end
 
   def test_stylesheets_in_set
-    require 'set'
-
     sheet1 = Cataract.parse_css('.box { margin: 10px; }')
     sheet2 = Cataract.parse_css('.box { margin-top: 10px; margin-right: 10px; margin-bottom: 10px; margin-left: 10px; }')
 

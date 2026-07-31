@@ -267,7 +267,6 @@ class TestImportStatement < Minitest::Test
 
   def test_import_statement_in_set
     # Test that ImportStatements work in Sets (requires proper hash/eql?)
-    require 'set'
 
     import1 = Cataract::ImportStatement.make(id: 0, url: 'styles.css', media: 'screen')
     import2 = Cataract::ImportStatement.make(id: 99, url: 'styles.css', media: 'screen', resolved: true) # Equal to import1

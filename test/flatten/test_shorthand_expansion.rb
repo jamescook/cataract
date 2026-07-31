@@ -221,8 +221,7 @@ class TestShorthandExpansion < Minitest::Test
     decls = parse_and_flatten('.test { background: red linear-gradient(to right, rgba(255,255,255,0.5), transparent) }')
 
     # Should have both color and gradient
-    assert_match(/linear-gradient/, decls['background'])
-    assert_match(/red/, decls['background'])
+    assert_equal 'red linear-gradient(to right, rgba(255,255,255,0.5), transparent)', decls['background']
   end
 
   def test_background_multiple_gradients
@@ -230,8 +229,7 @@ class TestShorthandExpansion < Minitest::Test
     decls = parse_and_flatten('.test { background: linear-gradient(#fff, #000), radial-gradient(circle, red, blue) }')
 
     # Should preserve both gradients
-    assert_match(/linear-gradient/, decls['background'])
-    assert_match(/radial-gradient/, decls['background'])
+    assert_equal 'linear-gradient(#fff, #000), radial-gradient(circle, red, blue)', decls['background']
   end
 
   # Layered backgrounds are comma-separated and reach the expander one part per

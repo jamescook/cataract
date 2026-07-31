@@ -86,8 +86,8 @@ module Cataract
     #
     # @see Stylesheet#parse
     # @see Stylesheet.parse
-    def parse_css(css, **options)
-      Stylesheet.parse(css, **options)
+    def parse_css(css, **)
+      Stylesheet.parse(css, **)
     end
 
     # Flatten CSS rules according to CSS cascade rules.
