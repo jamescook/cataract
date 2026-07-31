@@ -2,12 +2,6 @@
 
 require 'uri'
 
-# open-uri and ssrf_filter load in DefaultFetcher#fetch_http, not here: they
-# pull in net/http and resolv, which need the socket extension. Everything else
-# in this file - option validation, URL normalization, file:// fetching, and
-# any caller-supplied fetcher - works without them, and so works on hosts that
-# have no sockets. `uri` is pure Ruby.
-
 module Cataract
   # Error raised during import resolution
   class ImportError < Error; end
