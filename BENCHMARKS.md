@@ -12,7 +12,7 @@ Performance comparison between Cataract's C extension and pure Ruby implementati
 - **CPU**: Apple M1 Pro
 - **Memory**: 32GB
 - **OS**: macOS 26.3.1
-- **Generated**: 2026-07-30T21:02:54-05:00
+- **Generated**: 2026-07-31T17:03:14-05:00
 
 ## CSS Parsing
 
@@ -20,20 +20,20 @@ Time to parse CSS into internal data structures
 
 | Test Case | Native | Pure (no JIT) | Pure (YJIT) | Pure (ZJIT) |
 | --------- | ------ | ------------- | ----------- | ----------- |
-| Small CSS (64 lines, 1.0KB) | 31.29K i/s | 3.3K i/s | 13.76K i/s | 7.53K i/s |
-| Medium CSS with @media (139 lines, 1.6KB) | 28.46K i/s | 2.06K i/s | 8.88K i/s | 4.78K i/s |
-| Selector lists (3500 lines, 62.5KB, 500 lists) | 369.3 i/s | 57.5 i/s | 216.9 i/s | 125.5 i/s |
+| Small CSS (64 lines, 1.0KB) | 31.49K i/s | 3.4K i/s | 13.96K i/s | 7.65K i/s |
+| Medium CSS with @media (139 lines, 1.6KB) | 28.99K i/s | 2.14K i/s | 9.09K i/s | 4.9K i/s |
+| Selector lists (3500 lines, 62.5KB, 500 lists) | 385.9 i/s | 57.9 i/s | 219.4 i/s | 129.1 i/s |
 
 ### Speedups
 
 | Comparison | Speedup |
 |------------|---------|
-| Native vs Pure (no JIT) | 11.42x faster (avg) |
-| Native vs Pure (YJIT) | 2.74x faster (avg) |
-| Native vs Pure (ZJIT) | 4.92x faster (avg) |
-| YJIT impact on Pure Ruby | 4.15x faster (avg) |
+| Native vs Pure (no JIT) | 11.62x faster (avg) |
+| Native vs Pure (YJIT) | 2.78x faster (avg) |
+| Native vs Pure (ZJIT) | 5.02x faster (avg) |
+| YJIT impact on Pure Ruby | 4.16x faster (avg) |
 | ZJIT impact on Pure Ruby | 2.31x faster (avg) |
-| ZJIT vs YJIT | 1.79x slower (avg) |
+| ZJIT vs YJIT | 1.82x slower (avg) |
 
 ### Parse Error Checking Overhead
 
@@ -41,17 +41,17 @@ Parse error detection can be enabled with `raise_parse_errors: true`. This compa
 
 | Configuration | Native | Pure (no JIT) | Pure (YJIT) | Pure (ZJIT) |
 | ------------- | ------ | ------------- | ----------- | ----------- |
-| Medium CSS (139 lines) - no error checking | 27.71K i/s | 2.09K i/s | 8.62K i/s | 4.84K i/s |
-| Medium CSS (139 lines) - with error checking | 27.36K i/s | 1.92K i/s | 7.97K i/s | 4.55K i/s |
+| Medium CSS (139 lines) - no error checking | 29.28K i/s | 2.13K i/s | 9.06K i/s | 4.9K i/s |
+| Medium CSS (139 lines) - with error checking | 28.99K i/s | 1.96K i/s | 8.15K i/s | 4.62K i/s |
 
 **Overhead Analysis:**
 
 | Implementation | Overhead |
 |----------------|----------|
-| Native | 1.3% slower |
-| Pure (no JIT) | 9.0% slower |
-| Pure (YJIT) | 8.2% slower |
-| Pure (ZJIT) | 6.3% slower |
+| Native | 1.0% slower |
+| Pure (no JIT) | 8.6% slower |
+| Pure (YJIT) | 11.2% slower |
+| Pure (ZJIT) | 6.2% slower |
 
 ---
 
@@ -61,22 +61,22 @@ Time to convert parsed CSS back to string format
 
 | Test Case | Native | Pure (no JIT) | Pure (YJIT) | Pure (ZJIT) |
 | --------- | ------ | ------------- | ----------- | ----------- |
-| to_s (Bootstrap - 191KB) | 984.2 i/s | 301.6 i/s | 484.0 i/s | 338.1 i/s |
-| to_s (Compact utilities - 2.9KB) | 50.4K i/s | 11.02K i/s | 18.96K i/s | 10.9K i/s |
-| to_formatted_s (Nested CSS - 1.3KB) | 151.49K i/s | 54.68K i/s | 87.22K i/s | 64.4K i/s |
-| to_s with selector_lists (3.4KB) | 14.99K i/s | 6.72K i/s | 10.69K i/s | 7.87K i/s |
-| Media filtering (Bootstrap print only) | 1.1K i/s | 464.3 i/s | 694.0 i/s | 528.0 i/s |
+| to_s (Bootstrap - 191KB) | 1.0K i/s | 302.1 i/s | 478.6 i/s | 345.8 i/s |
+| to_s (Compact utilities - 2.9KB) | 51.64K i/s | 11.23K i/s | 19.41K i/s | 11.22K i/s |
+| to_formatted_s (Nested CSS - 1.3KB) | 153.95K i/s | 55.34K i/s | 90.08K i/s | 64.85K i/s |
+| to_s with selector_lists (3.4KB) | 15.33K i/s | 6.78K i/s | 10.84K i/s | 7.93K i/s |
+| Media filtering (Bootstrap print only) | 1.12K i/s | 472.4 i/s | 702.9 i/s | 546.9 i/s |
 
 ### Speedups
 
 | Comparison | Speedup |
 |------------|---------|
-| Native vs Pure (no JIT) | 3.04x faster (avg) |
-| Native vs Pure (YJIT) | 1.88x faster (avg) |
+| Native vs Pure (no JIT) | 3.07x faster (avg) |
+| Native vs Pure (YJIT) | 1.89x faster (avg) |
 | Native vs Pure (ZJIT) | 2.77x faster (avg) |
-| YJIT impact on Pure Ruby | 1.6x faster (avg) |
-| ZJIT impact on Pure Ruby | 1.12x faster (avg) |
-| ZJIT vs YJIT | 1.43x slower (avg) |
+| YJIT impact on Pure Ruby | 1.61x faster (avg) |
+| ZJIT impact on Pure Ruby | 1.13x faster (avg) |
+| ZJIT vs YJIT | 1.41x slower (avg) |
 
 ---
 
@@ -86,23 +86,23 @@ Time to calculate CSS selector specificity values
 
 | Test Case | Native | Pure (no JIT) | Pure (YJIT) | Pure (ZJIT) |
 | --------- | ------ | ------------- | ----------- | ----------- |
-| Simple Selectors | 1.02M i/s | 413.96K i/s | 1.43M i/s | 749.57K i/s |
-| Compound Selectors | 997.92K i/s | 183.13K i/s | 498.8K i/s | 404.43K i/s |
-| Combinators | 757.46K i/s | 136.54K i/s | 267.01K i/s | 260.74K i/s |
-| Pseudo-classes & Pseudo-elements | 757.92K i/s | 113.58K i/s | 224.99K i/s | 209.63K i/s |
-| :not() Pseudo-class (CSS3) | 883.15K i/s | 110.53K i/s | 237.8K i/s | 189.57K i/s |
-| Complex Real-world Selectors | 913.36K i/s | 55.32K i/s | 120.83K i/s | 116.13K i/s |
+| Simple Selectors | 1.04M i/s | 419.22K i/s | 1.44M i/s | 759.22K i/s |
+| Compound Selectors | 1.02M i/s | 185.49K i/s | 504.13K i/s | 409.23K i/s |
+| Combinators | 761.42K i/s | 137.7K i/s | 271.55K i/s | 260.99K i/s |
+| Pseudo-classes & Pseudo-elements | 762.04K i/s | 115.91K i/s | 230.05K i/s | 211.96K i/s |
+| :not() Pseudo-class (CSS3) | 896.14K i/s | 111.68K i/s | 246.68K i/s | 191.71K i/s |
+| Complex Real-world Selectors | 926.9K i/s | 55.9K i/s | 122.65K i/s | 116.52K i/s |
 
 ### Speedups
 
 | Comparison | Speedup |
 |------------|---------|
-| Native vs Pure (no JIT) | 7.44x faster (avg) |
-| Native vs Pure (YJIT) | 3.37x faster (avg) |
-| Native vs Pure (ZJIT) | 3.81x faster (avg) |
-| YJIT impact on Pure Ruby | 2.41x faster (avg) |
-| ZJIT impact on Pure Ruby | 1.93x faster (avg) |
-| ZJIT vs YJIT | 1.2x slower (avg) |
+| Native vs Pure (no JIT) | 7.45x faster (avg) |
+| Native vs Pure (YJIT) | 3.34x faster (avg) |
+| Native vs Pure (ZJIT) | 3.83x faster (avg) |
+| YJIT impact on Pure Ruby | 2.42x faster (avg) |
+| ZJIT impact on Pure Ruby | 1.92x faster (avg) |
+| ZJIT vs YJIT | 1.22x slower (avg) |
 
 ---
 
@@ -112,23 +112,23 @@ Time to flatten multiple CSS rule sets with same selector
 
 | Test Case | Native | Pure (no JIT) | Pure (YJIT) | Pure (ZJIT) |
 | --------- | ------ | ------------- | ----------- | ----------- |
-| No shorthand properties (large) | 13.28K i/s | 2.85K i/s | 5.37K i/s | 3.44K i/s |
-| Simple properties | 138.9K i/s | 54.39K i/s | 84.42K i/s | 65.18K i/s |
-| Cascade with specificity | 168.14K i/s | 52.88K i/s | 86.97K i/s | 65.61K i/s |
-| Important declarations | 167.4K i/s | 53.61K i/s | 87.29K i/s | 65.6K i/s |
-| Shorthand expansion | 132.57K i/s | 46.27K i/s | 78.43K i/s | 58.86K i/s |
-| Complex flattening | 32.18K i/s | 11.32K i/s | 17.41K i/s | 14.11K i/s |
+| No shorthand properties (large) | 12.59K i/s | 2.89K i/s | 5.49K i/s | 3.51K i/s |
+| Simple properties | 133.58K i/s | 54.85K i/s | 85.53K i/s | 67.83K i/s |
+| Cascade with specificity | 163.14K i/s | 54.45K i/s | 87.66K i/s | 68.03K i/s |
+| Important declarations | 163.15K i/s | 54.55K i/s | 87.65K i/s | 68.08K i/s |
+| Shorthand expansion | 128.2K i/s | 48.71K i/s | 79.16K i/s | 61.07K i/s |
+| Complex flattening | 31.25K i/s | 11.65K i/s | 17.15K i/s | 14.43K i/s |
 
 ### Speedups
 
 | Comparison | Speedup |
 |------------|---------|
-| Native vs Pure (no JIT) | 3.2x faster (avg) |
-| Native vs Pure (YJIT) | 1.92x faster (avg) |
-| Native vs Pure (ZJIT) | 2.61x faster (avg) |
-| YJIT impact on Pure Ruby | 1.66x faster (avg) |
-| ZJIT impact on Pure Ruby | 1.23x faster (avg) |
-| ZJIT vs YJIT | 1.33x slower (avg) |
+| Native vs Pure (no JIT) | 3.02x faster (avg) |
+| Native vs Pure (YJIT) | 1.84x faster (avg) |
+| Native vs Pure (ZJIT) | 2.44x faster (avg) |
+| YJIT impact on Pure Ruby | 1.63x faster (avg) |
+| ZJIT impact on Pure Ruby | 1.24x faster (avg) |
+| ZJIT vs YJIT | 1.3x slower (avg) |
 
 ---
 

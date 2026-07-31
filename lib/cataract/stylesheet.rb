@@ -561,6 +561,7 @@ module Cataract
     # @return [self] Returns self for method chaining
     def load_uri(uri, options = {})
       require 'uri'
+      require_relative 'import_resolver'
 
       uri_obj = URI(uri)
       # Reuse the same validation and fetch collaborator @import resolution
@@ -1268,6 +1269,8 @@ module Cataract
     # @param depth [Integer] Current import depth (for depth limit)
     # @return [void]
     def resolve_imports(imports, options, imported_urls: [], depth: 0)
+      require_relative 'import_resolver'
+
       # Normalize options with safe defaults
       opts = ImportResolver.normalize_options(options)
 

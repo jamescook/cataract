@@ -4,6 +4,7 @@ require 'benchmark/ips'
 require 'json'
 require 'fileutils'
 require 'open3'
+require 'time' # Time#iso8601 - core only carries it from Ruby 4.0 on
 require_relative 'system_metadata'
 require_relative 'speedup_calculator'
 require_relative 'implementation'
@@ -117,8 +118,10 @@ class BenchmarkHarness
       instance.call
       finalize(instance) unless skip_finalize
     rescue StandardError => e
-      puts "❌ Benchmark failed: #{e.message}"
-      puts e.backtrace.first(5).join("\n")
+      # stderr, not stdout: a parent process collects this to explain why a
+      # worker died, and stdout is where benchmark-ips results go.
+      warn "❌ Benchmark failed: #{e.message}"
+      warn e.backtrace.first(5).join("\n")
       exit 1
     end
 
@@ -272,8 +275,9 @@ class BenchmarkHarness
       # Workers write into the same directory as their parent, so a redirected
       # results location survives the process boundary.
       env = implementation.env.merge(results.env)
-      _, status = run_subprocess(implementation.ruby_command(worker_script), env: env)
-      raise "#{implementation} benchmark failed" unless status.success?
+      command = implementation.ruby_command(worker_script)
+      stdout, stderr, status = run_subprocess(command, env: env)
+      raise variant_failure(implementation, command_line(command, env), stdout, stderr, status) unless status.success?
 
       puts
       puts
@@ -288,13 +292,46 @@ class BenchmarkHarness
     "#{self.class.benchmark_name}_*.json"
   end
 
+  # Describes how a variant died, not just that it did.
+  #
+  # A worker can raise, exit non-zero, or be killed outright - a crash in the C
+  # extension arrives as a signal with no Ruby backtrace anywhere. The command
+  # and the JIT/backend variables are included because the variant is only
+  # reproducible with them.
+  def variant_failure(implementation, command_line, stdout, stderr, status)
+    cause = if status.signaled?
+              "killed by SIG#{Signal.signame(status.termsig) || status.termsig}"
+            else
+              "exited #{status.exitstatus}"
+            end
+
+    # Falls back to stdout because a worker's last words don't always land on
+    # stderr, and an empty report is the one thing worse than a wrong guess.
+    stream, output = stderr.strip.empty? ? ['stdout (stderr was empty)', stdout] : ['stderr', stderr]
+    tail = output.strip.empty? ? '    (worker produced no output)' : indent(output.lines.last(20))
+
+    ["#{implementation} benchmark failed - #{cause}", "  command: #{command_line}", "  #{stream}:", tail].join("\n")
+  end
+
+  # The variant's selecting variables belong with the command; without them it
+  # reproduces a different run.
+  def command_line(command, env)
+    [*env.compact.map { |name, value| "#{name}=#{value}" }, *command].join(' ')
+  end
+
+  def indent(lines)
+    lines.map { |line| "    #{line}" }.join
+  end
+
   def run_subprocess(command, env: {})
     stdout_lines = []
+    stderr_lines = []
 
     Open3.popen3(env, *command) do |stdin, stdout, stderr, wait_thr|
       stdin.close
 
-      # Stream both streams as they arrive so a long benchmark isn't silent
+      # Stream both streams as they arrive so a long benchmark isn't silent,
+      # and keep stderr so a failure can be explained after the fact.
       readers = [
         Thread.new do
           stdout.each_line do |line|
@@ -302,11 +339,16 @@ class BenchmarkHarness
             stdout_lines << line
           end
         end,
-        Thread.new { stderr.each_line { |line| warn "⚠️  #{line}" } }
+        Thread.new do
+          stderr.each_line do |line|
+            warn "⚠️  #{line}"
+            stderr_lines << line
+          end
+        end
       ]
       readers.each(&:join)
 
-      return [stdout_lines.join, wait_thr.value]
+      return [stdout_lines.join, stderr_lines.join, wait_thr.value]
     end
   end
 
