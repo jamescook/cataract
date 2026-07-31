@@ -14,14 +14,16 @@ class RubyMode
 
   Mismatch = Class.new(StandardError)
 
-  attr_reader :id, :cli_flags, :label, :column_label
+  attr_reader :id, :cli_flags, :label, :column_label, :vm_constant
 
-  def initialize(id:, cli_flags:, label:, column_label:, detector:, stats_reader: ->(_vm) { {} })
+  def initialize(id:, cli_flags:, label:, column_label:, detector:, vm_constant: nil,
+                 stats_reader: ->(_vm) { {} })
     @id = id
     @cli_flags = cli_flags.freeze
     @label = label
     @column_label = column_label
     @detector = detector
+    @vm_constant = vm_constant
     @stats_reader = stats_reader
     freeze
   end
@@ -29,6 +31,13 @@ class RubyMode
   # Whether this is the mode active in the given VM.
   def active?(ruby_vm = RubyVM)
     @detector.call(ruby_vm)
+  end
+
+  # Whether this Ruby can run the mode at all. ZJIT arrived in Ruby 4.0 and
+  # YJIT can be left out of a build, so elsewhere the matching --flag is an
+  # error rather than a slower run.
+  def available?(ruby_vm = RubyVM)
+    vm_constant.nil? || ruby_vm.const_defined?(vm_constant)
   end
 
   # What the JIT compiled and what it cost, normalized to keys that mean the
@@ -73,6 +82,7 @@ class RubyMode
     cli_flags: %w[--yjit].freeze,
     label: 'YJIT',
     column_label: 'YJIT',
+    vm_constant: :YJIT,
     detector: ->(ruby_vm) { jit_enabled?(ruby_vm, :YJIT) },
     stats_reader: lambda { |ruby_vm|
       normalize_stats(ruby_vm.const_get(:YJIT).runtime_stats,
@@ -87,6 +97,7 @@ class RubyMode
     cli_flags: %w[--zjit].freeze,
     label: 'ZJIT',
     column_label: 'ZJIT',
+    vm_constant: :ZJIT,
     detector: ->(ruby_vm) { jit_enabled?(ruby_vm, :ZJIT) },
     stats_reader: lambda { |ruby_vm|
       normalize_stats(ruby_vm.const_get(:ZJIT).stats,

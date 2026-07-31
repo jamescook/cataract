@@ -53,15 +53,22 @@ class TestBenchmarkPlumbing < Minitest::Test
     end
   end
 
+  # Only the variants this Ruby can run: ZJIT is Ruby 4.0+, and YJIT can be
+  # absent from a build, so `ruby --zjit` on a 3.x is an error rather than a
+  # variant. The harness measures what it can and the columns follow.
+  def expected_implementations
+    Implementation.available
+  end
+
   def test_runs_one_subprocess_per_implementation
     produced = combined['results'].map { |row| row['implementation'] }.uniq.sort
 
-    assert_equal Implementation.all.map { |i| i.id.to_s }.sort, produced
+    assert_equal expected_implementations.map { |i| i.id.to_s }.sort, produced
   end
 
   def test_every_result_carries_both_axes
     combined['results'].each do |row|
-      implementation = Implementation.all.find { |i| i.produced?(row) }
+      implementation = expected_implementations.find { |i| i.produced?(row) }
 
       refute_nil implementation, "unrecognized implementation #{row['implementation'].inspect}"
       assert_equal implementation.backend.id.to_s, row['backend']
@@ -73,8 +80,8 @@ class TestBenchmarkPlumbing < Minitest::Test
     # Guards the case a timing alone can't distinguish: a JIT that was enabled
     # but never compiled the code being measured.
     jitted = combined['results'].reject { |row| row['jit'] == 'none' }
+    skip 'no JIT available on this Ruby' if jitted.empty?
 
-    refute_empty jitted
     jitted.each do |row|
       assert_operator row.dig('jit_stats', 'compiled_iseq_count'), :>, 0,
                       "#{row['implementation']} reported no compiled iseqs"

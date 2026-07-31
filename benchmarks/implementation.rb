@@ -26,6 +26,13 @@ class Implementation
     end
   end
 
+  # Those the running Ruby can actually execute. Drives both the benchmark run
+  # and the BENCHMARKS.md columns, so a Ruby without ZJIT reports three
+  # columns rather than failing on `ruby --zjit`.
+  def self.available(ruby_vm = RubyVM)
+    all.select { |implementation| implementation.mode.available?(ruby_vm) }
+  end
+
   def self.find(backend_id, mode_id)
     new(backend: Backend.fetch(backend_id), mode: RubyMode.fetch(mode_id))
   end

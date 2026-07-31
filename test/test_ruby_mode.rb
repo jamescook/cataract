@@ -63,6 +63,21 @@ class TestRubyMode < Minitest::Test
     end
   end
 
+  def test_no_jit_is_available_on_every_ruby
+    assert RubyMode::NO_JIT.available?(FakeVM.without_jits)
+  end
+
+  def test_a_jit_missing_from_the_build_is_unavailable
+    # ZJIT is Ruby 4.0+, so on a 3.x `ruby --zjit` is an error, not a variant.
+    refute RubyMode::ZJIT.available?(FakeVM.with(:YJIT))
+    assert RubyMode::YJIT.available?(FakeVM.with(:YJIT))
+  end
+
+  def test_a_jit_present_but_disabled_is_still_available
+    # Availability is about the build, not the current switch position.
+    assert RubyMode::ZJIT.available?(FakeVM.with(:ZJIT, enabled: false))
+  end
+
   def test_expected_is_nil_when_unset_so_workers_can_run_standalone
     assert_nil RubyMode.expected({})
   end

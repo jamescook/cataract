@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'test_helper'
+require_relative 'support/fake_vm'
 require_relative '../benchmarks/implementation'
 
 # Covers the benchmark harness's Implementation (a backend paired with a Ruby
@@ -22,6 +23,20 @@ class TestBenchmarkImplementation < Minitest::Test
     Implementation.all.each do |implementation|
       assert_includes implementation.backend.modes, implementation.mode
     end
+  end
+
+  def test_available_drops_variants_this_ruby_cannot_run
+    # A 3.x has YJIT but no ZJIT, so it benchmarks three variants, not four.
+    available = Implementation.available(FakeVM.with(:YJIT)).map(&:id)
+
+    assert_equal %i[native_none pure_none pure_yjit], available
+  end
+
+  def test_available_is_everything_when_the_ruby_has_both_jits
+    ruby_vm = FakeVM.new(YJIT: FakeVM::FakeJit.new(enabled: false),
+                         ZJIT: FakeVM::FakeJit.new(enabled: false))
+
+    assert_equal Implementation.all.map(&:id), Implementation.available(ruby_vm).map(&:id)
   end
 
   def test_id_pairs_both_axes

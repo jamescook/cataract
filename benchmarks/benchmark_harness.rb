@@ -257,7 +257,7 @@ class BenchmarkHarness
 
   def announce_variants
     puts "Running #{self.class.benchmark_name} benchmarks via subprocesses..."
-    puts "Variants: #{Implementation.all.map(&:label).join(', ')}"
+    puts "Variants: #{Implementation.available.map(&:label).join(', ')}"
     puts
   end
 
@@ -266,7 +266,7 @@ class BenchmarkHarness
   def run_all_variants(worker_script)
     cleanup_worker_results(worker_glob)
 
-    Implementation.all.each do |implementation|
+    Implementation.available.each do |implementation|
       puts "→ Running #{implementation}..."
       puts
       # Workers write into the same directory as their parent, so a redirected
