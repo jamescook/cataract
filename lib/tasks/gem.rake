@@ -40,6 +40,95 @@ namespace :gem do
     puts "\nTo release, run: rake release"
   end
 
+  desc 'Verify the gem installs and runs with --disable-native-extension'
+  task :verify_pure_only do
+    require 'tmpdir'
+    require 'bundler'
+
+    # The suite already runs everything under CATARACT_PURE=1, but that leaves
+    # the compiled extension on disk. This installs the built gem with no
+    # extension at all - the only way to catch a stub Makefile that stops
+    # satisfying RubyGems, or a file the pure backend needs dropping out of
+    # spec.files.
+    Dir.mktmpdir do |dir|
+      gem_file = File.join(dir, 'cataract-pure-only.gem')
+      gem_home = File.join(dir, 'gems')
+      env = { 'GEM_HOME' => gem_home, 'GEM_PATH' => gem_home }
+      scratch = File.realpath(dir)
+
+      check = <<~RUBY
+        require 'cataract'
+
+        # Confirm this is the gem just built, not one already on the system.
+        spec = Gem.loaded_specs['cataract']
+        unless spec && File.realpath(spec.full_gem_path).start_with?('#{scratch}')
+          raise "cataract loaded from \#{spec&.full_gem_path.inspect}, not the scratch install"
+        end
+
+        # The build recorded the decision rather than it being inferred.
+        if Cataract::BuildConfig::NATIVE_EXTENSION
+          raise 'BuildConfig::NATIVE_EXTENSION is true; expected the install to have recorded false'
+        end
+
+        # The compiled objects are genuinely absent, not merely unused: a stale
+        # extension on the load path would satisfy every other assertion here.
+        %w[cataract/native_extension cataract/cataract_color].each do |ext|
+          begin
+            require ext
+          rescue LoadError
+            next
+          end
+          raise "\#{ext} loaded; expected no compiled extension to be available"
+        end
+
+        unless Cataract::IMPLEMENTATION == :ruby
+          raise "Expected the pure backend, got \#{Cataract::IMPLEMENTATION.inspect}"
+        end
+
+        unless defined?(Cataract::Backends::Native).nil?
+          raise 'Cataract::Backends::Native is defined; the native backend should never have loaded'
+        end
+
+        sheet = Cataract::Stylesheet.parse(File.read('sample.css'))
+        raise "Expected 3 rules, got \#{sheet.rules_count}" unless sheet.rules_count == 3
+
+        css = sheet.to_s
+        raise "Declaration lost: \#{css.inspect}" unless css.include?('color: red')
+        raise "Media query lost: \#{css.inspect}" unless css.include?('@media print')
+
+        puts '✓ No compiled extension is loadable'
+        puts "✓ Loaded the \#{Cataract::IMPLEMENTATION} backend and parsed \#{sheet.rules_count} rules"
+      RUBY
+
+      File.write(File.join(dir, 'sample.css'), "body { color: red; }\n@media print { .a, .b { margin: 0; } }\n")
+
+      # Every subprocess runs outside Bundler. Under `bundle exec` its RUBYOPT
+      # reaches `gem install`, which then counts bundled gems as satisfying
+      # cataract's dependencies and installs none of them into the scratch
+      # home. The check runs without Bundler, cannot activate the gem for want
+      # of those dependencies, and RubyGems reports that as a bare
+      # "cannot load such file -- cataract".
+      Bundler.with_unbundled_env do
+        sh 'gem', 'build', 'cataract.gemspec', '-o', gem_file
+        sh env, 'gem', 'install', gem_file, '--no-document', '--', '--disable-native-extension'
+
+        compiled = Dir.glob(File.join(gem_home, '**', '*.{so,bundle}'))
+        raise "Expected no compiled artifacts, found: #{compiled.join(', ')}" unless compiled.empty?
+
+        puts "\n✓ Nothing was compiled"
+
+        # Runs outside this checkout with CATARACT_PURE unset, so the installed
+        # gem has to reach the pure backend on its own rather than be told to.
+        # verbose(false) stops rake echoing the whole check script back.
+        Dir.chdir(dir) do
+          verbose(false) { sh env.merge('CATARACT_PURE' => nil), RbConfig.ruby, '-e', check }
+        end
+      end
+    end
+
+    puts "\n✓ Pure-only install verified"
+  end
+
   desc 'Bump version (usage: rake gem:bump[major|minor|patch])'
   task :bump, [:type] do |_t, args|
     type = args[:type] || 'patch'

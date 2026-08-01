@@ -14,6 +14,26 @@ jobs:
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
+  # Packaging check, not a behaviour check: the suite already runs everything
+  # under CATARACT_PURE=1, but that leaves the compiled extension on disk. This
+  # installs the built gem with no extension at all, which is the only way to
+  # catch a stub Makefile that stops satisfying RubyGems, or a file the pure
+  # backend needs going missing from spec.files.
+  pure-only-install:
+    name: Install with --disable-native-extension
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: '3.4'
+        bundler-cache: true
+
+    - name: Install without the C extension and verify the pure backend
+      run: bundle exec rake gem:verify_pure_only
+
   lint:
     if: github.actor == 'jamescook'
     needs: test-ubuntu

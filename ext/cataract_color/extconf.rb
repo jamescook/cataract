@@ -1,6 +1,10 @@
 # frozen_string_literal: true
 
 require 'mkmf'
+require_relative '../cataract/extension_config'
+
+# The colour extension is C too, so a compiler-less install skips it as well.
+return unless ExtensionConfig.build_native_extension?
 
 # Add include path for cataract.h from main extension
 $INCFLAGS << ' -I$(srcdir)/../cataract'
