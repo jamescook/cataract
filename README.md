@@ -40,6 +40,22 @@ Cataract includes a pure Ruby implementation alongside the C extension. This is 
 - Development/debugging without needing to recompile C code
 - Environments with restricted native code execution
 
+**Install without compiling the C extension at all:**
+```bash
+gem install cataract -- --disable-native-extension
+```
+
+```bash
+# Bundler equivalent, set before `bundle install`
+bundle config set build.cataract --disable-native-extension
+```
+
+Installed this way there is no compile step and no compiler needed. The gem
+records the choice at build time, so `require 'cataract'` loads the pure Ruby
+backend on its own — no environment variable, and `Cataract::IMPLEMENTATION`
+reports `:ruby`. A missing extension that *wasn't* asked for still raises,
+rather than quietly falling back to a slower backend.
+
 **In your Gemfile:**
 ```ruby
 gem 'cataract', require: 'cataract/pure'

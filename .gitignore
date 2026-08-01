@@ -56,3 +56,6 @@ docs/
 
 .cache/
 .cocci/
+
+# Generated at build time by ext/cataract/extconf.rb
+lib/cataract/build_config.rb

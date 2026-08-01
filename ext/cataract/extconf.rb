@@ -1,6 +1,11 @@
 # frozen_string_literal: true
 
 require 'mkmf'
+require_relative 'extension_config'
+
+# Nothing below runs for a --disable-native-extension install; the stub
+# Makefile and build config are already written by this point.
+return unless ExtensionConfig.build_native_extension?
 
 # Helper methods for platform detection
 def darwin?
