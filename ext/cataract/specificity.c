@@ -20,6 +20,15 @@
 #include "cataract.h"
 #include <string.h>
 
+// A CSS identifier character: [a-zA-Z0-9_-]. Underscore is as much a part of an
+// identifier as a letter, so it must not terminate one - a scan that stops at
+// '_' leaves the remainder of the name to be miscounted as a separate type
+// selector, making ':foo_bar' score one element higher than ':foobar'.
+static inline int is_ident_char(char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+           (c >= '0' && c <= '9') || c == '-' || c == '_';
+}
+
 // Calculate specificity for a CSS selector string
 VALUE calculate_specificity(VALUE self, VALUE selector_string) {
     Check_Type(selector_string, T_STRING);
@@ -49,8 +58,7 @@ VALUE calculate_specificity(VALUE self, VALUE selector_string) {
             id_count++;
             p++;
             // Skip the identifier
-            while (p < pe && ((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') ||
-                              (*p >= '0' && *p <= '9') || *p == '-' || *p == '_')) {
+            while (p < pe && is_ident_char(*p)) {
                 p++;
             }
             continue;
@@ -61,8 +69,7 @@ VALUE calculate_specificity(VALUE self, VALUE selector_string) {
             class_count++;
             p++;
             // Skip the identifier
-            while (p < pe && ((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') ||
-                              (*p >= '0' && *p <= '9') || *p == '-' || *p == '_')) {
+            while (p < pe && is_ident_char(*p)) {
                 p++;
             }
             continue;
@@ -95,8 +102,7 @@ VALUE calculate_specificity(VALUE self, VALUE selector_string) {
 
             // Extract pseudo name
             const char *pseudo_start = p;
-            while (p < pe && ((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') ||
-                              (*p >= '0' && *p <= '9') || *p == '-')) {
+            while (p < pe && is_ident_char(*p)) {
                 p++;
             }
             long pseudo_len = p - pseudo_start;
@@ -125,7 +131,18 @@ VALUE calculate_specificity(VALUE self, VALUE selector_string) {
                 if (is_not) {
                     const char *not_content_start = p;
 
-                    // Find closing paren
+                    // Find closing paren.
+                    //
+                    // The increment is conditional here, unlike the equivalent
+                    // scan in the else branch below, and the difference is
+                    // deliberate: this branch needs the parenthesised content
+                    // WITHOUT its closing ')', because that substring is handed
+                    // to the recursive specificity call. Guarding p++ on
+                    // paren_depth leaves p sitting on the ')' so the slice ends
+                    // just before it; the explicit p++ after the recursion then
+                    // steps over it. The else branch discards the content, so it
+                    // increments unconditionally and runs straight past the ')'.
+                    // Both paths end with p one character past the closing paren.
                     while (p < pe && paren_depth > 0) {
                         if (*p == '(') paren_depth++;
                         else if (*p == ')') paren_depth--;
@@ -156,7 +173,10 @@ VALUE calculate_specificity(VALUE self, VALUE selector_string) {
 
                     p++;  // Skip closing paren
                 } else {
-                    // Skip other function arguments
+                    // Skip other function arguments. Unconditional p++ here (see
+                    // the :not branch above): the content is discarded, so this
+                    // scan can consume the closing ')' itself rather than
+                    // stopping short of it.
                     while (p < pe && paren_depth > 0) {
                         if (*p == '(') paren_depth++;
                         else if (*p == ')') paren_depth--;
@@ -198,8 +218,7 @@ VALUE calculate_specificity(VALUE self, VALUE selector_string) {
         // local name instead.
         if ((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z')) {
             // Skip the identifier
-            while (p < pe && ((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') ||
-                              (*p >= '0' && *p <= '9') || *p == '-' || *p == '_')) {
+            while (p < pe && is_ident_char(*p)) {
                 p++;
             }
             if (p < pe && *p == '|') {

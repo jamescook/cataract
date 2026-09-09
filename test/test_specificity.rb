@@ -39,6 +39,26 @@ class TestSpecificity < Minitest::Test
     assert_equal 2, Cataract::Backends.active.calculate_specificity('p::first-line')
   end
 
+  # Underscore is a valid CSS identifier character, so it must not terminate an
+  # identifier in any of the four places specificity parsing consumes one: an id,
+  # a class, a type selector, and a pseudo-class/element name. A parser that stops
+  # at '_' silently counts the remainder as an extra type selector - which is how
+  # ':foo_bar' scores 11 instead of 10, while '#foo_bar' and '.foo_bar' are fine.
+  def test_specificity_with_underscores_in_identifiers
+    assert_equal 100, Cataract::Backends.active.calculate_specificity('#foo_bar')
+    assert_equal 10, Cataract::Backends.active.calculate_specificity('.foo_bar')
+    assert_equal 1, Cataract::Backends.active.calculate_specificity('foo_bar')
+    assert_equal 10, Cataract::Backends.active.calculate_specificity(':foo_bar')
+    assert_equal 1, Cataract::Backends.active.calculate_specificity('::foo_bar')
+
+    # A leading underscore is a valid identifier start, not a separate token.
+    assert_equal 10, Cataract::Backends.active.calculate_specificity(':_private')
+
+    # Combined with a type selector, the pseudo-class must still contribute
+    # exactly one class-level unit.
+    assert_equal 11, Cataract::Backends.active.calculate_specificity('a:foo_bar')
+  end
+
   def test_specificity_with_attribute_selectors
     # Attribute selectors count as class selectors
     assert_equal 10, Cataract::Backends.active.calculate_specificity('[href]')
