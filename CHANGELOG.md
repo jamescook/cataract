@@ -1,3 +1,7 @@
+## [Unreleased]
+
+- Fix: an underscore in a pseudo-class or pseudo-element name no longer inflates specificity in the C extension - `:foo_bar` computed as 11 instead of 10, because the name scan stopped at the underscore and the remainder was then counted as a separate type selector. Ids, classes and type selectors were unaffected, as was the pure Ruby backend, which already returned the correct value.
+
 ## [0.6.1] - 2026-07-31
 
 - Fix: parsing after `Process.warmup` or `GC.compact` could raise `TypeError: uninitialized class`, or crash the process with a segfault, in the C extension. Cataract's struct classes (`Rule`, `Declaration`, `AtRule`, `Stylesheet`, `ImportStatement`, `MediaQuery`, `ConditionalGroup`) and its exception classes were cached in C globals that were never registered with the GC; compaction relocates objects, leaving those cached pointers dangling, and every subsequent parse then built its structs from a stale address. Nothing unusual was needed to hit this - `Process.warmup` compacts the heap and is commonly called once after boot. Present since the C extension shipped; the pure Ruby backend was unaffected.
