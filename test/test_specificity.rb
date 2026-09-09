@@ -59,6 +59,57 @@ class TestSpecificity < Minitest::Test
     assert_equal 11, Cataract::Backends.active.calculate_specificity('a:foo_bar')
   end
 
+  # ============================================================================
+  # Selectors Level 4 specificity - not yet implemented.
+  #
+  # Both backends currently agree with each other on all of the cases below, so
+  # the dual-backend run stays green while both produce the wrong number. These
+  # were found by diffing against an external reference implementation; the
+  # expectations here are the spec's, not the current behaviour's.
+  #
+  # Level 4 says the specificity of :is(), :not() and :has() is that of the MOST
+  # SPECIFIC selector in its argument list, and that :where() always contributes
+  # zero. Note that single-argument cases such as :is(.a) and :has(.a) already
+  # return the right number by coincidence - 10 is also what a plain unrecognised
+  # pseudo-class scores - so they are not evidence the argument is being read.
+  # ============================================================================
+
+  def test_specificity_of_not_uses_most_specific_argument
+    skip 'Selectors 4: :not() with a selector list sums its arguments instead of taking the maximum'
+
+    # Single-argument :not() is already correct; the list forms are not.
+    assert_equal 10, Cataract::Backends.active.calculate_specificity(':not(.a)')
+
+    # Currently 20, 30 and 110 respectively - the arguments are being summed.
+    assert_equal 10, Cataract::Backends.active.calculate_specificity(':not(.a, .b)')
+    assert_equal 10, Cataract::Backends.active.calculate_specificity(':not(.a, .b, .c)')
+    assert_equal 100, Cataract::Backends.active.calculate_specificity(':not(#a, .b)')
+  end
+
+  def test_specificity_of_is_uses_most_specific_argument
+    skip 'Selectors 4: :is() argument list is not inspected; it scores as a plain pseudo-class'
+
+    # Currently 10 - the '#b' argument is not counted at all.
+    assert_equal 100, Cataract::Backends.active.calculate_specificity(':is(.a, #b)')
+    assert_equal 1, Cataract::Backends.active.calculate_specificity(':is(div)')
+  end
+
+  def test_specificity_of_where_is_always_zero
+    skip 'Selectors 4: :where() is not zeroed; it scores as a plain pseudo-class'
+
+    # Currently 10 in both cases. :where() contributes nothing, whatever it wraps.
+    assert_equal 0, Cataract::Backends.active.calculate_specificity(':where(.a)')
+    assert_equal 0, Cataract::Backends.active.calculate_specificity(':where(#a)')
+    assert_equal 1, Cataract::Backends.active.calculate_specificity('div:where(#a)')
+  end
+
+  def test_specificity_of_has_uses_most_specific_argument
+    skip 'Selectors 4: :has() argument list is not inspected; it scores as a plain pseudo-class'
+
+    # Currently 10 - the '#a' argument is not counted.
+    assert_equal 100, Cataract::Backends.active.calculate_specificity(':has(#a)')
+  end
+
   def test_specificity_with_attribute_selectors
     # Attribute selectors count as class selectors
     assert_equal 10, Cataract::Backends.active.calculate_specificity('[href]')
