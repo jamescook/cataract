@@ -1,50 +1,61 @@
 # frozen_string_literal: true
 
-# Load SimpleCov for code coverage when COVERAGE env var is set
-if ENV['COVERAGE']
-  require 'simplecov'
-  require 'simplecov-cobertura'
+# Minitest runs tests by reflection, which an ahead-of-time compiled program
+# cannot do, so under `rake test:spinel` the same test files are compiled
+# against the subset of it in support/spinel_minitest.rb instead. Everything
+# in the other branch is a library Spinel cannot compile either, and has to
+# stay inside it: Spinel only leaves out code a bare RUBY_ENGINE test rules
+# out.
+if RUBY_ENGINE == 'spinel'
+  require_relative 'support/spinel_minitest'
+  require 'cataract'
+else
+  # Load SimpleCov for code coverage when COVERAGE env var is set
+  if ENV['COVERAGE']
+    require 'simplecov'
+    require 'simplecov-cobertura'
 
-  SimpleCov.formatters = SimpleCov::Formatter::MultiFormatter.new([
-                                                                    SimpleCov::Formatter::HTMLFormatter,
-                                                                    SimpleCov::Formatter::CoberturaFormatter
-                                                                  ])
+    SimpleCov.formatters = SimpleCov::Formatter::MultiFormatter.new([
+                                                                      SimpleCov::Formatter::HTMLFormatter,
+                                                                      SimpleCov::Formatter::CoberturaFormatter
+                                                                    ])
 
-  SimpleCov.start do
-    add_filter '/test/'
-    add_filter '/benchmarks/'
+    SimpleCov.start do
+      add_filter '/test/'
+      add_filter '/benchmarks/'
 
-    # Group coverage by component
-    add_group 'Parser', 'lib/cataract/parser.rb'
-    add_group 'RuleSet', 'lib/cataract/rule_set.rb'
-    add_group 'Declarations', 'lib/cataract/declarations.rb'
+      # Group coverage by component
+      add_group 'Parser', 'lib/cataract/parser.rb'
+      add_group 'RuleSet', 'lib/cataract/rule_set.rb'
+      add_group 'Declarations', 'lib/cataract/declarations.rb'
+    end
   end
-end
 
-require 'minitest/autorun'
-require 'cataract'
-if ENV['CATARACT_PURE'].nil?
-  require 'cataract/color_conversion' # Load color conversion extension for tests
-end
+  require 'minitest/autorun'
+  require 'cataract'
+  if ENV['CATARACT_PURE'].nil?
+    require 'cataract/color_conversion' # Load color conversion extension for tests
+  end
 
-# ssrf_filter (used by ImportResolver to guard @import / load_uri http(s)
-# fetches against SSRF) resolves hostnames via Resolv.getaddresses *before*
-# webmock's stubs ever come into play - webmock only intercepts the HTTP
-# request itself. Real DNS isn't available in sandboxed/CI test runs, so give
-# the example.com test domain (used throughout the import/load_uri specs) a
-# fixed, real public IP instead of hitting the network. Anything else -
-# including IP literals like 127.0.0.1, which Resolv resolves instantly with
-# no network call - falls through to the real implementation unchanged.
-require 'resolv'
+  # ssrf_filter (used by ImportResolver to guard @import / load_uri http(s)
+  # fetches against SSRF) resolves hostnames via Resolv.getaddresses *before*
+  # webmock's stubs ever come into play - webmock only intercepts the HTTP
+  # request itself. Real DNS isn't available in sandboxed/CI test runs, so give
+  # the example.com test domain (used throughout the import/load_uri specs) a
+  # fixed, real public IP instead of hitting the network. Anything else -
+  # including IP literals like 127.0.0.1, which Resolv resolves instantly with
+  # no network call - falls through to the real implementation unchanged.
+  require 'resolv'
 
-class Resolv
-  class << self
-    alias real_getaddresses getaddresses
+  class Resolv
+    class << self
+      alias real_getaddresses getaddresses
 
-    def getaddresses(hostname)
-      return ['93.184.216.34'] if hostname == 'example.com' || hostname.end_with?('.example.com')
+      def getaddresses(hostname)
+        return ['93.184.216.34'] if hostname == 'example.com' || hostname.end_with?('.example.com')
 
-      real_getaddresses(hostname)
+        real_getaddresses(hostname)
+      end
     end
   end
 end

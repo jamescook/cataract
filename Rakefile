@@ -44,6 +44,27 @@ namespace :test do
     abort('Pure Ruby tests failed!') unless success
   end
 
+  # The pure Ruby suite's test files, compiled by Spinel instead of loaded by
+  # Ruby - see test/support/spinel_test_suite.rb for how. Needs a Spinel
+  # compiler: SPINEL=/path/to/spinel, SPINEL_DIR=/path/to/its/dir, or `spinel`
+  # on PATH.
+  #
+  # Left out are the tests of things that are not the library and have no
+  # meaning in a compiled program: the benchmark harness (CRuby tooling that
+  # drives subprocesses and benchmark-ips) and CRuby's GC compaction.
+  desc 'Run the pure Ruby test suite compiled by Spinel'
+  task :spinel do
+    require_relative 'test/support/spinel_test_suite'
+
+    files = FileList['test/**/test_*.rb'].exclude(
+      'test/color/**/*',
+      'test/test_backend.rb', 'test/test_benchmark_*.rb', 'test/test_result_*.rb', 'test/test_ruby_mode.rb',
+      'test/test_speedup_calculator.rb', 'test/test_worker_helpers.rb', 'test/test_spinel_*.rb',
+      'test/test_gc_compaction.rb'
+    )
+    abort('Spinel tests failed!') unless SpinelTestSuite.new(files: files).run
+  end
+
   desc 'Run tests for both C extension and pure Ruby'
   task :all do
     impls = ['pure ruby']

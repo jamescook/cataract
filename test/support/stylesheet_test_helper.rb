@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'stringio' # capture_warnings; CRuby loads it for us, Spinel only on request
+
 # Test helpers for Stylesheet tests
 # Provides high-level assertions that work with parsed CSS structures
 module StylesheetTestHelper
