@@ -552,9 +552,9 @@ module Cataract
         # Split value on whitespace (handling calc() and other functions)
         def split_on_whitespace(value)
           parts = []
-          current = String.new
           paren_depth = 0
 
+          part_start = 0
           i = 0
           len = value.bytesize
           while i < len
@@ -562,21 +562,17 @@ module Cataract
 
             if byte == BYTE_LPAREN
               paren_depth += 1
-              current << byte
             elsif byte == BYTE_RPAREN
               paren_depth -= 1
-              current << byte
             elsif byte == BYTE_SPACE && paren_depth == 0
-              parts << current unless current.empty?
-              current = String.new
-            else
-              current << byte
+              parts << value.byteslice(part_start, i - part_start) if i > part_start
+              part_start = i + 1
             end
 
             i += 1
           end
 
-          parts << current unless current.empty?
+          parts << value.byteslice(part_start, len - part_start) if len > part_start
           parts
         end
 
