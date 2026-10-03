@@ -41,57 +41,66 @@ module Cataract
 
       private
 
-      # Fetch content via HTTP/HTTPS.
-      #
-      # Loads the HTTP libraries and translates their errors here, so that no
-      # rescue above this point names a constant that may not be loadable.
-      #
-      # @param url [String] the URL as written; `uri` may have been resolved
-      #   against a base and no longer match what the stylesheet requested
-      def fetch_http(uri, options, url)
-        require 'open-uri'
-        require 'ssrf_filter'
-
-        if options[:allow_local_network]
-          fetch_http_unfiltered(uri, options)
-        else
-          fetch_http_ssrf_safe(uri, options)
+      if RUBY_ENGINE == 'spinel'
+        # open-uri and ssrf_filter are not libraries Spinel can compile, so a
+        # Spinel build has no HTTP fetch of its own. file: imports still work,
+        # and a caller can pass its own fetcher: for anything else.
+        def fetch_http(_uri, _options, url)
+          raise ImportError, "HTTP imports are not available in a Spinel build: #{url} (pass a fetcher: to supply one)"
         end
-      rescue OpenURI::HTTPError => e
-        raise ImportError, "HTTP error fetching import: #{url} (#{e.message})"
-      rescue SocketError => e
-        raise ImportError, "Network error fetching import: #{url} (#{e.message})"
-      rescue SsrfFilter::Error => e
-        raise ImportError, "Import blocked by SSRF protection: #{url} (#{e.message})"
-      end
+      else
+        # Fetch content via HTTP/HTTPS.
+        #
+        # Loads the HTTP libraries and translates their errors here, so that no
+        # rescue above this point names a constant that may not be loadable.
+        #
+        # @param url [String] the URL as written; `uri` may have been resolved
+        #   against a base and no longer match what the stylesheet requested
+        def fetch_http(uri, options, url)
+          require 'open-uri'
+          require 'ssrf_filter'
 
-      # Plain open-uri fetch, no SSRF protection - only reachable when the
-      # caller explicitly opted in via allow_local_network: true.
-      def fetch_http_unfiltered(uri, options)
-        open_uri_options = {
-          read_timeout: options[:timeout],
-          redirect: options[:follow_redirects]
-        }
-
-        # Use uri.open instead of URI.open to avoid shell command injection
-        uri.open(open_uri_options, &:read)
-      end
-
-      # Fetch via the ssrf_filter gem, which resolves the hostname and rejects
-      # loopback/private/link-local/metadata addresses (re-checked on every
-      # redirect hop, since a redirect can point anywhere) before connecting.
-      def fetch_http_ssrf_safe(uri, options)
-        response = SsrfFilter.get(
-          uri,
-          http_options: { read_timeout: options[:timeout], open_timeout: options[:timeout] },
-          max_redirects: options[:follow_redirects] ? SsrfFilter::DEFAULT_MAX_REDIRECTS : 0
-        )
-
-        unless response.is_a?(Net::HTTPSuccess)
-          raise OpenURI::HTTPError.new("#{response.code} #{response.message}", response)
+          if options[:allow_local_network]
+            fetch_http_unfiltered(uri, options)
+          else
+            fetch_http_ssrf_safe(uri, options)
+          end
+        rescue OpenURI::HTTPError => e
+          raise ImportError, "HTTP error fetching import: #{url} (#{e.message})"
+        rescue SocketError => e
+          raise ImportError, "Network error fetching import: #{url} (#{e.message})"
+        rescue SsrfFilter::Error => e
+          raise ImportError, "Import blocked by SSRF protection: #{url} (#{e.message})"
         end
 
-        response.body
+        # Plain open-uri fetch, no SSRF protection - only reachable when the
+        # caller explicitly opted in via allow_local_network: true.
+        def fetch_http_unfiltered(uri, options)
+          open_uri_options = {
+            read_timeout: options[:timeout],
+            redirect: options[:follow_redirects]
+          }
+
+          # Use uri.open instead of URI.open to avoid shell command injection
+          uri.open(open_uri_options, &:read)
+        end
+
+        # Fetch via the ssrf_filter gem, which resolves the hostname and rejects
+        # loopback/private/link-local/metadata addresses (re-checked on every
+        # redirect hop, since a redirect can point anywhere) before connecting.
+        def fetch_http_ssrf_safe(uri, options)
+          response = SsrfFilter.get(
+            uri,
+            http_options: { read_timeout: options[:timeout], open_timeout: options[:timeout] },
+            max_redirects: options[:follow_redirects] ? SsrfFilter::DEFAULT_MAX_REDIRECTS : 0
+          )
+
+          unless response.is_a?(Net::HTTPSuccess)
+            raise OpenURI::HTTPError.new("#{response.code} #{response.message}", response)
+          end
+
+          response.body
+        end
       end
     end
 

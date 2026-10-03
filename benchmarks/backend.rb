@@ -1,8 +1,10 @@
 # frozen_string_literal: true
 
 require_relative 'ruby_mode'
+require_relative 'spinel_compiler'
 
-# A Cataract implementation under test: pure Ruby or the C extension.
+# A Cataract implementation under test: the C extension, pure Ruby, or pure
+# Ruby compiled ahead of time by Spinel.
 #
 # Each backend declares which RubyModes it is benchmarked under. The C
 # extension declares only one - a JIT doesn't compile its code, so further
@@ -14,17 +16,34 @@ class Backend
   # Set by a parent process to declare which backend a worker should load.
   ENV_VAR = 'CATARACT_BENCH_BACKEND'
 
-  Mismatch = Class.new(StandardError)
+  class Mismatch < StandardError
+  end
 
   attr_reader :id, :label, :column_label, :modes, :selection_env
 
-  def initialize(id:, label:, column_label:, modes:, selection_env:)
+  def initialize(id:, label:, column_label:, modes:, selection_env:, compiled: false,
+                 availability: ->(_env) { true })
     @id = id
     @label = label
     @column_label = column_label
     @modes = modes.freeze
     @selection_env = selection_env.freeze
+    @compiled = compiled
+    @availability = availability
     freeze
+  end
+
+  # Whether this backend is built into an executable of its own rather than
+  # loaded into a Ruby process. Such a backend runs a benchmark's
+  # CompiledProgram, not its worker script.
+  def compiled?
+    @compiled
+  end
+
+  # Whether this machine can run the backend at all. The environment is passed
+  # in, as for RubyMode's VM, so this is testable without the toolchain.
+  def available?(env = ENV)
+    @availability.call(env)
   end
 
   def to_s
@@ -47,9 +66,25 @@ class Backend
     selection_env: { SELECTION_ENV_VAR => '1' }.freeze
   )
 
+  # The pure Ruby backend compiled to a native executable by Spinel. There is
+  # no Ruby VM under it, so it has the one mode: a JIT has nothing to compile.
+  # Nothing selects it at require time either - RUBY_ENGINE is "spinel" inside
+  # the executable, and lib/cataract.rb reads that.
+  #
+  # Only benchmarked where a Spinel compiler can be found (see SpinelCompiler).
+  SPINEL = new(
+    id: :spinel,
+    label: 'cataract spinel',
+    column_label: 'Spinel',
+    modes: [RubyMode::NO_JIT].freeze,
+    selection_env: {}.freeze,
+    compiled: true,
+    availability: ->(env) { !SpinelCompiler.locate(env).nil? }
+  )
+
   # Drives both the order variants run in and the column order in
   # BENCHMARKS.md.
-  ALL = [NATIVE, PURE].freeze
+  ALL = [NATIVE, PURE, SPINEL].freeze
 
   def self.fetch(id)
     ALL.find { |backend| backend.id == id.to_sym } ||

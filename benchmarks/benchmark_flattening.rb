@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'tmpdir'
 require_relative 'benchmark_harness'
 require_relative 'flattening_tests'
 
@@ -32,7 +33,24 @@ class FlatteningBenchmark < BenchmarkHarness
 
   def call
     announce_variants
-    run_all_variants(File.expand_path('benchmark_flattening_workers.rb', __dir__))
+    Dir.mktmpdir('cataract-flattening') do |dir|
+      run_all_variants(File.expand_path('benchmark_flattening_workers.rb', __dir__),
+                       compiled_program: compiled_program(dir))
+    end
+  end
+
+  private
+
+  # The compiled program reads each test case's CSS from a file, so it comes
+  # from the same metadata the other implementations measure rather than from
+  # a second copy.
+  def compiled_program(dir)
+    ids = FlatteningTests.metadata['test_cases'].map do |test_case|
+      File.write(File.join(dir, "#{test_case['id']}.css"), test_case['css'])
+      test_case['id']
+    end
+
+    CompiledProgram.new(source: File.expand_path('spinel/flattening.rb', __dir__), args: [dir, *ids])
   end
 end
 

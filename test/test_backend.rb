@@ -1,11 +1,12 @@
 # frozen_string_literal: true
 
 require 'test_helper'
+require 'tempfile'
 require_relative '../benchmarks/backend'
 
 class TestBackend < Minitest::Test
   def test_all_backends_in_display_order
-    assert_equal %i[native pure], Backend::ALL.map(&:id)
+    assert_equal %i[native pure spinel], Backend::ALL.map(&:id)
   end
 
   def test_fetch_accepts_symbol_or_string
@@ -26,6 +27,37 @@ class TestBackend < Minitest::Test
 
   def test_pure_declares_every_jit_mode
     assert_equal RubyMode::ALL, Backend::PURE.modes
+  end
+
+  def test_spinel_declares_one_mode_because_there_is_no_vm_to_jit
+    assert_equal [RubyMode::NO_JIT], Backend::SPINEL.modes
+  end
+
+  def test_only_spinel_is_compiled_ahead_of_time
+    assert_predicate Backend::SPINEL, :compiled?
+    refute_predicate Backend::NATIVE, :compiled?
+    refute_predicate Backend::PURE, :compiled?
+  end
+
+  def test_spinel_is_available_only_where_a_compiler_can_be_found
+    Tempfile.create('spinel') do |compiler|
+      File.chmod(0o755, compiler.path)
+
+      assert Backend::SPINEL.available?('SPINEL' => compiler.path)
+    end
+
+    refute Backend::SPINEL.available?({})
+  end
+
+  def test_the_ruby_backends_are_always_available
+    assert Backend::NATIVE.available?({})
+    assert Backend::PURE.available?({})
+  end
+
+  def test_spinel_is_not_selected_through_the_environment
+    # RUBY_ENGINE picks the backend inside a compiled program; there is
+    # nothing for a worker's environment to say.
+    assert_empty Backend::SPINEL.selection_env
   end
 
   def test_selection_env_requests_the_right_backend_at_require_time

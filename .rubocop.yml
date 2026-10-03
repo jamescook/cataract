@@ -185,5 +185,7 @@ Cataract/BanAssertIncludes:
     - 'test/test_benchmark_implementation.rb'
     - 'test/test_result_table.rb'
     - 'test/test_benchmark_plumbing.rb'
+    - 'test/test_spinel_compiler.rb'
+    - 'test/test_spinel_worker.rb'
     - 'test/test_parse_errors.rb'  # Parse error tests check error messages with assert_match
     - 'test/support/**/*'  # Support files define assert_contains which uses assert_includes internally

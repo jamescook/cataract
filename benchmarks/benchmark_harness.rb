@@ -9,6 +9,8 @@ require_relative 'system_metadata'
 require_relative 'speedup_calculator'
 require_relative 'implementation'
 require_relative 'results_directory'
+require_relative 'compiled_program'
+require_relative 'spinel_worker'
 
 # Base class for all benchmarks. Provides structure and automatic JSON output.
 #
@@ -266,16 +268,26 @@ class BenchmarkHarness
 
   # Runs a worker script once per Implementation, each in its own process,
   # then merges their output into this benchmark's combined results file.
-  def run_all_variants(worker_script)
+  #
+  # A backend that is compiled ahead of time cannot load the worker script, so
+  # it runs the benchmark's CompiledProgram instead; a benchmark that has none
+  # is simply not measured on that backend.
+  #
+  # @param worker_script [String] the benchmark-ips worker
+  # @param compiled_program [CompiledProgram, nil] the same test cases as a
+  #   standalone program
+  def run_all_variants(worker_script, compiled_program: nil)
     cleanup_worker_results(worker_glob)
 
     Implementation.available.each do |implementation|
+      command = worker_command(implementation, worker_script, compiled_program)
+      next unless command
+
       puts "→ Running #{implementation}..."
       puts
       # Workers write into the same directory as their parent, so a redirected
       # results location survives the process boundary.
       env = implementation.env.merge(results.env)
-      command = implementation.ruby_command(worker_script)
       stdout, stderr, status = run_subprocess(command, env: env)
       raise variant_failure(implementation, command_line(command, env), stdout, stderr, status) unless status.success?
 
@@ -290,6 +302,16 @@ class BenchmarkHarness
 
   def worker_glob
     "#{self.class.benchmark_name}_*.json"
+  end
+
+  # @return [Array<String>, nil] nil when this benchmark has nothing the
+  #   implementation's backend can run
+  def worker_command(implementation, worker_script, compiled_program)
+    return implementation.ruby_command(worker_script) unless implementation.backend.compiled?
+    return nil unless compiled_program
+
+    implementation.ruby_command(SpinelWorker::SCRIPT) +
+      [self.class.benchmark_name, compiled_program.source, *compiled_program.args]
   end
 
   # Describes how a variant died, not just that it did.

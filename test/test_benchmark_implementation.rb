@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'test_helper'
+require 'tempfile'
 require_relative 'support/fake_vm'
 require_relative '../benchmarks/implementation'
 
@@ -16,7 +17,7 @@ class TestBenchmarkImplementation < Minitest::Test
   end
 
   def test_all_is_every_backend_crossed_with_the_modes_it_declares
-    assert_equal %i[native_none pure_none pure_yjit pure_zjit], Implementation.all.map(&:id)
+    assert_equal %i[native_none pure_none pure_yjit pure_zjit spinel_none], Implementation.all.map(&:id)
   end
 
   def test_all_only_contains_variants_their_backend_declares
@@ -27,16 +28,28 @@ class TestBenchmarkImplementation < Minitest::Test
 
   def test_available_drops_variants_this_ruby_cannot_run
     # A 3.x has YJIT but no ZJIT, so it benchmarks three variants, not four.
-    available = Implementation.available(FakeVM.with(:YJIT)).map(&:id)
+    available = Implementation.available(FakeVM.with(:YJIT), env: {}).map(&:id)
 
     assert_equal %i[native_none pure_none pure_yjit], available
   end
 
-  def test_available_is_everything_when_the_ruby_has_both_jits
+  def test_available_drops_spinel_where_there_is_no_compiler
     ruby_vm = FakeVM.new(YJIT: FakeVM::FakeJit.new(enabled: false),
                          ZJIT: FakeVM::FakeJit.new(enabled: false))
 
-    assert_equal Implementation.all.map(&:id), Implementation.available(ruby_vm).map(&:id)
+    assert_equal %i[native_none pure_none pure_yjit pure_zjit], Implementation.available(ruby_vm, env: {}).map(&:id)
+  end
+
+  def test_available_is_everything_when_the_ruby_has_both_jits_and_a_spinel_compiler
+    ruby_vm = FakeVM.new(YJIT: FakeVM::FakeJit.new(enabled: false),
+                         ZJIT: FakeVM::FakeJit.new(enabled: false))
+
+    Tempfile.create('spinel') do |compiler|
+      File.chmod(0o755, compiler.path)
+      available = Implementation.available(ruby_vm, env: { 'SPINEL' => compiler.path })
+
+      assert_equal Implementation.all.map(&:id), available.map(&:id)
+    end
   end
 
   def test_id_pairs_both_axes
@@ -46,12 +59,14 @@ class TestBenchmarkImplementation < Minitest::Test
 
   def test_label_omits_the_mode_when_the_backend_only_runs_one_way
     assert_equal 'cataract', @native.label
+    assert_equal 'cataract spinel', Implementation.find(:spinel, :none).label
     assert_equal 'cataract pure (ZJIT)', @zjit.label
     assert_equal 'cataract pure (no JIT)', @interpreted.label
   end
 
   def test_column_label_matches_the_benchmarks_md_headings
     assert_equal 'Native', @native.column_label
+    assert_equal 'Spinel', Implementation.find(:spinel, :none).column_label
     assert_equal 'Pure (no JIT)', @interpreted.column_label
     assert_equal 'Pure (YJIT)', @yjit.column_label
     assert_equal 'Pure (ZJIT)', @zjit.column_label

@@ -14,7 +14,7 @@ module Cataract
   # @attr [String] property CSS property name (lowercased)
   # @attr [String] value CSS property value
   # @attr [Boolean] important Whether the declaration has !important
-  Declaration = Struct.new(:property, :value, :important) unless const_defined?(:Declaration)
+  Declaration = Struct.new(:property, :value, :important)
 
   class Declaration
     # Check if this declaration is a custom property (CSS variable).
