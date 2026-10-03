@@ -548,10 +548,9 @@ module Cataract
     def load_file(filename, base_dir = '.', options = {})
       # Normalize file path and convert to file:// URI
       file_path = File.expand_path(filename, base_dir)
-      file_uri = "file://#{file_path}"
 
       # Delegate to load_uri which handles imports and base_path
-      load_uri(file_uri, options)
+      load_uri("file://#{file_path}", options)
     end
 
     # Load CSS from a URI and add to this stylesheet.
@@ -823,7 +822,11 @@ module Cataract
 
     # Deprecated: Use flatten instead
     def merge
-      warn 'Stylesheet#merge is deprecated, use #flatten instead', uplevel: 1
+      if RUBY_ENGINE == 'spinel'
+        warn 'Stylesheet#merge is deprecated, use #flatten instead'
+      else
+        warn 'Stylesheet#merge is deprecated, use #flatten instead', uplevel: 1
+      end
       flatten
     end
 
@@ -846,7 +849,11 @@ module Cataract
 
     # Deprecated: Use flatten! instead
     def merge!
-      warn 'Stylesheet#merge! is deprecated, use #flatten! instead', uplevel: 1
+      if RUBY_ENGINE == 'spinel'
+        warn 'Stylesheet#merge! is deprecated, use #flatten! instead'
+      else
+        warn 'Stylesheet#merge! is deprecated, use #flatten! instead', uplevel: 1
+      end
       flatten!
     end
 
@@ -1317,7 +1324,7 @@ module Cataract
 
       # Determine the base URI for the imported file
       # This becomes the new base for resolving relative URLs in the imported CSS
-      imported_base_uri = ImportResolver.normalize_url(url, base_path: opts[:base_path], base_uri: opts[:base_uri]).to_s
+      imported_base_uri = String(ImportResolver.normalize_url(url, base_path: opts[:base_path], base_uri: opts[:base_uri]))
 
       # Build parse options for imported CSS
       parse_opts = {

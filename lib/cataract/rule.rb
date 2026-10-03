@@ -72,7 +72,7 @@ module Cataract
 
     # Silence warning about method redefinition. We redefine below to lazily calculate
     # specificity
-    undef_method :specificity if method_defined?(:specificity)
+    undef_method :specificity if RUBY_ENGINE != 'spinel' && method_defined?(:specificity)
 
     # Get the CSS specificity value for this rule's selector.
     #
@@ -205,11 +205,10 @@ module Cataract
     # in Sets correctly.
     #
     # @return [Integer] hash code
-    # rubocop:disable Naming/MemoizedInstanceVariableName
+    # rubocop:disable-next Naming/MemoizedInstanceVariableName
     def hash
       @_hash ||= [self.class, selector, expanded_declarations].hash
     end
-    # rubocop:enable Naming/MemoizedInstanceVariableName
 
     protected
 
@@ -219,7 +218,7 @@ module Cataract
     # to enable semantic comparison. Result is cached.
     #
     # @return [Array<Declaration>] expanded declarations
-    # rubocop:disable Naming/MemoizedInstanceVariableName
+    # rubocop:disable-next Naming/MemoizedInstanceVariableName
     def expanded_declarations
       @_expanded_declarations ||= begin
         expanded = declarations.flat_map { |decl| Cataract::Backends.active.expand_shorthand(decl) }
@@ -227,6 +226,5 @@ module Cataract
         expanded
       end
     end
-    # rubocop:enable Naming/MemoizedInstanceVariableName
   end
 end
