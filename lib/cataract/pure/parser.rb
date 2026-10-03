@@ -67,8 +67,12 @@ module Cataract
           raise TypeError, "css_string must be a String, got #{css_string.class}" unless css_string.is_a?(String)
 
           # Private: Internal parsing state
-          @_css = css_string.dup.freeze
+          # String() is a no-op here (the guard above already raised for anything
+          # else) - it is what tells Spinel @_css is a String whatever a caller far
+          # away passed, which keeps every getbyte below off its boxed slow path.
+          @_css = String(css_string).dup.freeze
           @_pos = 0
+          @_decl_next_pos = 0 # where parse_single_declaration stopped
           @_len = @_css.bytesize
           @_parent_media_sym = parent_media_sym
           @_parent_media_query_id = parent_media_query_id
@@ -285,17 +289,38 @@ module Cataract
         # @param selector [String] Raw selector text (already trimmed as a whole)
         # @param pos [Integer] Position to report in a raised ParseError
         # @return [Array<String>] Individual selectors, stripped
-        def split_and_validate_selectors(selector, pos)
-          selectors = selector.split(',')
-          selectors.each do |individual_selector|
-            individual_selector.strip!
-
-            if @_check_invalid_selector_syntax && individual_selector.empty? && selectors.size > 1
-              raise ParseError.new('Invalid selector syntax: empty selector in comma-separated list',
-                                   css: @_css, pos: pos, type: :invalid_selector_syntax)
+        #
+        # Defined once per engine, at load, rather than branching inside the
+        # method. Spinel hands a block its own copy of each element, so the
+        # strip! below never reaches the array there and it has to build the
+        # stripped strings with map! instead - which costs CRuby a String per
+        # selector (1.4% on a selector-list-heavy stylesheet), so CRuby keeps
+        # the in-place form.
+        if RUBY_ENGINE == 'spinel'
+          def split_and_validate_selectors(selector, pos)
+            selectors = selector.split(',')
+            selectors.map!(&:strip)
+            selectors.each do |individual_selector|
+              if @_check_invalid_selector_syntax && individual_selector.empty? && selectors.size > 1
+                raise ParseError.new('Invalid selector syntax: empty selector in comma-separated list',
+                                     css: @_css, pos: pos, type: :invalid_selector_syntax)
+              end
             end
+            selectors
           end
-          selectors
+        else
+          def split_and_validate_selectors(selector, pos)
+            selectors = selector.split(',')
+            selectors.each do |individual_selector|
+              individual_selector.strip!
+
+              if @_check_invalid_selector_syntax && individual_selector.empty? && selectors.size > 1
+                raise ParseError.new('Invalid selector syntax: empty selector in comma-separated list',
+                                     css: @_css, pos: pos, type: :invalid_selector_syntax)
+              end
+            end
+            selectors
+          end
         end
 
         # Check if we're at end of input
@@ -449,7 +474,10 @@ module Cataract
         # @param pos [Integer] Current position in CSS string
         # @param end_pos [Integer] End position (boundary for parsing)
         # @param parse_important [Boolean] Whether to parse !important flag (false for at-rules)
-        # @return [Array(Declaration|nil, Integer)] Tuple of [declaration, new_position]
+        # @return [Declaration, nil] The declaration, or nil if it was empty or
+        #   malformed. Either way @_decl_next_pos is left just past it. The
+        #   position is not returned alongside: a [declaration, position] pair
+        #   allocates per declaration, and Spinel cannot type its two halves.
         def parse_single_declaration(pos, end_pos, parse_important)
           # Parse property name (scan until ':').
           # Also stops at '{' - a property name can never legitimately contain
@@ -473,7 +501,8 @@ module Cataract
               pos += 1
             end
             pos += 1 if pos < end_pos && @_css.getbyte(pos) == BYTE_SEMICOLON
-            return [nil, pos]
+            @_decl_next_pos = pos
+            return nil
           end
 
           # Trim trailing whitespace from property
@@ -530,12 +559,13 @@ module Cataract
           pos += 1 if pos < end_pos && @_css.getbyte(pos) == BYTE_SEMICOLON
 
           # Return nil if empty declaration
-          return [nil, pos] if prop_end <= prop_start || val_end <= val_start
+          @_decl_next_pos = pos
+          return nil if prop_end <= prop_start || val_end <= val_start
 
           # Convert relative URLs to absolute if enabled
           value = convert_urls_in_value(value)
 
-          [Declaration.new(property, value, important), pos]
+          Declaration.new(property, value, important)
         end
 
         # Find matching closing brace
@@ -795,7 +825,8 @@ module Cataract
                 next if seg.empty?
 
                 # Resolve nested selector
-                resolved_selector, nesting_style = resolve_nested_selector(parent_selector, seg)
+                nesting_style = seg.include?('&') ? NESTING_STYLE_EXPLICIT : NESTING_STYLE_IMPLICIT
+                resolved_selector = resolve_nested_selector(parent_selector, seg)
 
                 # Get rule ID
                 rule_id = @_rule_id_counter
@@ -832,7 +863,8 @@ module Cataract
             end
 
             # This is a declaration - parse it using shared helper
-            decl, pos = parse_single_declaration(pos, end_pos, true)
+            decl = parse_single_declaration(pos, end_pos, true)
+            pos = @_decl_next_pos
             declarations << decl if decl
           end
 
@@ -1725,14 +1757,16 @@ module Cataract
         # Resolve nested selector against parent
         # Translated from C: see ext/cataract/css_parser.c resolve_nested_selector
         # Examples:
-        #   resolve_nested_selector(".parent", "& .child")  => [".parent .child", 1]  (explicit)
-        #   resolve_nested_selector(".parent", "&:hover")   => [".parent:hover", 1]   (explicit)
-        #   resolve_nested_selector(".parent", "&.active")  => [".parent.active", 1]  (explicit)
-        #   resolve_nested_selector(".parent", ".child")    => [".parent .child", 0]  (implicit)
-        #   resolve_nested_selector(".parent", "> .child")  => [".parent > .child", 0] (implicit combinator)
+        #   resolve_nested_selector(".parent", "& .child")  => ".parent .child"   (explicit)
+        #   resolve_nested_selector(".parent", "&:hover")   => ".parent:hover"    (explicit)
+        #   resolve_nested_selector(".parent", "&.active")  => ".parent.active"   (explicit)
+        #   resolve_nested_selector(".parent", ".child")    => ".parent .child"   (implicit)
+        #   resolve_nested_selector(".parent", "> .child")  => ".parent > .child" (implicit combinator)
         #
-        # Returns: [resolved_selector, nesting_style]
-        #   nesting_style: 0 = NESTING_STYLE_IMPLICIT, 1 = NESTING_STYLE_EXPLICIT
+        # Returns: the resolved selector. Whether the nesting was explicit (an
+        # '&' in nested_selector) or implicit is the caller's to read off
+        # nested_selector itself - returning it here as a second value made the
+        # selector untyped under Spinel.
         def resolve_nested_selector(parent_selector, nested_selector)
           # Check if nested selector contains & (byte-level search)
           len = nested_selector.bytesize
@@ -1748,7 +1782,6 @@ module Cataract
 
           if has_ampersand
             # Explicit nesting - replace & with parent
-            nesting_style = NESTING_STYLE_EXPLICIT
 
             # Trim leading whitespace to check for combinator
             # NOTE: We use a manual byte-level loop instead of lstrip for performance.
@@ -1791,10 +1824,9 @@ module Cataract
               i += 1
             end
 
-            [result, nesting_style]
+            result
           else
             # Implicit nesting - prepend parent with appropriate spacing
-            nesting_style = NESTING_STYLE_IMPLICIT
 
             # Trim leading whitespace from nested selector (byte-level)
             # See comment above for why we don't use lstrip
@@ -1811,7 +1843,7 @@ module Cataract
             result << ' '
             result << nested_selector.byteslice(start_pos, nested_selector.bytesize - start_pos)
 
-            [result, nesting_style]
+            result
           end
         end
 
@@ -2139,7 +2171,8 @@ module Cataract
             break if pos >= end_pos
 
             # Parse declaration using shared helper (at-rules don't use !important)
-            decl, pos = parse_single_declaration(pos, end_pos, false)
+            decl = parse_single_declaration(pos, end_pos, false)
+            pos = @_decl_next_pos
             declarations << decl if decl
           end
 
