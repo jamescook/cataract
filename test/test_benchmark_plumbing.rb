@@ -15,6 +15,9 @@ require_relative '../benchmarks/results_directory'
 # stamped or combined.
 class TestBenchmarkPlumbing < Minitest::Test
   WORKER = File.expand_path('support/fake_benchmark_worker.rb', __dir__)
+  # The same fake test case for a backend that is compiled; only reached on a
+  # machine with a Spinel compiler, where it adds a real compile to this test.
+  COMPILED = File.expand_path('support/fake_benchmark_spinel.rb', __dir__)
 
   class FakeBenchmark < BenchmarkHarness
     def self.benchmark_name
@@ -30,7 +33,7 @@ class TestBenchmarkPlumbing < Minitest::Test
     end
 
     def call
-      run_all_variants(WORKER)
+      run_all_variants(WORKER, compiled_program: CompiledProgram.new(source: COMPILED, args: []))
     end
   end
 

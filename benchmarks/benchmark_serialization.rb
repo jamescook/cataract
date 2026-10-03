@@ -36,7 +36,17 @@ class SerializationBenchmark < BenchmarkHarness
 
   def call
     announce_variants
-    run_all_variants(File.expand_path('benchmark_serialization_workers.rb', __dir__))
+    run_all_variants(File.expand_path('benchmark_serialization_workers.rb', __dir__),
+                     compiled_program: compiled_program)
+  end
+
+  private
+
+  def compiled_program
+    CompiledProgram.new(
+      source: File.expand_path('spinel/serialization.rb', __dir__),
+      args: [File.expand_path('../test/fixtures', __dir__)]
+    )
   end
 end
 

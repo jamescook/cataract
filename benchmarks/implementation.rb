@@ -26,11 +26,14 @@ class Implementation
     end
   end
 
-  # Those the running Ruby can actually execute. Drives both the benchmark run
+  # Those this machine can actually execute. Drives both the benchmark run
   # and the BENCHMARKS.md columns, so a Ruby without ZJIT reports three
-  # columns rather than failing on `ruby --zjit`.
-  def self.available(ruby_vm = RubyVM)
-    all.select { |implementation| implementation.mode.available?(ruby_vm) }
+  # columns rather than failing on `ruby --zjit`, and a machine without a
+  # Spinel compiler simply has no Spinel column.
+  def self.available(ruby_vm = RubyVM, env: ENV)
+    all.select do |implementation|
+      implementation.backend.available?(env) && implementation.mode.available?(ruby_vm)
+    end
   end
 
   def self.find(backend_id, mode_id)

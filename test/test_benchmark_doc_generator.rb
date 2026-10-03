@@ -64,7 +64,11 @@ class TestBenchmarkDocGenerator < Minitest::Test
     generator = BenchmarkDocGenerator.new(results_dir: @results_dir, output_path: @output_path, verbose: false)
     generator.generate
 
-    expected = "| #{Implementation.all.map(&:column_label).join(' | ')} |"
+    # One column per implementation the sample measured, which is not every
+    # implementation there is: a backend this machine cannot run has no rows.
+    rows = JSON.parse(File.read(File.join(@results_dir, 'parsing.json')))['results']
+    measured = ResultSet.new(rows).implementations_among(Implementation.all)
+    expected = "| #{measured.map(&:column_label).join(' | ')} |"
 
     assert_includes File.read(@output_path), expected
   end

@@ -41,7 +41,16 @@ class ParsingBenchmark < BenchmarkHarness
 
   def call
     announce_variants
-    run_all_variants(File.expand_path('benchmark_parsing_workers.rb', __dir__))
+    run_all_variants(File.expand_path('benchmark_parsing_workers.rb', __dir__), compiled_program: compiled_program)
+  end
+
+  private
+
+  def compiled_program
+    CompiledProgram.new(
+      source: File.expand_path('spinel/parsing.rb', __dir__),
+      args: [File.expand_path('../test/fixtures', __dir__), File.expand_path('fixtures', __dir__)]
+    )
   end
 end
 

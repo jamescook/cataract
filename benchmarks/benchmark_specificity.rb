@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'tmpdir'
 require_relative 'benchmark_harness'
 require_relative 'specificity_tests'
 
@@ -35,7 +36,24 @@ class SpecificityBenchmark < BenchmarkHarness
 
   def call
     announce_variants
-    run_all_variants(File.expand_path('benchmark_specificity_workers.rb', __dir__))
+    Dir.mktmpdir('cataract-specificity') do |dir|
+      run_all_variants(File.expand_path('benchmark_specificity_workers.rb', __dir__),
+                       compiled_program: compiled_program(dir))
+    end
+  end
+
+  private
+
+  # The compiled program reads each test case's selectors from a file, so they
+  # come from the same metadata the other implementations measure rather than
+  # from a second copy of the list.
+  def compiled_program(dir)
+    ids = SpecificityTests.metadata['test_cases'].map do |test_case|
+      File.write(File.join(dir, "#{test_case['id']}.txt"), test_case['selectors'].keys.join("\n"))
+      test_case['id']
+    end
+
+    CompiledProgram.new(source: File.expand_path('spinel/specificity.rb', __dir__), args: [dir, *ids])
   end
 end
 
