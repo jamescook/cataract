@@ -22,7 +22,7 @@ module Cataract
   # @attr [String, nil] media The media query string (e.g., "print", "screen and (max-width: 768px)"), or nil
   # @attr [Integer, nil] media_query_id The MediaQuery ID, or nil if no media query
   # @attr [Boolean] resolved Whether this import has been resolved/processed
-  ImportStatement = Struct.new(:id, :url, :media, :media_query_id, :resolved) unless const_defined?(:ImportStatement)
+  ImportStatement = Struct.new(:id, :url, :media, :media_query_id, :resolved)
 
   class ImportStatement
     # Factory method for creating ImportStatement in tests.

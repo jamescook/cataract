@@ -29,9 +29,7 @@ module Cataract
   # @attr [nil] specificity Always nil for at-rules (they don't have CSS specificity)
   # @attr [Integer, nil] media_query_id ID of MediaQuery if inside @media block, nil otherwise
   # @attr [Integer, nil] conditional_group_id ID of ConditionalGroup if inside @supports/@layer/@container/@scope, nil otherwise
-  unless const_defined?(:AtRule)
-    AtRule = Struct.new(:id, :selector, :content, :specificity, :media_query_id, :conditional_group_id)
-  end
+  AtRule = Struct.new(:id, :selector, :content, :specificity, :media_query_id, :conditional_group_id)
 
   class AtRule
     # Check if this is a selector-based rule (vs an at-rule like @keyframes).
